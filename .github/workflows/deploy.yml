@@ -18,7 +18,7 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: cp frontend-package.json package.json && npm install
+        run: tr -d '\000' < frontend-package.json > package.json && npm install
 
       - name: Build frontend (Vite)
         run: npm run build
