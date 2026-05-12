@@ -17,14 +17,28 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Strip null bytes from source files
+      - name: Write correct vite.config.js
         run: |
-          find . -not -path './.git/*' \( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' -o -name '*.json' -o -name '*.css' -o -name '*.html' \) | while IFS= read -r f; do
-            tr -d '\000' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-          done
+          cat > vite.config.js << 'VITEEOF'
+          import react from '@vitejs/plugin-react';
+          import { defineConfig } from 'vite';
+          import path from 'path';
+          import { fileURLToPath } from 'url';
+          const __dirname = path.dirname(fileURLToPath(import.meta.url));
+          export default defineConfig({
+            plugins: [react()],
+            resolve: { alias: { '@': path.resolve(__dirname, './frontend-src') } },
+            root: '.',
+            publicDir: 'public',
+            build: { outDir: 'dist', rollupOptions: { input: 'index.html' } },
+            server: { port: 5173, proxy: { '/api': { target: process.env.VITE_API_URL || 'http://localhost:3001', changeOrigin: true } } },
+          });
+          VITEEOF
 
       - name: Install dependencies
-        run: cp frontend-package.json package.json && npm install
+        run: |
+          tr -d '\000' < frontend-package.json > package.json
+          npm install
 
       - name: Build frontend (Vite)
         run: npm run build
