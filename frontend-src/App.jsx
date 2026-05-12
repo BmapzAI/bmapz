@@ -27,7 +27,6 @@ const MainPage = mainPageKey ? Pages[mainPageKey] : () => null;
 const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
 
-// ─── Public routes (no auth required) ────────────────────────────────────────
 const PublicRoutes = () => (
   <Routes>
     <Route path="/login" element={<Login />} />
@@ -42,7 +41,6 @@ const PublicRoutes = () => (
   </Routes>
 );
 
-// ─── Authenticated app routes ─────────────────────────────────────────────────
 const AuthenticatedRoutes = () => (
   <Routes>
     <Route path="/" element={
@@ -50,7 +48,6 @@ const AuthenticatedRoutes = () => (
         <MainPage />
       </LayoutWrapper>
     } />
-
     {Object.entries(Pages).map(([path, Page]) => (
       <Route key={path} path={`/${path}`} element={
         <LayoutWrapper currentPageName={path}>
@@ -58,15 +55,9 @@ const AuthenticatedRoutes = () => (
         </LayoutWrapper>
       } />
     ))}
-
-    {/* Auth pages redirect to home when already logged in */}
     <Route path="/login" element={<Navigate to="/" replace />} />
     <Route path="/signup" element={<Navigate to="/" replace />} />
-
-    {/* Auth callback can still be hit after OAuth */}
     <Route path="/auth/callback" element={<AuthCallback />} />
-
-    {/* Public static pages */}
     <Route path="/PrivacyPolicy" element={<LayoutWrapper currentPageName="PrivacyPolicy"><PrivacyPolicy /></LayoutWrapper>} />
     <Route path="/DataDeletion" element={<DataDeletion />} />
     <Route path="/AdminPanel" element={<LayoutWrapper currentPageName="AdminPanel"><AdminPanel /></LayoutWrapper>} />
@@ -74,15 +65,12 @@ const AuthenticatedRoutes = () => (
     <Route path="/Documentation" element={<LayoutWrapper currentPageName="Documentation"><Documentation /></LayoutWrapper>} />
     <Route path="/VideoTutorials" element={<LayoutWrapper currentPageName="VideoTutorials"><VideoTutorials /></LayoutWrapper>} />
     <Route path="/TermsOfService" element={<LayoutWrapper currentPageName="TermsOfService"><TermsOfService /></LayoutWrapper>} />
-
     <Route path="*" element={<PageNotFound />} />
   </Routes>
 );
 
-// ─── Root auth guard ──────────────────────────────────────────────────────────
 const AppRoutes = () => {
   const { isLoadingAuth, isAuthenticated, authError } = useAuth();
-
   if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-[#111]">
@@ -90,22 +78,11 @@ const AppRoutes = () => {
       </div>
     );
   }
-
-  // authError?.type === 'user_not_registered' no longer occurs — the backend
-  // auto-provisions new users via JIT in /api/auth/me. Only show error for
-  // genuine unknown failures (network down, Supabase outage, etc.)
-  if (authError?.type === 'unknown') {
-    return <UserNotRegisteredError />;
-  }
-
-  if (!isAuthenticated) {
-    return <PublicRoutes />;
-  }
-
+  if (authError?.type === 'unknown') return <UserNotRegisteredError />;
+  if (!isAuthenticated) return <PublicRoutes />;
   return <AuthenticatedRoutes />;
 };
 
-// ─── App root ─────────────────────────────────────────────────────────────────
 function App() {
   return (
     <AuthProvider>
@@ -115,4 +92,9 @@ function App() {
           <AppRoutes />
         </Router>
         <Toaster />
-      </QueryClientProvid
+      </QueryClientProvider>
+    </AuthProvider>
+  );
+}
+
+export default App;
