@@ -1,0 +1,70 @@
+import { Router } from 'express';
+import { supabaseAdmin } from '../lib/supabase.js';
+import { requireAuth } from '../middleware/auth.js';
+
+const router = Router();
+
+router.get('/', requireAuth, async (req, res) => {
+  try {
+    const { status, limit = 20, offset = 0 } = req.query;
+    let query = supabaseAdmin
+      .from('blog_posts')
+      .select('*', { count: 'exact' })
+      .eq('company_id', req.companyId)
+      .order('created_at', { ascending: false })
+      .range(Number(offset), Number(offset) + Number(limit) - 1);
+
+    if (status) query = query.eq('status', status);
+    const { data, error, count } = await query;
+    if (error) throw error;
+    res.json({ data, total: count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('blog_posts')
+      .insert({ ...req.body, company_id: req.companyId, created_by: req.dbUser.id })
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('blog_posts')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabaseAdmin
+      .from('blog_posts')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+export default router;

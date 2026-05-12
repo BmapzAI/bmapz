@@ -1,0 +1,121 @@
+import { supabaseAdmin } from '../lib/supabase.js';
+
+/**
+ * Verifies the Supabase JWT only — does NOT require an existing DB user row.
+ * Use this on endpoints that need to work before a user profile exists
+ * (e.g. /api/auth/me for JIT provisioning, /api/auth/complete-profile).
+ * Attaches req.user (Supabase auth user).
+ */
+export async function requireJWT(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    req.user = user;
+    next();
+  } catch (err) {
+    console.error('[requireJWT]', err);
+    res.status(500).json({ error: 'Authentication error' });
+  }
+}
+
+/**
+ * Verifies the Supabase JWT sent as "Authorization: Bearer <token>".
+ * Attaches req.user (Supabase auth user) and req.dbUser (users table row).
+ */
+export async function requireAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    // Verify the JWT with Supabase
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    req.user = user; // Supabase auth user object
+
+    // Load the application user record (has company_id, role, etc.)
+    const { data: dbUser, error: dbErr } = await supabaseAdmin
+      .from('users')
+      .select('*, companies(*)')
+      .eq('auth_user_id', user.id)
+      .single();
+
+    if (dbErr || !dbUser) {
+      return res.status(403).json({ error: 'User profile not found. Please complete registration.' });
+    }
+
+    req.dbUser = dbUser;
+    req.companyId = dbUser.company_id;
+    next();
+  } catch (err) {
+    console.error('[auth middleware]', err);
+    res.status(500).json({ error: 'Authentication error' });
+  }
+}
+
+/**
+ * Requires the user to have owner or system_admin role.
+ */
+export function requireAdmin(req, res, next) {
+  const role = req.dbUser?.role;
+  if (role !== 'owner' && role !== 'system_admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+}
+
+/**
+ * Requires owner, system_admin, or company_admin.
+ */
+export function requireCompanyAdmin(req, res, next) {
+  const role = req.dbUser?.role;
+  if (!['owner', 'system_admin', 'company_admin'].includes(role)) {
+    return res.status(403).json({ error: 'Company admin access required' });
+  }
+  next();
+}
+
+/**
+ * Optional auth — attaches user if token present, continues either way.
+ */
+export async function optionalAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+    const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+    if (user) {
+      req.user = user;
+      const { data: dbUser } = await supabaseAdmin
+        .from('users')
+        .select('*, companies(*)')
+        .eq('auth_user_id', user.id)
+        .single();
+      if (dbUser) {
+        req.dbUser = dbUser;
+        req.companyId = dbUser.company_id;
+      }
+    }
+    next();
+  } catch {
+    next();
+  }
+}

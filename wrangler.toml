@@ -1,0 +1,16 @@
+# Cloudflare Pages deployment config
+# Deploy: `npx wrangler pages deploy dist --project-name bmapz`
+# Or connect this repo in the Cloudflare dashboard.
+
+name = "bmapz"
+compatibility_date = "2024-01-01"
+
+[env.production]
+# Set these in Cloudflare Pages → Settings → Environment variables:
+#   VITE_SUPABASE_URL
+#   VITE_SUPABASE_ANON_KEY
+#   VITE_API_URL  (your Railway backend URL, e.g. https://bmapz-backend.up.railway.app)
+
+[[pages]]
+build_command = "npm run build:frontend"
+build_output_directory = "dist"
