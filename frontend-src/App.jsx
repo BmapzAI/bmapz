@@ -91,9 +91,6 @@ const AppRoutes = () => {
     );
   }
 
-  // authError?.type === 'user_not_registered' no longer occurs — the backend
-  // auto-provisions new users via JIT in /api/auth/me. Only show error for
-  // genuine unknown failures (network down, Supabase outage, etc.)
   if (authError?.type === 'unknown') {
     return <UserNotRegisteredError />;
   }
@@ -115,4 +112,9 @@ function App() {
           <AppRoutes />
         </Router>
         <Toaster />
-      </QueryClientProvid
+      </QueryClientProvider>
+    </AuthProvider>
+  );
+}
+
+export default App;
