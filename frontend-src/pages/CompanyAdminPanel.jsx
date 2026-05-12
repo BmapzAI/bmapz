@@ -11,10 +11,10 @@ import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import { useNavigate } from 'react-router-dom';
 import {
-import { User } from '@/api/entities';
   Settings, Users, CreditCard, UserPlus, Edit3, Check, X,
   Crown, Zap, Building2, AlertTriangle, Lock, Plus, Sparkles, ArrowRight
 } from 'lucide-react';
+import { User } from '@/api/entities';
 
 function Badge({ color, children }) {
   const colors = {

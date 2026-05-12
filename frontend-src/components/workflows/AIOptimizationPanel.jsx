@@ -231,4 +231,8 @@ export default function AIOptimizationPanel({ workflow, nodes, connections, onAp
               </div>
             </div>
           </div>
-    
+        )}
+      </CardContent>
+    </Card>
+  );
+}

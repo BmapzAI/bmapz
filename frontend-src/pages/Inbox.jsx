@@ -1,5 +1,5 @@
 import { api } from '@/api/apiClient';
-import { InvokeLLM } from '@/api/integrations'; from '@/api/apiClient';
+import { InvokeLLM } from '@/api/integrations';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,11 +9,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
-import { Company, Message } from '@/api/entities';
   Mail, MessageSquare, Linkedin, RefreshCw, Send, Search,
   ChevronRight, Inbox as InboxIcon, Sparkles, AlertCircle,
   ThumbsUp, ThumbsDown, Minus, Clock, User, ArrowLeft, Instagram
 } from 'lucide-react';
+import { Company, Message } from '@/api/entities';
 
 const CHANNEL_CONFIG = {
   email:     { label: 'Email',     icon: Mail,          color: '#38b6ff', bg: 'bg-[#38b6ff]/10',  border: 'border-[#38b6ff]/30'  },

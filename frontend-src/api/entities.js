@@ -166,4 +166,9 @@ export const CreditTransaction = {
 // ─── Workflow Runs ─────────────────────────────────────────────────────────────
 
 export const WorkflowRun = {
-  li
+  list: (params) => api.get('/api/workflow-runs', params).then(r => r.data ?? r),
+  filter: (params) => api.get('/api/workflow-runs', params).then(r => r.data ?? r),
+  get: (id) => api.get(`/api/workflow-runs/${id}`),
+  create: (data) => api.post('/api/workflow-runs', data),
+  update: (id, data) => api.patch(`/api/workflow-runs/${id}`, data),
+};

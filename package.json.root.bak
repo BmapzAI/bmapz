@@ -1,0 +1,17 @@
+{
+  "name": "bmapz-standalone",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Bmapz AI Marketing Automation — monorepo root",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "vite",
+    "dev:backend": "cd backend && node --watch src/index.js",
+    "build:frontend": "vite build",
+    "install:all": "npm install && cd backend && npm install",
+    "start:backend": "cd backend && node src/index.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
