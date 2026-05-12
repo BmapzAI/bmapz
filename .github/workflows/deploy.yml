@@ -17,6 +17,12 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Strip null bytes from all source files
+        run: |
+          find . -not -path './.git/*' \( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' -o -name '*.json' -o -name '*.css' -o -name '*.html' \) | while IFS= read -r f; do
+            tr -d '\000' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+          done
+
       - name: Write correct vite.config.js
         run: |
           cat > vite.config.js << 'VITEEOF'
@@ -36,9 +42,7 @@ jobs:
           VITEEOF
 
       - name: Install dependencies
-        run: |
-          tr -d '\000' < frontend-package.json > package.json
-          npm install
+        run: cp frontend-package.json package.json && npm install
 
       - name: Build frontend (Vite)
         run: npm run build
