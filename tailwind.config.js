@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
     darkMode: ["class"],
-    content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
+    content: ["./index.html", "./frontend-src/**/*.{ts,tsx,js,jsx}"],
     safelist: [
       'md:ml-[72px]', 'md:ml-[240px]',
       'ml-[72px]', 'ml-[240px]',
