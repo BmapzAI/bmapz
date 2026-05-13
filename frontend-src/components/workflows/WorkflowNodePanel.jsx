@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { NODE_TYPES, CONDITION_OPTIONS } from './WorkflowCanvas';
 import ScheduleMeetingPanel from './ScheduleMeetingPanel';
 import { InvokeLLM, TranscribeAudio } from '@/api/integrations';
+import { TranscribeAudio } from '@/api/integrations';
 
 // ─── Social platforms and their actions ───────────────────────────────────────
 const SOCIAL_PLATFORMS = [
@@ -417,7 +418,6 @@ export default function WorkflowNodePanel({ node, onUpdate, onDelete, company, i
           let binary = '';
           for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
           const audio_base64 = btoa(binary);
-          const { TranscribeAudio } = await import('@/api/integrations');
           const transcript = await TranscribeAudio({ audio_base64, filename: 'recording.webm' });
           if (transcript) {
             onUpdate(node.id, { content: (node.content || '') + (node.content ? ' ' : '') + transcript });

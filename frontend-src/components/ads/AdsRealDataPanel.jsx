@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { BarChart3, RefreshCw, TrendingUp, TrendingDown, AlertCircle, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { api } from '@/api/apiClient';
 import PlatformSelector from './PlatformSelector';
 import ConnectIntegrationModal from '@/components/integrations/ConnectIntegrationModal';
 
@@ -58,7 +59,7 @@ export default function AdsRealDataPanel({ company, onDataLoaded }) {
     setError(null);
     setCampaignData(null);
     try {
-      const res = await import('@/api/apiClient').then(m => m.api.get('/api/ads/campaigns', { platform: platformKey }));
+      const res = await api.get('/api/ads/campaigns', { platform: platformKey });
       if (res.data.error) throw new Error(res.data.error);
       // Ensure data belongs to the requested platform
       setCampaignData({ ...res.data, platform: platformKey });

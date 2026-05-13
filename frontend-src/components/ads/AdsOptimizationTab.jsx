@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card } from '@/components/ui/card';
 import { Zap, TrendingUp, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
+import { api } from '@/api/apiClient';
 
 export default function AdsOptimizationTab({ realAdData }) {
   const [platform, setPlatform] = useState('meta_ads');
@@ -16,10 +17,10 @@ export default function AdsOptimizationTab({ realAdData }) {
     setIsGenerating(true);
     try {
       // Use the backend function which fetches real data + runs AI analysis
-      const result = await import('@/api/apiClient').then(m => m.api.post('/api/ai/chat', {
+      const result = await api.post('/api/ai/chat', {
         platform,
         auto_apply: false,
-      });
+      };
 
       if (!result.data?.success) {
         throw new Error(result.data?.error || 'Failed to generate recommendations');
@@ -47,10 +48,10 @@ export default function AdsOptimizationTab({ realAdData }) {
     setIsApplying(true);
     try {
       // New optimizeAdCampaigns fetches its own data + applies changes via auto_apply
-      const result = await import('@/api/apiClient').then(m => m.api.post('/api/ai/chat', {
+      const result = await api.post('/api/ai/chat', {
         platform,
         auto_apply: true,
-      });
+      };
 
       if (result.data?.success) {
         const applied = result.data.changes_applied || 0;

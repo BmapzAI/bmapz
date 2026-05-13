@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Download, RotateCw, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { api } from '@/api/apiClient';
 
 export default function AdsLeadsTab() {
   const [leads, setLeads] = useState([]);
@@ -18,7 +19,7 @@ export default function AdsLeadsTab() {
   const syncLeads = async () => {
     setIsLoading(true);
     try {
-      const result = await import('@/api/apiClient').then(m => m.api.get('/api/ads/platform-leads'));
+      const result = await api.get('/api/ads/platform-leads');
 
       if (result.data?.success) {
         toast.success(`Synced ${result.data.total_added} new leads from ad campaigns`);

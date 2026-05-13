@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Save, Eye, EyeOff, CheckCircle, XCircle, Loader2, TestTube, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import { api } from '@/api/apiClient';
 
 function SecretInput({ label, value, onChange, placeholder, hint }) {
   const [show, setShow] = useState(false);
@@ -96,7 +97,7 @@ export default function ApiKeysTab({ company, onSave }) {
     try {
       // Save current keys first
       await Company.update(company.id, { api_keys: keys });
-      const res = await import('@/api/apiClient').then(m => m.api.get('/api/integrations/status'));
+      const res = await api.get('/api/integrations/status');
       const { success, message } = res.data;
       setStatuses(prev => ({ ...prev, [type]: success }));
       success ? toast.success(message) : toast.error(message);

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Heart, MessageCircle, Share2, Eye, TrendingUp, RefreshCw, BarChart3, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { InvokeLLM } from '@/api/integrations';
+import { api } from '@/api/apiClient';
 
 const PLATFORMS = [
   { value: 'instagram', label: 'Instagram', color: '#E1306C', icon: '📸' },
@@ -35,7 +36,6 @@ export default function SocialPerformanceTab({ company, selectedPlatforms, setSe
     if (!platform || !post.external_post_id) return;
     setRefreshingId(post.id);
     try {
-      const { api } = await import('@/api/apiClient');
       const res = await api.get('/api/social/analytics', {
         post_id: post.external_post_id,
         platform,
@@ -58,7 +58,6 @@ export default function SocialPerformanceTab({ company, selectedPlatforms, setSe
     if (platform !== 'facebook' && platform !== 'instagram') { toast.error('Boost only for Facebook/Instagram'); return; }
     setBoostingId(post.id);
     try {
-      const { api } = await import('@/api/apiClient');
       const res = await api.post('/api/social/posts/boost', {
         post_id: post.external_post_id,
         company_id: company?.id,

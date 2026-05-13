@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Heart, Eye, Share2, TrendingUp, BarChart3, RefreshCw, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { api } from '@/api/apiClient';
 
 const PLATFORMS = [
   { value: 'instagram', label: 'Instagram', icon: '📸' },
@@ -17,7 +18,6 @@ export default function SocialAnalyticsTab({ company, posts, publishedPosts, sel
   const { data: channelStats, isLoading: isLoadingStats, refetch } = useQuery({
     queryKey: ['channelStats', company?.id, 'social'],
     queryFn: async () => {
-      const { api } = await import('@/api/apiClient');
       return await api.get('/api/social/analytics', { platform: 'all', days: 30 });
     },
     enabled: !!company?.id,
