@@ -20,7 +20,7 @@ export default function AdsOptimizationTab({ realAdData }) {
       const result = await api.post('/api/ai/chat', {
         platform,
         auto_apply: false,
-      };
+      });
 
       if (!result.data?.success) {
         throw new Error(result.data?.error || 'Failed to generate recommendations');
@@ -51,7 +51,7 @@ export default function AdsOptimizationTab({ realAdData }) {
       const result = await api.post('/api/ai/chat', {
         platform,
         auto_apply: true,
-      };
+      });
 
       if (result.data?.success) {
         const applied = result.data.changes_applied || 0;
