@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from 'react-router-dom';
-import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, Plus, X, FileText, ArrowRight, Zap, ScanLine, KeyRound } , Sparkles } from 'lucide-react';
+import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, Plus, X, FileText, ArrowRight, Zap, ScanLine, KeyRound, Sparkles } from 'lucide-react';
 // KeyRound used in TabsTrigger
 import { toast } from 'sonner';
 import ApiKeysTab from '@/components/settings/ApiKeysTab';
@@ -518,4 +518,4 @@ export default function Settings() {
       </Tabs>
     </div>
   );
-}
+}   

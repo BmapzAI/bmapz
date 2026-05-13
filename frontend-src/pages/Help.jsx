@@ -15,8 +15,6 @@ import {
   Send, Loader2, Crown, ExternalLink, X, Shield, ScrollText
 } from 'lucide-react';
 
-import { api } from '@/api/apiClient';
-import { useAuth } from '@/lib/AuthContext';
 import ReactMarkdown from 'react-markdown';
 
 const faqCategories = [
@@ -78,10 +76,6 @@ function AIChatPanel({ query, onClose, t }) {
     const init = async () => {
       // Start help conversation (inline AI)
       const conv = { id: crypto.randomUUID(), messages: [] };
-      // base44.agents.createConversation was:
-        agent_name: 'help_agent',
-        metadata: { name: 'Help Session' }
-      });
       setConversation(conv);
       setMessages(conv.messages || []);
       if (query) sendMessage(query, conv);
@@ -91,10 +85,7 @@ function AIChatPanel({ query, onClose, t }) {
 
   useEffect(() => {
     if (conversation?.id) {
-      // subscribeToConversation replaced with direct state updates
-      const unsub = () => {}; // noop
-        setMessages(data.messages || []);
-      });
+      const unsub = () => {};
       return unsub;
     }
   }, [conversation?.id]);
@@ -430,4 +421,4 @@ export default function Help() {
       )}
     </div>
   );
-}
+}                                                                                                                                                                                                                                                                                                                                                          
