@@ -74,6 +74,8 @@ const AuthenticatedRoutes = () => (
     <Route path="/Documentation" element={<LayoutWrapper currentPageName="Documentation"><Documentation /></LayoutWrapper>} />
     <Route path="/VideoTutorials" element={<LayoutWrapper currentPageName="VideoTutorials"><VideoTutorials /></LayoutWrapper>} />
     <Route path="/TermsOfService" element={<LayoutWrapper currentPageName="TermsOfService"><TermsOfService /></LayoutWrapper>} />
+    <Route path="/Pricing" element={<Pricing />} />
+    <Route path="/pricing" element={<Pricing />} />
 
     <Route path="*" element={<PageNotFound />} />
   </Routes>
