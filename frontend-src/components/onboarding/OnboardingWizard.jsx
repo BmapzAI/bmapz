@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -12,6 +12,8 @@ import {
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';
+import { api } from '@/api/apiClient';
+import { useAuth } from '@/lib/AuthContext';
 
 const STEPS = [
   {
@@ -51,28 +53,22 @@ export default function OnboardingWizard() {
   const [step, setStep] = useState(0);
   const [companyForm, setCompanyForm] = useState({ name: '', website: '', industry: '', services_description: '' });
   const [icpForm, setIcpForm] = useState({ primary_audience: '', pain_points_text: '', budget_range: '' });
-  const queryClient = useQueryClient();
-
-  const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
+  const { company, refreshCompany } = useAuth();
 
   useEffect(() => {
-    // Show only if not completed before and no company set up yet
     const done = localStorage.getItem(STORAGE_KEY);
-    if (!done && companies.length > 0) {
-      // Company exists — skip onboarding
+    if (done) return;
+    if (company && company.name) {
       localStorage.setItem(STORAGE_KEY, '1');
       return;
     }
-    if (!done && companies.length === 0) {
-      // Small delay so the page loads first
-      const timer = setTimeout(() => setVisible(true), 800);
-      return () => clearTimeout(timer);
-    }
-  }, [companies]);
+    const timer = setTimeout(() => setVisible(true), 800);
+    return () => clearTimeout(timer);
+  }, [company]);
 
   const saveMutation = useMutation({
-    mutationFn: (data) => Company.create(data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['companies'] }),
+    mutationFn: (data) => api.post('/api/companies', data),
+    onSuccess: () => refreshCompany(),
   });
 
   const dismiss = () => {
