@@ -19,6 +19,7 @@ import Signup from './pages/Signup';
 import AuthCallback from './pages/AuthCallback';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import { LanguageProvider } from '@/components/ui/LanguageContext';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -27,17 +28,24 @@ const MainPage = mainPageKey ? Pages[mainPageKey] : () => null;
 const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
 
+// Dark background + LanguageProvider for public static pages
+const PublicPageWrapper = ({ children }) => (
+  <LanguageProvider>
+    <div className="min-h-screen bg-[#0d0d0d]">{children}</div>
+  </LanguageProvider>
+);
+
 // ─── Public routes (no auth required) ────────────────────────────────────────
 const PublicRoutes = () => (
   <Routes>
     <Route path="/login" element={<Login />} />
     <Route path="/signup" element={<Signup />} />
     <Route path="/auth/callback" element={<AuthCallback />} />
-    <Route path="/Pricing" element={<Pricing />} />
-    <Route path="/pricing" element={<Pricing />} />
-    <Route path="/PrivacyPolicy" element={<PrivacyPolicy />} />
-    <Route path="/DataDeletion" element={<DataDeletion />} />
-    <Route path="/TermsOfService" element={<TermsOfService />} />
+    <Route path="/Pricing" element={<PublicPageWrapper><Pricing /></PublicPageWrapper>} />
+    <Route path="/pricing" element={<PublicPageWrapper><Pricing /></PublicPageWrapper>} />
+    <Route path="/PrivacyPolicy" element={<PublicPageWrapper><PrivacyPolicy /></PublicPageWrapper>} />
+    <Route path="/DataDeletion" element={<PublicPageWrapper><DataDeletion /></PublicPageWrapper>} />
+    <Route path="/TermsOfService" element={<PublicPageWrapper><TermsOfService /></PublicPageWrapper>} />
     <Route path="*" element={<Navigate to="/login" replace />} />
   </Routes>
 );
