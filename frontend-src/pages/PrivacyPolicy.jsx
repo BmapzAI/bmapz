@@ -15,7 +15,7 @@ const Section = ({ icon: Icon, title, children }) =>
 
 export default function PrivacyPolicy() {
   return (
-    <div className="max-w-3xl mx-auto space-y-8 py-8 px-4">
+    <div className="min-h-screen bg-[#0d0d0d]"><div className="max-w-3xl mx-auto space-y-8 py-12 px-4">
       {/* Header */}
       <div className="text-center space-y-3">
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#3572b9] to-[#38b6ff] flex items-center justify-center mx-auto">
@@ -155,6 +155,6 @@ export default function PrivacyPolicy() {
         <p>This Privacy Policy may be updated from time to time. We will notify you of significant changes via email or a notice on the platform.</p>
         <p className="mt-1">© {new Date().getFullYear()} BMAPZ. All rights reserved.</p>
       </div>
-    </div>);
+    </div></div>);
 
 }
