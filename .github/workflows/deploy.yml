@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+h
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
@@ -45,7 +45,7 @@ jobs:
         run: |
           cat > frontend-src/App.jsx << 'APPEOF'
           import './App.css';
-          import { Toaster } from '@/components/ui/toaster';
+          import { Toaster } from 'sonner';
           import { QueryClientProvider } from '@tanstack/react-query';
           import { queryClientInstance } from '@/lib/query-client';
           import NavigationTracker from '@/lib/NavigationTracker';
