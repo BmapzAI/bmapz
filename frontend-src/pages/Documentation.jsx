@@ -8,6 +8,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/components/ui/LanguageContext';
+import { Lead, Workflow } from '@/api/entities';
 
 const DOCS = [
   {
