@@ -8,8 +8,8 @@ import { api } from '@/api/apiClient';
 
 function createEntity(basePath) {
   return {
-    list: (params) => api.get(basePath, params),
-    filter: (params) => api.get(basePath, params),
+    list: (params) => api.get(basePath, params).then(r => Array.isArray(r) ? r : (r?.data ?? [])),
+    filter: (params) => api.get(basePath, params).then(r => Array.isArray(r) ? r : (r?.data ?? [])),
     get: (id) => api.get(`${basePath}/${id}`),
     create: (data) => api.post(basePath, data),
     update: (id, data) => api.patch(`${basePath}/${id}`, data),
