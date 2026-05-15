@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { pagesConfig } from '@/pages.config';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, LayoutDashboard, Users, MessageSquare, Bot, GitBranch, Sparkles, Plug, Settings, FileText } from 'lucide-react';
 
 export default function Sidebar({ collapsed, setCollapsed }) {
   const location = useLocation();
@@ -11,7 +11,18 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
   const handleSignOut = () => logout(true);
 
-  const visiblePages = pagesConfig.filter(p => !p.hidden);
+  const NAV_PAGES = [
+    { name: 'Home', path: '/', icon: LayoutDashboard },
+    { name: 'Sales', path: '/Sales', icon: Users },
+    { name: 'Inbox', path: '/Inbox', icon: MessageSquare },
+    { name: 'AIChat', path: '/AIChat', icon: Bot },
+    { name: 'Workflows', path: '/Workflows', icon: GitBranch },
+    { name: 'AIOutputs', path: '/AIOutputs', icon: Sparkles },
+    { name: 'TextTemplates', path: '/TextTemplates', icon: FileText },
+    { name: 'Integrations', path: '/Integrations', icon: Plug },
+    { name: 'Settings', path: '/Settings', icon: Settings },
+  ];
+  const visiblePages = NAV_PAGES;
 
   return (
     <aside
