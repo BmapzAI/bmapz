@@ -12,21 +12,22 @@ router.get('/me', requireJWT, async (req, res) => {
     const userId = req.user.id;
 
     // Try to load existing profile
+    // users.id IS the auth user UUID (FK -> auth.users.id)
     const { data: dbUser } = await supabaseAdmin
       .from('users')
       .select('*, companies(*)')
-      .eq('auth_user_id', userId)
+      .eq('id', userId)
       .single();
 
     if (dbUser) {
       return res.json({ user: dbUser, company: dbUser.companies });
     }
 
-    // ── JIT Provisioning ──────────────────────────────────────────────────────
+    // JIT Provisioning
     // No DB user yet — this is their very first login (Google OAuth or confirmed
     // email signup). Auto-create company + user + free subscription now.
     const meta = req.user.user_metadata || {};
-    const companyName = meta.company_name || meta.full_name?.split(' ')[0] + "'s Workspace" || 'My Company';
+    const companyName = meta.company_name || (meta.full_name ? meta.full_name.split(' ')[0] + "'s Workspace" : null) || 'My Company';
     const fullName = meta.full_name || meta.name || req.user.email.split('@')[0];
 
     // Create company
@@ -40,11 +41,11 @@ router.get('/me', requireJWT, async (req, res) => {
       .single();
     if (companyErr) throw companyErr;
 
-    // Create user profile
+    // Create user profile (id = auth user UUID)
     const { data: newUser, error: userErr } = await supabaseAdmin
       .from('users')
-      .insert({
-        auth_user_id: userId,
+      .upsert({
+        id: userId,
         email: req.user.email,
         full_name: fullName,
         company_id: company.id,
@@ -66,7 +67,7 @@ router.get('/me', requireJWT, async (req, res) => {
         contacts_limit: 250,
       });
 
-    console.log(`[auth/me] JIT-provisioned new user ${req.user.email}`);
+    console.log('[auth/me] JIT-provisioned new user ' + req.user.email);
     return res.json({ user: newUser, company: newUser.companies });
   } catch (err) {
     console.error('[auth/me]', err);
@@ -77,8 +78,6 @@ router.get('/me', requireJWT, async (req, res) => {
 // POST /api/auth/logout — invalidate session (client also clears token)
 router.post('/logout', requireAuth, async (req, res) => {
   try {
-    // Supabase doesn't have server-side session revocation for JWTs by default.
-    // The client should call supabase.auth.signOut() which clears the local session.
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -86,7 +85,6 @@ router.post('/logout', requireAuth, async (req, res) => {
 });
 
 // POST /api/auth/complete-profile — called after signup to finish user setup.
-// Uses requireJWT so it can be called before DB user row exists.
 router.post('/complete-profile', requireJWT, async (req, res) => {
   try {
     const { full_name, company_name, role = 'owner' } = req.body;
@@ -96,7 +94,7 @@ router.post('/complete-profile', requireJWT, async (req, res) => {
     const { data: existing } = await supabaseAdmin
       .from('users')
       .select('*, companies(*)')
-      .eq('auth_user_id', userId)
+      .eq('id', userId)
       .single();
 
     if (existing) {
@@ -115,11 +113,11 @@ router.post('/complete-profile', requireJWT, async (req, res) => {
 
     if (companyErr) throw companyErr;
 
-    // Create user profile
+    // Create user profile (id = auth user UUID)
     const { data: user, error: userErr } = await supabaseAdmin
       .from('users')
-      .insert({
-        auth_user_id: userId,
+      .upsert({
+        id: userId,
         email: req.user.email,
         full_name: full_name || req.user.user_metadata?.full_name || '',
         company_id: company.id,
