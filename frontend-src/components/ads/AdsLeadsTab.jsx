@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Download, RotateCw, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
+import { Lead } from '@/api/entities';
 
 export default function AdsLeadsTab() {
   const [leads, setLeads] = useState([]);
