@@ -55,6 +55,7 @@ export default function AIChat() {
   const [contextualSuggestions, setContextualSuggestions] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [noApiKey, setNoApiKey] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -198,8 +199,13 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
         metadata: convo.metadata,
       }).catch(() => {});
     } catch (e) {
-      toast.error(e?.message || 'Failed to get AI response');
-      setMessages(updatedMessages.filter(m => m !== userMsg)); // rollback
+      const msg = e?.message || '';
+      if (msg.includes('MISSING_API_KEY') || msg.toLowerCase().includes('api key')) {
+        setNoApiKey(true);
+      } else {
+        toast.error(msg || 'Failed to get AI response');
+      }
+      setMessages(updatedMessages.filter(m => m !== userMsg));
     } finally {
       setIsLoading(false);
     }
@@ -302,7 +308,11 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
         toast.error('Transcription failed');
       }
     } catch (e) {
-      toast.error('Failed to transcribe audio: ' + (e?.message || ''));
+      if ((e?.message || '').includes('MISSING_API_KEY') || (e?.message || '').toLowerCase().includes('api key')) {
+        setNoApiKey(true);
+      } else {
+        toast.error('Failed to transcribe audio: ' + (e?.message || ''));
+      }
     } finally {
       setIsTranscribing(false);
     }
@@ -362,7 +372,20 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
   );
 
   return (
-    <div className="h-[calc(100vh-120px)] flex">
+    <div className="flex flex-col h-[calc(100vh-120px)]">
+      {noApiKey && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 bg-amber-500/15 border border-amber-500/30 rounded-xl mb-3 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <span className="text-xl">&#128273;</span>
+            <div>
+              <p className="text-amber-400 font-semibold text-sm">OpenAI API Key Required</p>
+              <p className="text-amber-300/70 text-xs">Add your key in Settings &rarr; API Keys to use AI chat, audio transcription, and image features.</p>
+            </div>
+          </div>
+          <a href="/Settings" className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 text-xs font-medium hover:bg-amber-500/30 transition-colors whitespace-nowrap">Add Key &rarr;</a>
+        </div>
+      )}
+      <div className="flex flex-1 min-h-0">
       {/* Sidebar */}
       <div className={`${showSidebar ? 'w-72' : 'w-0'} transition-all duration-300 overflow-hidden border-r border-white/10 flex flex-col`}>
         <div className="p-4 border-b border-white/10">
@@ -520,6 +543,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
             </Button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

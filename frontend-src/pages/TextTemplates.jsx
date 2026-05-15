@@ -23,6 +23,79 @@ const CATEGORY_OPTIONS = ['initial_outreach', 'follow_up', 'pattern_interrupt', 
 
 const EMPTY_TEMPLATE = { name: '', channel: 'email', subject: '', content: '', tone: 'professional', category: 'initial_outreach' };
 
+const STARTER_TEMPLATES = [
+  {
+    id: 'st1', name: 'Cold Email - ICP Intro', channel: 'email', tone: 'professional', category: 'initial_outreach',
+    subject: 'Quick question about {{company_name}}',
+    content: 'Hi {{first_name}},
+
+I came across {{company_name}} and noticed you might be facing [main pain point].
+
+We help [ICP description] achieve [transformation] — typically within [timeframe].
+
+Would it make sense to connect for a quick 15-min call this week?
+
+Best,
+{{sender_name}}',
+  },
+  {
+    id: 'st2', name: 'WhatsApp - First Touch', channel: 'whatsapp', tone: 'friendly', category: 'initial_outreach',
+    content: 'Hi {{first_name}}! I found your profile at {{company_name}} and thought you might find this relevant 👋
+
+We help [ICP] with [solution]. Quick question: is [pain point] a challenge for your team right now?
+
+If yes, I'd love to share how we solved this for [similar company]. Worth a 10-min call?',
+  },
+  {
+    id: 'st3', name: 'LinkedIn - Connection Request', channel: 'linkedin', tone: 'direct', category: 'initial_outreach',
+    content: 'Hi {{first_name}}, I work with [ICP role] at [ICP company type] helping them [transformation]. Your background at {{company_name}} caught my attention — would love to connect and share some insights that might be relevant.',
+  },
+  {
+    id: 'st4', name: 'Follow-Up #1 - Added Value', channel: 'email', tone: 'consultative', category: 'follow_up',
+    subject: 'Re: Quick question about {{company_name}}',
+    content: 'Hi {{first_name}},
+
+Following up on my previous message. I wanted to share [specific resource/insight] that I think could be valuable for {{company_name}}.
+
+[Insert case study or insight here]
+
+Would you be open to a 15-minute call to explore if this could work for you?
+
+Best,
+{{sender_name}}',
+  },
+  {
+    id: 'st5', name: 'Pattern Interrupt - Break Through Silence', channel: 'email', tone: 'provocative', category: 'pattern_interrupt',
+    subject: 'Should I stop reaching out?',
+    content: 'Hi {{first_name}},
+
+I've reached out a couple of times without hearing back. I'll take the hint — but before I close your file, I wanted to ask directly:
+
+Is [main pain point] not a priority for {{company_name}} right now? Or is the timing just off?
+
+Either way, a quick "not interested" or "try me in Q3" would really help me understand.
+
+Thanks either way,
+{{sender_name}}',
+  },
+  {
+    id: 'st6', name: 'Meeting Request - Post Conversation', channel: 'email', tone: 'direct', category: 'meeting_request',
+    subject: 'Next step: {{date}} call?',
+    content: 'Hi {{first_name}},
+
+Great talking earlier! As promised, here's the scheduling link: [LINK]
+
+I'll come prepared with:
+• A custom analysis of {{company_name}}'s current situation
+• 2-3 specific strategies we'd recommend
+• ROI estimates based on similar clients
+
+Looking forward to it!
+
+{{sender_name}}',
+  },
+];
+
 export default function TextTemplates() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -123,7 +196,38 @@ export default function TextTemplates() {
       </div>
 
       {/* Template Grid */}
-      {filtered.length === 0 ? (
+      {templates.length === 0 ? (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-400 bg-[#38b6ff]/5 border border-[#38b6ff]/20 rounded-xl px-4 py-3">
+            No templates yet. Use one of these starters or create your own with the button above.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {STARTER_TEMPLATES.filter(t => filterChannel === 'all' || t.channel === filterChannel).map(t => {
+              const cfg = CHANNEL_CONFIG[t.channel];
+              const Icon = cfg?.icon;
+              return (
+                <div key={t.id} className="p-5 rounded-2xl border border-white/10 bg-white/5 hover:border-white/20 transition-all group">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      {Icon && <Icon size={14} style={{ color: cfg.color }} />}
+                      <span className="text-xs font-semibold" style={{ color: cfg.color }}>{cfg?.label}</span>
+                    </div>
+                    <span className="text-[10px] text-gray-500 bg-white/5 px-2 py-0.5 rounded-full">{t.tone}</span>
+                  </div>
+                  <p className="font-semibold text-white text-sm mb-2">{t.name}</p>
+                  <p className="text-xs text-gray-500 mb-4 line-clamp-3 whitespace-pre-line">{t.content.slice(0, 120)}...</p>
+                  <button
+                    onClick={() => { setFormData({ name: t.name, channel: t.channel, subject: t.subject || '', content: t.content, tone: t.tone, category: t.category }); setShowForm(true); }}
+                    className="w-full py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-300 hover:border-[#38b6ff]/40 hover:text-[#38b6ff] transition-colors"
+                  >
+                    Use as Starting Point
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="py-20 text-center">
           <MessageSquare size={48} className="mx-auto mb-4 text-gray-600" />
           <p className="text-gray-400 text-lg font-medium">No templates yet</p>

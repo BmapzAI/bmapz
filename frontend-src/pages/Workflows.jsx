@@ -11,6 +11,15 @@ import WorkflowBuilderModal from '@/components/workflows/WorkflowBuilderModal';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
 import { Company, Workflow } from '@/api/entities';
 
+const STARTER_WORKFLOW_TEMPLATES = [
+  { id: 'st1', name: 'Cold Email Sequence', description: '5-step email outreach: intro, follow-up x3, breakup email. Targets ICP contacts.', steps: 5, category: 'Outreach' },
+  { id: 'st2', name: 'LinkedIn Prospecting', description: 'Connection request + 3 follow-up messages over 14 days. Personalized for each lead.', steps: 4, category: 'Social Selling' },
+  { id: 'st3', name: 'WhatsApp Nurture', description: 'Warm WhatsApp sequence: value message, case study, meeting ask. 7-day cadence.', steps: 3, category: 'WhatsApp' },
+  { id: 'st4', name: 'Lead Qualification', description: 'Automatically score and qualify leads based on ICP criteria. Moves to CRM stages.', steps: 3, category: 'Automation' },
+  { id: 'st5', name: 'Re-engagement Campaign', description: 'Win back cold leads: personalized message + special offer + final follow-up.', steps: 3, category: 'Retention' },
+  { id: 'st6', name: 'New Lead Welcome', description: 'Instant welcome message when a new lead is added + schedule intro call.', steps: 2, category: 'Onboarding' },
+];
+
 export default function Workflows() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
@@ -193,13 +202,26 @@ export default function Workflows() {
               <div className="mb-4 p-3 rounded-xl bg-[#cb6ce6]/10 border border-[#cb6ce6]/20 text-xs text-[#cb6ce6]">
                 These are app-wide workflow templates accessible to all users. Use them as a starting point for your custom workflows.
               </div>
-              {workflowTemplates.length === 0 ? (
-                <div className="text-center py-16">
-                  <LayoutTemplate size={24} className="text-gray-500 mx-auto mb-2" />
-                  <p className="text-gray-400">No workflow templates yet</p>
-                </div>
-              ) : (
+              {(
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {STARTER_WORKFLOW_TEMPLATES.map(t => (
+                    <div key={t.id} className="group p-5 rounded-2xl bg-[#cb6ce6]/5 border border-[#cb6ce6]/20 hover:border-[#cb6ce6]/40 transition-all">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <span className="text-[10px] font-semibold text-[#cb6ce6]/60 uppercase tracking-wider">{t.category}</span>
+                          <p className="font-semibold text-white mt-0.5">{t.name}</p>
+                        </div>
+                        <span className="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded-full">{t.steps} steps</span>
+                      </div>
+                      <p className="text-sm text-gray-400 mb-4">{t.description}</p>
+                      <button
+                        onClick={async () => { await Workflow.create({ name: t.name, description: t.description, status: 'draft', steps: [], company_id: company?.id }); queryClient.invalidateQueries({ queryKey: ['workflows'] }); toast.success('Workflow created! Find it in Active/Draft tabs.'); }}
+                        className="w-full py-2 rounded-lg bg-[#cb6ce6]/15 text-[#cb6ce6] text-sm font-medium hover:bg-[#cb6ce6]/25 transition-colors"
+                      >
+                        Use Template
+                      </button>
+                    </div>
+                  ))}
                   {workflowTemplates.map(w => (
                     <div key={w.id} className="group p-5 rounded-2xl bg-[#cb6ce6]/5 border border-[#cb6ce6]/20 hover:border-[#cb6ce6]/40 transition-all">
                       <div className="flex items-center gap-3 mb-3">
