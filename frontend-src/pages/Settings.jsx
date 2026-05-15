@@ -516,4 +516,15 @@ export default function Settings() {
             </div>
             <div className="flex gap-3">
               <Button onClick={() => navigate('/Billing')} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-                <CreditCard size=
+                <CreditCard size={18} />{language === 'pt-BR' ? 'Gerenciar Assinatura' : 'Manage Subscription'} <ArrowRight size={16} />
+              </Button>
+              <Button onClick={() => navigate('/Pricing')} variant="outline" className="border-white/10 text-white hover:bg-white/5 gap-2">
+                {language === 'pt-BR' ? 'Ver Planos' : 'View Plans'} <ArrowRight size={16} />
+              </Button>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

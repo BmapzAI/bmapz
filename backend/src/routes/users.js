@@ -115,4 +115,4 @@ router.delete('/:id', requireAuth, requireCompanyAdmin, async (req, res) => {
   }
 });
 
-export default router
+export default router;

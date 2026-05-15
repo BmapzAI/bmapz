@@ -27,7 +27,6 @@ const MainPage = mainPageKey ? Pages[mainPageKey] : () => null;
 const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
 
-// ─── Public routes (no auth required) ────────────────────────────────────────
 const PublicRoutes = () => (
   <Routes>
     <Route path="/login" element={<Login />} />
@@ -42,7 +41,6 @@ const PublicRoutes = () => (
   </Routes>
 );
 
-// ─── Authenticated app routes ─────────────────────────────────────────────────
 const AuthenticatedRoutes = () => (
   <Routes>
     <Route path="/" element={
@@ -59,29 +57,24 @@ const AuthenticatedRoutes = () => (
       } />
     ))}
 
-    {/* Auth pages redirect to home when already logged in */}
     <Route path="/login" element={<Navigate to="/" replace />} />
     <Route path="/signup" element={<Navigate to="/" replace />} />
-
-    {/* Auth callback can still be hit after OAuth */}
     <Route path="/auth/callback" element={<AuthCallback />} />
-
-    {/* Public static pages */}
     <Route path="/PrivacyPolicy" element={<LayoutWrapper currentPageName="PrivacyPolicy"><PrivacyPolicy /></LayoutWrapper>} />
     <Route path="/DataDeletion" element={<DataDeletion />} />
     <Route path="/AdminPanel" element={<LayoutWrapper currentPageName="AdminPanel"><AdminPanel /></LayoutWrapper>} />
+    <Route path="/Admin" element={<LayoutWrapper currentPageName="Admin"><AdminPanel /></LayoutWrapper>} />
     <Route path="/CompanyAdminPanel" element={<LayoutWrapper currentPageName="CompanyAdminPanel"><CompanyAdminPanel /></LayoutWrapper>} />
+    <Route path="/CompanyAdmin" element={<LayoutWrapper currentPageName="CompanyAdmin"><CompanyAdminPanel /></LayoutWrapper>} />
     <Route path="/Documentation" element={<LayoutWrapper currentPageName="Documentation"><Documentation /></LayoutWrapper>} />
     <Route path="/VideoTutorials" element={<LayoutWrapper currentPageName="VideoTutorials"><VideoTutorials /></LayoutWrapper>} />
-    <Route path="/TermsOfService" element={<LayoutWrapper currentPageName="TermsOfService"><TermsOfService /></LayoutWrapper>} />
+    <Route path="/TermsOfService" element={<TermsOfService />} />
     <Route path="/Pricing" element={<Pricing />} />
     <Route path="/pricing" element={<Pricing />} />
-
     <Route path="*" element={<PageNotFound />} />
   </Routes>
 );
 
-// ─── Root auth guard ──────────────────────────────────────────────────────────
 const AppRoutes = () => {
   const { isLoadingAuth, isAuthenticated, authError } = useAuth();
 
@@ -103,6 +96,40 @@ const AppRoutes = () => {
         <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center text-3xl">⚠️</div>
         <div>
           <h2 className="text-xl font-semibold mb-2">Connection Error</h2>
-          <p className="text-gray-400 text-sm max-w-sm">Unable to reach the server. Please check your connection and try again.</p>
+          <p className="text-gray-400 text-sm max-w-sm">
+            Unable to reach the server. Please check your connection and try again.
+          </p>
           {authError.message && (
-            <p className="text-gray-600 text-xs mt-2 fon
+            <p className="text-gray-600 text-xs mt-2 font-mono">{authError.message}</p>
+          )}
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-6 py-2.5 rounded-xl bg-[#38b6ff] hover:bg-[#38b6ff]/90 text-white font-medium transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <PublicRoutes />;
+  }
+
+  return <AuthenticatedRoutes />;
+};
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClientInstance}>
+      <Router>
+        <AuthProvider>
+          <NavigationTracker />
+          <AppRoutes />
+          <Toaster position="top-right" richColors />
+        </AuthProvider>
+      </Router>
+    </QueryClientProvider>
+  );
+}

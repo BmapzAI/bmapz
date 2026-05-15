@@ -65,7 +65,7 @@ function LayoutContent({ children }) {
         .animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
       `}</style>
       <div data-theme="dark">
-        <Sidebar user={dbUser} collapsed={collapsed} setCollapsed={setCollapsed} />
+        <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
 
         {/* Mobile top header */}
         <header className="fixed top-0 left-0 right-0 z-30 md:hidden h-14 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/10 flex items-center px-4 gap-3">
@@ -80,4 +80,21 @@ function LayoutContent({ children }) {
             {children}
           </div>
         </main>
-        <
+
+        <MobileBottomNav />
+        <OnboardingWizard />
+        <Toaster position="top-right" richColors />
+      </div>
+    </div>
+  );
+}
+
+export default function Layout({ children }) {
+  return (
+    <LanguageProvider>
+      <ThemeProvider>
+        <LayoutContent>{children}</LayoutContent>
+      </ThemeProvider>
+    </LanguageProvider>
+  );
+}

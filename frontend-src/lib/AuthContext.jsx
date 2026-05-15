@@ -5,44 +5,28 @@ import { api, apiFetch } from '@/api/apiClient';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);           // Supabase auth user
-  const [dbUser, setDbUser] = useState(null);       // users table row
-  const [company, setCompany] = useState(null);     // companies table row
+  const [user, setUser] = useState(null);
+  const [dbUser, setDbUser] = useState(null);
+  const [company, setCompany] = useState(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
 
   const loadProfile = useCallback(async (session) => {
     if (!session) {
-      setUser(null);
-      setDbUser(null);
-      setCompany(null);
+      setUser(null); setDbUser(null); setCompany(null);
       setIsLoadingAuth(false);
       return;
     }
-
     try {
       setUser(session.user);
-      // /api/auth/me uses JIT provisioning — it auto-creates the DB profile if
-      // this is the user's first login, so we never get a 403 "not found" here.
-      // We pass the token directly from the session to avoid any race condition
-      // where getAuthToken() hasn't resolved yet.
       const { user: dbU, company: co } = await apiFetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      setDbUser(dbU);
-      setCompany(co);
-      setAuthError(null);
+      setDbUser(dbU); setCompany(co); setAuthError(null);
     } catch (err) {
       console.error('[AuthContext] loadProfile error:', err);
       const msg = err.message || '';
-      // Only block the app as "not registered" for explicit 403 responses.
-      // Network errors, 500s, etc. get a distinct type so we can show a
-      // retry option instead of the misleading "contact administrator" screen.
-      if (
-        msg.includes('403') ||
-        msg.toLowerCase().includes('not registered') ||
-        msg.toLowerCase().includes('complete registration')
-      ) {
+      if (msg.includes('403') || msg.toLowerCase().includes('not registered') || msg.toLowerCase().includes('complete registration')) {
         setAuthError({ type: 'unknown', message: msg });
       } else {
         setAuthError({ type: 'server_error', message: msg });
@@ -53,15 +37,11 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      loadProfile(session);
-    });
-
+    supabase.auth.getSession().then(({ data: { session } }) => { loadProfile(session); });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsLoadingAuth(true);
       loadProfile(session);
     });
-
     return () => subscription.unsubscribe();
   }, [loadProfile]);
 
@@ -85,8 +65,7 @@ export function AuthProvider({ children }) {
 
   const signUp = async ({ email, password, full_name, company_name }) => {
     const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
+      email, password,
       options: {
         data: { full_name, company_name },
         emailRedirectTo: `${window.location.origin}/auth/callback`,
@@ -99,18 +78,11 @@ export function AuthProvider({ children }) {
   const logout = async (shouldRedirect = true) => {
     await supabase.auth.signOut();
     api.post('/api/auth/logout').catch(() => {});
-    setUser(null);
-    setDbUser(null);
-    setCompany(null);
-    if (shouldRedirect) {
-      window.location.href = '/';
-    }
+    setUser(null); setDbUser(null); setCompany(null);
+    if (shouldRedirect) window.location.href = '/';
   };
 
-  // Legacy alias used throughout the codebase
-  const navigateToLogin = () => {
-    window.location.href = '/login';
-  };
+  const navigateToLogin = () => { window.location.href = '/login'; };
 
   const refreshCompany = useCallback(async () => {
     try {
@@ -131,4 +103,22 @@ export function AuthProvider({ children }) {
   const isCompanyAdmin = ['owner', 'system_admin', 'company_admin'].includes(dbUser?.role);
 
   return (
-    <AuthConte
+    <AuthContext.Provider value={{
+      user, dbUser, company, isLoadingAuth, authError,
+      isAuthenticated, isAdmin, isCompanyAdmin,
+      signIn, signInWithGoogle, signUp, logout,
+      navigateToLogin, refreshCompany, updateCompany,
+      setCompany, setDbUser,
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
+}
+
+export default AuthContext;
