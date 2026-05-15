@@ -68,7 +68,38 @@ function IntegrationSection({ title, color, icon, status, onTest, isTesting, tes
 }
 
 export default function ApiKeysTab({ company, onSave }) {
-  const [keys, setKeys] = useState(company?.api_keys || {});
+  const [keys, setKeys] = useState(() => ({
+    openai_api_key: company?.openai_api_key || '',
+    openai_model: company?.openai_model || 'gpt-4o-mini',
+    google_ads_developer_token: company?.google_ads_developer_token || '',
+    google_ads_client_id: company?.google_ads_client_id || '',
+    google_ads_client_secret: company?.google_ads_client_secret || '',
+    google_ads_refresh_token: company?.google_ads_refresh_token || '',
+    google_ads_customer_id: company?.google_ads_customer_id || '',
+    tiktok_access_token: company?.tiktok_access_token || '',
+    tiktok_advertiser_id: company?.tiktok_advertiser_id || '',
+    linkedin_ads_access_token: company?.linkedin_ads_access_token || '',
+    linkedin_ads_account_id: company?.linkedin_ads_account_id || '',
+    whatsapp_api_token: company?.whatsapp_api_token || '',
+    whatsapp_phone_id: company?.whatsapp_phone_id || '',
+    whatsapp_verify_token: company?.whatsapp_verify_token || '',
+    gmail_sender_email: company?.gmail_sender_email || '',
+    gmail_client_id: company?.gmail_client_id || '',
+    gmail_client_secret: company?.gmail_client_secret || '',
+    gmail_refresh_token: company?.gmail_refresh_token || '',
+    wordpress_url: company?.wordpress_url || '',
+    wordpress_user: company?.wordpress_user || '',
+    wordpress_app_password: company?.wordpress_app_password || '',
+    zapier_webhook_url: company?.zapier_webhook_url || '',
+    make_webhook_url: company?.make_webhook_url || '',
+    n8n_webhook_url: company?.n8n_webhook_url || '',
+    custom_api_url: company?.custom_api_url || '',
+    custom_api_key: company?.custom_api_key || '',
+    custom_api_headers: company?.custom_api_headers || '',
+    apollo_api_key: company?.apollo_api_key || '',
+    hunter_api_key: company?.hunter_api_key || '',
+    stability_api_key: company?.stability_api_key || '',
+  }));
   const [statuses, setStatuses] = useState(company?.integration_status || {});
   const [testing, setTesting] = useState({});
   const [saving, setSaving] = useState(false);
@@ -97,7 +128,7 @@ export default function ApiKeysTab({ company, onSave }) {
     setTesting(prev => ({ ...prev, [type]: true }));
     try {
       // Save current keys first
-      await Company.update(company.id, { api_keys: keys });
+      await Company.update(company.id, { ...keys });
       const res = await api.get('/api/integrations/status');
       const { success, message } = res.data;
       setStatuses(prev => ({ ...prev, [type]: success }));
@@ -112,7 +143,7 @@ export default function ApiKeysTab({ company, onSave }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave({ api_keys: keys, integration_status: statuses });
+      await onSave({ ...keys, integration_status: statuses });
       toast.success('API keys saved');
     } catch (e) {
       toast.error('Failed to save');

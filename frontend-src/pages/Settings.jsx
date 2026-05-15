@@ -215,7 +215,7 @@ export default function Settings() {
               <div className="col-span-2"><Label className="text-gray-400">Main Product(s) or Service(s)</Label><Textarea value={companyForm.services_description} onChange={(e) => setCompanyForm(p => ({ ...p, services_description: e.target.value }))} className="bg-black/30 border-white/10 text-white mt-1.5 min-h-[80px]" placeholder="Describe your products and services..." /></div>
             </div>
             <TagInput label="Value Propositions" values={companyForm.value_propositions} onChange={(v) => setCompanyForm(p => ({ ...p, value_propositions: v }))} placeholder="Add a value proposition" />
-            <Button onClick={() => updateMutation.mutate({ ...companyForm, company_details: companyForm })} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2"><Save size={18} />{language === 'pt-BR' ? 'Salvar Perfil da Empresa' : 'Save Company Profile'}</Button>
+            <Button onClick={() => updateMutation.mutate({ name: companyForm.name, website: companyForm.website, industry: companyForm.industry, services_description: companyForm.services_description, value_propositions: companyForm.value_propositions, years_in_business: companyForm.years_in_business, business_model: companyForm.business_model, average_ticket: companyForm.average_ticket, repurchase_cycle: companyForm.repurchase_cycle, marketing_structure: companyForm.marketing_structure, sales_structure: companyForm.sales_structure, geographic_market: companyForm.geographic_market })} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2"><Save size={18} />{language === 'pt-BR' ? 'Salvar Perfil da Empresa' : 'Save Company Profile'}</Button>
           </div>
         </TabsContent>
 

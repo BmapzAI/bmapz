@@ -23,13 +23,26 @@ router.get('/current', requireAuth, async (req, res) => {
 router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
     const allowedFields = [
+      // Company info
       'name', 'website', 'industry', 'description', 'logo_url',
+      'services_description', 'value_propositions',
+      'years_in_business', 'business_model', 'average_ticket',
+      'repurchase_cycle', 'marketing_structure', 'sales_structure',
+      'geographic_market', 'owner_email',
+      // ICP and strategic data (JSONB columns)
+      'icp', 'briefing', 'company_details',
+      // Legacy fields
       'icp_description', 'target_audience', 'tone_of_voice',
-      'openai_api_key', 'anthropic_api_key', 'google_client_id',
-      'google_client_secret', 'meta_app_id', 'meta_app_secret',
+      // AI settings
+      'openai_api_key', 'openai_model', 'anthropic_api_key',
+      'ai_image_provider', 'ai_image_model', 'personal_agent_name', 'stability_api_key',
+      // OAuth app credentials
+      'google_client_id', 'google_client_secret',
+      'meta_app_id', 'meta_app_secret',
       'linkedin_client_id', 'linkedin_client_secret',
       'twitter_client_id', 'twitter_client_secret',
       'tiktok_client_key', 'tiktok_client_secret',
+      // OAuth tokens
       'google_access_token', 'google_refresh_token', 'google_token_expires_at',
       'google_connected_email', 'google_drive_token',
       'meta_access_token', 'meta_token_expires_at',
@@ -38,21 +51,30 @@ router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
       'tiktok_access_token', 'tiktok_token_expires_at',
       'facebook_page_id', 'facebook_page_access_token',
       'instagram_business_account_id',
+      // Email/SMTP
       'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from',
       'resend_api_key', 'resend_from_email',
-      'stripe_account_id', 'stripe_connected',
+      'gmail_sender_email', 'gmail_client_id', 'gmail_client_secret', 'gmail_refresh_token',
+      // Ad platform keys
       'apollo_api_key', 'hunter_api_key',
-      'google_ads_customer_id', 'google_ads_connected',
+      'google_ads_developer_token', 'google_ads_client_id', 'google_ads_client_secret',
+      'google_ads_refresh_token', 'google_ads_customer_id', 'google_ads_connected',
       'meta_ads_account_id', 'meta_ads_connected',
-      'linkedin_ads_account_id', 'linkedin_ads_connected',
-      'tiktok_ads_account_id', 'tiktok_ads_connected',
+      'linkedin_ads_access_token', 'linkedin_ads_account_id', 'linkedin_ads_connected',
+      'tiktok_advertiser_id', 'tiktok_ads_account_id', 'tiktok_ads_connected',
+      // Analytics
       'google_analytics_property_id', 'google_search_console_url',
-      'ai_image_provider', 'ai_image_model',
-      'personal_agent_name',
-      'connected_integrations',
-      'integration_status',
-      'plan_features',
-      'custom_fields',
+      // CMS
+      'wordpress_url', 'wordpress_user', 'wordpress_app_password',
+      // Automation webhooks
+      'zapier_webhook_url', 'make_webhook_url', 'n8n_webhook_url',
+      'custom_api_url', 'custom_api_key', 'custom_api_headers',
+      // Messaging
+      'whatsapp_api_token', 'whatsapp_phone_id', 'whatsapp_verify_token',
+      // Stripe
+      'stripe_account_id', 'stripe_connected',
+      // Status / misc
+      'connected_integrations', 'integration_status', 'plan_features', 'custom_fields',
     ];
 
     const updates = {};
