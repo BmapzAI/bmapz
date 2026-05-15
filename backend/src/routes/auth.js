@@ -4,15 +4,15 @@ import { requireAuth, requireJWT } from '../middleware/auth.js';
 
 const router = Router();
 
-// GET /api/auth/me — returns the authenticated user + company.
+// GET /api/auth/me - returns the authenticated user + company.
 // Uses requireJWT (not requireAuth) so it works for brand-new users who have
-// no DB profile yet — it auto-provisions them on first call (JIT provisioning).
+// no DB profile yet - it auto-provisions them on first call (JIT provisioning).
 router.get('/me', requireJWT, async (req, res) => {
   try {
     const userId = req.user.id;
 
     // Try to load existing profile
-    // users.id IS the auth user UUID (FK → auth.users.id)
+    // users.id IS the auth user UUID (FK to auth.users.id)
     const { data: dbUser } = await supabaseAdmin
       .from('users')
       .select('*, companies(*)')
@@ -23,8 +23,8 @@ router.get('/me', requireJWT, async (req, res) => {
       return res.json({ user: dbUser, company: dbUser.companies });
     }
 
-    // ── JIT Provisioning ──────────────────────────────────────────────────────
-    // No DB user yet — this is their very first login (Google OAuth or confirmed
+    // JIT Provisioning
+    // No DB user yet - this is their very first login (Google OAuth or confirmed
     // email signup). Auto-create company + user + free subscription now.
     const meta = req.user.user_metadata || {};
     const companyName = meta.company_name || (meta.full_name ? meta.full_name.split(' ')[0] + "'s Workspace" : null) || 'My Company';
@@ -67,7 +67,7 @@ router.get('/me', requireJWT, async (req, res) => {
         contacts_limit: 250,
       });
 
-    console.log(`[auth/me] JIT-provisioned new user ${req.user.email}`);
+    console.log('[auth/me] JIT-provisioned new user ' + req.user.email);
     return res.json({ user: newUser, company: newUser.companies });
   } catch (err) {
     console.error('[auth/me]', err);
@@ -75,10 +75,10 @@ router.get('/me', requireJWT, async (req, res) => {
   }
 });
 
-// POST /api/auth/logout — invalidate session (client also clears token)
+// POST /api/auth/logout - invalidate session (client also clears token)
 router.post('/logout', requireAuth, async (req, res) => {
   try {
-    // Supabase doesn't have server-side session revocation for JWTs by default.
+    // Supabase does not have server-side session revocation for JWTs by default.
     // The client should call supabase.auth.signOut() which clears the local session.
     res.json({ success: true });
   } catch (err) {
@@ -86,7 +86,7 @@ router.post('/logout', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/auth/complete-profile — called after signup to finish user setup.
+// POST /api/auth/complete-profile - called after signup to finish user setup.
 // Uses requireJWT so it can be called before DB user row exists.
 router.post('/complete-profile', requireJWT, async (req, res) => {
   try {
@@ -145,4 +145,9 @@ router.post('/complete-profile', requireJWT, async (req, res) => {
 
     res.json({ user, company });
   } catch (err) {
-    console.error('[auth/complete-profile]'
+    console.error('[auth/complete-profile]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+export default router;
