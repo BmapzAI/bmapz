@@ -6,6 +6,7 @@ import { CheckCircle, Loader2, X, ExternalLink, Lock, Eye, EyeOff, ArrowRight } 
 
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { Company } from '@/api/entities';
 
 // Get backend API base URL
 function getBackendBase() {
