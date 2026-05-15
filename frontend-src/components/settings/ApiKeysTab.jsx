@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Save, Eye, EyeOff, CheckCircle, XCircle, Loader2, TestTube, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
+import { Company } from '@/api/entities';
 
 function SecretInput({ label, value, onChange, placeholder, hint }) {
   const [show, setShow] = useState(false);
