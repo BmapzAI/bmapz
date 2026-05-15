@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import { useNavigate } from 'react-router-dom';
+import { Lead, Workflow } from '@/api/entities';
 
 const ALL_COLUMNS = [
   { id: 'lead_company_name', label: 'Company', sortable: true, default: true },
