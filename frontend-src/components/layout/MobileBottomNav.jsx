@@ -1,52 +1,60 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
-import { Home, TrendingUp, GitBranch, Bot, Inbox } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
+import {
+  Home, TrendingUp, GitBranch, Bot, Inbox,
+  Megaphone, Search, Share2, BookOpen, ScanLine,
+  Sparkles, FileText, BarChart3, Plug, HelpCircle,
+  User, Settings, Building2, Shield, X, MoreHorizontal,
+} from 'lucide-react';
 
-const NAV_ITEMS = [
-  { icon: Home,        label: 'Home',      path: 'Home' },
-  { icon: TrendingUp,  label: 'Sales',     path: 'Sales' },
-  { icon: Bot,         label: 'AI Agent',  path: 'AIChat' },
-  { icon: GitBranch,   label: 'Workflows', path: 'Workflows' },
-  { icon: Inbox,       label: 'Inbox',     path: 'Inbox' },
+// Primary 4 items always visible + "More" button
+const PRIMARY_ITEMS = [
+  { icon: Home,        label: 'Home',      path: '/'          },
+  { icon: Bot,         label: 'AI Chat',   path: '/AIChat'    },
+  { icon: TrendingUp,  label: 'Sales',     path: '/Sales'     },
+  { icon: Inbox,       label: 'Inbox',     path: '/Inbox'     },
 ];
 
-export default function MobileBottomNav() {
-  const location = useLocation();
+const MORE_SECTIONS = [
+  {
+    label: 'Core',
+    items: [
+      { icon: GitBranch, label: 'Workflows', path: '/Workflows' },
+    ],
+  },
+  {
+    label: 'Marketing',
+    items: [
+      { icon: Megaphone, label: 'Ads',         path: '/Ads'         },
+      { icon: Search,    label: 'SEO',         path: '/SEO'         },
+      { icon: Share2,    label: 'Social',      path: '/SocialMedia' },
+      { icon: BookOpen,  label: 'Blog',        path: '/Blog'        },
+      { icon: ScanLine,  label: 'Brand Scan',  path: '/BrandScan'   },
+    ],
+  },
+  {
+    label: 'Content & AI',
+    items: [
+      { icon: Sparkles,  label: 'AI Outputs',  path: '/AIOutputs'     },
+      { icon: FileText,  label: 'Templates',   path: '/TextTemplates' },
+      { icon: BarChart3, label: 'Dashboards',  path: '/Dashboards'    },
+    ],
+  },
+  {
+    label: 'Tools & Account',
+    items: [
+      { icon: Plug,       label: 'Integrations', path: '/Integrations' },
+      { icon: HelpCircle, label: 'Help',         path: '/Help'         },
+      { icon: User,       label: 'Profile',      path: '/Profile'      },
+      { icon: Settings,   label: 'Settings',     path: '/Settings'     },
+    ],
+  },
+];
 
-  const isActive = (path) => {
-    const current = location.pathname.replace('/', '');
-    return current === path || (current === '' && path === 'Home');
-  };
-
+function NavBtn({ icon: Icon, label, path, active, onClick }) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-[#0a0a0a]/95 backdrop-blur-md border-t border-white/10">
-      <div className="flex items-center justify-around px-2 py-2 pb-safe">
-        {NAV_ITEMS.map(({ icon: Icon, label, path }) => {
-          const active = isActive(path);
-          return (
-            <Link
-              key={path}
-              to={createPageUrl(path)}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all duration-200 min-w-[56px]
-                ${active
-                  ? 'text-[#38b6ff]'
-                  : 'text-gray-500 hover:text-gray-300'
-                }`}
-            >
-              <div className={`relative ${active ? 'scale-110' : ''} transition-transform duration-200`}>
-                <Icon size={22} strokeWidth={active ? 2.5 : 1.8} />
-                {active && (
-                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#38b6ff]" />
-                )}
-              </div>
-              <span className={`text-[10px] font-medium leading-none mt-1 ${active ? 'text-[#38b6ff]' : 'text-gray-600'}`}>
-                {label}
-              </span>
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
-  );
-}
+    <Link
+      to={path}
+      onClick={onClick}
+      className={`flex flex-col items-cen

@@ -102,7 +102,7 @@ Para dúvidas sobre estes Termos, entre em contato: contato@bmapz.com`,
 
 export default function TermsOfService() {
   return (
-    <div className="min-h-screen bg-[#0d0d0d]"><div className="max-w-3xl mx-auto space-y-8 px-4 py-12">
+    <div className="max-w-3xl space-y-8">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link to="/Help">
@@ -159,6 +159,6 @@ export default function TermsOfService() {
           </Link>
         </div>
       </div>
-    </div></div>
+    </div>
   );
 }

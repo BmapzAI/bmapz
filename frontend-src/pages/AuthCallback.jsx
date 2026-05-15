@@ -29,17 +29,18 @@ export default function AuthCallback() {
     const type = searchParams.get('type');   // integration type (e.g. 'google_ads')
     const code = searchParams.get('code');
 
-    // -- Integration OAuth popup path
+    // ── Integration OAuth popup path ──────────────────────────────────────────
     if (type && window.opener) {
       window.opener.postMessage({ type: 'oauth_success', integration: type }, '*');
       window.close();
       return;
     }
 
-    // -- Regular sign-in / email confirmation
+    // ── Regular sign-in / email confirmation ──────────────────────────────────
     // detectSessionInUrl: true causes Supabase to exchange the PKCE code
     // automatically when the client initialises on this page.  We simply wait
     // for the resulting SIGNED_IN event and then navigate home.
+    // A short timeout acts as a safety net (e.g. email magic-link with no code).
 
     let unsubscribe = () => {};
     let timer;
@@ -54,13 +55,14 @@ export default function AuthCallback() {
         cleanup();
         navigate('/', { replace: true });
       } else if (event === 'SIGNED_OUT') {
+        // Code was already used or expired — fall back to login
         cleanup();
         navigate('/login?error=callback_failed', { replace: true });
       }
     });
     unsubscribe = () => subscription.unsubscribe();
 
-    // Fallback: if no auth event fires in 8s, try explicit exchange then redirect
+    // Fallback: if no auth event fires in 8 s, try explicit exchange then redirect
     timer = setTimeout(async () => {
       unsubscribe();
       if (code) {

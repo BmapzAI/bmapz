@@ -130,7 +130,7 @@ export default function Pricing() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0d0d] py-12 px-4"><div className="space-y-10 max-w-7xl mx-auto">
+    <div className="space-y-10 max-w-7xl mx-auto">
       {/* Header */}
       <div className="text-center space-y-4">
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#38b6ff]/10 border border-[#38b6ff]/20 text-[#38b6ff] text-sm font-medium">
@@ -257,6 +257,6 @@ export default function Pricing() {
           </div>
         ))}
       </div>
-    </div></div>
+    </div>
   );
 }

@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   ArrowLeft, Edit3, Check, X, Mail, Phone, Globe, Linkedin, 
-  Crown, MessageSquare, GitBranch, Activity as ActivityIcon, Building2, 
+  Crown, MessageSquare, GitBranch, Activity, Building2, 
   User, Tag, DollarSign, TrendingUp, Clock, ChevronRight,
   Instagram, Facebook, Save, Sparkles, Loader2, Zap, Play
 } from 'lucide-react';
@@ -260,7 +260,7 @@ export default function LeadDetails() {
             <Building2 size={15} className="mr-2" /> Details
           </TabsTrigger>
           <TabsTrigger value="history" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <ActivityIcon size={15} className="mr-2" /> History ({allInteractions.length})
+            <Activity size={15} className="mr-2" /> History ({allInteractions.length})
           </TabsTrigger>
           <TabsTrigger value="messages" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
             <MessageSquare size={15} className="mr-2" /> Messages ({messages.length})
@@ -381,7 +381,7 @@ export default function LeadDetails() {
                       ${item._type === 'message' ? 'bg-[#38b6ff]/20' : item._type === 'workflow' ? 'bg-[#cb6ce6]/20' : 'bg-white/10'}`}>
                       {item._type === 'message' ? <MessageSquare size={14} className="text-[#38b6ff]" /> :
                        item._type === 'workflow' ? <GitBranch size={14} className="text-[#cb6ce6]" /> :
-                       <ActivityIcon size={14} className="text-gray-400" />}
+                       <Activity size={14} className="text-gray-400" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">

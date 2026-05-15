@@ -19,7 +19,6 @@ import Signup from './pages/Signup';
 import AuthCallback from './pages/AuthCallback';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
-import { LanguageProvider } from '@/components/ui/LanguageContext';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -28,24 +27,17 @@ const MainPage = mainPageKey ? Pages[mainPageKey] : () => null;
 const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
 
-// Dark background + LanguageProvider for public static pages
-const PublicPageWrapper = ({ children }) => (
-  <LanguageProvider>
-    <div className="min-h-screen bg-[#0d0d0d]">{children}</div>
-  </LanguageProvider>
-);
-
 // ─── Public routes (no auth required) ────────────────────────────────────────
 const PublicRoutes = () => (
   <Routes>
     <Route path="/login" element={<Login />} />
     <Route path="/signup" element={<Signup />} />
     <Route path="/auth/callback" element={<AuthCallback />} />
-    <Route path="/Pricing" element={<PublicPageWrapper><Pricing /></PublicPageWrapper>} />
-    <Route path="/pricing" element={<PublicPageWrapper><Pricing /></PublicPageWrapper>} />
-    <Route path="/PrivacyPolicy" element={<PublicPageWrapper><PrivacyPolicy /></PublicPageWrapper>} />
-    <Route path="/DataDeletion" element={<PublicPageWrapper><DataDeletion /></PublicPageWrapper>} />
-    <Route path="/TermsOfService" element={<PublicPageWrapper><TermsOfService /></PublicPageWrapper>} />
+    <Route path="/Pricing" element={<Pricing />} />
+    <Route path="/pricing" element={<Pricing />} />
+    <Route path="/PrivacyPolicy" element={<PrivacyPolicy />} />
+    <Route path="/DataDeletion" element={<DataDeletion />} />
+    <Route path="/TermsOfService" element={<TermsOfService />} />
     <Route path="*" element={<Navigate to="/login" replace />} />
   </Routes>
 );
@@ -105,26 +97,12 @@ const AppRoutes = () => {
     return <UserNotRegisteredError />;
   }
 
-  if (!isAuthenticated) {
-    return <PublicRoutes />;
-  }
-
-  return <AuthenticatedRoutes />;
-};
-
-// ─── App root ─────────────────────────────────────────────────────────────────
-function App() {
-  return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
-        <Router>
-          <NavigationTracker />
-          <AppRoutes />
-        </Router>
-        <Toaster />
-      </QueryClientProvider>
-    </AuthProvider>
-  );
-}
-
-export default App;
+  if (authError?.type === 'server_error') {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-5 bg-[#111] text-white px-6 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center text-3xl">⚠️</div>
+        <div>
+          <h2 className="text-xl font-semibold mb-2">Connection Error</h2>
+          <p className="text-gray-400 text-sm max-w-sm">Unable to reach the server. Please check your connection and try again.</p>
+          {authError.message && (
+            <p className="text-gray-600 text-xs mt-2 fon

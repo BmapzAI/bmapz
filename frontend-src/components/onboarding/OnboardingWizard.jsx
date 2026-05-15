@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { 
-  Building2, Target, GitBranch, Zap, ChevronRight, ChevronLeft, 
+import {
+  Building2, Target, GitBranch, Zap, ChevronRight, ChevronLeft,
   Check, Sparkles, X, ArrowRight
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -56,12 +56,15 @@ export default function OnboardingWizard() {
   const { company, refreshCompany } = useAuth();
 
   useEffect(() => {
+    // Show only if not completed before and no company set up yet
     const done = localStorage.getItem(STORAGE_KEY);
     if (done) return;
     if (company && company.name) {
+      // Company exists — skip onboarding
       localStorage.setItem(STORAGE_KEY, '1');
       return;
     }
+    // No company yet — show wizard after short delay
     const timer = setTimeout(() => setVisible(true), 800);
     return () => clearTimeout(timer);
   }, [company]);

@@ -142,8 +142,4 @@ export default function Home() {
           <h2 className="text-xl font-bold text-white">{t('gettingStarted')}</h2>
           <p className="text-sm mt-0.5 text-gray-400">{t('completeSteps')}</p>
         </div>
-        <GettingStarted company={company} leadsCount={leads.length} workflowsCount={workflows.length} />
-      </div>
-    </div>
-  );
-}
+        <GettingStarted company={company} leadsCount={le

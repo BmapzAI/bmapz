@@ -79,6 +79,7 @@ export default function Settings() {
   const isDark = true; // dark mode only
   const queryClient = useQueryClient();
   const [user, setUser] = useState(null);
+  const [agentName, setAgentName] = useState('');
 
   useEffect(() => {
     // user loaded from useAuth()
@@ -102,6 +103,7 @@ export default function Settings() {
       }));
       setIcpForm(company.icp || icpForm);
       setBriefingForm(prev => ({ ...prev, ...(company.briefing || {}) }));
+      setAgentName(company.personal_agent_name || '');
     }
   }, [company]);
 
@@ -399,16 +401,23 @@ export default function Settings() {
                 <p className="font-medium text-white">Personal AI Agent Name</p>
                 <p className="text-sm text-gray-400">This name appears in the sidebar and AI chat. Your team will see this label.</p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-3 items-center">
                 <Input
-                  value={company?.personal_agent_name || ''}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    updateMutation.mutate({ personal_agent_name: val });
+                  value={agentName}
+                  onChange={(e) => setAgentName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') updateMutation.mutate({ personal_agent_name: agentName });
                   }}
                   placeholder="e.g. Sales AI, Marketing Bot, Bmapz AI..."
                   className="bg-black/30 border-white/10 text-white max-w-sm"
                 />
+                <Button
+                  onClick={() => updateMutation.mutate({ personal_agent_name: agentName })}
+                  disabled={updateMutation.isPending}
+                  className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2"
+                >
+                  <Save size={16} />Save
+                </Button>
               </div>
               <p className="text-xs text-gray-500">Leave blank to use the default "Bmapz AI".</p>
             </div>
@@ -507,15 +516,4 @@ export default function Settings() {
             </div>
             <div className="flex gap-3">
               <Button onClick={() => navigate('/Billing')} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-                <CreditCard size={18} />{language === 'pt-BR' ? 'Gerenciar Assinatura' : 'Manage Subscription'} <ArrowRight size={16} />
-              </Button>
-              <Button onClick={() => navigate('/Pricing')} variant="outline" className="border-white/10 text-white hover:bg-white/5 gap-2">
-                {language === 'pt-BR' ? 'Ver Planos' : 'View Plans'} <ArrowRight size={16} />
-              </Button>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
+                <CreditCard size=

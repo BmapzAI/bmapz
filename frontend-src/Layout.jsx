@@ -9,7 +9,7 @@ import { Toaster } from 'sonner';
 
 function LayoutContent({ children }) {
   const [collapsed, setCollapsed] = useState(false);
-  const { dbUser, isLoadingAuth } = useAuth();
+  const { dbUser, company, isLoadingAuth } = useAuth();
 
   if (isLoadingAuth) {
     return (
@@ -66,29 +66,18 @@ function LayoutContent({ children }) {
       `}</style>
       <div data-theme="dark">
         <Sidebar user={dbUser} collapsed={collapsed} setCollapsed={setCollapsed} />
+
+        {/* Mobile top header */}
+        <header className="fixed top-0 left-0 right-0 z-30 md:hidden h-14 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/10 flex items-center px-4 gap-3">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#38b6ff] to-[#cb6ce6] flex-shrink-0" />
+          <span className="font-bold text-white text-base tracking-tight truncate">
+            {company?.personal_agent_name || 'Bmapz AI'}
+          </span>
+        </header>
+
         <main className={`transition-all duration-300 ml-0 min-h-screen ${collapsed ? 'md:ml-[72px]' : 'md:ml-[240px]'}`}>
-          <div className="p-4 sm:p-6 pt-14 md:pt-4 pb-24 md:pb-6">
+          <div className="p-4 sm:p-6 pt-16 md:pt-4 pb-28 md:pb-6">
             {children}
           </div>
         </main>
-        <MobileBottomNav />
-        <OnboardingWizard />
-        <Toaster
-          position="bottom-right"
-          theme="dark"
-          toastOptions={{ style: { background: '#1a1a1a', border: '1px solid rgba(56,182,255,0.2)', color: '#ffffff' } }}
-        />
-      </div>
-    </div>
-  );
-}
-
-export default function Layout({ children }) {
-  return (
-    <ThemeProvider>
-      <LanguageProvider>
-        <LayoutContent>{children}</LayoutContent>
-      </LanguageProvider>
-    </ThemeProvider>
-  );
-}
+        <

@@ -57,7 +57,7 @@ router.post('/invite', requireAuth, requireCompanyAdmin, async (req, res) => {
     });
     if (error) throw error;
 
-    // Pre-create user profile
+    // Pre-create user profile (id = auth user UUID)
     await supabaseAdmin.from('users').upsert({
       id: data.user.id,
       email,
@@ -115,4 +115,4 @@ router.delete('/:id', requireAuth, requireCompanyAdmin, async (req, res) => {
   }
 });
 
-export default router;
+export default router
