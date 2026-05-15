@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Send, Users, MessageSquare, Mail, Linkedin, X } from 'lucide-react';
+import { Company, Lead, Message } from '@/api/entities';
 
 const CHANNEL_ICONS = {
   email: { icon: Mail, color: '#38b6ff', label: 'Email' },
