@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import { useNavigate } from 'react-router-dom';
-import { Lead, Message, Workflow, WorkflowRun } from '@/api/entities';
+import { Activity, Company, Lead, Message, Workflow, WorkflowRun } from '@/api/entities';
 
 
 const FUNNEL_STAGES = [
