@@ -13,7 +13,7 @@ import {
   ChevronRight, Inbox as InboxIcon, Sparkles, AlertCircle,
   ThumbsUp, ThumbsDown, Minus, Clock, User, ArrowLeft, Instagram
 } from 'lucide-react';
-import { Company, Message } from '@/api/entities';
+import { Company, Lead, Message } from '@/api/entities';
 
 const CHANNEL_CONFIG = {
   email:     { label: 'Email',     icon: Mail,          color: '#38b6ff', bg: 'bg-[#38b6ff]/10',  border: 'border-[#38b6ff]/30'  },
