@@ -59,12 +59,12 @@ router.post('/invite', requireAuth, requireCompanyAdmin, async (req, res) => {
 
     // Pre-create user profile
     await supabaseAdmin.from('users').upsert({
-      auth_user_id: data.user.id,
+      id: data.user.id,
       email,
       full_name: full_name || '',
       company_id: req.companyId,
       role,
-    }, { onConflict: 'auth_user_id' });
+    }, { onConflict: 'id' });
 
     res.json({ success: true, user: data.user });
   } catch (err) {
