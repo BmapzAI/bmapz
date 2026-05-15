@@ -11,7 +11,8 @@ import FunnelChart from '@/components/dashboard/FunnelChart';
 import ActivityFeed from '@/components/dashboard/ActivityFeed';
 import GettingStarted from '@/components/dashboard/GettingStarted';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
-import { Activity } from '@/api/entities';
+import { Activity, Lead, Message, Workflow, Company } from '@/api/entities';
+import { useAuth } from '@/lib/AuthContext';
 
 function WhatsAppAgentButton() {
   const agentNumber = '+5511921353202';
