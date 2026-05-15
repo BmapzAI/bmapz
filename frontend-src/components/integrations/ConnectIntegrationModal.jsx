@@ -13,8 +13,8 @@ function getBackendBase() {
   return import.meta.env.VITE_API_URL || 'http://localhost:3001';
 }
 
-// All integrations that use BMAPZ's own internalized OAuth flow (server-side)
-// These use the `initiateOAuth` backend function to generate the OAuth URL
+// All integrations that use BMAPZ`s own internalized OAuth flow (server-side)
+// These use the \`initiateOAuth\` backend function to generate the OAuth URL
 // and open it in a popup — fully internalized within the BMAPZ app
 const INTERNALIZED_OAUTH_MAP = {
   meta_ads: true,
@@ -32,40 +32,40 @@ const INTERNALIZED_OAUTH_MAP = {
   tiktok_social: true,
 };
 
-// OAuth-capable but NOT in Base44 connectors — need user's own client credentials
-// These show a "Login" button that opens the provider's login page in-app
+// OAuth-capable but NOT in Base44 connectors — need user`s own client credentials
+// These show a "Login" button that opens the provider`s login page in-app
 const EXTERNAL_OAUTH_MAP = {
-  meta_ads: { authUrl: 'https://www.facebook.com/login', name: 'Meta / Facebook', color: '#1877F2', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/2021_Facebook_icon.svg/512px-2021_Facebook_icon.svg.png' },
-  instagram: { authUrl: 'https://www.instagram.com/accounts/login/', name: 'Instagram', color: '#E1306C', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Instagram_logo_2016.svg/512px-Instagram_logo_2016.svg.png' },
-  facebook: { authUrl: 'https://www.facebook.com/login', name: 'Facebook', color: '#1877F2', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/2021_Facebook_icon.svg/512px-2021_Facebook_icon.svg.png' },
-  twitter: { authUrl: 'https://twitter.com/login', name: 'X (Twitter)', color: '#000000', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/X_icon_2.svg/512px-X_icon_2.svg.png' },
-  tiktok_ads: { authUrl: 'https://ads.tiktok.com/i18n/login', name: 'TikTok Ads', color: '#010101', logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/a/a9/TikTok_logo.svg/512px-TikTok_logo.svg.png' },
-  tiktok_social: { authUrl: 'https://www.tiktok.com/login', name: 'TikTok', color: '#010101', logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/a/a9/TikTok_logo.svg/512px-TikTok_logo.svg.png' },
-  pinterest: { authUrl: 'https://www.pinterest.com/login/', name: 'Pinterest', color: '#E60023', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Pinterest_Logo.png/512px-Pinterest_Logo.png' },
-  snapchat: { authUrl: 'https://business.snapchat.com/login', name: 'Snapchat Business', color: '#FFFC00', logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/a/ad/Snapchat_logo.svg/512px-Snapchat_logo.svg.png' },
-  zoom: { authUrl: 'https://zoom.us/signin', name: 'Zoom', color: '#2D8CFF', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Zoom_Communications_Logo.svg/512px-Zoom_Communications_Logo.svg.png' },
-  shopify: { authUrl: 'https://accounts.shopify.com/store-login', name: 'Shopify', color: '#96BF48', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Shopify_logo_2018.svg/512px-Shopify_logo_2018.svg.png' },
-  webflow: { authUrl: 'https://webflow.com/dashboard/login', name: 'Webflow', color: '#4353FF', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Webflow_logo_%282023%29.svg/512px-Webflow_logo_%282023%29.svg.png' },
-  mailchimp: { authUrl: 'https://login.mailchimp.com/', name: 'Mailchimp', color: '#FFE01B', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Mailchimp-freddie-wink.svg/512px-Mailchimp-freddie-wink.svg.png' },
-  klaviyo: { authUrl: 'https://www.klaviyo.com/login', name: 'Klaviyo', color: '#1A1A1A', logo: 'https://www.klaviyo.com/favicon.ico' },
-  activecampaign: { authUrl: 'https://www.activecampaign.com/login/', name: 'ActiveCampaign', color: '#356AE6', logo: 'https://www.activecampaign.com/favicon.ico' },
-  brevo: { authUrl: 'https://app.brevo.com/account/login', name: 'Brevo', color: '#044A75', logo: 'https://www.brevo.com/favicon.ico' },
-  convertkit: { authUrl: 'https://app.kit.com/users/login', name: 'ConvertKit', color: '#FB6970', logo: 'https://convertkit.com/favicon.ico' },
-  mailerlite: { authUrl: 'https://dashboard.mailerlite.com/login', name: 'MailerLite', color: '#09C269', logo: 'https://www.mailerlite.com/favicon.ico' },
-  intercom: { authUrl: 'https://app.intercom.com/admins/sign_in', name: 'Intercom', color: '#1F8DED', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Intercom_logo.png/512px-Intercom_logo.png' },
-  apollo: { authUrl: 'https://app.apollo.io/#/login', name: 'Apollo.io', color: '#2563EB', logo: 'https://www.apollo.io/favicon.ico' },
-  lemlist: { authUrl: 'https://app.lemlist.com/login', name: 'Lemlist', color: '#FF4C36', logo: 'https://lemlist.com/favicon.ico' },
-  loom: { authUrl: 'https://www.loom.com/login', name: 'Loom', color: '#625DF5', logo: 'https://www.loom.com/favicon.ico' },
-  demio: { authUrl: 'https://my.demio.com/login', name: 'Demio', color: '#FF5E5B', logo: 'https://demio.com/favicon.ico' },
-  hotjar: { authUrl: 'https://insights.hotjar.com/login', name: 'Hotjar', color: '#FF3C00', logo: 'https://www.hotjar.com/favicon.ico' },
-  mixpanel: { authUrl: 'https://mixpanel.com/login/', name: 'Mixpanel', color: '#7856FF', logo: 'https://mixpanel.com/favicon.ico' },
-  segment: { authUrl: 'https://app.segment.com/login', name: 'Segment', color: '#52BD95', logo: 'https://segment.com/favicon.ico' },
-  anthropic: { authUrl: 'https://console.anthropic.com/login', name: 'Anthropic', color: '#1A1A1A', logo: 'https://www.anthropic.com/favicon.ico' },
-  perplexity: { authUrl: 'https://www.perplexity.ai/', name: 'Perplexity', color: '#1FB8CD', logo: 'https://www.perplexity.ai/favicon.ico' },
-  jasper: { authUrl: 'https://app.jasper.ai/login', name: 'Jasper', color: '#6C48D5', logo: 'https://www.jasper.ai/favicon.ico' },
+  meta_ads: { authUrl: `https://www.facebook.com/login', name: 'Meta / Facebook', color: '#1877F2', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/2021_Facebook_icon.svg/512px-2021_Facebook_icon.svg.png` },
+  instagram: { authUrl: `https://www.instagram.com/accounts/login/', name: 'Instagram', color: '#E1306C', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Instagram_logo_2016.svg/512px-Instagram_logo_2016.svg.png` },
+  facebook: { authUrl: `https://www.facebook.com/login', name: 'Facebook', color: '#1877F2', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/2021_Facebook_icon.svg/512px-2021_Facebook_icon.svg.png` },
+  twitter: { authUrl: `https://twitter.com/login', name: 'X (Twitter)', color: '#000000', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/X_icon_2.svg/512px-X_icon_2.svg.png` },
+  tiktok_ads: { authUrl: `https://ads.tiktok.com/i18n/login', name: 'TikTok Ads', color: '#010101', logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/a/a9/TikTok_logo.svg/512px-TikTok_logo.svg.png` },
+  tiktok_social: { authUrl: `https://www.tiktok.com/login', name: 'TikTok', color: '#010101', logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/a/a9/TikTok_logo.svg/512px-TikTok_logo.svg.png` },
+  pinterest: { authUrl: `https://www.pinterest.com/login/', name: 'Pinterest', color: '#E60023', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Pinterest_Logo.png/512px-Pinterest_Logo.png` },
+  snapchat: { authUrl: `https://business.snapchat.com/login', name: 'Snapchat Business', color: '#FFFC00', logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/a/ad/Snapchat_logo.svg/512px-Snapchat_logo.svg.png` },
+  zoom: { authUrl: `https://zoom.us/signin', name: 'Zoom', color: '#2D8CFF', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Zoom_Communications_Logo.svg/512px-Zoom_Communications_Logo.svg.png` },
+  shopify: { authUrl: `https://accounts.shopify.com/store-login', name: 'Shopify', color: '#96BF48', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Shopify_logo_2018.svg/512px-Shopify_logo_2018.svg.png` },
+  webflow: { authUrl: `https://webflow.com/dashboard/login', name: 'Webflow', color: '#4353FF', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Webflow_logo_%282023%29.svg/512px-Webflow_logo_%282023%29.svg.png` },
+  mailchimp: { authUrl: `https://login.mailchimp.com/', name: 'Mailchimp', color: '#FFE01B', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Mailchimp-freddie-wink.svg/512px-Mailchimp-freddie-wink.svg.png` },
+  klaviyo: { authUrl: `https://www.klaviyo.com/login', name: 'Klaviyo', color: '#1A1A1A', logo: 'https://www.klaviyo.com/favicon.ico` },
+  activecampaign: { authUrl: `https://www.activecampaign.com/login/', name: 'ActiveCampaign', color: '#356AE6', logo: 'https://www.activecampaign.com/favicon.ico` },
+  brevo: { authUrl: `https://app.brevo.com/account/login', name: 'Brevo', color: '#044A75', logo: 'https://www.brevo.com/favicon.ico` },
+  convertkit: { authUrl: `https://app.kit.com/users/login', name: 'ConvertKit', color: '#FB6970', logo: 'https://convertkit.com/favicon.ico` },
+  mailerlite: { authUrl: `https://dashboard.mailerlite.com/login', name: 'MailerLite', color: '#09C269', logo: 'https://www.mailerlite.com/favicon.ico` },
+  intercom: { authUrl: `https://app.intercom.com/admins/sign_in', name: 'Intercom', color: '#1F8DED', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Intercom_logo.png/512px-Intercom_logo.png` },
+  apollo: { authUrl: `https://app.apollo.io/#/login', name: 'Apollo.io', color: '#2563EB', logo: 'https://www.apollo.io/favicon.ico` },
+  lemlist: { authUrl: `https://app.lemlist.com/login', name: 'Lemlist', color: '#FF4C36', logo: 'https://lemlist.com/favicon.ico` },
+  loom: { authUrl: `https://www.loom.com/login', name: 'Loom', color: '#625DF5', logo: 'https://www.loom.com/favicon.ico` },
+  demio: { authUrl: `https://my.demio.com/login', name: 'Demio', color: '#FF5E5B', logo: 'https://demio.com/favicon.ico` },
+  hotjar: { authUrl: `https://insights.hotjar.com/login', name: 'Hotjar', color: '#FF3C00', logo: 'https://www.hotjar.com/favicon.ico` },
+  mixpanel: { authUrl: `https://mixpanel.com/login/', name: 'Mixpanel', color: '#7856FF', logo: 'https://mixpanel.com/favicon.ico` },
+  segment: { authUrl: `https://app.segment.com/login', name: 'Segment', color: '#52BD95', logo: 'https://segment.com/favicon.ico` },
+  anthropic: { authUrl: `https://console.anthropic.com/login', name: 'Anthropic', color: '#1A1A1A', logo: 'https://www.anthropic.com/favicon.ico` },
+  perplexity: { authUrl: `https://www.perplexity.ai/', name: 'Perplexity', color: '#1FB8CD', logo: 'https://www.perplexity.ai/favicon.ico` },
+  jasper: { authUrl: `https://app.jasper.ai/login', name: 'Jasper', color: '#6C48D5', logo: 'https://www.jasper.ai/favicon.ico` },
 };
 
-// Simple API key / credential fields for integrations that don't support OAuth
+// Simple API key / credential fields for integrations that don`t support OAuth
 const CREDENTIAL_FIELDS = {
   whatsapp: [
     { key: 'whatsapp_api_token', label: 'API Token', placeholder: 'Paste your WhatsApp API token here', secret: true },
@@ -355,7 +355,7 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
           {/* ── STEP 2: Connect ── */}
           {step === 2 && (
             <>
-              {/* Internalized OAuth — BMAPZ's own real OAuth flow */}
+              {/* Internalized OAuth — BMAPZ`s own real OAuth flow */}
               {isInternalizedOAuth && (
                 <div className="space-y-4">
                   <p className="text-gray-300 text-sm text-center">
@@ -365,17 +365,17 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
                     className="w-full h-12 gap-3 font-semibold text-base"
                     style={{
                       backgroundColor: 
-                        (integration.type === 'meta_ads' || integration.type === 'instagram' || integration.type === 'facebook') ? '#1877F2' :
-                        (integration.type === 'linkedin_social' || integration.type === 'linkedin_ads') ? '#0077b5' :
-                        (integration.type.startsWith('google') || integration.type === 'gmail') ? '#4285F4' :
-                        (integration.type.startsWith('tiktok')) ? '#010101' : '#38b6ff',
-                      color: '#fff'
+                        (integration.type === `meta_ads' || integration.type === 'instagram' || integration.type === 'facebook') ? '#1877F2` :
+                        (integration.type === `linkedin_social' || integration.type === 'linkedin_ads') ? '#0077b5` :
+                        (integration.type.startsWith(`google') || integration.type === 'gmail') ? '#4285F4` :
+                        (integration.type.startsWith(`tiktok')) ? '#010101' : '#38b6ff`,
+                      color: `#fff`
                     }}>
                     {connecting
                       ? <Loader2 size={18} className="animate-spin" />
-                      : integration.logo && <img src={integration.logo} alt="" className="w-5 h-5 object-contain bg-white rounded p-0.5" onError={(e) => { e.target.style.display = 'none'; }} />
+                      : integration.logo && <img src={integration.logo} alt="" className="w-5 h-5 object-contain bg-white rounded p-0.5" onError={(e) => { e.target.style.display = `none`; }} />
                     }
-                    {connecting ? 'Waiting for authorization...' : `Connect ${integration.name}`}
+                    {connecting ? `Waiting for authorization...` : \`Connect \${integration.name}\`}
                   </Button>
                   {connecting && (
                     <div className="p-3 rounded-xl bg-[#38b6ff]/10 border border-[#38b6ff]/20 text-center">
@@ -392,7 +392,7 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
               {isExternalOAuth && (
                 <div className="space-y-4">
                   <p className="text-gray-300 text-sm text-center">
-                    Click below to open {externalOAuth.name}'s login page. Sign in with your usual email and password.
+                    Click below to open {externalOAuth.name}`s login page. Sign in with your usual email and password.
                   </p>
                   <Button onClick={handleExternalOAuthConnect} disabled={connecting}
                     className="w-full h-12 gap-3 text-white font-semibold text-base"

@@ -173,14 +173,14 @@ export default function LeadListManagerFull({ companyId, leads = [] }) {
             <div>
               <Label className="text-gray-400">Description</Label>
               <Textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })}
-                placeholder="What's this list for?" className="mt-1.5 bg-black/30 border-white/10 text-white" />
+                placeholder="What`s this list for?" className="mt-1.5 bg-black/30 border-white/10 text-white" />
             </div>
 
             {/* Dynamic list toggle */}
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => setFormData({ ...formData, is_dynamic: !formData.is_dynamic })}
-                className={`w-9 h-5 rounded-full transition-all relative ${formData.is_dynamic ? 'bg-[#38b6ff]' : 'bg-white/20'}`}>
-                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${formData.is_dynamic ? 'left-4' : 'left-0.5'}`} />
+                className={\`w-9 h-5 rounded-full transition-all relative \${formData.is_dynamic ? `bg-[#38b6ff]' : 'bg-white/20`}\`}>
+                <div className={\`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all \${formData.is_dynamic ? `left-4' : 'left-0.5`}\`} />
               </button>
               <div>
                 <p className="text-white text-sm font-medium">Dynamic List</p>
@@ -202,8 +202,8 @@ export default function LeadListManagerFull({ companyId, leads = [] }) {
                           const updated = stages.includes(stage) ? stages.filter(s => s !== stage) : [...stages, stage];
                           setFormData({ ...formData, filters: { ...formData.filters, funnel_stages: updated } });
                         }}
-                        className={`text-xs px-2 py-1 rounded-lg border transition-all capitalize
-                          ${(formData.filters.funnel_stages || []).includes(stage) ? 'border-[#38b6ff] bg-[#38b6ff]/10 text-[#38b6ff]' : 'border-white/10 text-gray-400'}`}>
+                        className={\`text-xs px-2 py-1 rounded-lg border transition-all capitalize
+                          \${(formData.filters.funnel_stages || []).includes(stage) ? `border-[#38b6ff] bg-[#38b6ff]/10 text-[#38b6ff]' : 'border-white/10 text-gray-400`}\`}>
                         {stage}
                       </button>
                     ))}
@@ -212,7 +212,7 @@ export default function LeadListManagerFull({ companyId, leads = [] }) {
                 <div>
                   <Label className="text-gray-400 text-xs">Min ICP Score</Label>
                   <Input type="number" min="0" max="100" placeholder="e.g., 70"
-                    value={formData.filters.icp_score_min || ''}
+                    value={formData.filters.icp_score_min || ``}
                     onChange={e => setFormData({ ...formData, filters: { ...formData.filters, icp_score_min: parseInt(e.target.value) || undefined } })}
                     className="mt-1 bg-black/30 border-white/10 text-white h-8 text-sm" />
                 </div>
@@ -226,8 +226,8 @@ export default function LeadListManagerFull({ companyId, leads = [] }) {
                           const updated = cats.includes(cat) ? cats.filter(c => c !== cat) : [...cats, cat];
                           setFormData({ ...formData, filters: { ...formData.filters, sources: updated } });
                         }}
-                        className={`text-xs px-2 py-1 rounded-lg border transition-all capitalize
-                          ${(formData.filters.sources || []).includes(cat) ? 'border-[#38b6ff] bg-[#38b6ff]/10 text-[#38b6ff]' : 'border-white/10 text-gray-400'}`}>
+                        className={\`text-xs px-2 py-1 rounded-lg border transition-all capitalize
+                          \${(formData.filters.sources || []).includes(cat) ? `border-[#38b6ff] bg-[#38b6ff]/10 text-[#38b6ff]' : 'border-white/10 text-gray-400`}\`}>
                         {cat}
                       </button>
                     ))}
@@ -239,7 +239,7 @@ export default function LeadListManagerFull({ companyId, leads = [] }) {
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => { setShowCreateDialog(false); resetForm(); }} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">
-                {editingList ? 'Update' : 'Create'}
+                {editingList ? `Update' : 'Create`}
               </Button>
             </div>
           </form>
@@ -247,7 +247,7 @@ export default function LeadListManagerFull({ companyId, leads = [] }) {
       </Dialog>
 
       {/* Manage Leads Dialog */}
-      <Dialog open={!!showManageLeads} onOpenChange={open => { if (!open) { setShowManageLeads(null); setManualSearch(''); } }}>
+      <Dialog open={!!showManageLeads} onOpenChange={open => { if (!open) { setShowManageLeads(null); setManualSearch(`'); } }}>
         <DialogContent className="bg-[#1a1a1a] border-white/10 text-white max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader><DialogTitle>Manage Leads — {showManageLeads?.name}</DialogTitle></DialogHeader>
           {showManageLeads && (

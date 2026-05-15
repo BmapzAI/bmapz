@@ -48,7 +48,7 @@ function InviteUserModal({ onClose, onSave }) {
             <Input value={email} onChange={e => setEmail(e.target.value)}
               placeholder="colleague@yourcompany.com" className="bg-black/30 border-white/10 text-white" />
           </div>
-          <p className="text-xs text-gray-500">They'll receive an invitation email and be added to your company as a regular user.</p>
+          <p className="text-xs text-gray-500">They`ll receive an invitation email and be added to your company as a regular user.</p>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
             <Button disabled={!email.trim()} onClick={() => onSave(email)} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
@@ -63,10 +63,10 @@ function InviteUserModal({ onClose, onSave }) {
 
 function EditCompanyInfoModal({ company, onClose, onSave }) {
   const [form, setForm] = useState({
-    name: company?.name || '',
-    industry: company?.industry || '',
-    website: company?.website || '',
-    services_description: company?.services_description || '',
+    name: company?.name || ``,
+    industry: company?.industry || ``,
+    website: company?.website || ``,
+    services_description: company?.services_description || ``,
   });
   return (
     <Dialog open onOpenChange={onClose}>
@@ -116,7 +116,7 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
   const totalAllowed = limit + extraSlots;
   const canAdd = currentCount < totalAllowed;
 
-  const [form, setForm] = useState({ name: '', industry: '', website: '', services_description: '' });
+  const [form, setForm] = useState({ name: `', industry: '', website: '', services_description: '` });
   const [saving, setSaving] = useState(false);
 
   const handleCreate = async () => {
@@ -132,14 +132,14 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Building2 size={18} className="text-[#38b6ff]" />
-            {canAdd ? 'Add Company Profile' : 'Upgrade to Add More Companies'}
+            {canAdd ? `Add Company Profile' : 'Upgrade to Add More Companies`}
           </DialogTitle>
         </DialogHeader>
 
         {canAdd ? (
           <div className="space-y-3 py-2">
             <p className="text-gray-400 text-xs">
-              You're using <strong className="text-white">{currentCount}</strong> of <strong className="text-white">{totalAllowed}</strong> company profile{totalAllowed !== 1 ? 's' : ''} in your plan.
+              You`re using <strong className="text-white">{currentCount}</strong> of <strong className="text-white">{totalAllowed}</strong> company profile{totalAllowed !== 1 ? 's' : ''} in your plan.
             </p>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Company Name *</label>
@@ -174,12 +174,12 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
             <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 flex items-start gap-3">
               <AlertTriangle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
               <p className="text-red-300 text-sm">
-                You've reached your limit of <strong>{totalAllowed}</strong> company profile{totalAllowed !== 1 ? 's' : ''} on your current <strong className="capitalize">{subscription?.plan}</strong> plan.
+                You've reached your limit of <strong>{totalAllowed}</strong> company profile{totalAllowed !== 1 ? 's' : '`} on your current <strong className="capitalize">{subscription?.plan}</strong> plan.
               </p>
             </div>
             <p className="text-gray-400 text-sm">Choose an option to add more company profiles:</p>
             <div className="space-y-3">
-              <button onClick={() => { onClose(); navigate(createPageUrl('Billing')); }}
+              <button onClick={() => { onClose(); navigate(createPageUrl(`Billing`)); }}
                 className="w-full flex items-center justify-between p-4 rounded-xl border border-[#38b6ff]/30 bg-[#38b6ff]/5 hover:bg-[#38b6ff]/10 transition-all group">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-[#38b6ff]/20 flex items-center justify-center">
@@ -193,7 +193,7 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
                 <ArrowRight size={16} className="text-[#38b6ff] group-hover:translate-x-1 transition-transform" />
               </button>
 
-              <button onClick={() => { onClose(); navigate(createPageUrl('Billing')); }}
+              <button onClick={() => { onClose(); navigate(createPageUrl(`Billing`)); }}
                 className="w-full flex items-center justify-between p-4 rounded-xl border border-[#cb6ce6]/30 bg-[#cb6ce6]/5 hover:bg-[#cb6ce6]/10 transition-all group">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-[#cb6ce6]/20 flex items-center justify-center">
@@ -225,21 +225,21 @@ export default function CompanyAdminPanel() {
   const [showAddCompany, setShowAddCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState(null);
   const [editingUserRole, setEditingUserRole] = useState(null);
-  const [editingRoleValue, setEditingRoleValue] = useState('user');
+  const [editingRoleValue, setEditingRoleValue] = useState(`user`);
 
   useEffect(() => {
-    api.get('/api/auth/me').then(r => { const u = r.user;
+    api.get(`/api/auth/me`).then(r => { const u = r.user;
       setUser(u);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  const isOwnerOrSysAdmin = user?.role === 'owner' || user?.role === 'system_admin';
-  const isCompanyAdmin = user?.role === 'company_admin';
+  const isOwnerOrSysAdmin = user?.role === `owner' || user?.role === 'system_admin`;
+  const isCompanyAdmin = user?.role === `company_admin`;
   const hasAccess = isCompanyAdmin || isOwnerOrSysAdmin;
 
   // Fetch company — by company_id on user, or created_by, or (for owner/sysadmin) first company
   const { data: companies = [] } = useQuery({
-    queryKey: ['my_companies', user?.email, user?.company_id],
+    queryKey: [`my_companies`, user?.email, user?.company_id],
     queryFn: async () => {
       if (user?.company_id) {
         const byId = await Company.filter({ id: user.company_id });
@@ -248,7 +248,7 @@ export default function CompanyAdminPanel() {
       const byCreator = await Company.filter({ created_by: user?.email });
       if (byCreator.length > 0) return byCreator;
       if (isOwnerOrSysAdmin) {
-        return Company.list('-created_date', 1);
+        return Company.list(`-created_date`, 1);
       }
       return [];
     },
@@ -259,7 +259,7 @@ export default function CompanyAdminPanel() {
 
   // All companies under the same account (for counting against plan limit)
   const { data: accountCompanies = [] } = useQuery({
-    queryKey: ['account_companies', user?.account_id, user?.email],
+    queryKey: [`account_companies`, user?.account_id, user?.email],
     queryFn: async () => {
       if (user?.account_id) {
         const accs = await Account.filter({ id: user.account_id });
@@ -273,30 +273,30 @@ export default function CompanyAdminPanel() {
   });
 
   const { data: subscription } = useQuery({
-    queryKey: ['my_subscription', company?.id],
+    queryKey: [`my_subscription`, company?.id],
     queryFn: () => Subscription.filter({ company_id: company.id }).then(r => r[0]),
     enabled: !!company?.id,
   });
 
   const { data: companyUsers = [] } = useQuery({
-    queryKey: ['company_users', company?.id],
+    queryKey: [`company_users`, company?.id],
     queryFn: () => User.filter({ company_id: company.id }),
     enabled: !!company?.id,
   });
 
   const updateCompanyMutation = useMutation({
     mutationFn: (data) => Company.update(company.id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['my_companies'] }); toast.success('Company profile updated'); setEditingCompany(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: [`my_companies'] }); toast.success('Company profile updated`); setEditingCompany(null); },
   });
 
   const updateUserMutation = useMutation({
     mutationFn: ({ id, data }) => User.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['company_users'] }); toast.success('User role updated'); setEditingUserRole(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: [`company_users'] }); toast.success('User role updated`); setEditingUserRole(null); },
   });
 
   const handleInvite = async (email) => {
-    await api.post('/api/users/invite', { email, role: 'user' });
-    toast.success(`Invitation sent to ${email}`);
+    await api.post(`/api/users/invite', { email, role: 'user` });
+    toast.success(\`Invitation sent to \${email}\`);
     setShowInvite(false);
   };
 
@@ -312,9 +312,9 @@ export default function CompanyAdminPanel() {
       }
     }
     // company switch handled server-side
-    queryClient.invalidateQueries({ queryKey: ['my_companies'] });
-    queryClient.invalidateQueries({ queryKey: ['account_companies'] });
-    toast.success(`Company "${formData.name}" created!`);
+    queryClient.invalidateQueries({ queryKey: [`my_companies`] });
+    queryClient.invalidateQueries({ queryKey: [`account_companies`] });
+    toast.success(\`Company "\${formData.name}" created!\`);
     setShowAddCompany(false);
     window.location.reload();
   };
@@ -347,7 +347,7 @@ export default function CompanyAdminPanel() {
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Building2 size={48} className="text-gray-600" />
         <h2 className="text-white text-xl font-bold">No Company Found</h2>
-        <p className="text-gray-400">You don't appear to be associated with a company yet.</p>
+        <p className="text-gray-400">You don`t appear to be associated with a company yet.</p>
       </div>
     );
   }

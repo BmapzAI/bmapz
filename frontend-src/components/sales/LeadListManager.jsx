@@ -177,7 +177,7 @@ export default function LeadListManager({ companyId }) {
               <Textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="What's this list for?"
+                placeholder="What`s this list for?"
                 className="mt-1.5 bg-black/30 border-white/10 text-white"
               />
             </div>
@@ -188,7 +188,7 @@ export default function LeadListManager({ companyId }) {
                 onClick={() => {
                   setShowCreateDialog(false);
                   setEditingList(null);
-                  setFormData({ name: '', description: '' });
+                  setFormData({ name: `', description: '` });
                 }}
                 className="border-white/10 text-white hover:bg-white/5"
               >
@@ -199,7 +199,7 @@ export default function LeadListManager({ companyId }) {
                 disabled={createMutation.isPending || updateMutation.isPending}
                 className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]"
               >
-                {editingList ? 'Update' : 'Create'}
+                {editingList ? `Update' : 'Create'}
               </Button>
             </div>
           </form>

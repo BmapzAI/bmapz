@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Company, Lead, Message, Workflow, WorkflowRun } from '@/api/entities';
+import { Activity as ActivityEntity, Company, Lead, Message, Workflow, WorkflowRun } from '@/api/entities';
 
 
 const FUNNEL_STAGES = [
@@ -106,7 +106,7 @@ export default function LeadDetails() {
 
   const { data: activities = [] } = useQuery({
     queryKey: ['leadActivities', leadId],
-    queryFn: () => leadId ? Activity.filter({ lead_id: leadId }, '-created_date') : [],
+    queryFn: () => leadId ? ActivityEntity.filter({ lead_id: leadId }, '-created_date') : [],
     enabled: !!leadId,
   });
 

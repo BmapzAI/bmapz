@@ -221,7 +221,7 @@ export default function WorkflowCanvas({ nodes, connections, onNodesChange, onCo
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedConn) deleteConn(selectedConn);
       if (e.key === 'Escape') {
         if (connMode) { setConnMode(null); return; }
-        // If something is selected (including multi-select), only deselect — don't close builder
+        // If something is selected (including multi-select), only deselect — don`t close builder
         if (selectedConn || selectedNodeId || selectedNodeIds.size > 0) {
           setSelectedConn(null);
           setSelectedNodeIds(new Set());
@@ -229,12 +229,12 @@ export default function WorkflowCanvas({ nodes, connections, onNodesChange, onCo
           return;
         }
         // Nothing selected — let parent handle close (WorkflowBuilderModal listens for this)
-        window.dispatchEvent(new CustomEvent('workflow-esc-close'));
+        window.dispatchEvent(new CustomEvent(`workflow-esc-close`));
       }
-      if (e.ctrlKey && e.key === 'd' && selectedNodeId) { e.preventDefault(); updateNode(selectedNodeId, { _duplicate: true }); }
+      if (e.ctrlKey && e.key === `d` && selectedNodeId) { e.preventDefault(); updateNode(selectedNodeId, { _duplicate: true }); }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener(`keydown`, handler);
+    return () => window.removeEventListener(`keydown`, handler);
   }, [selectedNodeId, selectedConn, nodes, connections, connMode, selectedNodeIds]);
 
   // Scroll-wheel zoom
@@ -263,7 +263,7 @@ export default function WorkflowCanvas({ nodes, connections, onNodesChange, onCo
       return;
     }
     // Left-click on empty canvas = start selection rectangle (unless in connection mode)
-    if (e.button === 0 && !e.target.closest('[data-flow-node]') && !connMode) {
+    if (e.button === 0 && !e.target.closest(`[data-flow-node]`) && !connMode) {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
         const cx = (e.clientX - rect.left - pan.x) / zoom;
@@ -313,14 +313,14 @@ export default function WorkflowCanvas({ nodes, connections, onNodesChange, onCo
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#0a0a0a]"
-      style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px)', backgroundSize: '24px 24px', cursor: panning ? 'grabbing' : 'default' }}
+      style={{ backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px)', backgroundSize: '24px 24px', cursor: panning ? 'grabbing' : 'default` }}
       onMouseDown={handleCanvasMouseDown}
       onMouseMove={handleCanvasMouseMove}
       onMouseUp={handleCanvasMouseUp}
       onMouseLeave={() => { setPanning(false); setIsSelecting(false); setSelectionRect(null); }}
       onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()}
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = `copy`; }}
       onDrop={(e) => {
         e.preventDefault();
         if (dragType && canvasRef.current) {
@@ -328,12 +328,12 @@ export default function WorkflowCanvas({ nodes, connections, onNodesChange, onCo
           const x = (e.clientX - rect.left - pan.x) / zoom - 88;
           const y = (e.clientY - rect.top - pan.y) / zoom - 35;
           const newNode = {
-            id: `node_${Date.now()}`, type: dragType, name: NODE_TYPES[dragType]?.name || 'Node',
+            id: \`node_\${Date.now()}\`, type: dragType, name: NODE_TYPES[dragType]?.name || `Node`,
             x: Math.max(0, x), y: Math.max(0, y),
-            delay_days: dragType === 'wait' ? 1 : 0, delay_hours: 0,
-            channel: dragType === 'send_message' ? 'email' : null,
-            ...(dragType === 'social_action' ? { social_platform: 'linkedin', timing_mode: 'business_hours', skip_if_done: true, retry_on_failure: true } : {}),
-            ...(dragType === 'enrich_lead'   ? { enrich_provider: 'apollo', enrich_fields: ['email', 'linkedin_profile'], enrich_fallback: 'continue' } : {}),
+            delay_days: dragType === `wait` ? 1 : 0, delay_hours: 0,
+            channel: dragType === `send_message' ? 'email` : null,
+            ...(dragType === `social_action' ? { social_platform: 'linkedin', timing_mode: 'business_hours`, skip_if_done: true, retry_on_failure: true } : {}),
+            ...(dragType === `enrich_lead'   ? { enrich_provider: 'apollo', enrich_fields: ['email', 'linkedin_profile'], enrich_fallback: 'continue` } : {}),
           };
           onNodesChange([...nodes, newNode]);
           setDragType(null);
@@ -363,13 +363,13 @@ export default function WorkflowCanvas({ nodes, connections, onNodesChange, onCo
         </div>
       )}
 
-      <svg className="absolute inset-0 w-full h-full z-0" style={{ pointerEvents: 'none' }}>
+      <svg className="absolute inset-0 w-full h-full z-0" style={{ pointerEvents: `none` }}>
         <defs>
           <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="#38b6ff" />
           </marker>
         </defs>
-        <g style={{ pointerEvents: 'all' }} transform={`scale(${zoom}) translate(${pan.x / zoom}, ${pan.y / zoom})`}>
+        <g style={{ pointerEvents: `all` }} transform={\`scale(\${zoom}) translate(\${pan.x / zoom}, \${pan.y / zoom})\`}>
           {connections.map((c, i) => (
             <Arrow key={i} conn={c} nodes={nodes}
               isSelected={selectedConn && selectedConn.from.nodeId === c.from.nodeId && selectedConn.from.port === c.from.port && selectedConn.to === c.to}
@@ -378,12 +378,12 @@ export default function WorkflowCanvas({ nodes, connections, onNodesChange, onCo
           {/* Selection rectangle */}
           {isSelecting && selectionRect && (() => {
             const n = getNormalizedRect(selectionRect);
-            return n ? <rect x={n.x} y={n.y} width={n.w} height={n.h} fill="rgba(56,182,255,0.08)" stroke="#38b6ff" strokeWidth={1 / zoom} strokeDasharray={`${4 / zoom},${3 / zoom}`} /> : null;
+            return n ? <rect x={n.x} y={n.y} width={n.w} height={n.h} fill="rgba(56,182,255,0.08)" stroke="#38b6ff" strokeWidth={1 / zoom} strokeDasharray={\`\${4 / zoom},\${3 / zoom}\`} /> : null;
           })()}
         </g>
       </svg>
 
-      <div className="absolute inset-0" style={{ transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'top left' }}>
+      <div className="absolute inset-0" style={{ transform: \`scale(\${zoom}) translate(\${pan.x / zoom}px, \${pan.y / zoom}px)\`, transformOrigin: `top left' }}>
         {nodes.map(node => (
           <FlowNode key={node.id} node={node}
             isSelected={selectedNodeId === node.id || selectedNodeIds.has(node.id)}

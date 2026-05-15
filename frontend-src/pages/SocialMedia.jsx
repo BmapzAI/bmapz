@@ -412,7 +412,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
           "Use the Planning tab to view your content calendar. Click any day to schedule a new post.",
           "In the Content tab, describe your post idea and click 'Generate' to let AI create platform-optimized versions for LinkedIn and Instagram.",
           "Double-click any unscheduled post card or calendar item to jump directly into editing it.",
-          "Use 'AI Optimize' to analyze your published posts' performance and get scheduling recommendations.",
+          "Use 'AI Optimize' to analyze your published posts` performance and get scheduling recommendations.",
         ]}
       />
 
@@ -501,10 +501,10 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                 setNewPost(post);
               }}
               onPostDoubleClick={(post) => {
-                if (post.status !== 'published') {
+                if (post.status !== `published`) {
                   setEditingPost(post);
                   setNewPost(post);
-                  setActiveTab('content');
+                  setActiveTab(`content`);
                 }
               }}
             />
@@ -522,13 +522,13 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               {scheduledPosts.map(post => (
                 <div key={post.id}
                   className="flex items-center gap-4 p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:border-[#38b6ff]/30 transition-all"
-                  onDoubleClick={() => { setEditingPost(post); setNewPost(post); setActiveTab('content'); }}
+                  onDoubleClick={() => { setEditingPost(post); setNewPost(post); setActiveTab(`content`); }}
                   title="Double-click to edit"
                 >
                   <div className="flex gap-1">{(post.platforms || []).map(p => <span key={p} className="text-lg">{PLATFORMS.find(pl => pl.value === p)?.icon}</span>)}</div>
                   <div className="flex-1">
                     <p className="text-white text-sm font-medium">{post.title}</p>
-                    <p className="text-gray-500 text-xs">{post.scheduled_for ? new Date(post.scheduled_for).toLocaleString() : 'Not scheduled'}</p>
+                    <p className="text-gray-500 text-xs">{post.scheduled_for ? new Date(post.scheduled_for).toLocaleString() : `Not scheduled`}</p>
                   </div>
                   <span className="px-2 py-0.5 rounded-full text-xs bg-blue-500/20 text-blue-400">Scheduled</span>
                   <span className="text-gray-600 text-[10px]">dbl-click</span>
@@ -552,7 +552,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               <Input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)}
                 placeholder="e.g., Why ICP matters for B2B sales, post for marketing directors..."
                 className="flex-1 bg-black/30 border-white/10 text-white"
-                onKeyDown={(e) => e.key === 'Enter' && generateWithAI()} />
+                onKeyDown={(e) => e.key === `Enter` && generateWithAI()} />
               <Button onClick={generateWithAI} disabled={isGenerating || !aiPrompt.trim()}
                 className="bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-2">
                 {isGenerating ? <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : <Sparkles size={16} />}
@@ -560,7 +560,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               </Button>
             </div>
             <AIContextField
-              value={newPost.ai_context || ''}
+              value={newPost.ai_context || ``}
               onChange={(val) => setNewPost(p => ({ ...p, ai_context: val }))}
               placeholder="e.g., We are launching a new course on Aug 15. Target: CMOs. Reference: Alex Hormozi style."
             />
@@ -570,7 +570,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
           {editingPost && (
             <div className="rounded-2xl bg-white/5 border border-[#38b6ff]/30 p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-white font-semibold">{editingPost._isNew ? 'New Post' : 'Edit Post'}</h3>
+                <h3 className="text-white font-semibold">{editingPost._isNew ? `New Post' : 'Edit Post`}</h3>
                 <button onClick={() => { setEditingPost(null); setGeneratedContent(null); }} className="text-gray-400 hover:text-white"><X size={20} /></button>
               </div>
 
@@ -598,8 +598,8 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                           ? prev.platforms.filter(x => x !== p.value)
                           : [...(prev.platforms || []), p.value]
                       }))}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all
-                        ${(newPost.platforms || []).includes(p.value) ? 'border-[#38b6ff]/50 text-white bg-[#38b6ff]/10' : 'border-white/10 text-gray-400'}`}>
+                      className={\`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all
+                        \${(newPost.platforms || []).includes(p.value) ? `border-[#38b6ff]/50 text-white bg-[#38b6ff]/10' : 'border-white/10 text-gray-400`}\`}>
                       {p.icon} {p.label}
                     </button>
                   ))}
@@ -639,14 +639,14 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                     {(newPost.platforms || []).map(p => {
                       const formats = PLATFORM_FORMATS[p];
                       if (!formats) return null;
-                      return <div key={p}><span className="font-medium" style={{color: PLATFORMS.find(pl=>pl.value===p)?.color}}>{PLATFORMS.find(pl=>pl.value===p)?.label}:</span> {Object.entries(formats).map(([k,v])=>`${k}: ${v}`).join(' · ')}</div>;
+                      return <div key={p}><span className="font-medium" style={{color: PLATFORMS.find(pl=>pl.value===p)?.color}}>{PLATFORMS.find(pl=>pl.value===p)?.label}:</span> {Object.entries(formats).map(([k,v])=>\`\${k}: \${v}\`).join(` · `)}</div>;
                     })}
                   </div>
                 )}
                 <div className="flex gap-2 flex-wrap">
-                  <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 cursor-pointer text-sm text-gray-300 transition-all ${isUploadingMedia ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <label className={\`flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 cursor-pointer text-sm text-gray-300 transition-all \${isUploadingMedia ? `opacity-50 pointer-events-none' : '`}\`}>
                     <Upload size={14} />
-                    {isUploadingMedia ? 'Uploading...' : 'Add Media'}
+                    {isUploadingMedia ? `Uploading...' : 'Add Media`}
                     <input type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} disabled={isUploadingMedia} />
                   </label>
                   <button
@@ -677,7 +677,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                     <input
                       value={aiImagePrompt}
                       onChange={e => setAiImagePrompt(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && generateAIImage()}
+                      onKeyDown={e => e.key === `Enter` && generateAIImage()}
                       placeholder="Describe the image you want to generate..."
                       className="flex-1 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-white placeholder:text-gray-600 text-sm focus:outline-none focus:border-[#38b6ff]/50"
                     />
@@ -687,7 +687,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                       className="px-4 py-2 rounded-lg bg-[#38b6ff] text-black text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-1.5"
                     >
                       {isGeneratingAIImage ? <div className="w-3 h-3 rounded-full border-2 border-black border-t-transparent animate-spin" /> : <Sparkles size={13} />}
-                      {isGeneratingAIImage ? 'Generating...' : 'Generate'}
+                      {isGeneratingAIImage ? `Generating...' : 'Generate`}
                     </button>
                   </div>
                 )}
@@ -695,7 +695,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                   <div className="flex gap-2 mt-2 flex-wrap">
                     {uploadedMedia.map((m, i) => (
                       <div key={i} className="relative group">
-                        {m.type.startsWith('image/') ? (
+                        {m.type.startsWith(`image/`) ? (
                           <img src={m.url} alt={m.name} className="w-16 h-16 rounded-lg object-cover border border-white/10" />
                         ) : (
                           <div className="w-16 h-16 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-xs text-gray-400">🎥</div>
@@ -718,8 +718,8 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                         {designBrief.color_palette.map((c, i) => <div key={i} className="w-5 h-5 rounded-full border border-white/20" style={{backgroundColor: c}} title={c} />)}
                       </div>
                     )}
-                    {designBrief.do_list?.length > 0 && <div className="text-xs text-green-400">✅ {designBrief.do_list.slice(0,2).join(' · ')}</div>}
-                    {designBrief.dont_list?.length > 0 && <div className="text-xs text-red-400">❌ {designBrief.dont_list.slice(0,2).join(' · ')}</div>}
+                    {designBrief.do_list?.length > 0 && <div className="text-xs text-green-400">✅ {designBrief.do_list.slice(0,2).join(` · `)}</div>}
+                    {designBrief.dont_list?.length > 0 && <div className="text-xs text-red-400">❌ {designBrief.dont_list.slice(0,2).join(` · `)}</div>}
                   </div>
                 )}
               </div>
@@ -734,7 +734,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               <div className="flex gap-3">
                 <Button onClick={() => { if (!editingPost._isNew) { updateMutation.mutate({ id: editingPost.id, data: newPost }); } else { savePost(); } }}
                   className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-                  <Check size={16} /> {editingPost._isNew ? 'Save Post' : 'Update Post'}
+                  <Check size={16} /> {editingPost._isNew ? `Save Post' : 'Update Post`}
                 </Button>
                 <Button variant="outline" onClick={() => { setEditingPost(null); setGeneratedContent(null); }}
                   className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
@@ -771,7 +771,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                 {PLATFORMS.map(p => (
                   <button key={p.value}
                     onClick={() => setSelectedPlatforms(prev => prev.includes(p.value) ? prev.filter(x => x !== p.value) : [...prev, p.value])}
-                    className={`text-lg transition-all rounded-lg px-2 py-1 border ${selectedPlatforms.includes(p.value) ? 'border-[#38b6ff]/50 bg-[#38b6ff]/10' : 'border-white/10 opacity-40'}`}
+                    className={\`text-lg transition-all rounded-lg px-2 py-1 border \${selectedPlatforms.includes(p.value) ? `border-[#38b6ff]/50 bg-[#38b6ff]/10' : 'border-white/10 opacity-40`}\`}
                     title={p.label}>
                     {p.icon}
                   </button>
@@ -817,7 +817,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                     </div>
                     <div className="flex gap-2 flex-col items-end">
                       {post.published_at && <p className="text-gray-500 text-xs">{new Date(post.published_at).toLocaleDateString()}</p>}
-                      <Button size="sm" variant="outline" onClick={() => { setEditingPost(post); setNewPost(post); setActiveTab('content'); }}
+                      <Button size="sm" variant="outline" onClick={() => { setEditingPost(post); setNewPost(post); setActiveTab(`content`); }}
                         className="border-white/10 text-white hover:bg-white/5 text-xs gap-1">
                         <Edit3 size={12} /> Repost
                       </Button>
@@ -864,7 +864,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
             {PLATFORMS.map(p => (
               <button key={p.value}
                 onClick={() => setSelectedPlatforms(prev => prev.includes(p.value) ? prev.filter(x => x !== p.value) : [...prev, p.value])}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-all ${selectedPlatforms.includes(p.value) ? 'border-[#38b6ff]/50 bg-[#38b6ff]/10 text-white' : 'border-white/10 text-gray-500'}`}>
+                className={\`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-all \${selectedPlatforms.includes(p.value) ? `border-[#38b6ff]/50 bg-[#38b6ff]/10 text-white' : 'border-white/10 text-gray-500`}\`}>
                 {p.icon} {p.label}
               </button>
             ))}
@@ -878,9 +878,9 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
             const filtered = selectedPlatforms.length > 0
               ? posts.filter(p => (p.platforms || []).some(pl => selectedPlatforms.includes(pl)))
               : posts;
-            const filteredPublished = filtered.filter(p => p.status === 'published');
-            const filteredScheduled = filtered.filter(p => p.status === 'scheduled');
-            const filteredDraft = filtered.filter(p => p.status === 'draft');
+            const filteredPublished = filtered.filter(p => p.status === `published`);
+            const filteredScheduled = filtered.filter(p => p.status === `scheduled`);
+            const filteredDraft = filtered.filter(p => p.status === `draft`);
             const totalLikes = filteredPublished.reduce((s, p) => s + (p.performance?.likes || 0), 0);
             const totalReach = filteredPublished.reduce((s, p) => s + (p.performance?.reach || 0), 0);
             const avgEngagement = filteredPublished.filter(p => p.performance?.engagement_rate).length > 0
@@ -890,10 +890,10 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { label: 'Total Posts', value: filtered.length, icon: '📝' },
-                    { label: 'Scheduled', value: filteredScheduled.length, icon: '📅' },
-                    { label: 'Published', value: filteredPublished.length, icon: '✅' },
-                    { label: 'Drafts', value: filteredDraft.length, icon: '📄' },
+                    { label: `Total Posts', value: filtered.length, icon: '📝` },
+                    { label: `Scheduled', value: filteredScheduled.length, icon: '📅` },
+                    { label: `Published', value: filteredPublished.length, icon: '✅` },
+                    { label: `Drafts', value: filteredDraft.length, icon: '📄` },
                   ].map(stat => (
                     <div key={stat.label} className="rounded-2xl bg-white/5 border border-white/10 p-4 text-center">
                       <p className="text-2xl mb-1">{stat.icon}</p>
@@ -906,12 +906,12 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                 {filteredPublished.filter(p => p.performance).length > 0 && (
                   <div className="grid grid-cols-3 gap-4">
                     {[
-                      { label: 'Total Likes', value: totalLikes.toLocaleString(), icon: <Heart size={18} />, color: 'text-red-400' },
-                      { label: 'Total Reach', value: totalReach.toLocaleString(), icon: <Eye size={18} />, color: 'text-purple-400' },
-                      { label: 'Avg. Engagement', value: `${avgEngagement}%`, icon: <TrendingUp size={18} />, color: 'text-[#38b6ff]' },
+                      { label: `Total Likes', value: totalLikes.toLocaleString(), icon: <Heart size={18} />, color: 'text-red-400` },
+                      { label: `Total Reach', value: totalReach.toLocaleString(), icon: <Eye size={18} />, color: 'text-purple-400` },
+                      { label: `Avg. Engagement', value: `${avgEngagement}%`, icon: <TrendingUp size={18} />, color: 'text-[#38b6ff]` },
                     ].map(stat => (
                       <div key={stat.label} className="rounded-2xl bg-white/5 border border-white/10 p-4 text-center">
-                        <div className={`flex justify-center mb-1 ${stat.color}`}>{stat.icon}</div>
+                        <div className={\`flex justify-center mb-1 \${stat.color}\`}>{stat.icon}</div>
                         <p className="text-2xl font-bold text-white">{stat.value}</p>
                         <p className="text-gray-400 text-sm">{stat.label}</p>
                       </div>
@@ -936,7 +936,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                             <span className="text-gray-400 flex items-center gap-1"><Heart size={12} className="text-red-400" />{post.performance?.likes || 0}</span>
                             <span className="text-gray-400 flex items-center gap-1"><Eye size={12} className="text-blue-400" />{post.performance?.reach || 0}</span>
                             <span className="text-gray-400 flex items-center gap-1"><Share2 size={12} className="text-green-400" />{post.performance?.shares || 0}</span>
-                            <span className={`font-medium ${(post.performance?.engagement_rate || 0) >= 3 ? 'text-green-400' : (post.performance?.engagement_rate || 0) >= 1 ? 'text-yellow-400' : 'text-red-400'}`}>{post.performance?.engagement_rate || 0}%</span>
+                            <span className={\`font-medium \${(post.performance?.engagement_rate || 0) >= 3 ? `text-green-400' : (post.performance?.engagement_rate || 0) >= 1 ? 'text-yellow-400' : 'text-red-400`}\`}>{post.performance?.engagement_rate || 0}%</span>
                           </div>
                         </div>
                       ))}
@@ -960,7 +960,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
         open={showGoogleDrivePicker}
         onClose={() => setShowGoogleDrivePicker(false)}
         onSelect={(image) => {
-          setUploadedMedia(prev => [...prev, { url: image.url, name: image.name, type: 'image/jpeg' }]);
+          setUploadedMedia(prev => [...prev, { url: image.url, name: image.name, type: `image/jpeg' }]);
           setShowGoogleDrivePicker(false);
         }}
       />

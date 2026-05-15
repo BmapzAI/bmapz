@@ -115,7 +115,7 @@ Tone of Voice: ${briefing.tone_of_voice?.join(', ') || 'Professional'}
 Competitors: ${briefing.direct_competitors || 'Not specified'}
 Desired Perception: ${briefing.desired_perception || 'Not specified'}
 ${strategyForm.extra_context ? `Extra Context: ${strategyForm.extra_context}` : ''}
-${realAdData ? `\nReal Ad Account Performance (last 30 days from ${realAdData.platform}):\nTotal Spend: $${realAdData.campaigns?.reduce((a,c)=>a+parseFloat(c.spend||0),0).toFixed(2)}\nTotal Clicks: ${realAdData.campaigns?.reduce((a,c)=>a+parseInt(c.clicks||0),0).toLocaleString()}\nTop Campaigns:\n${realAdData.campaigns?.slice(0,5).map(c=>`- ${c.campaign_name}: Spend $${c.spend}, CTR ${c.ctr}, CPC $${c.cpc}, Conversions ${c.conversions||c.leads||0}`).join('\n')}\n\nUSE THIS REAL DATA to identify what is and isn't working, optimize budget allocation, and provide specific data-driven recommendations.` : ''}
+${realAdData ? `\nReal Ad Account Performance (last 30 days from ${realAdData.platform}):\nTotal Spend: $${realAdData.campaigns?.reduce((a,c)=>a+parseFloat(c.spend||0),0).toFixed(2)}\nTotal Clicks: ${realAdData.campaigns?.reduce((a,c)=>a+parseInt(c.clicks||0),0).toLocaleString()}\nTop Campaigns:\n${realAdData.campaigns?.slice(0,5).map(c=>`- ${c.campaign_name}: Spend $${c.spend}, CTR ${c.ctr}, CPC $${c.cpc}, Conversions ${c.conversions||c.leads||0}`).join('\n')}\n\nUSE THIS REAL DATA to identify what is and isn't working, optimize budget allocation, and provide specific data-driven recommendations.` : '`}
 
 Framework:
 1. Business Context Analysis
@@ -125,30 +125,30 @@ Framework:
 5. Performance Metrics (KPIs, target CPA, break-even ROAS, scaling triggers)
 6. Optimization Loop (weekly routine, what to test, when to scale/pause)
 
-Return structured JSON with all these sections.`;
+Return structured JSON with all these sections.\`;
   };
 
   const buildCopyPrompt = () => {
     const icp = company?.icp || {};
     const briefing = company?.briefing || {};
     const strategyContext = strategy
-      ? `\nCampaign Strategy Context:\n- Angles: ${strategy.strategic_foundation?.angles?.join(', ')}\n- Hooks: ${strategy.creative_strategy?.hooks?.join(', ')}\n- Unique Mechanism: ${strategy.strategic_foundation?.unique_mechanism}`
-      : '';
+      ? \`\nCampaign Strategy Context:\n- Angles: \${strategy.strategic_foundation?.angles?.join(`, ')}\n- Hooks: ${strategy.creative_strategy?.hooks?.join(', `)}\n- Unique Mechanism: \${strategy.strategic_foundation?.unique_mechanism}\`
+      : ``;
     const funnelContext = (briefing.tof_objective || briefing.mof_objective || briefing.bof_objective)
-      ? `\nFunnel Objectives:\n- TOF: ${briefing.tof_objective || 'N/A'}\n- MOF: ${briefing.mof_objective || 'N/A'}\n- BOF: ${briefing.bof_objective || 'N/A'}`
-      : '';
-    return `Create high-converting ad copies for ${copyForm.platform || 'Meta'}.
+      ? \`\nFunnel Objectives:\n- TOF: \${briefing.tof_objective || `N/A'}\n- MOF: ${briefing.mof_objective || 'N/A'}\n- BOF: ${briefing.bof_objective || 'N/A`}\`
+      : ``;
+    return \`Create high-converting ad copies for \${copyForm.platform || `Meta`}.
 
-Company: ${company?.name || 'Not specified'}
-Product: ${copyForm.product}
-Target Audience: ${copyForm.audience || icp.primary_audience}
-ICP Pain Points: ${icp.pain_points?.join(', ') || 'Not specified'}
-Tone of Voice: ${briefing.tone_of_voice?.join(', ') || 'Professional'}
-Primary Angle: ${copyForm.angle}
-Value Propositions: ${company?.value_propositions?.join(', ') || 'Not specified'}
-${copyForm.extra_context ? `Extra Context from user: ${copyForm.extra_context}` : ''}
-${strategyContext}${funnelContext}
-${realAdData ? `\nReal Ad Account Performance (last 30 days from ${realAdData.platform}):\nTotal Spend: $${realAdData.campaigns?.reduce((a,c)=>a+parseFloat(c.spend||0),0).toFixed(2)}\nTop Campaigns:\n${realAdData.campaigns?.slice(0,5).map(c=>`- ${c.campaign_name}: Spend $${c.spend}, CTR ${c.ctr}, CPC $${c.cpc}`).join('\n')}\n\nUSE THIS DATA to write copy angles that address what's underperforming and amplify what's working.` : ''}
+Company: \${company?.name || `Not specified`}
+Product: \${copyForm.product}
+Target Audience: \${copyForm.audience || icp.primary_audience}
+ICP Pain Points: \${icp.pain_points?.join(`, ') || 'Not specified`}
+Tone of Voice: \${briefing.tone_of_voice?.join(`, ') || 'Professional`}
+Primary Angle: \${copyForm.angle}
+Value Propositions: \${company?.value_propositions?.join(`, ') || 'Not specified`}
+\${copyForm.extra_context ? \`Extra Context from user: \${copyForm.extra_context}\` : ``}
+\${strategyContext}\${funnelContext}
+\${realAdData ? \`\nReal Ad Account Performance (last 30 days from \${realAdData.platform}):\nTotal Spend: $\${realAdData.campaigns?.reduce((a,c)=>a+parseFloat(c.spend||0),0).toFixed(2)}\nTop Campaigns:\n\${realAdData.campaigns?.slice(0,5).map(c=>\`- \${c.campaign_name}: Spend $\${c.spend}, CTR \${c.ctr}, CPC $\${c.cpc}\`).join(`\n')}\n\nUSE THIS DATA to write copy angles that address what's underperforming and amplify what's working.` : '`}
 
 Create:
 - 2 TOF ads (awareness) — aligned with TOF objective above
@@ -157,30 +157,30 @@ Create:
 
 Each ad must follow: Hook (0-3s pattern interrupt) → Bridge → Problem Amplification → Solution → Proof → Offer → CTA.
 
-Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, platform_notes`;
+Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, platform_notes\`;
   };
 
   const generateStrategy = async () => {
-    if (!strategyForm.objective) { toast.error('Select a campaign objective'); return; }
+    if (!strategyForm.objective) { toast.error(`Select a campaign objective`); return; }
     setIsGenerating(true);
     try {
       const response = await InvokeLLM({
         prompt: buildStrategyPrompt(),
         response_json_schema: {
-          type: 'object',
+          type: `object`,
           properties: {
-            business_analysis: { type: 'string' },
-            strategic_foundation: { type: 'object', properties: { unique_mechanism: { type: 'string' }, positioning: { type: 'string' }, angles: { type: 'array', items: { type: 'string' } } } },
-            funnel_architecture: { type: 'object', properties: { tof: { type: 'string' }, mof: { type: 'string' }, bof: { type: 'string' }, budget_split: { type: 'string' } } },
-            creative_strategy: { type: 'object', properties: { hooks: { type: 'array', items: { type: 'string' } }, emotional_appeals: { type: 'array', items: { type: 'string' } }, visual_direction: { type: 'string' } } },
-            kpis: { type: 'object', properties: { primary: { type: 'string' }, secondary: { type: 'string' }, target_cpa: { type: 'string' }, break_even_roas: { type: 'string' }, scaling_trigger: { type: 'string' } } },
-            optimization: { type: 'string' }
+            business_analysis: { type: `string` },
+            strategic_foundation: { type: `object', properties: { unique_mechanism: { type: 'string' }, positioning: { type: 'string' }, angles: { type: 'array', items: { type: 'string` } } } },
+            funnel_architecture: { type: `object', properties: { tof: { type: 'string' }, mof: { type: 'string' }, bof: { type: 'string' }, budget_split: { type: 'string` } } },
+            creative_strategy: { type: `object', properties: { hooks: { type: 'array', items: { type: 'string' } }, emotional_appeals: { type: 'array', items: { type: 'string' } }, visual_direction: { type: 'string` } } },
+            kpis: { type: `object', properties: { primary: { type: 'string' }, secondary: { type: 'string' }, target_cpa: { type: 'string' }, break_even_roas: { type: 'string' }, scaling_trigger: { type: 'string` } } },
+            optimization: { type: `string` }
           }
         }
       });
       setStrategy(response);
-      toast.success('Strategy generated!');
-    } catch (e) { toast.error('Generation failed'); }
+      toast.success(`Strategy generated!`);
+    } catch (e) { toast.error(`Generation failed`); }
     finally { setIsGenerating(false); }
   };
 
@@ -190,42 +190,42 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
       const response = await InvokeLLM({
         prompt: buildCopyPrompt(),
         response_json_schema: {
-          type: 'object',
+          type: `object`,
           properties: {
-            ads: { type: 'array', items: { type: 'object', properties: { stage: { type: 'string' }, angle: { type: 'string' }, hook: { type: 'string' }, body: { type: 'string' }, cta: { type: 'string' }, platform_notes: { type: 'string' } } } }
+            ads: { type: `array', items: { type: 'object', properties: { stage: { type: 'string' }, angle: { type: 'string' }, hook: { type: 'string' }, body: { type: 'string' }, cta: { type: 'string' }, platform_notes: { type: 'string` } } } }
           }
         }
       });
       setCopies(response?.ads || []);
-      toast.success('Ad copies generated!');
-    } catch (e) { toast.error('Generation failed'); }
+      toast.success(`Ad copies generated!`);
+    } catch (e) { toast.error(`Generation failed`); }
     finally { setIsGenerating(false); }
   };
 
   const saveStrategy = () => {
     if (!strategy || !company) return;
-    const title = `${strategyForm.platform || 'Multi-platform'} — ${strategyForm.objective} — ${new Date().toLocaleDateString()}`;
-    saveMutation.mutate({ company_id: company.id, type: 'strategy', title, platform: strategyForm.platform, objective: strategyForm.objective, strategy_data: strategy, form_data: strategyForm });
+    const title = \`\${strategyForm.platform || `Multi-platform`} — \${strategyForm.objective} — \${new Date().toLocaleDateString()}\`;
+    saveMutation.mutate({ company_id: company.id, type: `strategy`, title, platform: strategyForm.platform, objective: strategyForm.objective, strategy_data: strategy, form_data: strategyForm });
   };
 
   const saveCopies = () => {
     if (!copies || !company) return;
-    const title = `${copyForm.platform || 'Multi-platform'} Copies — ${copyForm.angle} — ${new Date().toLocaleDateString()}`;
-    saveMutation.mutate({ company_id: company.id, type: 'copy', title, platform: copyForm.platform, copies_data: copies, form_data: copyForm });
+    const title = \`\${copyForm.platform || `Multi-platform`} Copies — \${copyForm.angle} — \${new Date().toLocaleDateString()}\`;
+    saveMutation.mutate({ company_id: company.id, type: `copy`, title, platform: copyForm.platform, copies_data: copies, form_data: copyForm });
   };
 
   const loadRecord = (record) => {
-    if (record.type === 'strategy') {
+    if (record.type === `strategy`) {
       setStrategy(record.strategy_data);
       if (record.form_data) setStrategyForm(record.form_data);
-      setActiveTab('strategy');
+      setActiveTab(`strategy`);
     } else {
       setCopies(record.copies_data);
       if (record.form_data) setCopyForm(record.form_data);
-      setActiveTab('copy');
+      setActiveTab(`copy`);
     }
     setShowSaved(false);
-    toast.success('Loaded!');
+    toast.success(`Loaded!`);
   };
 
   const openGuide = (platform) => {
@@ -238,7 +238,7 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight"
-            style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>Ads</h1>
+            style={{ fontFamily: "`Bebas Neue', sans-serif", letterSpacing: '0.05em` }}>Ads</h1>
           <p className="text-gray-400 mt-1">AI-powered ad strategy and copy creation • Pre-filled from your Settings</p>
         </div>
         <Button variant="outline" onClick={() => setShowSaved(!showSaved)}
@@ -251,7 +251,7 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
         id="ads"
         title="Ads Quick Start"
         steps={[
-          "Fill in your campaign objective and platform in the Strategy tab, then click 'Generate Strategy' to get a full AI-powered campaign plan.",
+          "Fill in your campaign objective and platform in the Strategy tab, then click `Generate Strategy` to get a full AI-powered campaign plan.",
           "Switch to the Copy tab to generate ad copy for each funnel stage (TOF, MOF, BOF) aligned to your strategy.",
           "Use the Creatives tab to generate design briefs and test A/B variations for your ad visuals.",
           "Connect your Meta or Google Ads account in Settings → API Keys to import real performance data and get data-driven recommendations.",
@@ -308,11 +308,11 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
               <AdsStrategyOutput strategy={strategy} setStrategy={setStrategy} company={company} />
               {strategy && (
                 <div className="mt-4 flex gap-3">
-                  <Button onClick={() => handlePublish(`${strategyForm.platform || 'Multi-platform'} Strategy`, strategyForm.platform || 'ads')}
+                  <Button onClick={() => handlePublish(\`\${strategyForm.platform || `Multi-platform'} Strategy`, strategyForm.platform || 'ads`)}
                     className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
                     <Send size={16} /> Publish Campaign Strategy
                   </Button>
-                  <Button onClick={() => handlePublish(`${strategyForm.platform || 'Multi-platform'} Strategy`, strategyForm.platform || 'ads', true)}
+                  <Button onClick={() => handlePublish(\`\${strategyForm.platform || `Multi-platform'} Strategy`, strategyForm.platform || 'ads`, true)}
                     variant="outline" className="border-white/10 text-white hover:bg-white/5 gap-2">
                     <Send size={16} /> Update Existing Campaign
                   </Button>
@@ -334,11 +334,11 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
               <AdsCopyOutput copies={copies} setCopies={setCopies} company={company} strategy={strategy} />
               {copies && copies.length > 0 && (
                 <div className="mt-4 flex gap-3">
-                  <Button onClick={() => handlePublish(`${copyForm.platform || 'Multi-platform'} Ad Copies`, copyForm.platform || 'ads')}
+                  <Button onClick={() => handlePublish(\`\${copyForm.platform || `Multi-platform'} Ad Copies`, copyForm.platform || 'ads`)}
                     className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
                     <Send size={16} /> Publish Ad Copies
                   </Button>
-                  <Button onClick={() => handlePublish(`${copyForm.platform || 'Multi-platform'} Ad Copies`, copyForm.platform || 'ads', true)}
+                  <Button onClick={() => handlePublish(\`\${copyForm.platform || `Multi-platform'} Ad Copies`, copyForm.platform || 'ads`, true)}
                     variant="outline" className="border-white/10 text-white hover:bg-white/5 gap-2">
                     <Send size={16} /> Update Existing Ad
                   </Button>
@@ -361,14 +361,14 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
         <AdsPublishModal
           isOpen={showPublishModal}
           onClose={() => { setShowPublishModal(false); setPublishTarget(null); }}
-          onConfirm={() => toast.success(`${publishTarget.isUpdate ? 'Updated' : 'Published'}: "${publishTarget.title}"`)}
+          onConfirm={() => toast.success(\`\${publishTarget.isUpdate ? `Updated' : 'Published`}: "\${publishTarget.title}"\`)}
           platform={publishTarget.platform}
           adTitle={publishTarget.title}
           isUpdate={publishTarget.isUpdate}
           campaignData={{ 
             ...strategyForm, 
             ...copyForm, 
-            objective: strategyForm.objective || 'LINK_CLICKS',
+            objective: strategyForm.objective || `LINK_CLICKS',
             strategy: strategy,
             copies: copies
           }}

@@ -40,63 +40,63 @@ Você concorda em não usar a Plataforma para:
   },
   {
     title: '5. Subscriptions & Billing / Assinaturas e Cobrança',
-    content: `Subscription fees are billed in advance on a monthly or annual basis. All fees are non-refundable unless otherwise stated. We reserve the right to change pricing with 30 days' notice. Failure to pay may result in service suspension.
+    content: `Subscription fees are billed in advance on a monthly or annual basis. All fees are non-refundable unless otherwise stated. We reserve the right to change pricing with 30 days` notice. Failure to pay may result in service suspension.
 
-As taxas de assinatura são cobradas antecipadamente mensal ou anualmente. Todas as taxas não são reembolsáveis, salvo indicação em contrário. Reservamo-nos o direito de alterar os preços com 30 dias de antecedência. O não pagamento pode resultar na suspensão do serviço.`,
+As taxas de assinatura são cobradas antecipadamente mensal ou anualmente. Todas as taxas não são reembolsáveis, salvo indicação em contrário. Reservamo-nos o direito de alterar os preços com 30 dias de antecedência. O não pagamento pode resultar na suspensão do serviço.\`,
   },
   {
-    title: '6. Intellectual Property / Propriedade Intelectual',
-    content: `All content, features, and functionality of the Platform are owned by BMAPZ and are protected by international copyright, trademark, and other intellectual property laws. You retain ownership of your data and content uploaded to the Platform.
+    title: `6. Intellectual Property / Propriedade Intelectual`,
+    content: \`All content, features, and functionality of the Platform are owned by BMAPZ and are protected by international copyright, trademark, and other intellectual property laws. You retain ownership of your data and content uploaded to the Platform.
 
-Todo o conteúdo, recursos e funcionalidades da Plataforma são de propriedade do BMAPZ e são protegidos por leis internacionais de direitos autorais, marcas registradas e outras leis de propriedade intelectual. Você mantém a propriedade dos seus dados e conteúdos enviados para a Plataforma.`,
+Todo o conteúdo, recursos e funcionalidades da Plataforma são de propriedade do BMAPZ e são protegidos por leis internacionais de direitos autorais, marcas registradas e outras leis de propriedade intelectual. Você mantém a propriedade dos seus dados e conteúdos enviados para a Plataforma.\`,
   },
   {
-    title: '7. AI-Generated Content / Conteúdo Gerado por IA',
-    content: `The Platform uses artificial intelligence to generate content such as messages, emails, and ad copy. You are solely responsible for reviewing, editing, and approving any AI-generated content before use. BMAPZ does not guarantee the accuracy, completeness, or suitability of AI-generated content.
+    title: `7. AI-Generated Content / Conteúdo Gerado por IA`,
+    content: \`The Platform uses artificial intelligence to generate content such as messages, emails, and ad copy. You are solely responsible for reviewing, editing, and approving any AI-generated content before use. BMAPZ does not guarantee the accuracy, completeness, or suitability of AI-generated content.
 
-A Plataforma usa inteligência artificial para gerar conteúdo como mensagens, e-mails e textos de anúncios. Você é o único responsável por revisar, editar e aprovar qualquer conteúdo gerado por IA antes do uso. O BMAPZ não garante a precisão, integridade ou adequação do conteúdo gerado por IA.`,
+A Plataforma usa inteligência artificial para gerar conteúdo como mensagens, e-mails e textos de anúncios. Você é o único responsável por revisar, editar e aprovar qualquer conteúdo gerado por IA antes do uso. O BMAPZ não garante a precisão, integridade ou adequação do conteúdo gerado por IA.\`,
   },
   {
-    title: '8. Third-Party Integrations / Integrações de Terceiros',
-    content: `The Platform integrates with third-party services (Google, Meta, LinkedIn, WhatsApp, etc.). Your use of these integrations is subject to the respective third-party terms of service. BMAPZ is not responsible for the availability or functionality of third-party services.
+    title: `8. Third-Party Integrations / Integrações de Terceiros`,
+    content: \`The Platform integrates with third-party services (Google, Meta, LinkedIn, WhatsApp, etc.). Your use of these integrations is subject to the respective third-party terms of service. BMAPZ is not responsible for the availability or functionality of third-party services.
 
-A Plataforma integra-se com serviços de terceiros (Google, Meta, LinkedIn, WhatsApp, etc.). O uso dessas integrações está sujeito aos respectivos termos de serviço de terceiros. O BMAPZ não é responsável pela disponibilidade ou funcionalidade de serviços de terceiros.`,
+A Plataforma integra-se com serviços de terceiros (Google, Meta, LinkedIn, WhatsApp, etc.). O uso dessas integrações está sujeito aos respectivos termos de serviço de terceiros. O BMAPZ não é responsável pela disponibilidade ou funcionalidade de serviços de terceiros.\`,
   },
   {
-    title: '9. Data & Privacy / Dados e Privacidade',
-    content: `Your use of the Platform is also governed by our Privacy Policy. We collect and process data as described therein. By using the Platform, you consent to such processing.
+    title: `9. Data & Privacy / Dados e Privacidade`,
+    content: \`Your use of the Platform is also governed by our Privacy Policy. We collect and process data as described therein. By using the Platform, you consent to such processing.
 
-O uso da Plataforma também é regido pela nossa Política de Privacidade. Coletamos e processamos dados conforme descrito nela. Ao usar a Plataforma, você consente com esse processamento.`,
+O uso da Plataforma também é regido pela nossa Política de Privacidade. Coletamos e processamos dados conforme descrito nela. Ao usar a Plataforma, você consente com esse processamento.\`,
   },
   {
-    title: '10. Limitation of Liability / Limitação de Responsabilidade',
-    content: `To the maximum extent permitted by law, BMAPZ shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the Platform. Our total liability shall not exceed the amount paid by you in the preceding 12 months.
+    title: `10. Limitation of Liability / Limitação de Responsabilidade`,
+    content: \`To the maximum extent permitted by law, BMAPZ shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the Platform. Our total liability shall not exceed the amount paid by you in the preceding 12 months.
 
-Na extensão máxima permitida por lei, o BMAPZ não será responsável por quaisquer danos indiretos, incidentais, especiais, consequenciais ou punitivos decorrentes do uso da Plataforma. Nossa responsabilidade total não excederá o valor pago por você nos 12 meses anteriores.`,
+Na extensão máxima permitida por lei, o BMAPZ não será responsável por quaisquer danos indiretos, incidentais, especiais, consequenciais ou punitivos decorrentes do uso da Plataforma. Nossa responsabilidade total não excederá o valor pago por você nos 12 meses anteriores.\`,
   },
   {
-    title: '11. Termination / Rescisão',
-    content: `Either party may terminate this agreement at any time. Upon termination, your access to the Platform will cease. We may retain your data for up to 90 days after termination before deletion, unless required by law to retain it longer.
+    title: `11. Termination / Rescisão`,
+    content: \`Either party may terminate this agreement at any time. Upon termination, your access to the Platform will cease. We may retain your data for up to 90 days after termination before deletion, unless required by law to retain it longer.
 
-Qualquer das partes pode encerrar este acordo a qualquer momento. Após o encerramento, seu acesso à Plataforma cessará. Podemos reter seus dados por até 90 dias após o encerramento antes da exclusão, salvo se exigido por lei para retê-los por mais tempo.`,
+Qualquer das partes pode encerrar este acordo a qualquer momento. Após o encerramento, seu acesso à Plataforma cessará. Podemos reter seus dados por até 90 dias após o encerramento antes da exclusão, salvo se exigido por lei para retê-los por mais tempo.\`,
   },
   {
-    title: '12. Governing Law / Lei Aplicável',
-    content: `These Terms are governed by the laws of Brazil. Any disputes shall be resolved in the courts of São Paulo, Brazil.
+    title: `12. Governing Law / Lei Aplicável`,
+    content: \`These Terms are governed by the laws of Brazil. Any disputes shall be resolved in the courts of São Paulo, Brazil.
 
-Estes Termos são regidos pelas leis do Brasil. Quaisquer disputas serão resolvidas nos tribunais de São Paulo, Brasil.`,
+Estes Termos são regidos pelas leis do Brasil. Quaisquer disputas serão resolvidas nos tribunais de São Paulo, Brasil.\`,
   },
   {
-    title: '13. Changes to Terms / Alterações nos Termos',
-    content: `We may update these Terms from time to time. We will notify you of material changes via email or in-app notification. Continued use of the Platform after changes constitutes acceptance.
+    title: `13. Changes to Terms / Alterações nos Termos`,
+    content: \`We may update these Terms from time to time. We will notify you of material changes via email or in-app notification. Continued use of the Platform after changes constitutes acceptance.
 
-Podemos atualizar estes Termos periodicamente. Notificaremos você sobre mudanças relevantes por e-mail ou notificação no aplicativo. O uso continuado da Plataforma após as alterações constitui aceitação.`,
+Podemos atualizar estes Termos periodicamente. Notificaremos você sobre mudanças relevantes por e-mail ou notificação no aplicativo. O uso continuado da Plataforma após as alterações constitui aceitação.\`,
   },
   {
-    title: '14. Contact / Contato',
-    content: `For questions about these Terms, contact us at: contato@bmapz.com
+    title: `14. Contact / Contato`,
+    content: \`For questions about these Terms, contact us at: contato@bmapz.com
 
-Para dúvidas sobre estes Termos, entre em contato: contato@bmapz.com`,
+Para dúvidas sobre estes Termos, entre em contato: contato@bmapz.com\`,
   },
 ];
 
@@ -117,7 +117,7 @@ export default function TermsOfService() {
           <Shield className="w-8 h-8 text-[#38b6ff]" />
         </div>
         <h1 className="text-3xl font-bold text-white tracking-tight"
-          style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
+          style={{ fontFamily: "`Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
           Terms of Service / Termos de Serviço
         </h1>
         <p className="text-gray-400 mt-2 text-sm">Last updated / Última atualização: May 2026</p>

@@ -55,24 +55,24 @@ export default function VisualEditAgent() {
 		let label = overlay.querySelector('div');
 
 		if (!label) {
-			// Create new label if it doesn't exist
-			label = document.createElement('div');
+			// Create new label if it doesn`t exist
+			label = document.createElement(`div`);
 			label.textContent = element.tagName.toLowerCase();
-			label.style.position = 'absolute';
-			label.style.top = '-27px';
-			label.style.left = '-2px';
-			label.style.padding = '2px 8px';
-			label.style.fontSize = '11px';
-			label.style.fontWeight = isSelected ? '500' : '400';
-			label.style.color = isSelected ? '#ffffff' : '#526cff';
-			label.style.backgroundColor = isSelected ? '#526cff' : '#DBEAFE';
-			label.style.borderRadius = '3px';
-			label.style.boxShadow = isSelected ? 'none' : 'none';
-			label.style.minWidth = '24px';
-			label.style.textAlign = 'center';
+			label.style.position = `absolute`;
+			label.style.top = `-27px`;
+			label.style.left = `-2px`;
+			label.style.padding = `2px 8px`;
+			label.style.fontSize = `11px`;
+			label.style.fontWeight = isSelected ? `500' : '400`;
+			label.style.color = isSelected ? `#ffffff' : '#526cff`;
+			label.style.backgroundColor = isSelected ? `#526cff' : '#DBEAFE`;
+			label.style.borderRadius = `3px`;
+			label.style.boxShadow = isSelected ? `none' : 'none`;
+			label.style.minWidth = `24px`;
+			label.style.textAlign = `center`;
 			overlay.appendChild(label);
 		}
-		// If label exists, we preserve its existing styling (don't recreate or modify)
+		// If label exists, we preserve its existing styling (don`t recreate or modify)
 	};
 
 	// Find elements by ID - first try data-source-location, fallback to data-visual-selector-id
@@ -364,10 +364,10 @@ export default function VisualEditAgent() {
 
 	// Listen for messages from parent window
 	useEffect(() => {
-		// Add IDs to elements that don't have them but have linenumbers
-		const elementsWithLineNumber = document.querySelectorAll('[data-linenumber]:not([data-visual-selector-id])');
+		// Add IDs to elements that don`t have them but have linenumbers
+		const elementsWithLineNumber = document.querySelectorAll(`[data-linenumber]:not([data-visual-selector-id])`);
 		elementsWithLineNumber.forEach((el, index) => {
-			const id = `visual-id-${el.dataset.filename}-${el.dataset.linenumber}-${index}`;
+			const id = \`visual-id-\${el.dataset.filename}-\${el.dataset.linenumber}-\${index}\`;
 			el.dataset.visualSelectorId = id;
 		});
 
@@ -402,27 +402,27 @@ export default function VisualEditAgent() {
 					};
 
 					window.parent.postMessage({
-						type: 'element-position-update',
+						type: `element-position-update`,
 						position: elementPosition,
 						isInViewport: isInViewport,
 						visualSelectorId: selectedElementIdRef.current
-					}, '*');
+					}, `*`);
 				}
 			}
 		};
 
 		const handleMessage = (event) => {
 			// Check origin if desired
-			//if (event.origin !== 'parent-origin') return;
+			//if (event.origin !== `parent-origin`) return;
 
 			const message = event.data;
 
 			switch (message.type) {
-				case 'toggle-visual-edit-mode':
+				case `toggle-visual-edit-mode`:
 					toggleVisualEditMode(message.data.enabled);
 					break;
 
-				case 'update-classes':
+				case `update-classes`:
 					if (message.data && message.data.classes !== undefined) {
 						// Update with the visual selector ID
 						// Pass replace flag if provided (used for reverts)
@@ -432,30 +432,30 @@ export default function VisualEditAgent() {
 							message.data.replace || false
 						);
 					} else {
-						console.warn('[Agent] Invalid update-classes message:', message);
+						console.warn(`[Agent] Invalid update-classes message:`, message);
 					}
 					break;
 
-				case 'unselect-element':
+				case `unselect-element`:
 					unselectElement();
 					break;
 
-				case 'refresh-page':
+				case `refresh-page`:
 					window.location.reload();
 					break;
 
-				case 'update-content':
+				case `update-content`:
 					if (message.data && message.data.content !== undefined) {
 						updateElementContent(
 							message.data.visualSelectorId,
 							message.data.content
 						);
 					} else {
-						console.warn('[Agent] Invalid update-content message:', message);
+						console.warn(`[Agent] Invalid update-content message:`, message);
 					}
 					break;
 
-				case 'request-element-position':
+				case `request-element-position`:
 					// Send current position of selected element for popover repositioning
 					if (selectedElementIdRef.current) {
 						// Find the element using the stored ID
@@ -486,16 +486,16 @@ export default function VisualEditAgent() {
 							};
 
 							window.parent.postMessage({
-								type: 'element-position-update',
+								type: `element-position-update`,
 								position: elementPosition,
 								isInViewport: isInViewport,
 								visualSelectorId: selectedElementIdRef.current
-							}, '*');
+							}, `*`);
 						}
 					}
 					break;
 
-				case 'popover-drag-state':
+				case `popover-drag-state`:
 					// Handle popover drag state to prevent mouseover conflicts
 					if (message.data && message.data.isDragging !== undefined) {
 						setIsPopoverDragging(message.data.isDragging);
@@ -508,7 +508,7 @@ export default function VisualEditAgent() {
 					}
 					break;
 
-				case 'dropdown-state':
+				case `dropdown-state`:
 					// Handle dropdown open/close state
 					if (message.data && message.data.isOpen !== undefined) {
 						setIsDropdownOpen(message.data.isOpen);
@@ -526,20 +526,20 @@ export default function VisualEditAgent() {
 			}
 		};
 
-		window.addEventListener('message', handleMessage);
-		window.addEventListener('scroll', handleScroll, true); // Use capture to catch all scroll events
-		document.addEventListener('scroll', handleScroll, true); // Also listen on document
+		window.addEventListener(`message`, handleMessage);
+		window.addEventListener(`scroll`, handleScroll, true); // Use capture to catch all scroll events
+		document.addEventListener(`scroll`, handleScroll, true); // Also listen on document
 
 		// Send ready message to parent
-		window.parent.postMessage({ type: 'visual-edit-agent-ready' }, '*');
+		window.parent.postMessage({ type: `visual-edit-agent-ready' }, '*`);
 
 		return () => {
-			window.removeEventListener('message', handleMessage);
-			window.removeEventListener('scroll', handleScroll, true);
-			document.removeEventListener('scroll', handleScroll, true);
-			document.removeEventListener('mouseover', handleMouseOver);
-			document.removeEventListener('mouseout', handleMouseOut);
-			document.removeEventListener('click', handleElementClick, true);
+			window.removeEventListener(`message`, handleMessage);
+			window.removeEventListener(`scroll`, handleScroll, true);
+			document.removeEventListener(`scroll`, handleScroll, true);
+			document.removeEventListener(`mouseover`, handleMouseOver);
+			document.removeEventListener(`mouseout`, handleMouseOut);
+			document.removeEventListener(`click`, handleElementClick, true);
 
 			// Clean up all overlays
 			clearHoverOverlays();
@@ -609,11 +609,11 @@ export default function VisualEditAgent() {
 				};
 
 				// Check if this is a style or attribute mutation that might affect layout
-				const isLayoutChange = mutation.type === 'attributes' &&
-					(mutation.attributeName === 'style' ||
-						mutation.attributeName === 'class' ||
-						mutation.attributeName === 'width' ||
-						mutation.attributeName === 'height');
+				const isLayoutChange = mutation.type === `attributes` &&
+					(mutation.attributeName === `style` ||
+						mutation.attributeName === `class` ||
+						mutation.attributeName === `width` ||
+						mutation.attributeName === `height`);
 
 				// Check if target is or contains an element with visual selector ID
 				return isLayoutChange && hasVisualId(mutation.target);
@@ -630,15 +630,15 @@ export default function VisualEditAgent() {
 			attributes: true,
 			childList: true,
 			subtree: true,
-			attributeFilter: ['style', 'class', 'width', 'height']
+			attributeFilter: [`style', 'class', 'width', 'height`]
 		});
 
-		window.addEventListener('resize', handleResize);
-		window.addEventListener('scroll', handleResize);
+		window.addEventListener(`resize`, handleResize);
+		window.addEventListener(`scroll`, handleResize);
 
 		return () => {
-			window.removeEventListener('resize', handleResize);
-			window.removeEventListener('scroll', handleResize);
+			window.removeEventListener(`resize`, handleResize);
+			window.removeEventListener(`scroll', handleResize);
 			mutationObserver.disconnect();
 		};
 	}, []);
