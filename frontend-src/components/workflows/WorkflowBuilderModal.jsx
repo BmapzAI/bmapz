@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import WorkflowCanvas, { NODE_TYPES } from './WorkflowCanvas';
 import WorkflowNodePanel from './WorkflowNodePanel';
 import WorkflowAIPanel from './WorkflowAIPanel';
+import { Company, Lead, Workflow } from '@/api/entities';
 
 const TEMPLATES = {
   email_sequence: {
