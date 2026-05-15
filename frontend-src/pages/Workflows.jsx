@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 import WorkflowBuilderModal from '@/components/workflows/WorkflowBuilderModal';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
-import { Company } from '@/api/entities';
+import { Company, Workflow } from '@/api/entities';
 
 export default function Workflows() {
   const queryClient = useQueryClient();
