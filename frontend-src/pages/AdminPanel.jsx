@@ -14,6 +14,7 @@ import {
   History, Lock
 } from 'lucide-react';
 import { PLANS, formatBRL } from '@/lib/plans';
+import { Company } from '@/api/entities';
 
 const PLAN_OPTIONS = ['trial', 'starter', 'growth', 'scale', 'enterprise'];
 const STATUS_OPTIONS = ['trialing', 'active', 'past_due', 'canceled', 'paused'];
