@@ -2,8 +2,13 @@
  * AuthCallback — handles Supabase OAuth redirects and email confirmation links.
  *
  * Supabase redirects to /auth/callback with a code in the URL fragment/query.
- * The Supabase client picks it up automatically via detectSessionInUrl: true.
- * We just wait for the session to resolve, then redirect home.
+ * The Supabase client picks it up automatically via detectSessionInUrl: true
+ * (PKCE code exchange happens in the client constructor / onAuthStateChange).
+ * We must NOT call exchangeCodeForSession here — doing so causes a double-
+ * exchange which invalidates the PKCE code and results in no session.
+ *
+ * Strategy: listen for onAuthStateChange. If we get SIGNED_IN, go home.
+ * If nothing arrives within the timeout, try a manual exchange as fallback.
  *
  * For OAuth popups (ConnectIntegrationModal), the popup sends a postMessage
  * to the opener rather than doing a full redirect.
@@ -20,40 +25,57 @@ export default function AuthCallback() {
     if (handled.current) return;
     handled.current = true;
 
-    const handleCallback = async () => {
-      try {
-        // Exchange the code in the URL for a session
-        // (Supabase does this automatically when detectSessionInUrl is true,
-        //  but we call exchangeCodeForSession explicitly for reliability)
-        const { searchParams } = new URL(window.location.href);
-        const code = searchParams.get('code');
+    const { searchParams } = new URL(window.location.href);
+    const type = searchParams.get('type');   // integration type (e.g. 'google_ads')
+    const code = searchParams.get('code');
 
-        if (code) {
-          await supabase.auth.exchangeCodeForSession(code);
-        }
+    // -- Integration OAuth popup path
+    if (type && window.opener) {
+      window.opener.postMessage({ type: 'oauth_success', integration: type }, '*');
+      window.close();
+      return;
+    }
 
-        // Check if this is an OAuth popup (opened by ConnectIntegrationModal)
-        // The popup's URL will have an `origin` query param set by the backend
-        const type = searchParams.get('type');   // integration type (e.g. 'google_ads')
-        const isIntegrationOAuth = !!type;
+    // -- Regular sign-in / email confirmation
+    // detectSessionInUrl: true causes Supabase to exchange the PKCE code
+    // automatically when the client initialises on this page.  We simply wait
+    // for the resulting SIGNED_IN event and then navigate home.
 
-        if (isIntegrationOAuth && window.opener) {
-          // Notify the parent window that OAuth succeeded
-          window.opener.postMessage({ type: 'oauth_success', integration: type }, '*');
-          window.close();
-          return;
-        }
+    let unsubscribe = () => {};
+    let timer;
 
-        // Regular sign-in / email confirmation — redirect to home
-        navigate('/', { replace: true });
-      } catch (err) {
-        console.error('[AuthCallback] error:', err);
-        // On failure, send to login with an error hint
-        navigate('/login?error=callback_failed', { replace: true });
-      }
+    const cleanup = () => {
+      clearTimeout(timer);
+      unsubscribe();
     };
 
-    handleCallback();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        cleanup();
+        navigate('/', { replace: true });
+      } else if (event === 'SIGNED_OUT') {
+        cleanup();
+        navigate('/login?error=callback_failed', { replace: true });
+      }
+    });
+    unsubscribe = () => subscription.unsubscribe();
+
+    // Fallback: if no auth event fires in 8s, try explicit exchange then redirect
+    timer = setTimeout(async () => {
+      unsubscribe();
+      if (code) {
+        try {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (!error) {
+            navigate('/', { replace: true });
+            return;
+          }
+        } catch {}
+      }
+      navigate('/login?error=callback_failed', { replace: true });
+    }, 8000);
+
+    return cleanup;
   }, [navigate]);
 
   return (
