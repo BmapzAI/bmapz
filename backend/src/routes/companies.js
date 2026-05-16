@@ -4,7 +4,78 @@ import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
-// GET /api/companies/current — current user's company
+/**
+ * Fields that are true top-level columns in the companies table.
+ */
+const DIRECT_COLUMNS = new Set([
+  'name', 'website', 'industry', 'description', 'services_description',
+  'logo_url', 'icp', 'briefing', 'value_propositions', 'integration_status',
+]);
+
+/**
+ * Fields stored inside the api_keys JSONB column.
+ */
+const API_KEY_FIELDS = new Set([
+  'openai_api_key', 'openai_model', 'anthropic_api_key', 'anthropic_model',
+  'ai_provider', 'ai_image_provider', 'ai_image_model', 'personal_agent_name',
+  'stability_api_key',
+  'google_client_id', 'google_client_secret',
+  'meta_app_id', 'meta_app_secret',
+  'linkedin_client_id', 'linkedin_client_secret',
+  'twitter_client_id', 'twitter_client_secret',
+  'tiktok_client_key', 'tiktok_client_secret',
+  'google_access_token', 'google_refresh_token', 'google_token_expires_at',
+  'google_connected_email', 'google_drive_token',
+  'meta_access_token', 'meta_token_expires_at',
+  'linkedin_access_token', 'linkedin_token_expires_at',
+  'twitter_access_token', 'twitter_access_secret',
+  'tiktok_access_token', 'tiktok_token_expires_at',
+  'facebook_page_id', 'facebook_page_access_token',
+  'instagram_business_account_id',
+  'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from',
+  'resend_api_key', 'resend_from_email',
+  'gmail_sender_email', 'gmail_client_id', 'gmail_client_secret', 'gmail_refresh_token',
+  'apollo_api_key', 'hunter_api_key',
+  'google_ads_developer_token', 'google_ads_client_id', 'google_ads_client_secret',
+  'google_ads_refresh_token', 'google_ads_customer_id', 'google_ads_connected',
+  'meta_ads_account_id', 'meta_ads_connected',
+  'linkedin_ads_access_token', 'linkedin_ads_account_id', 'linkedin_ads_connected',
+  'tiktok_advertiser_id', 'tiktok_ads_account_id', 'tiktok_ads_connected',
+  'google_analytics_property_id', 'google_search_console_url',
+  'wordpress_url', 'wordpress_user', 'wordpress_app_password',
+  'zapier_webhook_url', 'make_webhook_url', 'n8n_webhook_url',
+  'custom_api_url', 'custom_api_key', 'custom_api_headers',
+  'whatsapp_api_token', 'whatsapp_phone_id', 'whatsapp_verify_token',
+  'stripe_account_id', 'stripe_connected',
+]);
+
+/**
+ * Fields stored inside the settings JSONB column.
+ */
+const SETTINGS_FIELDS = new Set([
+  'years_in_business', 'business_model', 'average_ticket',
+  'repurchase_cycle', 'marketing_structure', 'sales_structure',
+  'geographic_market', 'owner_email',
+  'icp_description', 'target_audience', 'tone_of_voice',
+  'company_details', 'plan_features', 'custom_fields',
+  'connected_integrations',
+]);
+
+/**
+ * Flatten a company row: spread api_keys and settings JSONB into top-level keys
+ * so the frontend can read company.openai_api_key etc. transparently.
+ */
+function flattenCompany(row) {
+  if (!row) return row;
+  const { api_keys, settings, ...rest } = row;
+  return {
+    ...rest,
+    ...(api_keys || {}),
+    ...(settings || {}),
+  };
+}
+
+// GET /api/companies/current
 router.get('/current', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -13,92 +84,74 @@ router.get('/current', requireAuth, async (req, res) => {
       .eq('id', req.companyId)
       .single();
     if (error) throw error;
-    res.json(data);
+    res.json(flattenCompany(data));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PATCH /api/companies/current — update company settings
+// PATCH /api/companies/current
 router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
-    const allowedFields = [
-      // Company info
-      'name', 'website', 'industry', 'description', 'logo_url',
-      'services_description', 'value_propositions',
-      'years_in_business', 'business_model', 'average_ticket',
-      'repurchase_cycle', 'marketing_structure', 'sales_structure',
-      'geographic_market', 'owner_email',
-      // ICP and strategic data (JSONB columns)
-      'icp', 'briefing', 'company_details',
-      // Legacy fields
-      'icp_description', 'target_audience', 'tone_of_voice',
-      // AI settings
-      'openai_api_key', 'openai_model', 'anthropic_api_key', 'anthropic_model',
-      'ai_provider', 'ai_image_provider', 'ai_image_model', 'personal_agent_name', 'stability_api_key',
-      // OAuth app credentials
-      'google_client_id', 'google_client_secret',
-      'meta_app_id', 'meta_app_secret',
-      'linkedin_client_id', 'linkedin_client_secret',
-      'twitter_client_id', 'twitter_client_secret',
-      'tiktok_client_key', 'tiktok_client_secret',
-      // OAuth tokens
-      'google_access_token', 'google_refresh_token', 'google_token_expires_at',
-      'google_connected_email', 'google_drive_token',
-      'meta_access_token', 'meta_token_expires_at',
-      'linkedin_access_token', 'linkedin_token_expires_at',
-      'twitter_access_token', 'twitter_access_secret',
-      'tiktok_access_token', 'tiktok_token_expires_at',
-      'facebook_page_id', 'facebook_page_access_token',
-      'instagram_business_account_id',
-      // Email/SMTP
-      'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from',
-      'resend_api_key', 'resend_from_email',
-      'gmail_sender_email', 'gmail_client_id', 'gmail_client_secret', 'gmail_refresh_token',
-      // Ad platform keys
-      'apollo_api_key', 'hunter_api_key',
-      'google_ads_developer_token', 'google_ads_client_id', 'google_ads_client_secret',
-      'google_ads_refresh_token', 'google_ads_customer_id', 'google_ads_connected',
-      'meta_ads_account_id', 'meta_ads_connected',
-      'linkedin_ads_access_token', 'linkedin_ads_account_id', 'linkedin_ads_connected',
-      'tiktok_advertiser_id', 'tiktok_ads_account_id', 'tiktok_ads_connected',
-      // Analytics
-      'google_analytics_property_id', 'google_search_console_url',
-      // CMS
-      'wordpress_url', 'wordpress_user', 'wordpress_app_password',
-      // Automation webhooks
-      'zapier_webhook_url', 'make_webhook_url', 'n8n_webhook_url',
-      'custom_api_url', 'custom_api_key', 'custom_api_headers',
-      // Messaging
-      'whatsapp_api_token', 'whatsapp_phone_id', 'whatsapp_verify_token',
-      // Stripe
-      'stripe_account_id', 'stripe_connected',
-      // Status / misc
-      'connected_integrations', 'integration_status', 'plan_features', 'custom_fields',
-    ];
+    const directUpdates = {};
+    const apiKeyUpdates = {};
+    const settingsUpdates = {};
 
-    const updates = {};
-    for (const key of allowedFields) {
-      if (key in req.body) {
-        updates[key] = req.body[key];
+    for (const [key, value] of Object.entries(req.body)) {
+      if (DIRECT_COLUMNS.has(key)) {
+        directUpdates[key] = value;
+      } else if (API_KEY_FIELDS.has(key)) {
+        apiKeyUpdates[key] = value;
+      } else if (SETTINGS_FIELDS.has(key)) {
+        settingsUpdates[key] = value;
       }
+    }
+
+    const hasApiKeyUpdates = Object.keys(apiKeyUpdates).length > 0;
+    const hasSettingsUpdates = Object.keys(settingsUpdates).length > 0;
+
+    let existingApiKeys = {};
+    let existingSettings = {};
+
+    if (hasApiKeyUpdates || hasSettingsUpdates) {
+      const { data: existing } = await supabaseAdmin
+        .from('companies')
+        .select('api_keys, settings')
+        .eq('id', req.companyId)
+        .single();
+      existingApiKeys = existing?.api_keys || {};
+      existingSettings = existing?.settings || {};
+    }
+
+    const finalUpdates = { ...directUpdates };
+    if (hasApiKeyUpdates) finalUpdates.api_keys = { ...existingApiKeys, ...apiKeyUpdates };
+    if (hasSettingsUpdates) finalUpdates.settings = { ...existingSettings, ...settingsUpdates };
+
+    if (Object.keys(finalUpdates).length === 0) {
+      const { data: current } = await supabaseAdmin
+        .from('companies')
+        .select('*')
+        .eq('id', req.companyId)
+        .single();
+      return res.json(flattenCompany(current));
     }
 
     const { data, error } = await supabaseAdmin
       .from('companies')
-      .update(updates)
+      .update(finalUpdates)
       .eq('id', req.companyId)
       .select()
       .single();
 
     if (error) throw error;
-    res.json(data);
+    res.json(flattenCompany(data));
   } catch (err) {
+    console.error('[companies/patch]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/companies/subscription — current subscription
+// GET /api/companies/subscription
 router.get('/subscription', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -115,7 +168,7 @@ router.get('/subscription', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/companies/credits — credit balance
+// GET /api/companies/credits
 router.get('/credits', requireAuth, async (req, res) => {
   try {
     const { data: sub } = await supabaseAdmin
@@ -134,12 +187,11 @@ router.get('/credits', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/companies/deduct-credits — deduct AI credits
+// POST /api/companies/deduct-credits
 router.post('/deduct-credits', requireAuth, async (req, res) => {
   try {
     const { amount = 1, feature = 'ai_call' } = req.body;
 
-    // Get current subscription
     const { data: sub, error: subErr } = await supabaseAdmin
       .from('subscriptions')
       .select('id, ai_credits_total, ai_credits_used')
@@ -159,7 +211,6 @@ router.post('/deduct-credits', requireAuth, async (req, res) => {
       .update({ ai_credits_used: newUsed })
       .eq('id', sub.id);
 
-    // Log credit transaction
     await supabaseAdmin
       .from('credit_transactions')
       .insert({
