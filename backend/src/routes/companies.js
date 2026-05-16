@@ -34,8 +34,8 @@ router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
       // Legacy fields
       'icp_description', 'target_audience', 'tone_of_voice',
       // AI settings
-      'openai_api_key', 'openai_model', 'anthropic_api_key',
-      'ai_image_provider', 'ai_image_model', 'personal_agent_name', 'stability_api_key',
+      'openai_api_key', 'openai_model', 'anthropic_api_key', 'anthropic_model',
+      'ai_provider', 'ai_image_provider', 'ai_image_model', 'personal_agent_name', 'stability_api_key',
       // OAuth app credentials
       'google_client_id', 'google_client_secret',
       'meta_app_id', 'meta_app_secret',
