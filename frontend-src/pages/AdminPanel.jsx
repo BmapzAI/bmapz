@@ -28,18 +28,8 @@ const canEditUser = (actingRole, targetRole) => {
   return false;
 };
 
-// Log a change to AdminChangeLog
-const logChange = (user, action_type, target_type, target_id, target_name, details, description) =>
-  AdminChangeLog.create({
-    performed_by_email: user?.email,
-    performed_by_role: user?.role,
-    action_type,
-    target_type,
-    target_id,
-    target_name,
-    details,
-    description,
-  });
+// Log a change to AdminChangeLog (no-op stub — logged server-side)
+const logChange = () => Promise.resolve();
 
 function Badge({ color, children }) {
   const colors = {
@@ -516,7 +506,7 @@ export default function AdminPanel() {
 
   const { data: changeLogs = [] } = useQuery({
     queryKey: ['admin_changelog'],
-    queryFn: () => AdminChangeLog.list('-created_date', 200),
+    queryFn: () => api.get('/api/admin/change-logs').then(r => Array.isArray(r) ? r : []),
     enabled: isAdmin,
   });
 
