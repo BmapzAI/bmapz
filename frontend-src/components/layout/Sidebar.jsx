@@ -130,11 +130,11 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         {isCompanyAdmin && (
           <>
             <SectionLabel label="Admin" collapsed={collapsed} />
-            <NavItem path="/CompanyAdmin" icon={Building2} name="Company Admin" collapsed={collapsed} isActive={isActive('/CompanyAdmin')} />
+            <NavItem path="/CompanyAdminPanel" icon={Building2} name="Company Admin" collapsed={collapsed} isActive={isActive('/CompanyAdminPanel')} />
           </>
         )}
         {isAdmin && (
-          <NavItem path="/Admin" icon={Shield} name="System Admin" collapsed={collapsed} isActive={isActive('/Admin')} />
+          <NavItem path="/AdminPanel" icon={Shield} name="System Admin" collapsed={collapsed} isActive={isActive('/AdminPanel')} />
         )}
       </nav>
 
