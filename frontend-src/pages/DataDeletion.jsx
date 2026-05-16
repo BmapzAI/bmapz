@@ -94,7 +94,7 @@ export default function DataDeletion() {
               <textarea
               value={form.reason}
               onChange={(e) => setForm({ ...form, reason: e.target.value })}
-              placeholder="Please describe what data you`d like deleted and why..."
+              placeholder="Please describe what data you'd like deleted and why..."
               rows={4}
               className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-[#38b6ff]/50 focus:ring-1 focus:ring-[#38b6ff]/30 transition resize-none" />
             
@@ -109,7 +109,7 @@ export default function DataDeletion() {
             disabled={loading}
             className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-xl transition text-sm">
             
-              {loading ? `Submitting...' : 'Submit Deletion Request`}
+              {loading ? 'Submitting...' : 'Submit Deletion Request'}
             </button>
 
             <p className="text-xs text-gray-500 text-center flex items-center justify-center gap-1.5">
@@ -120,7 +120,7 @@ export default function DataDeletion() {
         }
 
         <p className="text-center text-xs text-gray-600">
-          Questions? Email{` '}
+          Questions? Email{' '}
           <a href="mailto:privacy@bmapz.com" className="text-[#38b6ff] hover:underline">contato@bmapz.com
 
           </a>

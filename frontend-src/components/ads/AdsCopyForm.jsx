@@ -25,7 +25,7 @@ export default function AdsCopyForm({ form, setForm, company, strategy, isGenera
       {strategy && (
         <div className="p-3 rounded-xl bg-[#38b6ff]/10 border border-[#38b6ff]/20 text-xs text-[#38b6ff] flex items-start gap-2">
           <Sparkles size={14} className="flex-shrink-0 mt-0.5" />
-          Strategy detected — copies will follow your strategy`s hooks and angles.
+          Strategy detected — copies will follow your strategy's hooks and angles.
         </div>
       )}
       <div>
@@ -42,8 +42,8 @@ export default function AdsCopyForm({ form, setForm, company, strategy, isGenera
         <Select value={form.angle} onValueChange={(v) => setForm(p => ({ ...p, angle: v }))}>
           <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white"><SelectValue /></SelectTrigger>
           <SelectContent className="bg-[#1a1a1a] border-white/10">
-            {[`curiosity', 'belief_breaking', 'pain_driven', 'authority', 'social_proof', 'bold_claim`].map(a => (
-              <SelectItem key={a} value={a} className="text-white capitalize">{a.replace(`_', ' `)}</SelectItem>
+            {['curiosity', 'belief_breaking', 'pain_driven', 'authority', 'social_proof', 'bold_claim'].map(a => (
+              <SelectItem key={a} value={a} className="text-white capitalize">{a.replace('_', ' ')}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -51,7 +51,7 @@ export default function AdsCopyForm({ form, setForm, company, strategy, isGenera
       <div>
         <label className="text-gray-400 text-sm">Product / Service</label>
         <Textarea value={form.product} onChange={(e) => setForm(p => ({ ...p, product: e.target.value }))}
-          placeholder="Describe what you`re advertising..." className="mt-1.5 bg-black/30 border-white/10 text-white min-h-[80px]" />
+          placeholder="Describe what you're advertising..." className="mt-1.5 bg-black/30 border-white/10 text-white min-h-[80px]" />
       </div>
       <div>
         <label className="text-gray-400 text-sm">Target Audience</label>

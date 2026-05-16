@@ -822,7 +822,7 @@ const deleteConnection = (fromNodeId, fromPort, toNodeId) => {
 
 const endConnection = (nodeId) => {
     if (connectionMode && connectionMode.nodeId !== nodeId) {
-      // Check if we`re reconnecting an existing connection
+      // Check if we're reconnecting an existing connection
       if (connectionMode.reconnecting) {
         const { connection, end } = connectionMode.reconnecting;
         
@@ -835,14 +835,14 @@ const endConnection = (nodeId) => {
         
         // Add new connection
         let newConnection;
-        if (end === `start`) {
-          // Reconnecting start point - change the `from`
+        if (end === 'start') {
+          // Reconnecting start point - change the 'from'
           newConnection = { 
-            from: { nodeId, port: `default` }, 
+            from: { nodeId, port: 'default' }, 
             to: connection.to 
           };
         } else {
-          // Reconnecting end point - change the `to`
+          // Reconnecting end point - change the 'to'
           newConnection = { 
             from: connection.from, 
             to: nodeId 
@@ -905,9 +905,9 @@ const endConnection = (nodeId) => {
         type: files[index].type
       }));
       setUploadedFiles([...uploadedFiles, ...newFiles]);
-      toast.success(\`\${files.length} file(s) uploaded\`);
+      toast.success(`${files.length} file(s) uploaded`);
     } catch (error) {
-      toast.error(`Failed to upload files`);
+      toast.error('Failed to upload files');
     } finally {
       setIsUploading(false);
     }
@@ -919,19 +919,19 @@ const endConnection = (nodeId) => {
 
   const saveAsTemplate = async (nodeId) => {
     const node = nodes.find(n => n.id === nodeId);
-    if (!node || node.type === `trigger' || node.type.startsWith('end`)) {
-      toast.error(`Cannot save this node type as template`);
+    if (!node || node.type === 'trigger' || node.type.startsWith('end')) {
+      toast.error('Cannot save this node type as template');
       return;
     }
 
-    const templateName = prompt(`Enter a name for this template:`, node.name);
+    const templateName = prompt('Enter a name for this template:', node.name);
     if (!templateName) return;
 
     try {
       await NodeTemplate.create({
         company_id: company.id,
         name: templateName,
-        description: \`Custom \${NODE_TYPES[node.type]?.name} template\`,
+        description: `Custom ${NODE_TYPES[node.type]?.name} template`,
         node_type: node.type,
         settings: {
           delay_days: node.delay_days,
@@ -944,10 +944,10 @@ const endConnection = (nodeId) => {
         },
         is_ai_generated: false,
       });
-      queryClient.invalidateQueries({ queryKey: [`nodeTemplates`] });
-      toast.success(`Template saved!`);
+      queryClient.invalidateQueries({ queryKey: ['nodeTemplates'] });
+      toast.success('Template saved!');
     } catch (error) {
-      toast.error(`Failed to save template`);
+      toast.error('Failed to save template');
     }
   };
 
@@ -957,7 +957,7 @@ const endConnection = (nodeId) => {
 
     const node = nodes.find(n => n.id === selectedNode);
     if (node.type !== template.node_type) {
-      toast.error(`Template type does not match node type`);
+      toast.error('Template type does not match node type');
       return;
     }
 
@@ -967,8 +967,8 @@ const endConnection = (nodeId) => {
     NodeTemplate.update(templateId, {
       usage_count: (template.usage_count || 0) + 1
     });
-    queryClient.invalidateQueries({ queryKey: [`nodeTemplates`] });
-    toast.success(`Template applied!`);
+    queryClient.invalidateQueries({ queryKey: ['nodeTemplates'] });
+    toast.success('Template applied!');
   };
 
   const generateContentWithAI = async (nodeType) => {
@@ -976,11 +976,11 @@ const endConnection = (nodeId) => {
     
     setIsGeneratingContent(true);
     try {
-      const prompt = nodeType === `email` 
-        ? \`Generate a professional sales outreach email. Return JSON with "subject" and "content" fields.\`
-        : nodeType === `whatsapp`
-        ? \`Generate a brief, friendly WhatsApp message for sales outreach. Return JSON with "content" field.\`
-        : \`Generate a professional LinkedIn message for sales outreach. Return JSON with "content" field.\`;
+      const prompt = nodeType === 'email' 
+        ? `Generate a professional sales outreach email. Return JSON with "subject" and "content" fields.`
+        : nodeType === 'whatsapp'
+        ? `Generate a brief, friendly WhatsApp message for sales outreach. Return JSON with "content" field.`
+        : `Generate a professional LinkedIn message for sales outreach. Return JSON with "content" field.`;
 
       const response = await InvokeLLM({
         prompt,
@@ -998,10 +998,10 @@ const endConnection = (nodeId) => {
           subject: response.subject,
           content: response.content,
         });
-        toast.success(`AI content generated!`);
+        toast.success('AI content generated!');
       }
     } catch (error) {
-      toast.error(`Failed to generate content`);
+      toast.error('Failed to generate content');
     } finally {
       setIsGeneratingContent(false);
     }
@@ -1014,7 +1014,7 @@ const endConnection = (nodeId) => {
     try {
       const fileUrls = uploadedFiles.map(f => f.url);
       const response = await InvokeLLM({
-        prompt: \`You are a workflow automation expert. Based on this description\${uploadedFiles.length > 0 ? ` and the attached files' : '`}, create a workflow structure: "\${aiPrompt}"
+        prompt: `You are a workflow automation expert. Based on this description${uploadedFiles.length > 0 ? ' and the attached files' : ''}, create a workflow structure: "${aiPrompt}"
         
         Return a JSON object with this structure:
         {
@@ -1030,7 +1030,7 @@ const endConnection = (nodeId) => {
         }
         
         Available node types: trigger, email, whatsapp, linkedin, wait, condition, schedule_meeting, end_success, end_failed
-        Position nodes vertically with 120px spacing and horizontally spread for branches.\`,
+        Position nodes vertically with 120px spacing and horizontally spread for branches.`,
         response_json_schema: {
           type: "object",
           properties: {
@@ -1080,20 +1080,20 @@ const endConnection = (nodeId) => {
           type: response.type || prev.type
         }));
         // Normalize legacy channel node types to send_message
-        const normalizedNodes = (response.nodes || [{ id: `trigger', type: 'trigger', name: 'Start`, x: 400, y: 50 }]).map(n => {
-          if ([`email', 'whatsapp', 'linkedin`].includes(n.type)) {
-            return { ...n, channel: n.type, type: `send_message` };
+        const normalizedNodes = (response.nodes || [{ id: 'trigger', type: 'trigger', name: 'Start', x: 400, y: 50 }]).map(n => {
+          if (['email', 'whatsapp', 'linkedin'].includes(n.type)) {
+            return { ...n, channel: n.type, type: 'send_message' };
           }
           return n;
         });
         setNodes(normalizedNodes);
         setConnections(response.connections || []);
-        setAiPrompt(``);
+        setAiPrompt('');
         setHasUnsavedChanges(true);
-        toast.success(`Workflow generated with AI!`);
+        toast.success('Workflow generated with AI!');
       }
     } catch (error) {
-      toast.error(`Failed to generate workflow`);
+      toast.error('Failed to generate workflow');
     } finally {
       setIsAIGenerating(false);
     }
@@ -1107,7 +1107,7 @@ const endConnection = (nodeId) => {
         ...formData,
         nodes,
         connections,
-        steps: nodes.filter(n => n.type !== `trigger' && !n.type.startsWith('end`)).map((n) => ({
+        steps: nodes.filter(n => n.type !== 'trigger' && !n.type.startsWith('end')).map((n) => ({
           id: n.id,
           type: n.type,
           name: n.name,
@@ -1129,17 +1129,17 @@ const endConnection = (nodeId) => {
     const handleBeforeUnload = (e) => {
       if (hasUnsavedChanges) {
         e.preventDefault();
-        e.returnValue = ``;
+        e.returnValue = '';
       }
     };
     
-    window.addEventListener(`beforeunload`, handleBeforeUnload);
-    return () => window.removeEventListener(`beforeunload`, handleBeforeUnload);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
   const handleClose = () => {
     if (hasUnsavedChanges) {
-      if (window.confirm(`You have unsaved changes. Are you sure you want to close?`)) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
         onClose();
       }
     } else {
@@ -1225,7 +1225,7 @@ const endConnection = (nodeId) => {
             disabled={createMutation.isPending || updateMutation.isPending}
             className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]"
           >
-            {createMutation.isPending || updateMutation.isPending ? `Saving...' : 'Save Workflow`}
+            {createMutation.isPending || updateMutation.isPending ? 'Saving...' : 'Save Workflow'}
           </Button>
         </div>
       </div>
@@ -1253,11 +1253,11 @@ const endConnection = (nodeId) => {
                 <button
                   key={key}
                   onClick={() => setActiveConnectionStyle(key)}
-                  className={\`p-2 rounded-lg border transition-all text-center
-                    \${activeConnectionStyle === key 
-                      ? `border-[#38b6ff] bg-[#38b6ff]/20 text-[#38b6ff]` 
-                      : `border-white/10 hover:border-white/20 text-gray-400 hover:text-white`
-                    }\`}
+                  className={`p-2 rounded-lg border transition-all text-center
+                    ${activeConnectionStyle === key 
+                      ? 'border-[#38b6ff] bg-[#38b6ff]/20 text-[#38b6ff]' 
+                      : 'border-white/10 hover:border-white/20 text-gray-400 hover:text-white'
+                    }`}
                   title={config.description}
                 >
                   <div className="text-xl mb-1">{config.icon}</div>
@@ -1270,7 +1270,7 @@ const endConnection = (nodeId) => {
           <h3 className="text-sm font-semibold text-gray-400 mb-3">ACTIONS</h3>
 <div className="space-y-2 mb-6">
             {Object.entries(NODE_TYPES)
-              .filter(([_, v]) => v.category === `action`)
+              .filter(([_, v]) => v.category === 'action')
               .filter(([key, config]) => !searchQuery || config.name.toLowerCase().includes(searchQuery.toLowerCase()))
               .map(([key, config]) => {
                 const Icon = config.icon;
@@ -1280,7 +1280,7 @@ const endConnection = (nodeId) => {
                     draggable
                     onDragStart={(e) => {
                       setDraggedNodeType(key);
-                      e.dataTransfer.effectAllowed = `copy`;
+                      e.dataTransfer.effectAllowed = 'copy';
                     }}
                     onDragEnd={() => setDraggedNodeType(null)}
                     onClick={() => addNode(key)}
@@ -1289,7 +1289,7 @@ const endConnection = (nodeId) => {
                     title="Click to add or drag to canvas"
                   >
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center" 
-                      style={{ backgroundColor: \`\${config.color}20\` }}>
+                      style={{ backgroundColor: `${config.color}20` }}>
                       <Icon size={16} style={{ color: config.color }} />
                     </div>
                     <span className="text-white text-sm">{config.name}</span>
@@ -1301,7 +1301,7 @@ const endConnection = (nodeId) => {
           <h3 className="text-sm font-semibold text-gray-400 mb-3">LOGIC</h3>
           <div className="space-y-2 mb-6">
             {Object.entries(NODE_TYPES)
-              .filter(([_, v]) => v.category === `delay' || v.category === 'logic`)
+              .filter(([_, v]) => v.category === 'delay' || v.category === 'logic')
               .filter(([key, config]) => !searchQuery || config.name.toLowerCase().includes(searchQuery.toLowerCase()))
               .map(([key, config]) => {
                 const Icon = config.icon;
@@ -1311,7 +1311,7 @@ const endConnection = (nodeId) => {
                     draggable
                     onDragStart={(e) => {
                       setDraggedNodeType(key);
-                      e.dataTransfer.effectAllowed = `copy`;
+                      e.dataTransfer.effectAllowed = 'copy';
                     }}
                     onDragEnd={() => setDraggedNodeType(null)}
                     onClick={() => addNode(key)}
@@ -1320,7 +1320,7 @@ const endConnection = (nodeId) => {
                     title="Click to add or drag to canvas"
                   >
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center" 
-                      style={{ backgroundColor: \`\${config.color}20\` }}>
+                      style={{ backgroundColor: `${config.color}20` }}>
                       <Icon size={16} style={{ color: config.color }} />
                     </div>
                     <span className="text-white text-sm">{config.name}</span>
@@ -1332,7 +1332,7 @@ const endConnection = (nodeId) => {
                   <h3 className="text-sm font-semibold text-gray-400 mb-3">END</h3>
           <div className="space-y-2">
             {Object.entries(NODE_TYPES)
-              .filter(([_, v]) => v.category === `end`)
+              .filter(([_, v]) => v.category === 'end')
               .filter(([key, config]) => !searchQuery || config.name.toLowerCase().includes(searchQuery.toLowerCase()))
               .map(([key, config]) => {
                 const Icon = config.icon;
@@ -1342,7 +1342,7 @@ const endConnection = (nodeId) => {
                     draggable
                     onDragStart={(e) => {
                       setDraggedNodeType(key);
-                      e.dataTransfer.effectAllowed = `copy`;
+                      e.dataTransfer.effectAllowed = 'copy';
                     }}
                     onDragEnd={() => setDraggedNodeType(null)}
                     onClick={() => addNode(key)}
@@ -1351,7 +1351,7 @@ const endConnection = (nodeId) => {
                     title="Click to add or drag to canvas"
                   >
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center" 
-                      style={{ backgroundColor: \`\${config.color}20\` }}>
+                      style={{ backgroundColor: `${config.color}20` }}>
                       <Icon size={16} style={{ color: config.color }} />
                     </div>
                     <span className="text-white text-sm">{config.name}</span>
@@ -1384,12 +1384,12 @@ const endConnection = (nodeId) => {
               />
               <label
                 htmlFor="workflow-file-upload"
-                className={\`flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg border border-white/10 
+                className={`flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg border border-white/10 
                   bg-white/5 hover:bg-white/10 transition-colors cursor-pointer text-xs text-gray-300
-                  \${isUploading ? `opacity-50 cursor-not-allowed' : '`}\`}
+                  ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <Plus size={14} />
-                {isUploading ? `Uploading...' : 'Add Images/Documents`}
+                {isUploading ? 'Uploading...' : 'Add Images/Documents'}
               </label>
             </div>
 
@@ -1400,7 +1400,7 @@ const endConnection = (nodeId) => {
                   <div key={index} className="flex items-center justify-between gap-2 px-2 py-1.5 
                     rounded bg-white/5 border border-white/10 text-xs">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {file.type.startsWith(`image/`) ? (
+                      {file.type.startsWith('image/') ? (
                         <img src={file.url} alt={file.name} className="w-6 h-6 rounded object-cover" />
                       ) : (
                         <div className="w-6 h-6 rounded bg-[#38b6ff]/20 flex items-center justify-center">
@@ -1446,8 +1446,8 @@ const endConnection = (nodeId) => {
           <div 
             className="absolute inset-0"
             style={{
-              backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-              backgroundSize: `20px 20px`,
+              backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px)',
+              backgroundSize: '20px 20px',
             }}
           />
 
@@ -1487,8 +1487,8 @@ const endConnection = (nodeId) => {
             <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full 
               bg-[#38b6ff]/20 border border-[#38b6ff]/50 text-[#38b6ff] text-sm z-30 animate-pulse">
               {connectionMode.reconnecting 
-                ? \`Click on a node to reconnect \${connectionMode.reconnecting.end === `start' ? 'start' : 'end`} point\`
-                : `Click on a node to connect`
+                ? `Click on a node to reconnect ${connectionMode.reconnecting.end === 'start' ? 'start' : 'end'} point`
+                : 'Click on a node to connect'
               }
             </div>
           )}
@@ -1502,7 +1502,7 @@ const endConnection = (nodeId) => {
           )}
 
 {/* SVG for connections */}
-<svg className="absolute inset-0 w-full h-full z-0" style={{ pointerEvents: `none` }}>
+<svg className="absolute inset-0 w-full h-full z-0" style={{ pointerEvents: 'none' }}>
             <defs>
               <marker
                 id="arrowhead"
@@ -1526,8 +1526,8 @@ const endConnection = (nodeId) => {
               </marker>
             </defs>
             <g 
-              style={{ pointerEvents: `all` }}
-              transform={\`scale(\${zoom}) translate(\${canvasOffset.x / zoom}, \${canvasOffset.y / zoom})\`}
+              style={{ pointerEvents: 'all' }}
+              transform={`scale(${zoom}) translate(${canvasOffset.x / zoom}, ${canvasOffset.y / zoom})`}
             >
 {connections.map((conn, i) => {
               const isSelected = selectedConnection && 
@@ -1541,7 +1541,7 @@ const endConnection = (nodeId) => {
                   to={conn.to} 
                   nodes={nodes}
                   type={conn.from.port}
-                  style={conn.style || `curved`}
+                  style={conn.style || 'curved'}
                   onDelete={deleteConnection}
                   isSelected={isSelected}
                   onSelect={(from, to) => {
@@ -1560,10 +1560,10 @@ const endConnection = (nodeId) => {
             ref={canvasRef}
             className="absolute inset-0 overflow-hidden"
             style={{ 
-              cursor: isPanning ? `grabbing' : draggedNodeType ? 'copy' : 'default`,
+              cursor: isPanning ? 'grabbing' : draggedNodeType ? 'copy' : 'default',
             }}
             onMouseDown={(e) => {
-              if (e.button === 0 && !e.target.closest(`.flowchart-node`) && !connectionMode) {
+              if (e.button === 0 && !e.target.closest('.flowchart-node') && !connectionMode) {
                 setIsPanning(true);
                 setPanStart({ x: e.clientX - canvasOffset.x, y: e.clientY - canvasOffset.y });
               }
@@ -1580,7 +1580,7 @@ const endConnection = (nodeId) => {
             onMouseLeave={() => setIsPanning(false)}
             onDragOver={(e) => {
               e.preventDefault();
-              e.dataTransfer.dropEffect = `copy`;
+              e.dataTransfer.dropEffect = 'copy';
             }}
             onDrop={(e) => {
               e.preventDefault();
@@ -1595,10 +1595,10 @@ const endConnection = (nodeId) => {
             onClick={() => { setSelectedNode(null); setSelectedConnection(null); setConnectionMode(null); }}
           >
             <div style={{ 
-              transform: \`scale(\${zoom}) translate(\${canvasOffset.x / zoom}px, \${canvasOffset.y / zoom}px)\`,
-              transformOrigin: `top left`,
-              width: `100%`,
-              height: `100%`
+              transform: `scale(${zoom}) translate(${canvasOffset.x / zoom}px, ${canvasOffset.y / zoom}px)`,
+              transformOrigin: 'top left',
+              width: '100%',
+              height: '100%'
             }}>
               {nodes.map(node => (
                 <FlowchartNode
@@ -1629,12 +1629,12 @@ const endConnection = (nodeId) => {
                 const targets = suggestion.target_nodes || [];
                 let changed = false;
 
-                if (suggestion.type === `timing`) {
+                if (suggestion.type === 'timing') {
                   const daysMatch = suggestion.implementation?.match(/(\d+)\s*day/i);
                   const hoursMatch = suggestion.implementation?.match(/(\d+)\s*hour/i);
                   const waitNodes = targets.length > 0 
-                    ? targets.map(id => nodes.find(n => n.id === id)).filter(n => n?.type === `wait`)
-                    : nodes.filter(n => n.type === `wait`);
+                    ? targets.map(id => nodes.find(n => n.id === id)).filter(n => n?.type === 'wait')
+                    : nodes.filter(n => n.type === 'wait');
                   waitNodes.forEach(node => {
                     if (node) {
                       updateNode(node.id, {
@@ -1644,15 +1644,15 @@ const endConnection = (nodeId) => {
                       changed = true;
                     }
                   });
-                } else if (suggestion.type === `logic`) {
+                } else if (suggestion.type === 'logic') {
                   const targetNode = targets.length > 0 
                     ? nodes.find(n => n.id === targets[0])
-                    : nodes.find(n => n.type === `send_message`);
+                    : nodes.find(n => n.type === 'send_message');
                   if (targetNode) {
-                    addNode(`condition`, { x: targetNode.x, y: targetNode.y + 150 });
+                    addNode('condition', { x: targetNode.x, y: targetNode.y + 150 });
                     changed = true;
                   }
-                } else if (suggestion.type === `sequence` && targets.length >= 2) {
+                } else if (suggestion.type === 'sequence' && targets.length >= 2) {
                   const n1 = nodes.find(n => n.id === targets[0]);
                   const n2 = nodes.find(n => n.id === targets[1]);
                   if (n1 && n2) {
@@ -1661,8 +1661,8 @@ const endConnection = (nodeId) => {
                     updateNode(n2.id, { y: tempY });
                     changed = true;
                   }
-                } else if (suggestion.type === `optimization`) {
-                  const optTargets = targets.length > 0 ? targets : nodes.filter(n => n.type === `send_message`).map(n => n.id);
+                } else if (suggestion.type === 'optimization') {
+                  const optTargets = targets.length > 0 ? targets : nodes.filter(n => n.type === 'send_message').map(n => n.id);
                   optTargets.forEach(nodeId => {
                     if (nodes.find(n => n.id === nodeId)) {
                       updateNode(nodeId, { ai_optimized: true });
@@ -1672,7 +1672,7 @@ const endConnection = (nodeId) => {
                 }
 
                 if (!changed) {
-                  toast.info(`This suggestion requires manual implementation. See the instructions below.`);
+                  toast.info('This suggestion requires manual implementation. See the instructions below.');
                 }
               }}
             />
@@ -1682,7 +1682,7 @@ const endConnection = (nodeId) => {
           {(selectedNodeData || selectedConnection) && (
             <div className="border-t border-white/10 p-4 overflow-y-auto max-h-[50vh]">
             <h3 className="text-lg font-semibold text-white mb-4">
-              {selectedNodeData ? `Node Properties' : 'Connection Properties`}
+              {selectedNodeData ? 'Node Properties' : 'Connection Properties'}
             </h3>
             
             {selectedConnection && (
@@ -1697,8 +1697,8 @@ const endConnection = (nodeId) => {
                           updateConnectionStyle(selectedConnection.from, selectedConnection.to, key);
                           setSelectedConnection({ ...selectedConnection });
                         }}
-                        className={\`p-3 rounded-lg border transition-all
-                          \${connections.find(c => 
+                        className={`p-3 rounded-lg border transition-all
+                          ${connections.find(c => 
                               c.from.nodeId === selectedConnection.from.nodeId && 
                               c.from.port === selectedConnection.from.port && 
                               c.to === selectedConnection.to
@@ -1706,10 +1706,10 @@ const endConnection = (nodeId) => {
                               c.from.nodeId === selectedConnection.from.nodeId && 
                               c.from.port === selectedConnection.from.port && 
                               c.to === selectedConnection.to
-                            )?.style && key === `curved`)
-                            ? `border-[#38b6ff] bg-[#38b6ff]/20 text-[#38b6ff]` 
-                            : `border-white/10 hover:border-white/20 text-gray-400 hover:text-white`
-                          }\`}
+                            )?.style && key === 'curved')
+                            ? 'border-[#38b6ff] bg-[#38b6ff]/20 text-[#38b6ff]' 
+                            : 'border-white/10 hover:border-white/20 text-gray-400 hover:text-white'
+                          }`}
                       >
                         <div className="text-2xl mb-1 text-center">{config.icon}</div>
                         <div className="text-xs text-center font-medium">{config.name}</div>
@@ -1768,7 +1768,7 @@ const endConnection = (nodeId) => {
                 />
               </div>
 
-              {selectedNodeData.type === `wait` && (
+              {selectedNodeData.type === 'wait' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-gray-400">Days</Label>
@@ -1794,11 +1794,11 @@ const endConnection = (nodeId) => {
                 </div>
               )}
 
-              {selectedNodeData.type === `condition` && (
+              {selectedNodeData.type === 'condition' && (
                 <div>
                   <Label className="text-gray-400">Condition</Label>
                   <Select 
-                    value={selectedNodeData.condition || ``} 
+                    value={selectedNodeData.condition || ''} 
                     onValueChange={(val) => updateNode(selectedNode, { condition: val })}
                   >
                     <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white">
@@ -1815,12 +1815,12 @@ const endConnection = (nodeId) => {
                 </div>
               )}
 
-{selectedNodeData.type === `send_message` && (
+{selectedNodeData.type === 'send_message' && (
                 <>
                   <div>
                     <Label className="text-gray-400">Channel</Label>
                     <Select 
-                      value={selectedNodeData.channel || `email`} 
+                      value={selectedNodeData.channel || 'email'} 
                       onValueChange={(val) => updateNode(selectedNode, { channel: val })}
                     >
                       <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white">
@@ -1838,7 +1838,7 @@ const endConnection = (nodeId) => {
                       <Label className="text-gray-400">Content</Label>
                       <Button
                         size="sm"
-                        onClick={() => generateContentWithAI(selectedNodeData.channel || `email`)}
+                        onClick={() => generateContentWithAI(selectedNodeData.channel || 'email')}
                         disabled={isGeneratingContent}
                         className="h-6 px-2 text-xs bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff]"
                       >
@@ -1852,16 +1852,16 @@ const endConnection = (nodeId) => {
                         )}
                       </Button>
                     </div>
-                    {selectedNodeData.channel === `email` && (
+                    {selectedNodeData.channel === 'email' && (
                       <Input
-                        value={selectedNodeData.subject || ``}
+                        value={selectedNodeData.subject || ''}
                         onChange={(e) => updateNode(selectedNode, { subject: e.target.value })}
                         placeholder="Email subject..."
                         className="mb-2 bg-black/30 border-white/10 text-white"
                       />
                     )}
                     <Textarea
-                      value={selectedNodeData.content || `'}
+                      value={selectedNodeData.content || ''}
                       onChange={(e) => updateNode(selectedNode, { content: e.target.value })}
                       placeholder="Message content..."
                       className="min-h-[100px] bg-black/30 border-white/10 text-white"

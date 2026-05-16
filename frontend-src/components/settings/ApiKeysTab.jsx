@@ -188,7 +188,7 @@ export default function ApiKeysTab({ company, onSave }) {
             <option value="gpt-4-turbo">gpt-4-turbo</option>
             <option value="gpt-3.5-turbo">gpt-3.5-turbo (Budget)</option>
           </select>
-          <p className="text-gray-600 text-xs mt-1">If no key is set, BMAPZ`s built-in AI is used (uses platform credits)</p>
+          <p className="text-gray-600 text-xs mt-1">If no key is set, BMAPZ's built-in AI is used (uses platform credits)</p>
         </div>
       </IntegrationSection>
 
@@ -204,12 +204,12 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#1877F2"
         icon="📣"
         status={statuses.meta_ads}
-        onTest={() => testIntegration(`meta_ads`)}
+        onTest={() => testIntegration('meta_ads')}
         isTesting={testing.meta_ads}
         testLabel="Test Connection"
       >
         <Button
-          onClick={() => connectMetaOAuth(`meta_ads`)}
+          onClick={() => connectMetaOAuth('meta_ads')}
           disabled={testing.oauth_meta_ads}
           className="w-full bg-[#1877F2] hover:bg-[#1877F2]/90 text-white gap-2 justify-center"
         >
@@ -227,17 +227,17 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#4285F4"
         icon="🔍"
         status={statuses.google_ads}
-        onTest={() => testIntegration(`google_ads`)}
+        onTest={() => testIntegration('google_ads')}
         isTesting={testing.google_ads}
         testLabel="Test Connection"
       >
-        <SecretInput label="Developer Token" value={keys.google_ads_developer_token} onChange={(v) => set(`google_ads_developer_token`, v)} placeholder="xxxx" hint="Google Ads → Tools → API Center → Developer Token" />
-        <SecretInput label="OAuth Client ID" value={keys.google_ads_client_id} onChange={(v) => set(`google_ads_client_id`, v)} placeholder="xxxx.apps.googleusercontent.com" hint="Google Cloud Console → OAuth 2.0 Credentials" />
-        <SecretInput label="OAuth Client Secret" value={keys.google_ads_client_secret} onChange={(v) => set(`google_ads_client_secret`, v)} placeholder="GOCSPX-..." />
-        <SecretInput label="OAuth Refresh Token" value={keys.google_ads_refresh_token} onChange={(v) => set(`google_ads_refresh_token`, v)} placeholder="1//0g..." hint="Generate via OAuth Playground with scope: https://www.googleapis.com/auth/adwords" />
+        <SecretInput label="Developer Token" value={keys.google_ads_developer_token} onChange={(v) => set('google_ads_developer_token', v)} placeholder="xxxx" hint="Google Ads → Tools → API Center → Developer Token" />
+        <SecretInput label="OAuth Client ID" value={keys.google_ads_client_id} onChange={(v) => set('google_ads_client_id', v)} placeholder="xxxx.apps.googleusercontent.com" hint="Google Cloud Console → OAuth 2.0 Credentials" />
+        <SecretInput label="OAuth Client Secret" value={keys.google_ads_client_secret} onChange={(v) => set('google_ads_client_secret', v)} placeholder="GOCSPX-..." />
+        <SecretInput label="OAuth Refresh Token" value={keys.google_ads_refresh_token} onChange={(v) => set('google_ads_refresh_token', v)} placeholder="1//0g..." hint="Generate via OAuth Playground with scope: https://www.googleapis.com/auth/adwords" />
         <div>
           <Label className="text-gray-400 text-xs">Customer ID</Label>
-          <Input value={keys.google_ads_customer_id || `'} onChange={(e) => set('google_ads_customer_id`, e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="123-456-7890" />
+          <Input value={keys.google_ads_customer_id || ''} onChange={(e) => set('google_ads_customer_id', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="123-456-7890" />
           <p className="text-gray-600 text-xs mt-1">Found at top right of your Google Ads account</p>
         </div>
       </IntegrationSection>
@@ -248,14 +248,14 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#010101"
         icon="🎵"
         status={statuses.tiktok_ads}
-        onTest={() => testIntegration(`tiktok_ads`)}
+        onTest={() => testIntegration('tiktok_ads')}
         isTesting={testing.tiktok_ads}
         testLabel="Test Connection"
       >
-        <SecretInput label="Access Token" value={keys.tiktok_access_token} onChange={(v) => set(`tiktok_access_token`, v)} placeholder="xxxx" hint="TikTok for Business → My Apps → Access Token" />
+        <SecretInput label="Access Token" value={keys.tiktok_access_token} onChange={(v) => set('tiktok_access_token', v)} placeholder="xxxx" hint="TikTok for Business → My Apps → Access Token" />
         <div>
           <Label className="text-gray-400 text-xs">Advertiser ID</Label>
-          <Input value={keys.tiktok_advertiser_id || `'} onChange={(e) => set('tiktok_advertiser_id`, e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="7xxxxxxxxx" />
+          <Input value={keys.tiktok_advertiser_id || ''} onChange={(e) => set('tiktok_advertiser_id', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="7xxxxxxxxx" />
           <p className="text-gray-600 text-xs mt-1">Found in TikTok Ads Manager → Account → Advertiser ID</p>
         </div>
       </IntegrationSection>
@@ -266,14 +266,14 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#0077b5"
         icon="💼"
         status={statuses.linkedin_ads}
-        onTest={() => testIntegration(`linkedin_ads`)}
+        onTest={() => testIntegration('linkedin_ads')}
         isTesting={testing.linkedin_ads}
         testLabel="Test Connection"
       >
-        <SecretInput label="Access Token" value={keys.linkedin_ads_access_token} onChange={(v) => set(`linkedin_ads_access_token`, v)} placeholder="AQV..." hint="LinkedIn Developer Portal → App → OAuth tokens with r_ads and r_ads_reporting scopes" />
+        <SecretInput label="Access Token" value={keys.linkedin_ads_access_token} onChange={(v) => set('linkedin_ads_access_token', v)} placeholder="AQV..." hint="LinkedIn Developer Portal → App → OAuth tokens with r_ads and r_ads_reporting scopes" />
         <div>
           <Label className="text-gray-400 text-xs">Ad Account ID</Label>
-          <Input value={keys.linkedin_ads_account_id || `'} onChange={(e) => set('linkedin_ads_account_id`, e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="123456789" />
+          <Input value={keys.linkedin_ads_account_id || ''} onChange={(e) => set('linkedin_ads_account_id', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="123456789" />
           <p className="text-gray-600 text-xs mt-1">LinkedIn Campaign Manager → Account Assets → Account ID</p>
         </div>
       </IntegrationSection>
@@ -288,13 +288,13 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#25D366"
         icon="💬"
         status={statuses.whatsapp}
-        onTest={() => testIntegration(`whatsapp`)}
+        onTest={() => testIntegration('whatsapp')}
         isTesting={testing.whatsapp}
         testLabel="Test Connection"
       >
-        <SecretInput label="Access Token" value={keys.whatsapp_api_token} onChange={(v) => set(`whatsapp_api_token`, v)} placeholder="EAAxxxxxxx" hint="From Meta for Developers → WhatsApp → API Setup" />
-        <SecretInput label="Phone Number ID" value={keys.whatsapp_phone_id} onChange={(v) => set(`whatsapp_phone_id`, v)} placeholder="1234567890" />
-        <SecretInput label="Webhook Verify Token (optional)" value={keys.whatsapp_verify_token} onChange={(v) => set(`whatsapp_verify_token`, v)} placeholder="Your custom verify token" />
+        <SecretInput label="Access Token" value={keys.whatsapp_api_token} onChange={(v) => set('whatsapp_api_token', v)} placeholder="EAAxxxxxxx" hint="From Meta for Developers → WhatsApp → API Setup" />
+        <SecretInput label="Phone Number ID" value={keys.whatsapp_phone_id} onChange={(v) => set('whatsapp_phone_id', v)} placeholder="1234567890" />
+        <SecretInput label="Webhook Verify Token (optional)" value={keys.whatsapp_verify_token} onChange={(v) => set('whatsapp_verify_token', v)} placeholder="Your custom verify token" />
       </IntegrationSection>
 
       {/* Gmail / Email */}
@@ -303,14 +303,14 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#EA4335"
         icon="📧"
         status={statuses.gmail}
-        onTest={() => testIntegration(`gmail`)}
+        onTest={() => testIntegration('gmail')}
         isTesting={testing.gmail}
         testLabel="Test OAuth"
       >
-        <SecretInput label="Gmail Sender Email" value={keys.gmail_sender_email} onChange={(v) => set(`gmail_sender_email`, v)} placeholder="you@gmail.com" hint="The Gmail account that sends emails" />
-        <SecretInput label="OAuth Client ID" value={keys.gmail_client_id} onChange={(v) => set(`gmail_client_id`, v)} placeholder="xxxx.apps.googleusercontent.com" hint="From Google Cloud Console → OAuth 2.0 Client" />
-        <SecretInput label="OAuth Client Secret" value={keys.gmail_client_secret} onChange={(v) => set(`gmail_client_secret`, v)} placeholder="GOCSPX-..." />
-        <SecretInput label="Refresh Token" value={keys.gmail_refresh_token} onChange={(v) => set(`gmail_refresh_token`, v)} placeholder="1//0g..." hint="Get via OAuth Playground (oauth2.googleapis.com)" />
+        <SecretInput label="Gmail Sender Email" value={keys.gmail_sender_email} onChange={(v) => set('gmail_sender_email', v)} placeholder="you@gmail.com" hint="The Gmail account that sends emails" />
+        <SecretInput label="OAuth Client ID" value={keys.gmail_client_id} onChange={(v) => set('gmail_client_id', v)} placeholder="xxxx.apps.googleusercontent.com" hint="From Google Cloud Console → OAuth 2.0 Client" />
+        <SecretInput label="OAuth Client Secret" value={keys.gmail_client_secret} onChange={(v) => set('gmail_client_secret', v)} placeholder="GOCSPX-..." />
+        <SecretInput label="Refresh Token" value={keys.gmail_refresh_token} onChange={(v) => set('gmail_refresh_token', v)} placeholder="1//0g..." hint="Get via OAuth Playground (oauth2.googleapis.com)" />
       </IntegrationSection>
 
       {/* WordPress */}
@@ -319,16 +319,16 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#21759B"
         icon="📝"
         status={statuses.wordpress}
-        onTest={() => testIntegration(`wordpress`)}
+        onTest={() => testIntegration('wordpress')}
         isTesting={testing.wordpress}
         testLabel="Test Connection"
       >
         <div>
           <Label className="text-gray-400 text-xs">WordPress Site URL</Label>
-          <Input value={keys.wordpress_url || `'} onChange={(e) => set('wordpress_url`, e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="https://yourblog.com" />
+          <Input value={keys.wordpress_url || ''} onChange={(e) => set('wordpress_url', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="https://yourblog.com" />
         </div>
-        <SecretInput label="WordPress Username" value={keys.wordpress_user} onChange={(v) => set(`wordpress_user`, v)} placeholder="your_username" />
-        <SecretInput label="Application Password" value={keys.wordpress_app_password} onChange={(v) => set(`wordpress_app_password`, v)} placeholder="xxxx xxxx xxxx xxxx" hint="WordPress Admin → Users → Profile → Application Passwords" />
+        <SecretInput label="WordPress Username" value={keys.wordpress_user} onChange={(v) => set('wordpress_user', v)} placeholder="your_username" />
+        <SecretInput label="Application Password" value={keys.wordpress_app_password} onChange={(v) => set('wordpress_app_password', v)} placeholder="xxxx xxxx xxxx xxxx" hint="WordPress Admin → Users → Profile → Application Passwords" />
       </IntegrationSection>
 
       {/* Zapier */}
@@ -337,13 +337,13 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#FF4A00"
         icon="⚡"
         status={statuses.zapier}
-        onTest={() => testIntegration(`zapier`)}
+        onTest={() => testIntegration('zapier')}
         isTesting={testing.zapier}
         testLabel="Send Test"
       >
         <div>
           <Label className="text-gray-400 text-xs">Zapier Webhook URL</Label>
-          <Input value={keys.zapier_webhook_url || `'} onChange={(e) => set('zapier_webhook_url`, e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://hooks.zapier.com/hooks/catch/..." />
+          <Input value={keys.zapier_webhook_url || ''} onChange={(e) => set('zapier_webhook_url', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://hooks.zapier.com/hooks/catch/..." />
           <p className="text-gray-600 text-xs mt-1">Create a Zap → Trigger: Webhooks by Zapier → Catch Hook</p>
         </div>
       </IntegrationSection>
@@ -354,13 +354,13 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#6D00CC"
         icon="🔧"
         status={statuses.make}
-        onTest={() => testIntegration(`make`)}
+        onTest={() => testIntegration('make')}
         isTesting={testing.make}
         testLabel="Send Test"
       >
         <div>
           <Label className="text-gray-400 text-xs">Make Webhook URL</Label>
-          <Input value={keys.make_webhook_url || `'} onChange={(e) => set('make_webhook_url`, e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://hook.eu1.make.com/..." />
+          <Input value={keys.make_webhook_url || ''} onChange={(e) => set('make_webhook_url', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://hook.eu1.make.com/..." />
           <p className="text-gray-600 text-xs mt-1">Make → Create Scenario → Add Webhooks → Custom webhook</p>
         </div>
       </IntegrationSection>
@@ -371,13 +371,13 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#EA4B71"
         icon="🔁"
         status={statuses.n8n}
-        onTest={() => testIntegration(`n8n`)}
+        onTest={() => testIntegration('n8n')}
         isTesting={testing.n8n}
         testLabel="Send Test"
       >
         <div>
           <Label className="text-gray-400 text-xs">n8n Webhook URL</Label>
-          <Input value={keys.n8n_webhook_url || `'} onChange={(e) => set('n8n_webhook_url`, e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://your-n8n.app/webhook/..." />
+          <Input value={keys.n8n_webhook_url || ''} onChange={(e) => set('n8n_webhook_url', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://your-n8n.app/webhook/..." />
         </div>
       </IntegrationSection>
 
@@ -387,18 +387,18 @@ export default function ApiKeysTab({ company, onSave }) {
         color="#38b6ff"
         icon="🌐"
         status={statuses.custom}
-        onTest={() => testIntegration(`custom`)}
+        onTest={() => testIntegration('custom')}
         isTesting={testing.custom}
         testLabel="Send Test"
       >
         <div>
           <Label className="text-gray-400 text-xs">Endpoint URL</Label>
-          <Input value={keys.custom_api_url || `'} onChange={(e) => set('custom_api_url`, e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://api.yourservice.com/webhook" />
+          <Input value={keys.custom_api_url || ''} onChange={(e) => set('custom_api_url', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://api.yourservice.com/webhook" />
         </div>
-        <SecretInput label="API Key / Bearer Token (optional)" value={keys.custom_api_key} onChange={(v) => set(`custom_api_key`, v)} placeholder="Bearer token or API key" />
+        <SecretInput label="API Key / Bearer Token (optional)" value={keys.custom_api_key} onChange={(v) => set('custom_api_key', v)} placeholder="Bearer token or API key" />
         <div>
           <Label className="text-gray-400 text-xs">Extra Headers (JSON, optional)</Label>
-          <Input value={keys.custom_api_headers || `'} onChange={(e) => set('custom_api_headers', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder='{"X-Custom-Header": "value"}' />
+          <Input value={keys.custom_api_headers || ''} onChange={(e) => set('custom_api_headers', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder='{"X-Custom-Header": "value"}' />
         </div>
       </IntegrationSection>
 

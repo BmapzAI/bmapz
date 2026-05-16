@@ -83,22 +83,22 @@ const DOCS = [
         content: `The Kanban view displays leads organized by funnel stage in a drag-and-drop board.
 
 - **Drag cards** between columns to move leads through stages
-- **Double-click** a card to open the lead`s full details page
+- **Double-click** a card to open the lead's full details page
 - **Right-click menu** provides quick actions: View Details, Send Message, Disqualify
 - **ICP Score** is shown on each card — green (70+), yellow (40-70), red (below 40)
-- **Advanced Filters** allow filtering by ICP score range, estimated value, decision maker status, and source\`,
-        contentPt: \`A visão Kanban exibe leads organizados por etapa do funil em um quadro de arrastar e soltar.
+- **Advanced Filters** allow filtering by ICP score range, estimated value, decision maker status, and source`,
+        contentPt: `A visão Kanban exibe leads organizados por etapa do funil em um quadro de arrastar e soltar.
 
 - **Arrastar cards** entre colunas move os leads pelas etapas
 - **Duplo clique** em um card abre a página de detalhes completos do lead
 - **Menu de contexto** oferece ações rápidas: Ver Detalhes, Enviar Mensagem, Desqualificar
 - **Score ICP** é exibido em cada card — verde (70+), amarelo (40-70), vermelho (abaixo de 40)
-- **Filtros Avançados** permitem filtrar por faixa de score ICP, valor estimado, decisor e origem\`,
+- **Filtros Avançados** permitem filtrar por faixa de score ICP, valor estimado, decisor e origem`,
       },
       {
-        title: `Lead Lists`,
-        titlePt: `Listas de Leads`,
-        content: \`Lead Lists help you organize leads into groups for targeted campaigns.
+        title: 'Lead Lists',
+        titlePt: 'Listas de Leads',
+        content: `Lead Lists help you organize leads into groups for targeted campaigns.
 
 **Static Lists:** Manually add or remove leads. Useful for handpicked prospect groups.
 
@@ -108,8 +108,8 @@ const DOCS = [
 - Source category (inbound, outbound, offline)
 - Lead status (active, qualified, etc.)
 
-Dynamic lists update automatically whenever new leads match the criteria.\`,
-        contentPt: \`As Listas de Leads ajudam a organizar leads em grupos para campanhas direcionadas.
+Dynamic lists update automatically whenever new leads match the criteria.`,
+        contentPt: `As Listas de Leads ajudam a organizar leads em grupos para campanhas direcionadas.
 
 **Listas Estáticas:** Adicione ou remova leads manualmente. Útil para grupos de prospecção selecionados.
 
@@ -119,21 +119,21 @@ Dynamic lists update automatically whenever new leads match the criteria.\`,
 - Categoria de origem (inbound, outbound, offline)
 - Status do lead (ativo, qualificado, etc.)
 
-As listas dinâmicas se atualizam automaticamente quando novos leads correspondem aos critérios.\`,
+As listas dinâmicas se atualizam automaticamente quando novos leads correspondem aos critérios.`,
       },
     ]
   },
   {
-    id: `workflows`,
+    id: 'workflows',
     icon: GitBranch,
-    color: `#38b6ff`,
-    title: `Workflows`,
-    titlePt: `Fluxos de Automação`,
+    color: '#38b6ff',
+    title: 'Workflows',
+    titlePt: 'Fluxos de Automação',
     sections: [
       {
-        title: `Workflow Builder`,
-        titlePt: `Construtor de Fluxos`,
-        content: \`The visual workflow builder lets you create automated outreach sequences.
+        title: 'Workflow Builder',
+        titlePt: 'Construtor de Fluxos',
+        content: `The visual workflow builder lets you create automated outreach sequences.
 
 **Node Types:**
 - **Send Message** — Email, WhatsApp, or LinkedIn message
@@ -153,8 +153,8 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 - Ctrl+Y or Ctrl+Shift+Z: Redo
 - Scroll wheel: Zoom in/out
 - Right-click drag: Pan the canvas
-- Shift+Click: Select multiple nodes\`,
-        contentPt: \`O construtor visual de fluxos permite criar sequências de prospecção automatizadas.
+- Shift+Click: Select multiple nodes`,
+        contentPt: `O construtor visual de fluxos permite criar sequências de prospecção automatizadas.
 
 **Tipos de Nós:**
 - **Enviar Mensagem** — E-mail, WhatsApp ou LinkedIn
@@ -174,21 +174,21 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 - Ctrl+Y ou Ctrl+Shift+Z: Refazer
 - Roda do mouse: Zoom in/out
 - Arrastar com botão direito: Mover canvas
-- Shift+Clique: Selecionar múltiplos nós\`,
+- Shift+Clique: Selecionar múltiplos nós`,
       },
     ]
   },
   {
-    id: `ai-chat`,
+    id: 'ai-chat',
     icon: Bot,
-    color: `#cb6ce6`,
-    title: `AI Chat`,
-    titlePt: `Chat com IA`,
+    color: '#cb6ce6',
+    title: 'AI Chat',
+    titlePt: 'Chat com IA',
     sections: [
       {
-        title: `AI Sales Agent`,
-        titlePt: `Agente de Vendas IA`,
-        content: \`The BMAPZ AI Sales Agent is your intelligent assistant for sales and marketing tasks.
+        title: 'AI Sales Agent',
+        titlePt: 'Agente de Vendas IA',
+        content: `The BMAPZ AI Sales Agent is your intelligent assistant for sales and marketing tasks.
 
 **What the AI can do:**
 - Research leads and analyze their digital presence
@@ -201,8 +201,8 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 
 **Voice Input:** Click the microphone button to record your message. The platform transcribes your speech in real time and places it in the text input.
 
-**File Uploads:** Attach files, images, or documents to provide additional context for the AI.\`,
-        contentPt: \`O Agente de Vendas IA do BMAPZ é seu assistente inteligente para tarefas de vendas e marketing.
+**File Uploads:** Attach files, images, or documents to provide additional context for the AI.`,
+        contentPt: `O Agente de Vendas IA do BMAPZ é seu assistente inteligente para tarefas de vendas e marketing.
 
 **O que a IA pode fazer:**
 - Pesquisar leads e analisar sua presença digital
@@ -215,21 +215,21 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 
 **Entrada de Voz:** Clique no botão de microfone para gravar sua mensagem. A plataforma transcreve sua fala em tempo real e coloca no campo de texto.
 
-**Upload de Arquivos:** Anexe arquivos, imagens ou documentos para fornecer contexto adicional à IA.\`,
+**Upload de Arquivos:** Anexe arquivos, imagens ou documentos para fornecer contexto adicional à IA.`,
       },
     ]
   },
   {
-    id: `social-media`,
+    id: 'social-media',
     icon: Globe,
-    color: `#00e7ff`,
-    title: `Social Media`,
-    titlePt: `Redes Sociais`,
+    color: '#00e7ff',
+    title: 'Social Media',
+    titlePt: 'Redes Sociais',
     sections: [
       {
-        title: `Content Planning`,
-        titlePt: `Planejamento de Conteúdo`,
-        content: \`The Social Media section helps you plan, create, and schedule posts across multiple platforms.
+        title: 'Content Planning',
+        titlePt: 'Planejamento de Conteúdo',
+        content: `The Social Media section helps you plan, create, and schedule posts across multiple platforms.
 
 **Tabs:**
 - **Planning** — Visual calendar with week, month, and year views. Click a day to see day view. Double-click a scheduled post to edit it.
@@ -242,8 +242,8 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 2. Select platforms, content type, and optionally add context
 3. Click "Generate with AI" — the AI creates platform-specific content, hashtags, and scheduling recommendations based on your company briefing and ICP
 
-**Scheduling:** Set a date and time for posts. Scheduled posts appear in the Planning calendar.\`,
-        contentPt: \`A seção de Redes Sociais ajuda a planejar, criar e agendar posts em múltiplas plataformas.
+**Scheduling:** Set a date and time for posts. Scheduled posts appear in the Planning calendar.`,
+        contentPt: `A seção de Redes Sociais ajuda a planejar, criar e agendar posts em múltiplas plataformas.
 
 **Abas:**
 - **Planejamento** — Calendário visual com visualizações de semana, mês e ano. Clique em um dia para ver a visão diária. Dê duplo clique em um post agendado para editá-lo.
@@ -256,21 +256,21 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 2. Selecione plataformas, tipo de conteúdo e opcionalmente adicione contexto
 3. Clique em "Gerar com IA" — a IA cria conteúdo específico por plataforma, hashtags e recomendações de agendamento com base no briefing e ICP da empresa
 
-**Agendamento:** Defina uma data e hora para os posts. Posts agendados aparecem no calendário de Planejamento.\`,
+**Agendamento:** Defina uma data e hora para os posts. Posts agendados aparecem no calendário de Planejamento.`,
       },
     ]
   },
   {
-    id: `blog`,
+    id: 'blog',
     icon: FileText,
-    color: `#10b981`,
-    title: `Blog`,
-    titlePt: `Blog`,
+    color: '#10b981',
+    title: 'Blog',
+    titlePt: 'Blog',
     sections: [
       {
-        title: `Creating Blog Posts`,
-        titlePt: `Criando Artigos de Blog`,
-        content: \`The Blog section helps you create SEO-optimized articles and publish them to your website.
+        title: 'Creating Blog Posts',
+        titlePt: 'Criando Artigos de Blog',
+        content: `The Blog section helps you create SEO-optimized articles and publish them to your website.
 
 **SEO Score:** Each post displays a color-coded SEO score:
 - 🟢 Green (80%+): Excellent — ready to publish
@@ -282,8 +282,8 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 **Publishing Options:**
 - WordPress: Connect via Settings → API Keys. Publishes directly to your WordPress site.
 - Custom API: Configure a webhook to publish to any CMS.
-- HTML Export: Download the post as an HTML file.\`,
-        contentPt: \`A seção de Blog ajuda a criar artigos otimizados para SEO e publicá-los no seu site.
+- HTML Export: Download the post as an HTML file.`,
+        contentPt: `A seção de Blog ajuda a criar artigos otimizados para SEO e publicá-los no seu site.
 
 **Score SEO:** Cada artigo exibe um score SEO com código de cor:
 - 🟢 Verde (80%+): Excelente — pronto para publicar
@@ -295,21 +295,21 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 **Opções de Publicação:**
 - WordPress: Conecte em Configurações → Chaves de API. Publica diretamente no seu site WordPress.
 - API Personalizada: Configure um webhook para publicar em qualquer CMS.
-- Exportar HTML: Baixe o artigo como arquivo HTML.\`,
+- Exportar HTML: Baixe o artigo como arquivo HTML.`,
       },
     ]
   },
   {
-    id: `brand-scan`,
+    id: 'brand-scan',
     icon: Search,
-    color: `#f59e0b`,
-    title: `Brand Scan`,
-    titlePt: `Brand Scan`,
+    color: '#f59e0b',
+    title: 'Brand Scan',
+    titlePt: 'Brand Scan',
     sections: [
       {
-        title: `What is Brand Scan?`,
-        titlePt: `O que é o Brand Scan?`,
-        content: \`Brand Scan is BMAPZ`s deep AI analysis of your brand and digital presence.
+        title: 'What is Brand Scan?',
+        titlePt: 'O que é o Brand Scan?',
+        content: `Brand Scan is BMAPZ's deep AI analysis of your brand and digital presence.
 
 **What it analyzes:**
 - Social media metrics (Instagram, LinkedIn, YouTube)

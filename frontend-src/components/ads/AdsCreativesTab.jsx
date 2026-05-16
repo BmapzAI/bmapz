@@ -416,7 +416,7 @@ Return a comprehensive creative brief in JSON.`,
               )}
               {designBrief.dont_list?.length > 0 && (
                 <div>
-                  <p className="text-red-400 text-xs font-medium mb-1">❌ Don`t</p>
+                  <p className="text-red-400 text-xs font-medium mb-1">❌ Don't</p>
                   {designBrief.dont_list.slice(0, 3).map((item, i) => <p key={i} className="text-gray-300 text-xs">• {item}</p>)}
                 </div>
               )}
@@ -430,7 +430,7 @@ Return a comprehensive creative brief in JSON.`,
               <Button onClick={generateAIImage} disabled={isGeneratingImage || !imagePrompt.trim()}
                 size="sm" className="bg-[#38b6ff] text-black gap-1.5 text-xs">
                 {isGeneratingImage ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                {isGeneratingImage ? `Generating...' : 'Generate Image`}
+                {isGeneratingImage ? 'Generating...' : 'Generate Image'}
               </Button>
               {generatedImage && (
                 <div className="flex gap-3 items-start mt-2">
@@ -455,7 +455,7 @@ Return a comprehensive creative brief in JSON.`,
         open={showGoogleDrivePicker}
         onClose={() => setShowGoogleDrivePicker(false)}
         onSelect={(image) => {
-          setUploadedCreatives(prev => [...prev, { url: image.url, name: image.name, type: `image/jpeg' }]);
+          setUploadedCreatives(prev => [...prev, { url: image.url, name: image.name, type: 'image/jpeg' }]);
           setShowGoogleDrivePicker(false);
         }}
       />

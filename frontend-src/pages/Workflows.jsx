@@ -38,7 +38,7 @@ export default function Workflows() {
     enabled: !!company?.id,
   });
 
-  // App-wide templates (accessible to all users — stored with company_id: "global")
+  // App-wide templates (accessible to all users â stored with company_id: "global")
   const { data: workflowTemplates = [] } = useQuery({
     queryKey: ['workflowTemplates'],
     queryFn: () => Workflow.filter({ is_template: true }),

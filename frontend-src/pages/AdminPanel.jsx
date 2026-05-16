@@ -21,10 +21,10 @@ const STATUS_OPTIONS = ['trialing', 'active', 'past_due', 'canceled', 'paused'];
 const ROLE_OPTIONS = ['owner', 'system_admin', 'company_admin', 'user'];
 const ROLE_LABELS = { owner: '👑 Owner', system_admin: '🛡 System Admin', company_admin: '🏢 Company Admin', user: '👤 User' };
 
-// Helper: can the acting user change the target user`s role?
+// Helper: can the acting user change the target user's role?
 const canEditUser = (actingRole, targetRole) => {
-  if (actingRole === `owner') return targetRole !== 'owner`; // owner can change anyone except other owners
-  if (actingRole === `system_admin') return targetRole !== 'owner' && targetRole !== 'system_admin`;
+  if (actingRole === 'owner') return targetRole !== 'owner'; // owner can change anyone except other owners
+  if (actingRole === 'system_admin') return targetRole !== 'owner' && targetRole !== 'system_admin';
   return false;
 };
 
@@ -43,15 +43,15 @@ const logChange = (user, action_type, target_type, target_id, target_name, detai
 
 function Badge({ color, children }) {
   const colors = {
-    green: `bg-green-500/20 text-green-400 border-green-500/30`,
-    yellow: `bg-yellow-500/20 text-yellow-400 border-yellow-500/30`,
-    red: `bg-red-500/20 text-red-400 border-red-500/30`,
-    blue: `bg-[#38b6ff]/20 text-[#38b6ff] border-[#38b6ff]/30`,
-    purple: `bg-[#cb6ce6]/20 text-[#cb6ce6] border-[#cb6ce6]/30`,
-    gray: `bg-white/10 text-gray-400 border-white/10`,
+    green: 'bg-green-500/20 text-green-400 border-green-500/30',
+    yellow: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+    red: 'bg-red-500/20 text-red-400 border-red-500/30',
+    blue: 'bg-[#38b6ff]/20 text-[#38b6ff] border-[#38b6ff]/30',
+    purple: 'bg-[#cb6ce6]/20 text-[#cb6ce6] border-[#cb6ce6]/30',
+    gray: 'bg-white/10 text-gray-400 border-white/10',
   };
   return (
-    <span className={\`px-2 py-0.5 rounded-full text-xs border font-medium \${colors[color] || colors.gray}\`}>
+    <span className={`px-2 py-0.5 rounded-full text-xs border font-medium ${colors[color] || colors.gray}`}>
       {children}
     </span>
   );
@@ -59,9 +59,9 @@ function Badge({ color, children }) {
 
 function EditSubscriptionModal({ subscription, company, onClose, onSave }) {
   const [form, setForm] = useState({
-    plan: subscription?.plan || `trial`,
-    status: subscription?.status || `trialing`,
-    billing_cycle: subscription?.billing_cycle || `monthly`,
+    plan: subscription?.plan || 'trial',
+    status: subscription?.status || 'trialing',
+    billing_cycle: subscription?.billing_cycle || 'monthly',
     ai_credits_total: subscription?.ai_credits_total ?? 8000,
     ai_credits_used: subscription?.ai_credits_used ?? 0,
     scan_tokens_total: subscription?.scan_tokens_total ?? 0,
@@ -82,7 +82,7 @@ function EditSubscriptionModal({ subscription, company, onClose, onSave }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard size={18} className="text-[#38b6ff]" />
-            {subscription?.id ? \`Edit Subscription — \${company?.name}\` : \`Create Subscription — \${company?.name}\`}
+            {subscription?.id ? `Edit Subscription — ${company?.name}` : `Create Subscription — ${company?.name}`}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -188,7 +188,7 @@ function EditSubscriptionModal({ subscription, company, onClose, onSave }) {
 function GrantCreditsModal({ subscription, company, onClose, onSave }) {
   const [credits, setCredits] = useState(1000);
   const [scanTokens, setScanTokens] = useState(0);
-  const [note, setNote] = useState(``);
+  const [note, setNote] = useState('');
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-sm">
@@ -223,7 +223,7 @@ function GrantCreditsModal({ subscription, company, onClose, onSave }) {
 }
 
 function CreateCompanyModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ name: `', industry: '', website: '', subscription_tier: 'basic` });
+  const [form, setForm] = useState({ name: '', industry: '', website: '', subscription_tier: 'basic' });
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-md">
@@ -261,9 +261,9 @@ function CreateCompanyModal({ onClose, onSave }) {
 }
 
 function InviteUserModal({ companies, onClose, onSave }) {
-  const [email, setEmail] = useState(``);
-  const [role, setRole] = useState(`user`);
-  const [companyId, setCompanyId] = useState(``);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('user');
+  const [companyId, setCompanyId] = useState('');
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-md">
@@ -313,10 +313,10 @@ function InviteUserModal({ companies, onClose, onSave }) {
 
 function EditCompanyModal({ company, onClose, onSave }) {
   const [form, setForm] = useState({
-    name: company?.name || ``,
-    industry: company?.industry || ``,
-    website: company?.website || ``,
-    services_description: company?.services_description || ``,
+    name: company?.name || '',
+    industry: company?.industry || '',
+    website: company?.website || '',
+    services_description: company?.services_description || '',
   });
   return (
     <Dialog open onOpenChange={onClose}>
@@ -381,7 +381,7 @@ function DeleteConfirmModal({ title, message, onClose, onConfirm }) {
 }
 
 function SetAccountModal({ user: targetUser, accounts, onClose, onSave }) {
-  const [accountId, setAccountId] = useState(targetUser?.account_id || ``);
+  const [accountId, setAccountId] = useState(targetUser?.account_id || '');
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-md">
@@ -416,8 +416,8 @@ function SetAccountModal({ user: targetUser, accounts, onClose, onSave }) {
 }
 
 function AssignUserToCompanyModal({ users, companies, onClose, onSave }) {
-  const [userId, setUserId] = useState(``);
-  const [companyId, setCompanyId] = useState(``);
+  const [userId, setUserId] = useState('');
+  const [companyId, setCompanyId] = useState('');
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-md">
@@ -445,7 +445,7 @@ function AssignUserToCompanyModal({ users, companies, onClose, onSave }) {
               </SelectContent>
             </Select>
           </div>
-          <p className="text-xs text-gray-500">This will update the user`s company_id association.</p>
+          <p className="text-xs text-gray-500">This will update the user's company_id association.</p>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
             <Button disabled={!userId || !companyId} onClick={() => onSave(userId, companyId)} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">

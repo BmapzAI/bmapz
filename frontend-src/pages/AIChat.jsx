@@ -168,15 +168,15 @@ export default function AIChat() {
       // Get company context for the system prompt
       const systemPrompt = `You are Bmapz AI, an expert B2B sales and marketing automation assistant.
 You help businesses with lead generation, outreach, social media, ads, SEO, and workflow automation.
-Be concise, actionable, and data-driven. Always personalize advice to the user`s context.\`;
+Be concise, actionable, and data-driven. Always personalize advice to the user's context.`;
 
-      const res = await api.post(`/api/ai/chat`, {
+      const res = await api.post('/api/ai/chat', {
         messages: historyMsgs,
         system: systemPrompt,
-        model: `gpt-4o-mini`,
+        model: 'gpt-4o-mini',
       });
 
-      const assistantMsg = { role: `assistant`, content: res.content, created_at: new Date().toISOString() };
+      const assistantMsg = { role: 'assistant', content: res.content, created_at: new Date().toISOString() };
       const finalMessages = [...updatedMessages, assistantMsg];
       setMessages(finalMessages);
 
@@ -186,24 +186,24 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
       setConversations(prev => prev.map(c => c.id === convo.id ? updatedConvo : c));
 
       // Auto-title on first exchange
-      if (updatedMessages.length === 1 && convo.metadata?.name === `New Conversation`) {
-        const title = content.slice(0, 60) + (content.length > 60 ? `...' : '`);
+      if (updatedMessages.length === 1 && convo.metadata?.name === 'New Conversation') {
+        const title = content.slice(0, 60) + (content.length > 60 ? '...' : '');
         updateConvoTitle(convo.id, title);
       }
 
       // Persist conversation to DB
-      api.post(`/api/ai/outputs`, {
-        type: `conversation`,
-        title: convo.metadata?.name || `Conversation`,
+      api.post('/api/ai/outputs', {
+        type: 'conversation',
+        title: convo.metadata?.name || 'Conversation',
         content: { messages: finalMessages },
         metadata: convo.metadata,
       }).catch(() => {});
     } catch (e) {
-      const msg = e?.message || ``;
-      if (msg.includes(`MISSING_API_KEY') || msg.toLowerCase().includes('api key`)) {
+      const msg = e?.message || '';
+      if (msg.includes('MISSING_API_KEY') || msg.toLowerCase().includes('api key')) {
         setNoApiKey(true);
       } else {
-        toast.error(msg || `Failed to get AI response`);
+        toast.error(msg || 'Failed to get AI response');
       }
       setMessages(updatedMessages.filter(m => m !== userMsg));
     } finally {
@@ -215,25 +215,25 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
     if ((!input.trim() && attachedFiles.length === 0) || isLoading) return;
     const content = input;
     const fileUrls = attachedFiles.map(f => f.url);
-    setInput(``);
+    setInput('');
     setAttachedFiles([]);
     setIsLoading(true);
     try {
       let convo = activeConversation;
       if (!convo) {
         const newId = crypto.randomUUID();
-        convo = { id: newId, messages: [], metadata: { name: `New Conversation`, pinned: false }, created_at: new Date().toISOString() };
+        convo = { id: newId, messages: [], metadata: { name: 'New Conversation', pinned: false }, created_at: new Date().toISOString() };
         setConversations(prev => [convo, ...prev]);
         setActiveConversation(convo);
       }
       await sendMessageToConvo(convo, content, fileUrls);
     } catch (e) {
-      toast.error(e?.message || `Failed to send message`);
+      toast.error(e?.message || 'Failed to send message');
     } finally { setIsLoading(false); }
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === `Enter` && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
   const handleQuickAction = (prompt) => {
@@ -243,18 +243,18 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
   const startRecording = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        toast.error(`Microphone not supported on this device/browser`);
+        toast.error('Microphone not supported on this device/browser');
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       // Determine supported mime type
-      const mimeType = MediaRecorder.isTypeSupported(`audio/webm;codecs=opus`) 
-        ? `audio/webm;codecs=opus` 
-        : MediaRecorder.isTypeSupported(`audio/webm`) 
-          ? `audio/webm` 
-          : MediaRecorder.isTypeSupported(`audio/mp4`) 
-            ? `audio/mp4` 
-            : `audio/ogg`;
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+        ? 'audio/webm;codecs=opus' 
+        : MediaRecorder.isTypeSupported('audio/webm') 
+          ? 'audio/webm' 
+          : MediaRecorder.isTypeSupported('audio/mp4') 
+            ? 'audio/mp4' 
+            : 'audio/ogg';
       
       const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
@@ -267,12 +267,12 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
       };
       mediaRecorder.start();
       setIsRecording(true);
-      toast.success(t(`recordAudio') || 'Recording... Click again to stop`);
+      toast.success(t('recordAudio') || 'Recording... Click again to stop');
     } catch (e) {
-      if (e.name === `NotAllowedError`) {
-        toast.error(t ? `Microphone access denied. Allow mic access and try again.' : 'Microphone access denied`);
+      if (e.name === 'NotAllowedError') {
+        toast.error(t ? 'Microphone access denied. Allow mic access and try again.' : 'Microphone access denied');
       } else {
-        toast.error(`Could not start recording: ` + e.message);
+        toast.error('Could not start recording: ' + e.message);
       }
     }
   };
@@ -290,7 +290,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
       // Convert blob to base64 and send as JSON
       const arrayBuffer = await audioBlob.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
-      let binary = ``;
+      let binary = '';
       for (let i = 0; i < uint8Array.length; i++) {
         binary += String.fromCharCode(uint8Array[i]);
       }
@@ -298,20 +298,20 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
 
       const transcript = await TranscribeAudio({
         audio_base64,
-        filename: `recording.webm`,
+        filename: 'recording.webm',
       });
 
       if (transcript) {
-        setInput(prev => prev ? \`\${prev} \${transcript}\` : transcript);
-        toast.success(`Audio transcribed!`);
+        setInput(prev => prev ? `${prev} ${transcript}` : transcript);
+        toast.success('Audio transcribed!');
       } else {
-        toast.error(`Transcription failed`);
+        toast.error('Transcription failed');
       }
     } catch (e) {
-      if ((e?.message || `').includes('MISSING_API_KEY') || (e?.message || '').toLowerCase().includes('api key`)) {
+      if ((e?.message || '').includes('MISSING_API_KEY') || (e?.message || '').toLowerCase().includes('api key')) {
         setNoApiKey(true);
       } else {
-        toast.error(`Failed to transcribe audio: ' + (e?.message || '`));
+        toast.error('Failed to transcribe audio: ' + (e?.message || ''));
       }
     } finally {
       setIsTranscribing(false);
@@ -329,23 +329,23 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
   const unpinnedConvos = sortedConversations.filter(c => !c.metadata?.pinned);
 
   const getFileIcon = (type) => {
-    if (type?.startsWith(`image/`)) return Image;
-    if (type?.startsWith(`video/`)) return Video;
+    if (type?.startsWith('image/')) return Image;
+    if (type?.startsWith('video/')) return Video;
     return File;
   };
 
   const ConvoItem = ({ convo }) => (
     <div
       onClick={() => loadConversation(convo)}
-      className={\`w-full text-left p-3 rounded-xl transition-all duration-200 group relative cursor-pointer
-        \${activeConversation?.id === convo.id ? `bg-[#38b6ff]/20 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white`}\`}
+      className={`w-full text-left p-3 rounded-xl transition-all duration-200 group relative cursor-pointer
+        ${activeConversation?.id === convo.id ? 'bg-[#38b6ff]/20 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
     >
       {editingConvoId === convo.id ? (
         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
           <Input
             value={editingConvoTitle}
             onChange={e => setEditingConvoTitle(e.target.value)}
-            onKeyDown={e => { if (e.key === `Enter') saveTitle(convo.id); if (e.key === 'Escape`) setEditingConvoId(null); }}
+            onKeyDown={e => { if (e.key === 'Enter') saveTitle(convo.id); if (e.key === 'Escape') setEditingConvoId(null); }}
             className="h-6 text-xs bg-black/30 border-white/20 text-white px-1 py-0"
             autoFocus
           />
@@ -354,7 +354,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
       ) : (
         <div className="flex items-center gap-2 pr-14">
           <MessageSquare size={14} className="flex-shrink-0" />
-          <span className="truncate text-sm">{convo.metadata?.name || `Conversation`}</span>
+          <span className="truncate text-sm">{convo.metadata?.name || 'Conversation'}</span>
           {convo.metadata?.pinned && <Pin size={10} className="flex-shrink-0 text-[#38b6ff]" />}
         </div>
       )}
@@ -387,7 +387,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
       )}
       <div className="flex flex-1 min-h-0">
       {/* Sidebar */}
-      <div className={\`\${showSidebar ? `w-72' : 'w-0`} transition-all duration-300 overflow-hidden border-r border-white/10 flex flex-col\`}>
+      <div className={`${showSidebar ? 'w-72' : 'w-0'} transition-all duration-300 overflow-hidden border-r border-white/10 flex flex-col`}>
         <div className="p-4 border-b border-white/10">
           <Button onClick={() => createNewConversation()} className="w-full bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
             <Plus size={18} /> New Conversation
@@ -422,7 +422,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
         {/* Header */}
         <div className="p-4 border-b border-white/10 flex items-center gap-4">
           <button onClick={() => setShowSidebar(!showSidebar)} className="p-2 rounded-lg hover:bg-white/10 text-gray-400">
-            <ChevronLeft size={20} className={\`transform transition-transform \${!showSidebar ? `rotate-180' : '`}\`} />
+            <ChevronLeft size={20} className={`transform transition-transform ${!showSidebar ? 'rotate-180' : ''}`} />
           </button>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3572b9] to-[#cb6ce6] flex items-center justify-center">
@@ -430,7 +430,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
             </div>
             <div>
               <h1 className="text-lg font-bold text-white">AI Sales & Marketing Agent</h1>
-              <p className="text-sm text-gray-400">Full platform access · {t(`intelligentProspecting`)}</p>
+              <p className="text-sm text-gray-400">Full platform access · {t('intelligentProspecting')}</p>
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -453,11 +453,11 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
               </p>
               {conversations.length === 0 && user ? (
                 <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-[#3572b9]/10 to-[#cb6ce6]/10 border border-[#38b6ff]/20 max-w-md text-center">
-                  <p className="text-white text-lg font-semibold mb-1">Hey {user?.full_name?.split(` ')[0] || 'there`}! 👋</p>
-                  <p className="text-gray-300 text-sm">Don`t know where to start? Ask me anything! How to use this platform, for example. 😉</p>
+                  <p className="text-white text-lg font-semibold mb-1">Hey {user?.full_name?.split(' ')[0] || 'there'}! 👋</p>
+                  <p className="text-gray-300 text-sm">Don't know where to start? Ask me anything! How to use this platform, for example. 😉</p>
                 </div>
               ) : (
-                <p className="text-[#38b6ff] text-sm text-center mb-8">Just tell me what you need. I`ll do it.</p>
+                <p className="text-[#38b6ff] text-sm text-center mb-8">Just tell me what you need. I'll do it.</p>
               )}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-w-3xl">
                 {QUICK_ACTIONS.map((action, i) => (
@@ -503,7 +503,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
             <div className="flex flex-wrap gap-2 mb-3">
               {attachedFiles.map((file, i) => {
                 const FileIcon = getFileIcon(file.type);
-                const isImg = file.type?.startsWith(`image/`);
+                const isImg = file.type?.startsWith('image/');
                 return (
                   <div key={i} className="relative flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
                     {isImg ? <img src={file.url} alt={file.name} className="w-8 h-8 rounded object-cover" /> : <FileIcon size={18} className="text-[#38b6ff]" />}
@@ -525,8 +525,8 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
               variant="outline"
               onClick={isRecording ? stopRecording : startRecording}
               disabled={isTranscribing}
-              title={isRecording ? `Stop recording' : 'Record audio`}
-              className={\`h-[52px] px-4 border-white/10 hover:bg-white/5 transition-colors \${isRecording ? `text-red-400 border-red-400/40 animate-pulse' : 'text-gray-400 hover:text-white`}\`}
+              title={isRecording ? 'Stop recording' : 'Record audio'}
+              className={`h-[52px] px-4 border-white/10 hover:bg-white/5 transition-colors ${isRecording ? 'text-red-400 border-red-400/40 animate-pulse' : 'text-gray-400 hover:text-white'}`}
             >
               {isTranscribing ? <Loader2 size={20} className="animate-spin" /> : isRecording ? <MicOff size={20} /> : <Mic size={20} />}
             </Button>
@@ -539,7 +539,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user`s
             <Button onClick={sendMessage} disabled={(!input.trim() && attachedFiles.length === 0) || isLoading}
               className="h-[52px] px-6 bg-gradient-to-r from-[#3572b9] to-[#38b6ff] hover:opacity-90 disabled:opacity-50 gap-2">
               {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-              {t(`send')}
+              {t('send')}
             </Button>
           </div>
         </div>

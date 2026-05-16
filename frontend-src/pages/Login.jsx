@@ -58,7 +58,7 @@ export default function Login() {
           <div>
             <h2 className="text-xl font-semibold text-white">Sign in to your account</h2>
             <p className="text-gray-400 text-sm mt-1">
-              Don't have an account?{' `}
+              Don't have an account?{' '}
               <Link to="/signup" className="text-[#38b6ff] hover:underline">Sign up</Link>
             </p>
           </div>
@@ -133,9 +133,9 @@ export default function Login() {
         </div>
 
         <p className="text-center text-xs text-gray-600">
-          By signing in you agree to our{` `}
+          By signing in you agree to our{' '}
           <Link to="/TermsOfService" className="hover:underline">Terms</Link>
-          {` '}and{' '}
+          {' '}and{' '}
           <Link to="/PrivacyPolicy" className="hover:underline">Privacy Policy</Link>
         </p>
       </div>

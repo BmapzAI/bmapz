@@ -20,13 +20,13 @@ const SOCIAL_PLATFORMS = [
   { value: 'tiktok',    label: '🎵 TikTok'    },
 ];
 
-// Only actions explicitly permitted by each platform`s API & developer policies.
+// Only actions explicitly permitted by each platform's API & developer policies.
 // Actions that require human-initiated sessions, are automation-banned, or risk
 // app suspension/blacklisting are intentionally omitted.
 const SOCIAL_ACTIONS = {
   // LinkedIn: connection requests & messaging via official API are permitted.
   // Automated follows, skill endorsements, and company follows violate
-  // LinkedIn`s User Agreement §8.2 (no scraping/automation of social gestures).
+  // LinkedIn's User Agreement §8.2 (no scraping/automation of social gestures).
   linkedin: [
     { value: 'connect',      label: 'Send Connection Request' },
     { value: 'send_message', label: 'Send LinkedIn DM (InMail)' },
@@ -60,8 +60,8 @@ const SOCIAL_ACTIONS = {
   ],
 
   // TikTok: only comment replies on your own videos are supported via the
-  // Display API. Automated follows, likes, and comments on others` content
-  // violate TikTok`s Developer Terms of Service §5 and risk app ban.
+  // Display API. Automated follows, likes, and comments on others' content
+  // violate TikTok's Developer Terms of Service §5 and risk app ban.
   tiktok: [
     { value: 'comment_reply', label: 'Reply to Comment on Your Video' },
   ],

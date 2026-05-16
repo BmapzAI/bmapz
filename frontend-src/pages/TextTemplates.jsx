@@ -31,7 +31,7 @@ const STARTER_TEMPLATES = [
 
 I came across {{company_name}} and noticed you might be facing [main pain point].
 
-We help [ICP description] achieve [transformation] — typically within [timeframe].
+We help [ICP description] achieve [transformation] â typically within [timeframe].
 
 Would it make sense to connect for a quick 15-min call this week?
 
@@ -40,7 +40,7 @@ Best,
   },
   {
     id: 'st2', name: 'WhatsApp - First Touch', channel: 'whatsapp', tone: 'friendly', category: 'initial_outreach',
-    content: `Hi {{first_name}}! I found your profile at {{company_name}} and thought you might find this relevant 👋
+    content: `Hi {{first_name}}! I found your profile at {{company_name}} and thought you might find this relevant ð
 
 We help [ICP] with [solution]. Quick question: is [pain point] a challenge for your team right now?
 
@@ -48,7 +48,7 @@ If yes, I`d love to share how we solved this for [similar company]. Worth a 10-m
   },
   {
     id: `st3', name: 'LinkedIn - Connection Request', channel: 'linkedin', tone: 'direct', category: 'initial_outreach`,
-    content: `Hi {{first_name}}, I work with [ICP role] at [ICP company type] helping them [transformation]. Your background at {{company_name}} caught my attention — would love to connect and share some insights that might be relevant.`,
+    content: `Hi {{first_name}}, I work with [ICP role] at [ICP company type] helping them [transformation]. Your background at {{company_name}} caught my attention â would love to connect and share some insights that might be relevant.`,
   },
   {
     id: `st4', name: 'Follow-Up #1 - Added Value', channel: 'email', tone: 'consultative', category: 'follow_up`,
@@ -69,7 +69,7 @@ Best,
     subject: `Should I stop reaching out?`,
     content: `Hi {{first_name}},
 
-I've reached out a couple of times without hearing back. I'll take the hint — but before I close your file, I wanted to ask directly:
+I've reached out a couple of times without hearing back. I'll take the hint â but before I close your file, I wanted to ask directly:
 
 Is [main pain point] not a priority for {{company_name}} right now? Or is the timing just off?
 
@@ -86,9 +86,9 @@ Thanks either way,
 Great talking earlier! As promised, here`s the scheduling link: [LINK]
 
 I`ll come prepared with:
-• A custom analysis of {{company_name}}`s current situation
-• 2-3 specific strategies we`d recommend
-• ROI estimates based on similar clients
+â¢ A custom analysis of {{company_name}}`s current situation
+â¢ 2-3 specific strategies we`d recommend
+â¢ ROI estimates based on similar clients
 
 Looking forward to it!
 
@@ -152,7 +152,7 @@ export default function TextTemplates() {
   };
 
   const handleDelete = async (t) => {
-    if (!confirm(\`Delete "${t.name}"?\`)) return;
+    if (!confirm(\`Delete "\${t.name}"?\`)) return;
     await MessageTemplate.delete(t.id);
     queryClient.invalidateQueries({ queryKey: [`messageTemplates`] });
     toast.success(`Template deleted`);
@@ -172,7 +172,7 @@ export default function TextTemplates() {
           <h1 className="text-3xl font-bold text-white tracking-tight" style={{ fontFamily: "`Bebas Neue', sans-serif", letterSpacing: '0.05em` }}>
             Messaging & Email
           </h1>
-          <p className="text-gray-400 mt-1">{templates.length} templates — WhatsApp, Email, LinkedIn</p>
+          <p className="text-gray-400 mt-1">{templates.length} templates â WhatsApp, Email, LinkedIn</p>
         </div>
         <Button onClick={openNew} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
           <Plus size={16} /> New Template
@@ -188,7 +188,7 @@ export default function TextTemplates() {
         <div className="flex gap-2">
           {[`all', 'email', 'whatsapp', 'linkedin`].map(ch => (
             <button key={ch} onClick={() => setFilterChannel(ch)}
-              className={\`px-3 py-1.5 rounded-lg text-sm transition-all ${filterChannel === ch ? `bg-[#38b6ff] text-black font-medium' : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white`}\`}>
+              className={\`px-3 py-1.5 rounded-lg text-sm transition-all \${filterChannel === ch ? `bg-[#38b6ff] text-black font-medium' : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white`}\`}>
               {ch === `all' ? 'All` : CHANNEL_CONFIG[ch]?.label}
             </button>
           ))}

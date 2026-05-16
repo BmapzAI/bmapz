@@ -478,7 +478,7 @@ export default function SEO() {
               <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
                 <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
                   <CheckCircle2 size={18} className="text-green-400" />
-                  What You`re Doing Well ✅
+                  What You're Doing Well ✅
                 </h3>
                 <div className="space-y-2">
                   {(results.strengths || []).map((s, i) => (
@@ -495,7 +495,7 @@ export default function SEO() {
                 </h3>
                 <div className="space-y-3">
                   {(results.quick_wins || []).map((w, i) => {
-                    const isObj = typeof w === `object`;
+                    const isObj = typeof w === 'object';
                     return (
                       <div key={i} className="p-3 rounded-xl bg-black/20 border border-white/5">
                         <div className="flex items-start gap-2 mb-1">
@@ -505,8 +505,8 @@ export default function SEO() {
                         {isObj && w.plain_english && <p className="text-gray-400 text-xs ml-5">{w.plain_english}</p>}
                         {isObj && (
                           <div className="flex gap-2 mt-2 ml-5">
-                            {w.difficulty && <span className={\`text-xs px-1.5 py-0.5 rounded-full \${difficultyColor[w.difficulty]}\`}>{w.difficulty} to do</span>}
-                            {w.expected_impact && <span className={\`text-xs font-medium \${impactColor[w.expected_impact]}\`}>{w.expected_impact} impact</span>}
+                            {w.difficulty && <span className={`text-xs px-1.5 py-0.5 rounded-full ${difficultyColor[w.difficulty]}`}>{w.difficulty} to do</span>}
+                            {w.expected_impact && <span className={`text-xs font-medium ${impactColor[w.expected_impact]}`}>{w.expected_impact} impact</span>}
                           </div>
                         )}
                       </div>
@@ -538,7 +538,7 @@ export default function SEO() {
                       const info = PLAIN_ENGLISH_LABELS[itemId];
                       const isExpanded = expandedChecklist === itemId;
                       return (
-                        <div key={itemId} className={\`rounded-xl overflow-hidden \${passed ? `bg-green-500/10' : 'bg-red-500/5`}\`}>
+                        <div key={itemId} className={`rounded-xl overflow-hidden ${passed ? 'bg-green-500/10' : 'bg-red-500/5'}`}>
                           <button
                             onClick={() => setExpandedChecklist(isExpanded ? null : itemId)}
                             className="w-full flex items-start gap-2 p-2.5 text-left"
@@ -548,7 +548,7 @@ export default function SEO() {
                             ) : (
                               <XCircle size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
                             )}
-                            <span className={\`text-sm flex-1 \${passed ? `text-green-300' : 'text-gray-300`}\`}>
+                            <span className={`text-sm flex-1 ${passed ? 'text-green-300' : 'text-gray-300'}`}>
                               {info?.label || itemId}
                             </span>
                             {!passed && (isExpanded ? <ChevronUp size={12} className="text-gray-500 flex-shrink-0 mt-0.5" /> : <ChevronDown size={12} className="text-gray-500 flex-shrink-0 mt-0.5" />)}
@@ -586,8 +586,8 @@ export default function SEO() {
             {savedAnalyses.map((a) => (
               <button key={a.id} onClick={() => loadSavedAnalysis(a)}
                 className="flex items-center gap-3 p-3 rounded-xl bg-black/30 border border-white/10 hover:border-[#38b6ff]/30 hover:bg-white/10 transition-all text-left group">
-                <div className={\`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 \${scoreBg(a.overall_score || 0)} bg-opacity-20\`}>
-                  <span className={scoreColor(a.overall_score || 0)}>{a.overall_score || `?'}</span>
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 ${scoreBg(a.overall_score || 0)} bg-opacity-20`}>
+                  <span className={scoreColor(a.overall_score || 0)}>{a.overall_score || '?'}</span>
                 </div>
                 <div className="min-w-0">
                   <p className="text-white text-xs font-medium truncate">{a.url}</p>
