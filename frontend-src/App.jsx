@@ -48,7 +48,6 @@ const AuthenticatedRoutes = () => (
         <MainPage />
       </LayoutWrapper>
     } />
-
     {Object.entries(Pages).map(([path, Page]) => (
       <Route key={path} path={`/${path}`} element={
         <LayoutWrapper currentPageName={path}>
@@ -56,7 +55,6 @@ const AuthenticatedRoutes = () => (
         </LayoutWrapper>
       } />
     ))}
-
     <Route path="/login" element={<Navigate to="/" replace />} />
     <Route path="/signup" element={<Navigate to="/" replace />} />
     <Route path="/auth/callback" element={<AuthCallback />} />
@@ -77,7 +75,6 @@ const AuthenticatedRoutes = () => (
 
 const AppRoutes = () => {
   const { isLoadingAuth, isAuthenticated, authError } = useAuth();
-
   if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-[#111]">
@@ -85,38 +82,21 @@ const AppRoutes = () => {
       </div>
     );
   }
-
-  if (authError?.type === 'unknown') {
-    return <UserNotRegisteredError />;
-  }
-
+  if (authError?.type === 'unknown') return <UserNotRegisteredError />;
   if (authError?.type === 'server_error') {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center gap-5 bg-[#111] text-white px-6 text-center">
         <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center text-3xl">⚠️</div>
         <div>
           <h2 className="text-xl font-semibold mb-2">Connection Error</h2>
-          <p className="text-gray-400 text-sm max-w-sm">
-            Unable to reach the server. Please check your connection and try again.
-          </p>
-          {authError.message && (
-            <p className="text-gray-600 text-xs mt-2 font-mono">{authError.message}</p>
-          )}
+          <p className="text-gray-400 text-sm max-w-sm">Unable to reach the server. Please check your connection and try again.</p>
+          {authError.message && <p className="text-gray-600 text-xs mt-2 font-mono">{authError.message}</p>}
         </div>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-6 py-2.5 rounded-xl bg-[#38b6ff] hover:bg-[#38b6ff]/90 text-white font-medium transition-colors"
-        >
-          Retry
-        </button>
+        <button onClick={() => window.location.reload()} className="px-6 py-2.5 rounded-xl bg-[#38b6ff] hover:bg-[#38b6ff]/90 text-white font-medium transition-colors">Retry</button>
       </div>
     );
   }
-
-  if (!isAuthenticated) {
-    return <PublicRoutes />;
-  }
-
+  if (!isAuthenticated) return <PublicRoutes />;
   return <AuthenticatedRoutes />;
 };
 
