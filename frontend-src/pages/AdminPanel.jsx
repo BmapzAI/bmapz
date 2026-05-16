@@ -14,12 +14,12 @@ import {
   History, Lock
 } from 'lucide-react';
 import { PLANS, formatBRL } from '@/lib/plans';
-import { Company } from '@/api/entities';
+import { Company, Subscription, User, BillingPurchase } from '@/api/entities';
 
 const PLAN_OPTIONS = ['trial', 'starter', 'growth', 'scale', 'enterprise'];
 const STATUS_OPTIONS = ['trialing', 'active', 'past_due', 'canceled', 'paused'];
 const ROLE_OPTIONS = ['owner', 'system_admin', 'company_admin', 'user'];
-const ROLE_LABELS = { owner: '👑 Owner', system_admin: '🛡 System Admin', company_admin: '🏢 Company Admin', user: '👤 User' };
+const ROLE_LABELS = { owner: 'ð Owner', system_admin: 'ð¡ System Admin', company_admin: 'ð¢ Company Admin', user: 'ð¤ User' };
 
 // Helper: can the acting user change the target user's role?
 const canEditUser = (actingRole, targetRole) => {
@@ -28,7 +28,7 @@ const canEditUser = (actingRole, targetRole) => {
   return false;
 };
 
-// Log a change to AdminChangeLog (no-op stub — logged server-side)
+// Log a change to AdminChangeLog (no-op stub â logged server-side)
 const logChange = () => Promise.resolve();
 
 function Badge({ color, children }) {
@@ -72,7 +72,7 @@ function EditSubscriptionModal({ subscription, company, onClose, onSave }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard size={18} className="text-[#38b6ff]" />
-            {subscription?.id ? `Edit Subscription — ${company?.name}` : `Create Subscription — ${company?.name}`}
+            {subscription?.id ? `Edit Subscription â ${company?.name}` : `Create Subscription â ${company?.name}`}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -184,7 +184,7 @@ function GrantCreditsModal({ subscription, company, onClose, onSave }) {
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Zap size={18} className="text-[#38b6ff]" /> Grant Credits — {company?.name}
+            <Zap size={18} className="text-[#38b6ff]" /> Grant Credits â {company?.name}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -273,9 +273,9 @@ function InviteUserModal({ companies, onClose, onSave }) {
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger className="bg-black/30 border-white/10 text-white h-9"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-[#1a1a1a] border-white/10">
-                <SelectItem value="user" className="text-white">👤 User</SelectItem>
-                <SelectItem value="company_admin" className="text-white">🏢 Company Admin</SelectItem>
-                <SelectItem value="system_admin" className="text-white">🛡 System Admin</SelectItem>
+                <SelectItem value="user" className="text-white">ð¤ User</SelectItem>
+                <SelectItem value="company_admin" className="text-white">ð¢ Company Admin</SelectItem>
+                <SelectItem value="system_admin" className="text-white">ð¡ System Admin</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -313,7 +313,7 @@ function EditCompanyModal({ company, onClose, onSave }) {
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Settings size={18} className="text-[#38b6ff]" /> Edit Company — {company?.name}
+            <Settings size={18} className="text-[#38b6ff]" /> Edit Company â {company?.name}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
@@ -377,7 +377,7 @@ function SetAccountModal({ user: targetUser, accounts, onClose, onSave }) {
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Crown size={18} className="text-[#f59e0b]" /> Set Account — {targetUser?.full_name || targetUser?.email}
+            <Crown size={18} className="text-[#f59e0b]" /> Set Account â {targetUser?.full_name || targetUser?.email}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
@@ -498,11 +498,7 @@ export default function AdminPanel() {
     enabled: isAdmin,
   });
 
-  const { data: allAccounts = [] } = useQuery({
-    queryKey: ['admin_accounts'],
-    queryFn: () => Account.list(),
-    enabled: isAdmin,
-  });
+  const allAccounts = [];
 
   const { data: changeLogs = [] } = useQuery({
     queryKey: ['admin_changelog'],
@@ -642,7 +638,7 @@ export default function AdminPanel() {
             style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
             <Shield size={28} className="text-[#38b6ff]" /> ADMIN PANEL
           </h1>
-          <p className="text-gray-400 mt-1">Full platform control — users, companies, subscriptions & billing</p>
+          <p className="text-gray-400 mt-1">Full platform control â users, companies, subscriptions & billing</p>
         </div>
         <div className="hidden md:flex gap-3">
           {[
@@ -712,7 +708,7 @@ export default function AdminPanel() {
           </TabsTrigger>
         </TabsList>
 
-        {/* ── COMPANIES ── */}
+        {/* ââ COMPANIES ââ */}
         <TabsContent value="companies" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredCompanies.map(c => {
@@ -723,19 +719,19 @@ export default function AdminPanel() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <p className="text-white font-semibold truncate">{c.name}</p>
-                      <p className="text-gray-500 text-xs">{c.industry || '—'}</p>
+                      <p className="text-gray-500 text-xs">{c.industry || 'â'}</p>
                     </div>
                     {sub ? <Badge color={planColor(sub.plan)}>{sub.plan}</Badge> : <Badge color="gray">no sub</Badge>}
                   </div>
                   <div className="space-y-1 text-xs text-gray-400">
-                    {c.website && <p>🌐 {c.website}</p>}
-                    <p>👥 {companyUsers.length} user(s)</p>
-                    <p>📅 {new Date(c.created_date).toLocaleDateString()}</p>
+                    {c.website && <p>ð {c.website}</p>}
+                    <p>ð¥ {companyUsers.length} user(s)</p>
+                    <p>ð {new Date(c.created_date).toLocaleDateString()}</p>
                     {sub && (
                       <>
-                        <p>💳 <span className={sub.status === 'active' ? 'text-green-400' : 'text-yellow-400'}>{sub.status}</span></p>
-                        <p>⚡ {Math.max(0, (sub.ai_credits_total || 0) - (sub.ai_credits_used || 0)).toLocaleString()} credits left</p>
-                        <p>🔍 {Math.max(0, (sub.scan_tokens_total || 0) - (sub.scan_tokens_used || 0))} scan tokens left</p>
+                        <p>ð³ <span className={sub.status === 'active' ? 'text-green-400' : 'text-yellow-400'}>{sub.status}</span></p>
+                        <p>â¡ {Math.max(0, (sub.ai_credits_total || 0) - (sub.ai_credits_used || 0)).toLocaleString()} credits left</p>
+                        <p>ð {Math.max(0, (sub.scan_tokens_total || 0) - (sub.scan_tokens_used || 0))} scan tokens left</p>
                       </>
                     )}
                   </div>
@@ -778,7 +774,7 @@ export default function AdminPanel() {
           </div>
         </TabsContent>
 
-        {/* ── SUBSCRIPTIONS ── */}
+        {/* ââ SUBSCRIPTIONS ââ */}
         <TabsContent value="subscriptions" className="space-y-3 mt-4">
           <div className="rounded-2xl border border-white/10 overflow-x-auto">
             <table className="w-full text-sm">
@@ -809,7 +805,7 @@ export default function AdminPanel() {
                       </td>
                       <td className="px-4 py-3">
                         <Badge color={planColor(sub.plan)}>{sub.plan}</Badge>
-                        {sub.founder_pricing && <span className="ml-1 text-[10px] text-[#f59e0b]">★ Founder</span>}
+                        {sub.founder_pricing && <span className="ml-1 text-[10px] text-[#f59e0b]">â Founder</span>}
                       </td>
                       <td className="px-4 py-3"><Badge color={statusColor(sub.status)}>{sub.status}</Badge></td>
                       <td className="px-4 py-3">
@@ -861,7 +857,7 @@ export default function AdminPanel() {
           )}
         </TabsContent>
 
-        {/* ── USERS & ROLES ── */}
+        {/* ââ USERS & ROLES ââ */}
         <TabsContent value="users" className="mt-4">
           <div className="rounded-2xl border border-white/10 overflow-x-auto">
             <table className="w-full text-sm">
@@ -888,13 +884,13 @@ export default function AdminPanel() {
                           <div className="w-7 h-7 rounded-full bg-[#38b6ff]/20 flex items-center justify-center text-[#38b6ff] text-xs font-bold flex-shrink-0">
                             {(u.full_name || u.email || '?')[0].toUpperCase()}
                           </div>
-                          <span className="text-white">{u.full_name || '—'}</span>
+                          <span className="text-white">{u.full_name || 'â'}</span>
                           {u.role === 'admin' && <Crown size={12} className="text-[#f59e0b]" />}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-gray-400 text-xs">{u.email}</td>
                       <td className="px-4 py-3 text-gray-400 text-xs">
-                         <p>{userCompany?.name || <span className="text-gray-600">—</span>}</p>
+                         <p>{userCompany?.name || <span className="text-gray-600">â</span>}</p>
                          {u.account_id && <p className="text-[#f59e0b]/60 text-[10px] font-mono truncate max-w-[100px]">{allAccounts.find(a => a.id === u.account_id)?.name || u.account_id}</p>}
                        </td>
                       <td className="px-4 py-3">
@@ -922,7 +918,7 @@ export default function AdminPanel() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-500 text-xs">
-                        {u.created_date ? new Date(u.created_date).toLocaleDateString() : '—'}
+                        {u.created_date ? new Date(u.created_date).toLocaleDateString() : 'â'}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -954,7 +950,7 @@ export default function AdminPanel() {
           </div>
         </TabsContent>
 
-        {/* ── BILLING APPROVALS ── */}
+        {/* ââ BILLING APPROVALS ââ */}
         <TabsContent value="billing" className="mt-4 space-y-3">
           <p className="text-gray-400 text-sm">Review and approve or reject pending purchases manually.</p>
           {allPurchases.length === 0 ? (
@@ -975,7 +971,7 @@ export default function AdminPanel() {
                         purchase.status === 'pending' ? 'bg-yellow-400' : 'bg-red-400'}`} />
                       <div>
                         <p className="text-white text-sm font-medium">{purchase.description || purchase.type}</p>
-                        <p className="text-gray-500 text-xs">{comp?.name || purchase.company_id} · {new Date(purchase.created_date).toLocaleDateString()}</p>
+                        <p className="text-gray-500 text-xs">{comp?.name || purchase.company_id} Â· {new Date(purchase.created_date).toLocaleDateString()}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -1005,7 +1001,7 @@ export default function AdminPanel() {
           )}
         </TabsContent>
 
-        {/* ── CHANGE LOG ── */}
+        {/* ââ CHANGE LOG ââ */}
         <TabsContent value="changelog" className="mt-4">
           <div className="rounded-xl border border-[#38b6ff]/20 bg-[#38b6ff]/5 p-3 mb-4 flex items-center gap-2">
             <Lock size={14} className="text-[#38b6ff]" />
@@ -1035,7 +1031,7 @@ export default function AdminPanel() {
                     <td className="px-4 py-3">
                       <p className="text-white text-xs">{log.performed_by_email}</p>
                       <Badge color={{ owner: 'purple', system_admin: 'yellow', company_admin: 'blue', user: 'gray' }[log.performed_by_role] || 'gray'}>
-                        {ROLE_LABELS[log.performed_by_role] || log.performed_by_role || '—'}
+                        {ROLE_LABELS[log.performed_by_role] || log.performed_by_role || 'â'}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
@@ -1045,7 +1041,7 @@ export default function AdminPanel() {
                       <p className="text-white text-xs">{log.target_name || log.target_id}</p>
                       <p className="text-gray-600 text-[10px]">{log.target_type}</p>
                     </td>
-                    <td className="px-4 py-3 text-gray-300 text-xs max-w-xs">{log.description || '—'}</td>
+                    <td className="px-4 py-3 text-gray-300 text-xs max-w-xs">{log.description || 'â'}</td>
                   </tr>
                 ))}
               </tbody>
