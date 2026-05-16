@@ -20,7 +20,7 @@ const DOCS = [
     sections: [
       {
         title: 'Platform Overview',
-        titlePt: 'Visão Geral da Plataforma',
+        titlePt: 'Vis�o Geral da Plataforma',
         content: `BMAPZ is an AI-powered sales and marketing automation platform designed to help businesses streamline their lead management, outreach, and content creation processes.
 
 **Key Features:**
@@ -31,42 +31,42 @@ const DOCS = [
 - Paid advertising strategy and copy generation
 - Brand Scan deep analysis
 - Real-time dashboards and analytics`,
-        contentPt: `BMAPZ é uma plataforma de automação de vendas e marketing movida por IA, projetada para ajudar empresas a otimizar a gestão de leads, prospecção e criação de conteúdo.
+        contentPt: `BMAPZ � uma plataforma de automa��o de vendas e marketing movida por IA, projetada para ajudar empresas a otimizar a gest�o de leads, prospec��o e cria��o de conte�do.
 
 **Principais Funcionalidades:**
-- Análise de leads e pontuação de ICP com IA
-- Fluxos de prospecção multicanal (E-mail, WhatsApp, LinkedIn)
-- Planejamento e agendamento de conteúdo para redes sociais
-- Geração de artigos de blog otimizados para SEO
-- Geração de estratégia e copy para anúncios pagos
-- Brand Scan — análise profunda de marca
-- Dashboards e análises em tempo real`,
+- An�lise de leads e pontua��o de ICP com IA
+- Fluxos de prospec��o multicanal (E-mail, WhatsApp, LinkedIn)
+- Planejamento e agendamento de conte�do para redes sociais
+- Gera��o de artigos de blog otimizados para SEO
+- Gera��o de estrat�gia e copy para an�ncios pagos
+- Brand Scan  an�lise profunda de marca
+- Dashboards e an�lises em tempo real`,
       },
       {
         title: 'Initial Setup',
-        titlePt: 'Configuração Inicial',
+        titlePt: 'Configura��o Inicial',
         content: `Follow these steps to get started with BMAPZ:
 
-1. **Company Profile** — Go to Settings → Company Profile. Fill in your company name, website, industry, services and value propositions. This information powers all AI features.
+1. **Company Profile**  Go to Settings � Company Profile. Fill in your company name, website, industry, services and value propositions. This information powers all AI features.
 
-2. **Define your ICP** — Go to Settings → ICP. Set your ideal customer industries, company sizes, locations, job titles and pain points. This enables lead scoring.
+2. **Define your ICP**  Go to Settings � ICP. Set your ideal customer industries, company sizes, locations, job titles and pain points. This enables lead scoring.
 
-3. **Strategic Briefing** — Go to Settings → Briefing. Fill in your objectives, marketing channels, budget, and tone of voice. The AI uses this for all content generation.
+3. **Strategic Briefing**  Go to Settings � Briefing. Fill in your objectives, marketing channels, budget, and tone of voice. The AI uses this for all content generation.
 
-4. **Add Leads** — Go to Sales → Add New Lead. Add leads manually or import via CSV from the Integrations page.
+4. **Add Leads**  Go to Sales � Add New Lead. Add leads manually or import via CSV from the Integrations page.
 
-5. **Create a Workflow** — Go to Workflows → New Workflow. Build an automated outreach sequence with the visual workflow builder.`,
-        contentPt: `Siga estas etapas para começar com o BMAPZ:
+5. **Create a Workflow**  Go to Workflows � New Workflow. Build an automated outreach sequence with the visual workflow builder.`,
+        contentPt: `Siga estas etapas para come�ar com o BMAPZ:
 
-1. **Perfil da Empresa** — Vá em Configurações → Perfil da Empresa. Preencha nome, site, setor, serviços e propostas de valor. Essas informações alimentam todas as funcionalidades de IA.
+1. **Perfil da Empresa**  V� em Configura��es � Perfil da Empresa. Preencha nome, site, setor, servi�os e propostas de valor. Essas informa��es alimentam todas as funcionalidades de IA.
 
-2. **Definir seu ICP** — Vá em Configurações → ICP. Configure o perfil de cliente ideal com setores, tamanhos de empresa, localização, cargos e desafios. Isso habilita a pontuação de leads.
+2. **Definir seu ICP**  V� em Configura��es � ICP. Configure o perfil de cliente ideal com setores, tamanhos de empresa, localiza��o, cargos e desafios. Isso habilita a pontua��o de leads.
 
-3. **Briefing Estratégico** — Vá em Configurações → Briefing. Preencha seus objetivos, canais de marketing, orçamento e tom de voz. A IA usa isso em toda a geração de conteúdo.
+3. **Briefing Estrat�gico**  V� em Configura��es � Briefing. Preencha seus objetivos, canais de marketing, or�amento e tom de voz. A IA usa isso em toda a gera��o de conte�do.
 
-4. **Adicionar Leads** — Vá em Vendas → Novo Lead. Adicione manualmente ou importe via CSV pela página de Integrações.
+4. **Adicionar Leads**  V� em Vendas � Novo Lead. Adicione manualmente ou importe via CSV pela p�gina de Integra��es.
 
-5. **Criar um Fluxo** — Vá em Fluxos → Novo Fluxo. Construa uma sequência de prospecção automatizada com o construtor visual.`,
+5. **Criar um Fluxo**  V� em Fluxos � Novo Fluxo. Construa uma sequ�ncia de prospec��o automatizada com o construtor visual.`,
       },
     ]
   },
@@ -75,25 +75,25 @@ const DOCS = [
     icon: Users,
     color: '#cb6ce6',
     title: 'Sales & Lead Management',
-    titlePt: 'Vendas e Gestão de Leads',
+    titlePt: 'Vendas e Gest�o de Leads',
     sections: [
       {
         title: 'Kanban View',
-        titlePt: 'Visão Kanban',
+        titlePt: 'Vis�o Kanban',
         content: `The Kanban view displays leads organized by funnel stage in a drag-and-drop board.
 
 - **Drag cards** between columns to move leads through stages
 - **Double-click** a card to open the lead's full details page
 - **Right-click menu** provides quick actions: View Details, Send Message, Disqualify
-- **ICP Score** is shown on each card — green (70+), yellow (40-70), red (below 40)
+- **ICP Score** is shown on each card  green (70+), yellow (40-70), red (below 40)
 - **Advanced Filters** allow filtering by ICP score range, estimated value, decision maker status, and source`,
-        contentPt: `A visão Kanban exibe leads organizados por etapa do funil em um quadro de arrastar e soltar.
+        contentPt: `A vis�o Kanban exibe leads organizados por etapa do funil em um quadro de arrastar e soltar.
 
 - **Arrastar cards** entre colunas move os leads pelas etapas
-- **Duplo clique** em um card abre a página de detalhes completos do lead
-- **Menu de contexto** oferece ações rápidas: Ver Detalhes, Enviar Mensagem, Desqualificar
-- **Score ICP** é exibido em cada card — verde (70+), amarelo (40-70), vermelho (abaixo de 40)
-- **Filtros Avançados** permitem filtrar por faixa de score ICP, valor estimado, decisor e origem`,
+- **Duplo clique** em um card abre a p�gina de detalhes completos do lead
+- **Menu de contexto** oferece a��es r�pidas: Ver Detalhes, Enviar Mensagem, Desqualificar
+- **Score ICP** � exibido em cada card  verde (70+), amarelo (40-70), vermelho (abaixo de 40)
+- **Filtros Avan�ados** permitem filtrar por faixa de score ICP, valor estimado, decisor e origem`,
       },
       {
         title: 'Lead Lists',
@@ -111,15 +111,15 @@ const DOCS = [
 Dynamic lists update automatically whenever new leads match the criteria.`,
         contentPt: `As Listas de Leads ajudam a organizar leads em grupos para campanhas direcionadas.
 
-**Listas Estáticas:** Adicione ou remova leads manualmente. Útil para grupos de prospecção selecionados.
+**Listas Est�ticas:** Adicione ou remova leads manualmente. �til para grupos de prospec��o selecionados.
 
-**Listas Dinâmicas:** Incluem automaticamente leads que correspondem aos seus critérios:
+**Listas Din�micas:** Incluem automaticamente leads que correspondem aos seus crit�rios:
 - Etapas do funil (ex: todos em MQL ou SQL)
-- Score mínimo de ICP
+- Score m�nimo de ICP
 - Categoria de origem (inbound, outbound, offline)
 - Status do lead (ativo, qualificado, etc.)
 
-As listas dinâmicas se atualizam automaticamente quando novos leads correspondem aos critérios.`,
+As listas din�micas se atualizam automaticamente quando novos leads correspondem aos crit�rios.`,
       },
     ]
   },
@@ -128,7 +128,7 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
     icon: GitBranch,
     color: '#38b6ff',
     title: 'Workflows',
-    titlePt: 'Fluxos de Automação',
+    titlePt: 'Fluxos de Automa��o',
     sections: [
       {
         title: 'Workflow Builder',
@@ -136,10 +136,10 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
         content: `The visual workflow builder lets you create automated outreach sequences.
 
 **Node Types:**
-- **Send Message** — Email, WhatsApp, or LinkedIn message
-- **Wait** — Pause for a set number of days/hours before the next step
-- **Condition** — Branch logic based on lead behavior (opened, replied, clicked, meeting booked)
-- **End Success / End Failed** — Terminal nodes marking workflow completion
+- **Send Message**  Email, WhatsApp, or LinkedIn message
+- **Wait**  Pause for a set number of days/hours before the next step
+- **Condition**  Branch logic based on lead behavior (opened, replied, clicked, meeting booked)
+- **End Success / End Failed**  Terminal nodes marking workflow completion
 
 **Building a Workflow:**
 1. Drag nodes from the left panel onto the canvas, or click them to add sequentially
@@ -154,18 +154,18 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 - Scroll wheel: Zoom in/out
 - Right-click drag: Pan the canvas
 - Shift+Click: Select multiple nodes`,
-        contentPt: `O construtor visual de fluxos permite criar sequências de prospecção automatizadas.
+        contentPt: `O construtor visual de fluxos permite criar sequ�ncias de prospec��o automatizadas.
 
-**Tipos de Nós:**
-- **Enviar Mensagem** — E-mail, WhatsApp ou LinkedIn
-- **Aguardar** — Pausa por dias/horas antes da próxima etapa
-- **Condição** — Lógica de ramificação baseada no comportamento do lead (abriu, respondeu, clicou, reunião agendada)
-- **Fim com Sucesso / Fim com Falha** — Nós terminais indicando a conclusão do fluxo
+**Tipos de N�s:**
+- **Enviar Mensagem**  E-mail, WhatsApp ou LinkedIn
+- **Aguardar**  Pausa por dias/horas antes da pr�xima etapa
+- **Condi��o**  L�gica de ramifica��o baseada no comportamento do lead (abriu, respondeu, clicou, reuni�o agendada)
+- **Fim com Sucesso / Fim com Falha**  N�s terminais indicando a conclus�o do fluxo
 
 **Construindo um Fluxo:**
-1. Arraste nós do painel esquerdo para o canvas, ou clique para adicionar sequencialmente
-2. Conecte os nós desenhando linhas entre eles
-3. Clique em um nó para configurá-lo no painel de Propriedades
+1. Arraste n�s do painel esquerdo para o canvas, ou clique para adicionar sequencialmente
+2. Conecte os n�s desenhando linhas entre eles
+3. Clique em um n� para configur�-lo no painel de Propriedades
 4. Use o Assistente de IA para gerar ou otimizar o fluxo
 5. Clique em Salvar ou Criar Fluxo quando terminar
 
@@ -173,8 +173,8 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 - Ctrl+Z: Desfazer
 - Ctrl+Y ou Ctrl+Shift+Z: Refazer
 - Roda do mouse: Zoom in/out
-- Arrastar com botão direito: Mover canvas
-- Shift+Clique: Selecionar múltiplos nós`,
+- Arrastar com bot�o direito: Mover canvas
+- Shift+Clique: Selecionar m�ltiplos n�s`,
       },
     ]
   },
@@ -202,20 +202,20 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 **Voice Input:** Click the microphone button to record your message. The platform transcribes your speech in real time and places it in the text input.
 
 **File Uploads:** Attach files, images, or documents to provide additional context for the AI.`,
-        contentPt: `O Agente de Vendas IA do BMAPZ é seu assistente inteligente para tarefas de vendas e marketing.
+        contentPt: `O Agente de Vendas IA do BMAPZ � seu assistente inteligente para tarefas de vendas e marketing.
 
 **O que a IA pode fazer:**
-- Pesquisar leads e analisar sua presença digital
-- Gerar mensagens de prospecção personalizadas (e-mail, WhatsApp, LinkedIn)
-- Criar estratégias de vendas e playbooks
+- Pesquisar leads e analisar sua presen�a digital
+- Gerar mensagens de prospec��o personalizadas (e-mail, WhatsApp, LinkedIn)
+- Criar estrat�gias de vendas e playbooks
 - Construir listas de prospectos completas
-- Gerar artigos de blog e conteúdo para redes sociais
-- Analisar desempenho de fluxos e sugerir otimizações
-- Responder perguntas sobre seu pipeline e métricas
+- Gerar artigos de blog e conte�do para redes sociais
+- Analisar desempenho de fluxos e sugerir otimiza��es
+- Responder perguntas sobre seu pipeline e m�tricas
 
-**Entrada de Voz:** Clique no botão de microfone para gravar sua mensagem. A plataforma transcreve sua fala em tempo real e coloca no campo de texto.
+**Entrada de Voz:** Clique no bot�o de microfone para gravar sua mensagem. A plataforma transcreve sua fala em tempo real e coloca no campo de texto.
 
-**Upload de Arquivos:** Anexe arquivos, imagens ou documentos para fornecer contexto adicional à IA.`,
+**Upload de Arquivos:** Anexe arquivos, imagens ou documentos para fornecer contexto adicional � IA.`,
       },
     ]
   },
@@ -228,35 +228,35 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
     sections: [
       {
         title: 'Content Planning',
-        titlePt: 'Planejamento de Conteúdo',
+        titlePt: 'Planejamento de Conte�do',
         content: `The Social Media section helps you plan, create, and schedule posts across multiple platforms.
 
 **Tabs:**
-- **Planning** — Visual calendar with week, month, and year views. Click a day to see day view. Double-click a scheduled post to edit it.
-- **Content** — Grid view of all posts with status filters. Create and edit posts here.
-- **Analytics** — Performance metrics for published posts.
-- **Posts** — View previously published posts and their performance. Includes boosting suggestions.
+- **Planning**  Visual calendar with week, month, and year views. Click a day to see day view. Double-click a scheduled post to edit it.
+- **Content**  Grid view of all posts with status filters. Create and edit posts here.
+- **Analytics**  Performance metrics for published posts.
+- **Posts**  View previously published posts and their performance. Includes boosting suggestions.
 
 **AI Content Generation:**
 1. In the Content tab, click "New Post"
 2. Select platforms, content type, and optionally add context
-3. Click "Generate with AI" — the AI creates platform-specific content, hashtags, and scheduling recommendations based on your company briefing and ICP
+3. Click "Generate with AI"  the AI creates platform-specific content, hashtags, and scheduling recommendations based on your company briefing and ICP
 
 **Scheduling:** Set a date and time for posts. Scheduled posts appear in the Planning calendar.`,
-        contentPt: `A seção de Redes Sociais ajuda a planejar, criar e agendar posts em múltiplas plataformas.
+        contentPt: `A se��o de Redes Sociais ajuda a planejar, criar e agendar posts em m�ltiplas plataformas.
 
 **Abas:**
-- **Planejamento** — Calendário visual com visualizações de semana, mês e ano. Clique em um dia para ver a visão diária. Dê duplo clique em um post agendado para editá-lo.
-- **Conteúdo** — Grade de todos os posts com filtros de status. Crie e edite posts aqui.
-- **Análise** — Métricas de desempenho dos posts publicados.
-- **Posts** — Veja posts já publicados e seu desempenho. Inclui sugestões de impulsionamento.
+- **Planejamento**  Calend�rio visual com visualiza��es de semana, m�s e ano. Clique em um dia para ver a vis�o di�ria. D� duplo clique em um post agendado para edit�-lo.
+- **Conte�do**  Grade de todos os posts com filtros de status. Crie e edite posts aqui.
+- **An�lise**  M�tricas de desempenho dos posts publicados.
+- **Posts**  Veja posts j� publicados e seu desempenho. Inclui sugest�es de impulsionamento.
 
-**Geração de Conteúdo com IA:**
-1. Na aba Conteúdo, clique em "Novo Post"
-2. Selecione plataformas, tipo de conteúdo e opcionalmente adicione contexto
-3. Clique em "Gerar com IA" — a IA cria conteúdo específico por plataforma, hashtags e recomendações de agendamento com base no briefing e ICP da empresa
+**Gera��o de Conte�do com IA:**
+1. Na aba Conte�do, clique em "Novo Post"
+2. Selecione plataformas, tipo de conte�do e opcionalmente adicione contexto
+3. Clique em "Gerar com IA"  a IA cria conte�do espec�fico por plataforma, hashtags e recomenda��es de agendamento com base no briefing e ICP da empresa
 
-**Agendamento:** Defina uma data e hora para os posts. Posts agendados aparecem no calendário de Planejamento.`,
+**Agendamento:** Defina uma data e hora para os posts. Posts agendados aparecem no calend�rio de Planejamento.`,
       },
     ]
   },
@@ -273,27 +273,27 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
         content: `The Blog section helps you create SEO-optimized articles and publish them to your website.
 
 **SEO Score:** Each post displays a color-coded SEO score:
-- 🟢 Green (80%+): Excellent — ready to publish
-- 🟡 Yellow (50-79%): Average — needs improvement
-- 🔴 Red (below 50%): Low — missing key SEO elements
+- = Green (80%+): Excellent  ready to publish
+- = Yellow (50-79%): Average  needs improvement
+- = Red (below 50%): Low  missing key SEO elements
 
 **AI Generation:** Add a title and at least one keyword, then click "AI Generate" to automatically create a complete SEO-optimized article.
 
 **Publishing Options:**
-- WordPress: Connect via Settings → API Keys. Publishes directly to your WordPress site.
+- WordPress: Connect via Settings � API Keys. Publishes directly to your WordPress site.
 - Custom API: Configure a webhook to publish to any CMS.
 - HTML Export: Download the post as an HTML file.`,
-        contentPt: `A seção de Blog ajuda a criar artigos otimizados para SEO e publicá-los no seu site.
+        contentPt: `A se��o de Blog ajuda a criar artigos otimizados para SEO e public�-los no seu site.
 
-**Score SEO:** Cada artigo exibe um score SEO com código de cor:
-- 🟢 Verde (80%+): Excelente — pronto para publicar
-- 🟡 Amarelo (50-79%): Médio — precisa de melhoria
-- 🔴 Vermelho (abaixo de 50%): Baixo — faltam elementos essenciais de SEO
+**Score SEO:** Cada artigo exibe um score SEO com c�digo de cor:
+- = Verde (80%+): Excelente  pronto para publicar
+- = Amarelo (50-79%): M�dio  precisa de melhoria
+- = Vermelho (abaixo de 50%): Baixo  faltam elementos essenciais de SEO
 
-**Geração com IA:** Adicione um título e pelo menos uma palavra-chave, depois clique em "Gerar com IA" para criar automaticamente um artigo completo otimizado para SEO.
+**Gera��o com IA:** Adicione um t�tulo e pelo menos uma palavra-chave, depois clique em "Gerar com IA" para criar automaticamente um artigo completo otimizado para SEO.
 
-**Opções de Publicação:**
-- WordPress: Conecte em Configurações → Chaves de API. Publica diretamente no seu site WordPress.
+**Op��es de Publica��o:**
+- WordPress: Conecte em Configura��es � Chaves de API. Publica diretamente no seu site WordPress.
 - API Personalizada: Configure um webhook para publicar em qualquer CMS.
 - Exportar HTML: Baixe o artigo como arquivo HTML.`,
       },
@@ -308,7 +308,7 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
     sections: [
       {
         title: 'What is Brand Scan?',
-        titlePt: 'O que é o Brand Scan?',
+        titlePt: 'O que � o Brand Scan?',
         content: `Brand Scan is BMAPZ's deep AI analysis of your brand and digital presence.
 
 **What it analyzes:**
@@ -324,15 +324,15 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 - Competitor analysis
 
 **How to generate:**
-1. Go to Brand Scan → New Scan
+1. Go to Brand Scan � New Scan
 2. Fill in your company name, website, social media profiles, industry, target audience and competitors
-3. Click "Generate Brand Scan" — the AI researches current market conditions and generates a complete report
+3. Click "Generate Brand Scan"  the AI researches current market conditions and generates a complete report
 
 **Important:** We recommend updating your Brand Scan every 30 days to keep strategies aligned with market changes.`,
-        contentPt: `O Brand Scan é a análise profunda de IA da BMAPZ sobre sua marca e presença digital.
+        contentPt: `O Brand Scan � a an�lise profunda de IA da BMAPZ sobre sua marca e presen�a digital.
 
 **O que analisa:**
-- Métricas de redes sociais (Instagram, LinkedIn, YouTube)
+- M�tricas de redes sociais (Instagram, LinkedIn, YouTube)
 - Oportunidades de palavras-chave SEO
 - Psicologia das cores e identidade visual
 - Buyer personas
@@ -340,15 +340,15 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 - Segmentos de mercado
 - Atributos e pilares da marca
 - Perfil de Cliente Ideal (ICP)
-- Estratégia go-to-market
-- Análise de concorrentes
+- Estrat�gia go-to-market
+- An�lise de concorrentes
 
 **Como gerar:**
-1. Vá em Brand Scan → Novo Scan
-2. Preencha nome da empresa, site, redes sociais, setor, público-alvo e concorrentes
-3. Clique em "Gerar Brand Scan" — a IA pesquisa as condições atuais do mercado e gera um relatório completo
+1. V� em Brand Scan � Novo Scan
+2. Preencha nome da empresa, site, redes sociais, setor, p�blico-alvo e concorrentes
+3. Clique em "Gerar Brand Scan"  a IA pesquisa as condi��es atuais do mercado e gera um relat�rio completo
 
-**Importante:** Recomendamos atualizar o Brand Scan a cada 30 dias para manter as estratégias alinhadas com as mudanças do mercado.`,
+**Importante:** Recomendamos atualizar o Brand Scan a cada 30 dias para manter as estrat�gias alinhadas com as mudan�as do mercado.`,
       },
     ]
   },
@@ -357,22 +357,22 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
     icon: Zap,
     color: '#3572b9',
     title: 'Integrations',
-    titlePt: 'Integrações',
+    titlePt: 'Integra��es',
     sections: [
       {
         title: 'Connecting Integrations',
-        titlePt: 'Conectando Integrações',
+        titlePt: 'Conectando Integra��es',
         content: `BMAPZ supports 50+ integrations across ad platforms, social media, email marketing, CRM, and more.
 
 **To connect an integration:**
 1. Go to Integrations
 2. Search or browse by category
 3. Click an integration card
-4. Follow the setup instructions — each integration shows exactly where to get your API key or token
+4. Follow the setup instructions  each integration shows exactly where to get your API key or token
 
 **Integration Status:**
-- ✅ Green "Connected": Verified active connection
-- 🔵 "Configured": API key entered but not yet verified
+-  Green "Connected": Verified active connection
+- = "Configured": API key entered but not yet verified
 - Empty: Not yet set up
 
 **Key Integrations:**
@@ -381,24 +381,24 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
 - **Gmail**: Email outreach
 - **WordPress**: Direct blog publishing
 - **Zapier / Make / n8n**: Connect to 1000s of other apps via webhooks`,
-        contentPt: `O BMAPZ suporta mais de 50 integrações em plataformas de anúncios, redes sociais, e-mail marketing, CRM e muito mais.
+        contentPt: `O BMAPZ suporta mais de 50 integra��es em plataformas de an�ncios, redes sociais, e-mail marketing, CRM e muito mais.
 
-**Para conectar uma integração:**
-1. Vá em Integrações
+**Para conectar uma integra��o:**
+1. V� em Integra��es
 2. Pesquise ou navegue por categoria
-3. Clique em um card de integração
-4. Siga as instruções de configuração — cada integração mostra exatamente onde obter a chave de API ou token
+3. Clique em um card de integra��o
+4. Siga as instru��es de configura��o  cada integra��o mostra exatamente onde obter a chave de API ou token
 
-**Status da Integração:**
-- ✅ Verde "Conectado": Conexão ativa verificada
-- 🔵 "Configurado": Chave de API inserida, mas ainda não verificada
-- Vazio: Ainda não configurado
+**Status da Integra��o:**
+-  Verde "Conectado": Conex�o ativa verificada
+- = "Configurado": Chave de API inserida, mas ainda n�o verificada
+- Vazio: Ainda n�o configurado
 
-**Integrações Principais:**
-- **Meta Ads / Google Ads / TikTok Ads**: Dados de performance de anúncios
+**Integra��es Principais:**
+- **Meta Ads / Google Ads / TikTok Ads**: Dados de performance de an�ncios
 - **WhatsApp Business**: Enviar mensagens via API
-- **Gmail**: Prospecção por e-mail
-- **WordPress**: Publicação direta de blog
+- **Gmail**: Prospec��o por e-mail
+- **WordPress**: Publica��o direta de blog
 - **Zapier / Make / n8n**: Conecte a milhares de outros aplicativos via webhooks`,
       },
     ]
@@ -408,33 +408,33 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
     icon: Settings,
     color: '#9ca3af',
     title: 'Settings',
-    titlePt: 'Configurações',
+    titlePt: 'Configura��es',
     sections: [
       {
         title: 'Settings Overview',
-        titlePt: 'Visão Geral das Configurações',
+        titlePt: 'Vis�o Geral das Configura��es',
         content: `Settings is the foundation of your BMAPZ experience. The AI uses your settings data for all personalized outputs.
 
 **Tabs:**
-- **General** — Language (English / PT-BR) and theme (dark / light mode)
-- **Company Profile** — Basic company info, services, value propositions
-- **Briefing** — Marketing strategy, objectives, channels, budget, tone of voice, content preferences
-- **ICP** — Ideal Customer Profile criteria for lead scoring
-- **API Keys** — Connect third-party services (WhatsApp, Gmail, WordPress, Meta, Google Ads, etc.)
-- **Subscription** — View and manage your plan
+- **General**  Language (English / PT-BR) and theme (dark / light mode)
+- **Company Profile**  Basic company info, services, value propositions
+- **Briefing**  Marketing strategy, objectives, channels, budget, tone of voice, content preferences
+- **ICP**  Ideal Customer Profile criteria for lead scoring
+- **API Keys**  Connect third-party services (WhatsApp, Gmail, WordPress, Meta, Google Ads, etc.)
+- **Subscription**  View and manage your plan
 
 **Pro Tip:** The more complete your Briefing and ICP settings are, the more accurate and personalized the AI outputs will be.`,
-        contentPt: `As Configurações são a base da sua experiência com o BMAPZ. A IA usa seus dados de configuração para todos os outputs personalizados.
+        contentPt: `As Configura��es s�o a base da sua experi�ncia com o BMAPZ. A IA usa seus dados de configura��o para todos os outputs personalizados.
 
 **Abas:**
-- **Geral** — Idioma (Inglês / PT-BR) e tema (modo escuro / claro)
-- **Perfil da Empresa** — Informações básicas, serviços, propostas de valor
-- **Briefing** — Estratégia de marketing, objetivos, canais, orçamento, tom de voz, preferências de conteúdo
-- **ICP** — Critérios do Perfil de Cliente Ideal para pontuação de leads
-- **Chaves de API** — Conectar serviços de terceiros (WhatsApp, Gmail, WordPress, Meta, Google Ads, etc.)
-- **Assinatura** — Visualizar e gerenciar seu plano
+- **Geral**  Idioma (Ingl�s / PT-BR) e tema (modo escuro / claro)
+- **Perfil da Empresa**  Informa��es b�sicas, servi�os, propostas de valor
+- **Briefing**  Estrat�gia de marketing, objetivos, canais, or�amento, tom de voz, prefer�ncias de conte�do
+- **ICP**  Crit�rios do Perfil de Cliente Ideal para pontua��o de leads
+- **Chaves de API**  Conectar servi�os de terceiros (WhatsApp, Gmail, WordPress, Meta, Google Ads, etc.)
+- **Assinatura**  Visualizar e gerenciar seu plano
 
-**Dica:** Quanto mais completos forem seus dados de Briefing e ICP, mais precisos e personalizados serão os outputs da IA.`,
+**Dica:** Quanto mais completos forem seus dados de Briefing e ICP, mais precisos e personalizados ser�o os outputs da IA.`,
       },
     ]
   },
@@ -472,7 +472,7 @@ export default function Documentation() {
           </Link>
           <div>
             <h1 className="text-3xl font-bold text-white" style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
-              {isPt ? 'Documentação' : 'Documentation'}
+              {isPt ? 'Documenta��o' : 'Documentation'}
             </h1>
             <p className="text-gray-400 text-sm mt-0.5">
               {isPt ? 'Guia completo de funcionalidades da plataforma BMAPZ' : 'Complete BMAPZ platform features guide'}
@@ -486,7 +486,7 @@ export default function Documentation() {
           <Input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder={isPt ? 'Buscar na documentação...' : 'Search documentation...'}
+            placeholder={isPt ? 'Buscar na documenta��o...' : 'Search documentation...'}
             className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-gray-500"
           />
         </div>
@@ -528,7 +528,7 @@ export default function Documentation() {
               onClick={() => setActiveDoc(null)}
               className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-6 transition-colors"
             >
-              <ArrowLeft size={14} /> {isPt ? 'Voltar à documentação' : 'Back to docs'}
+              <ArrowLeft size={14} /> {isPt ? 'Voltar � documenta��o' : 'Back to docs'}
             </button>
 
             {(() => {
