@@ -10,15 +10,15 @@ const TUTORIALS = [
   {
     category: 'Getting Started',
     categoryPt: 'Primeiros Passos',
-    icon: '🚀',
+    icon: '=',
     color: '#38b6ff',
     videos: [
       {
         id: 1,
-        title: 'Welcome to BMAPZ — Platform Overview',
-        titlePt: 'Bem-vindo ao BMAPZ — Visão Geral da Plataforma',
+        title: 'Welcome to BMAPZ  Platform Overview',
+        titlePt: 'Bem-vindo ao BMAPZ  Vis�o Geral da Plataforma',
         description: 'A complete walkthrough of the BMAPZ platform: sidebar navigation, key sections, and how everything connects.',
-        descriptionPt: 'Um tour completo pela plataforma BMAPZ: navegação pelo menu, seções principais e como tudo se conecta.',
+        descriptionPt: 'Um tour completo pela plataforma BMAPZ: navega��o pelo menu, se��es principais e como tudo se conecta.',
         duration: '8 min',
         level: 'Beginner',
         levelPt: 'Iniciante',
@@ -31,9 +31,9 @@ const TUTORIALS = [
           'Invite your first team member',
         ],
         stepsPt: [
-          'Faça login e explore o painel principal',
-          'Navegue pelas seções do menu lateral',
-          'Configure seu perfil de empresa nas Configurações',
+          'Fa�a login e explore o painel principal',
+          'Navegue pelas se��es do menu lateral',
+          'Configure seu perfil de empresa nas Configura��es',
           'Convide seu primeiro membro da equipe',
         ],
       },
@@ -42,22 +42,22 @@ const TUTORIALS = [
         title: 'Setting Up Your Company Profile & ICP',
         titlePt: 'Configurando Perfil da Empresa e ICP',
         description: 'How to fill in your company details, define your Ideal Customer Profile (ICP), and configure your strategic briefing so the AI can work effectively.',
-        descriptionPt: 'Como preencher os dados da empresa, definir seu Perfil de Cliente Ideal (ICP) e configurar o briefing estratégico para a IA funcionar ao máximo.',
+        descriptionPt: 'Como preencher os dados da empresa, definir seu Perfil de Cliente Ideal (ICP) e configurar o briefing estrat�gico para a IA funcionar ao m�ximo.',
         duration: '10 min',
         level: 'Beginner',
         levelPt: 'Iniciante',
         thumbnail: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=640&q=80',
         embedId: null,
         steps: [
-          'Go to Settings → General',
+          'Go to Settings � General',
           'Fill in company name, website, and industry',
           'Navigate to the ICP tab and define your ideal customer',
           'Complete the Briefing tab for AI context',
         ],
         stepsPt: [
-          'Acesse Configurações → Geral',
+          'Acesse Configura��es � Geral',
           'Preencha nome, site e segmento da empresa',
-          'Vá à aba ICP e defina seu cliente ideal',
+          'V� � aba ICP e defina seu cliente ideal',
           'Complete a aba Briefing para contexto da IA',
         ],
       },
@@ -65,8 +65,8 @@ const TUTORIALS = [
   },
   {
     category: 'Sales & Lead Management',
-    categoryPt: 'Vendas e Gestão de Leads',
-    icon: '🎯',
+    categoryPt: 'Vendas e Gest�o de Leads',
+    icon: '<',
     color: '#cb6ce6',
     videos: [
       {
@@ -83,13 +83,13 @@ const TUTORIALS = [
         steps: [
           'Go to Sales and click "Add Lead"',
           'Fill in company name, contact, and source',
-          'Or: go to Integrations → Import CSV',
+          'Or: go to Integrations � Import CSV',
           'Review imported leads in the Sales Kanban',
         ],
         stepsPt: [
           'Acesse Vendas e clique em "Novo Lead"',
           'Preencha empresa, contato e origem',
-          'Ou: vá em Integrações → Importar CSV',
+          'Ou: v� em Integra��es � Importar CSV',
           'Revise os leads importados no Kanban de Vendas',
         ],
       },
@@ -114,18 +114,18 @@ const TUTORIALS = [
           'Arraste e solte leads entre as etapas do funil',
           'Clique duas vezes em um card para abrir o detalhe',
           'Use filtros por score ICP, status ou origem',
-          'Desqualifique leads com uma razão para rastreamento',
+          'Desqualifique leads com uma raz�o para rastreamento',
         ],
       },
       {
         id: 5,
         title: 'Lead Lists: Dynamic & Manual',
-        titlePt: 'Listas de Leads: Dinâmicas e Manuais',
+        titlePt: 'Listas de Leads: Din�micas e Manuais',
         description: 'Create lead lists that automatically populate based on criteria like funnel stage, ICP score, or source. Schedule automatic updates.',
-        descriptionPt: 'Crie listas de leads que se populam automaticamente com base em critérios como etapa do funil, score ICP ou origem.',
+        descriptionPt: 'Crie listas de leads que se populam automaticamente com base em crit�rios como etapa do funil, score ICP ou origem.',
         duration: '6 min',
         level: 'Intermediate',
-        levelPt: 'Intermediário',
+        levelPt: 'Intermedi�rio',
         thumbnail: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=640&q=80',
         embedId: null,
         steps: [
@@ -136,8 +136,8 @@ const TUTORIALS = [
         ],
         stepsPt: [
           'Em Vendas, clique em "Gerenciar Listas"',
-          'Crie uma nova lista com critérios dinâmicos',
-          'Defina filtros: etapa do funil, score ICP mínimo, status',
+          'Crie uma nova lista com crit�rios din�micos',
+          'Defina filtros: etapa do funil, score ICP m�nimo, status',
           'As listas se atualizam automaticamente quando novos leads correspondem',
         ],
       },
@@ -146,7 +146,7 @@ const TUTORIALS = [
   {
     category: 'AI Agent & Chat',
     categoryPt: 'Agente IA e Chat',
-    icon: '🤖',
+    icon: '>',
     color: '#38b6ff',
     videos: [
       {
@@ -154,7 +154,7 @@ const TUTORIALS = [
         title: 'Your First AI Conversation',
         titlePt: 'Sua Primeira Conversa com a IA',
         description: 'Start a conversation with the BMAPZ AI agent. Use quick actions, upload files, and use voice input to dictate your prompts.',
-        descriptionPt: 'Inicie uma conversa com o agente IA do BMAPZ. Use ações rápidas, faça upload de arquivos e use entrada de voz.',
+        descriptionPt: 'Inicie uma conversa com o agente IA do BMAPZ. Use a��es r�pidas, fa�a upload de arquivos e use entrada de voz.',
         duration: '8 min',
         level: 'Beginner',
         levelPt: 'Iniciante',
@@ -169,10 +169,10 @@ const TUTORIALS = [
         ],
         stepsPt: [
           'Clique em "Chat IA" no menu lateral',
-          'Clique em um botão de Ação Rápida para começar',
-          'Ou escreva sua própria solicitação na caixa de texto',
-          'Use o botão de microfone para gravar e transcrever voz',
-          'Anexe arquivos (PDF, imagens, CSV) para análise',
+          'Clique em um bot�o de A��o R�pida para come�ar',
+          'Ou escreva sua pr�pria solicita��o na caixa de texto',
+          'Use o bot�o de microfone para gravar e transcrever voz',
+          'Anexe arquivos (PDF, imagens, CSV) para an�lise',
         ],
       },
       {
@@ -180,7 +180,7 @@ const TUTORIALS = [
         title: 'Generating Messages with AI',
         titlePt: 'Gerando Mensagens com IA',
         description: 'Ask the AI to write personalized outreach messages for WhatsApp, Email, and LinkedIn. Learn how to use the context field for better results.',
-        descriptionPt: 'Peça para a IA escrever mensagens personalizadas para WhatsApp, Email e LinkedIn. Aprenda a usar o campo de contexto para melhores resultados.',
+        descriptionPt: 'Pe�a para a IA escrever mensagens personalizadas para WhatsApp, Email e LinkedIn. Aprenda a usar o campo de contexto para melhores resultados.',
         duration: '7 min',
         level: 'Beginner',
         levelPt: 'Iniciante',
@@ -205,8 +205,8 @@ const TUTORIALS = [
   },
   {
     category: 'Workflows & Automation',
-    categoryPt: 'Fluxos e Automação',
-    icon: '⚡',
+    categoryPt: 'Fluxos e Automa��o',
+    icon: '�',
     color: '#10b981',
     videos: [
       {
@@ -214,10 +214,10 @@ const TUTORIALS = [
         title: 'Building Your First Workflow',
         titlePt: 'Criando Seu Primeiro Fluxo de Trabalho',
         description: 'Step-by-step guide to building a multi-channel sales outreach workflow with email, WhatsApp, and LinkedIn steps.',
-        descriptionPt: 'Guia passo a passo para criar um fluxo de prospecção multicanal com etapas de e-mail, WhatsApp e LinkedIn.',
+        descriptionPt: 'Guia passo a passo para criar um fluxo de prospec��o multicanal com etapas de e-mail, WhatsApp e LinkedIn.',
         duration: '12 min',
         level: 'Intermediate',
-        levelPt: 'Intermediário',
+        levelPt: 'Intermedi�rio',
         thumbnail: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=640&q=80',
         embedId: null,
         steps: [
@@ -230,10 +230,10 @@ const TUTORIALS = [
         ],
         stepsPt: [
           'Acesse Fluxos e clique em "Novo Fluxo"',
-          'Arraste nós de ação do painel esquerdo',
-          'Conecte os nós com setas',
+          'Arraste n�s de a��o do painel esquerdo',
+          'Conecte os n�s com setas',
           'Defina intervalos entre as etapas',
-          'Adicione condições para lógica de ramificação',
+          'Adicione condi��es para l�gica de ramifica��o',
           'Ative o fluxo',
         ],
       },
@@ -241,16 +241,16 @@ const TUTORIALS = [
   },
   {
     category: 'Social Media & Content',
-    categoryPt: 'Redes Sociais e Conteúdo',
-    icon: '📱',
+    categoryPt: 'Redes Sociais e Conte�do',
+    icon: '=',
     color: '#e1306c',
     videos: [
       {
         id: 9,
         title: 'Planning Social Media Content with AI',
-        titlePt: 'Planejando Conteúdo de Redes Sociais com IA',
+        titlePt: 'Planejando Conte�do de Redes Sociais com IA',
         description: 'Use the AI to generate a full content calendar for Instagram, LinkedIn, and other platforms based on your briefing.',
-        descriptionPt: 'Use a IA para gerar um calendário de conteúdo completo para Instagram, LinkedIn e outras plataformas com base no seu briefing.',
+        descriptionPt: 'Use a IA para gerar um calend�rio de conte�do completo para Instagram, LinkedIn e outras plataformas com base no seu briefing.',
         duration: '10 min',
         level: 'Beginner',
         levelPt: 'Iniciante',
@@ -265,9 +265,9 @@ const TUTORIALS = [
         ],
         stepsPt: [
           'Acesse Redes Sociais',
-          'Clique em "Gerar Conteúdo" com IA',
+          'Clique em "Gerar Conte�do" com IA',
           'Adicione contexto opcional sobre tom e objetivo',
-          'Revise os posts na visualização de calendário',
+          'Revise os posts na visualiza��o de calend�rio',
           'Edite, agende ou publique diretamente',
         ],
       },
@@ -276,7 +276,7 @@ const TUTORIALS = [
   {
     category: 'Brand Scan',
     categoryPt: 'Brand Scan',
-    icon: '🔍',
+    icon: '=',
     color: '#f59e0b',
     videos: [
       {
@@ -284,7 +284,7 @@ const TUTORIALS = [
         title: 'Running Your First Brand Scan',
         titlePt: 'Rodando Seu Primeiro Brand Scan',
         description: 'Learn how to generate an AI-powered Brand Scan report: digital presence analysis, buyer personas, SEO keywords, and go-to-market strategy.',
-        descriptionPt: 'Aprenda a gerar um relatório de Brand Scan com IA: análise de presença digital, buyer personas, keywords de SEO e estratégia go-to-market.',
+        descriptionPt: 'Aprenda a gerar um relat�rio de Brand Scan com IA: an�lise de presen�a digital, buyer personas, keywords de SEO e estrat�gia go-to-market.',
         duration: '9 min',
         level: 'Beginner',
         levelPt: 'Iniciante',
@@ -300,9 +300,9 @@ const TUTORIALS = [
         ],
         stepsPt: [
           'Acesse Brand Scan no menu lateral',
-          'Preencha o formulário com informações da empresa',
+          'Preencha o formul�rio com informa��es da empresa',
           'Clique em "Gerar Brand Scan"',
-          'Aguarde ~30 segundos pelo relatório da IA',
+          'Aguarde ~30 segundos pelo relat�rio da IA',
           'Exporte em PDF ou TXT',
           'Inicie um novo scan para comparar ao longo do tempo',
         ],
@@ -369,10 +369,10 @@ function VideoModal({ video, language, onClose }) {
               <Play className="w-8 h-8 text-[#38b6ff] ml-1" />
             </div>
             <p className="text-white/70 text-sm bg-black/50 px-3 py-1 rounded-full">
-              {language === 'pt' ? 'Vídeo em breve' : 'Video coming soon'}
+              {language === 'pt' ? 'V�deo em breve' : 'Video coming soon'}
             </p>
           </div>
-          <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80">✕</button>
+          <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80"></button>
         </div>
 
         <div className="p-6">
@@ -403,7 +403,7 @@ function VideoModal({ video, language, onClose }) {
 
           <div className="mt-6 pt-4 border-t border-white/10 flex items-center gap-2 text-gray-500 text-xs">
             <Star className="w-3 h-3" />
-            {language === 'pt' ? 'Vídeos completos estarão disponíveis em breve.' : 'Full videos will be available soon.'}
+            {language === 'pt' ? 'V�deos completos estar�o dispon�veis em breve.' : 'Full videos will be available soon.'}
           </div>
         </div>
       </div>
@@ -440,15 +440,15 @@ export default function VideoTutorials() {
           <Link to="/Help" className="text-gray-500 hover:text-white text-sm flex items-center gap-1 transition-colors">
             Help <ChevronRight className="w-3 h-3" />
           </Link>
-          <span className="text-gray-400 text-sm">{language === 'pt' ? 'Tutoriais em Vídeo' : 'Video Tutorials'}</span>
+          <span className="text-gray-400 text-sm">{language === 'pt' ? 'Tutoriais em V�deo' : 'Video Tutorials'}</span>
         </div>
         <h1 className="text-3xl font-bold text-white tracking-tight" style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
-          {language === 'pt' ? 'Tutoriais em Vídeo' : 'Video Tutorials'}
+          {language === 'pt' ? 'Tutoriais em V�deo' : 'Video Tutorials'}
         </h1>
         <p className="text-gray-400 mt-1">
           {language === 'pt'
-            ? `${totalVideos} tutoriais para aprender do zero, sem conhecimento técnico necessário.`
-            : `${totalVideos} tutorials to learn from scratch — no technical knowledge required.`}
+            ? `${totalVideos} tutoriais para aprender do zero, sem conhecimento t�cnico necess�rio.`
+            : `${totalVideos} tutorials to learn from scratch  no technical knowledge required.`}
         </p>
       </div>
 
@@ -490,11 +490,11 @@ export default function VideoTutorials() {
           </div>
           <div>
             <p className="text-white font-semibold">
-              {language === 'pt' ? '👋 Novo por aqui? Comece aqui!' : '👋 New here? Start here!'}
+              {language === 'pt' ? '= Novo por aqui? Comece aqui!' : '= New here? Start here!'}
             </p>
             <p className="text-gray-400 text-sm">
               {language === 'pt'
-                ? 'Assista os tutoriais de "Primeiros Passos" primeiro para ter uma visão geral da plataforma.'
+                ? 'Assista os tutoriais de "Primeiros Passos" primeiro para ter uma vis�o geral da plataforma.'
                 : 'Watch the "Getting Started" tutorials first to get a full overview of the platform.'}
             </p>
           </div>
