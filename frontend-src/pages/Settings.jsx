@@ -109,7 +109,7 @@ export default function Settings() {
 
   const updateMutation = useMutation({
     mutationFn: (data) => company ? Company.update(company.id, data) : Company.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['companies'] }); toast.success(language === 'pt-BR' ? 'Configurações salvas' : 'Settings saved'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['companies'] }); toast.success(language === 'pt-BR' ? 'Configura��es salvas' : 'Settings saved'); },
   });
 
   const bf = briefingForm;
@@ -140,7 +140,7 @@ export default function Settings() {
         <TabsContent value="general" className="space-y-6">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-6">
             <h2 className="text-lg font-semibold text-white">
-              {language === 'pt-BR' ? 'Preferências' : 'Preferences'}
+              {language === 'pt-BR' ? 'Prefer�ncias' : 'Preferences'}
             </h2>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -156,7 +156,7 @@ export default function Settings() {
                 <SelectTrigger className="w-[180px] bg-black/30 border-white/10 text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-[#1a1a1a] border-white/10">
                   <SelectItem value="en" className="text-white">English (US)</SelectItem>
-                  <SelectItem value="pt-BR" className="text-white">Português (BR)</SelectItem>
+                  <SelectItem value="pt-BR" className="text-white">Portugu�s (BR)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -167,7 +167,7 @@ export default function Settings() {
         <TabsContent value="company" className="space-y-6">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-5">
             <h2 className="text-lg font-semibold text-white">
-              {language === 'pt-BR' ? 'Informações da Empresa' : 'Company Information'}
+              {language === 'pt-BR' ? 'Informa��es da Empresa' : 'Company Information'}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><Label className="text-gray-400">Company Name</Label><Input value={companyForm.name} onChange={(e) => setCompanyForm(p => ({ ...p, name: e.target.value }))} className="bg-black/30 border-white/10 text-white mt-1.5" placeholder="Your company name" /></div>
@@ -224,18 +224,18 @@ export default function Settings() {
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-8">
             <div>
               <h2 className="text-lg font-semibold mb-1 text-white">
-                {language === 'pt-BR' ? 'Briefing Estratégico' : 'Strategic Briefing'}
+                {language === 'pt-BR' ? 'Briefing Estrat�gico' : 'Strategic Briefing'}
               </h2>
               <p className="text-gray-400 text-sm">
                 {language === 'pt-BR'
-                  ? 'Este briefing é usado como contexto para melhorar os outputs de IA e automação de tarefas. As perguntas não são obrigatórias, mas melhoram significativamente a qualidade da IA.'
+                  ? 'Este briefing � usado como contexto para melhorar os outputs de IA e automa��o de tarefas. As perguntas n�o s�o obrigat�rias, mas melhoram significativamente a qualidade da IA.'
                   : 'This briefing is used as context to improve AI outputs and task automation. Questions are not mandatory but improve AI quality significantly.'}
               </p>
             </div>
 
             {/* Current Scenario */}
             <div className="space-y-4 border-t border-white/5 pt-6">
-              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Cenário Atual' : 'Current Scenario'}</h3>
+              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Cen�rio Atual' : 'Current Scenario'}</h3>
               <div>
                 <Label className="text-gray-400">Is the company currently investing in marketing campaigns?</Label>
                 <div className="flex gap-4 mt-2">
@@ -253,23 +253,23 @@ export default function Settings() {
 
             {/* Primary Objectives */}
             <div className="space-y-4 border-t border-white/5 pt-6">
-              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Objetivos Primários' : 'Primary Objectives'}</h3>
+              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Objetivos Prim�rios' : 'Primary Objectives'}</h3>
               <CheckboxGroup label="Select priorities:" options={['Lead generation', 'Direct sales', 'Authority building', 'Premium positioning', 'Scaling', 'Revenue predictability', 'Product launch', 'Repositioning']} values={bf.primary_objectives} onChange={(v) => setBf('primary_objectives', v)} />
               <div className="space-y-3">
                 <Label className="text-gray-400 block">Funnel Stage Objectives</Label>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="p-3 rounded-xl bg-[#38b6ff]/10 border border-[#38b6ff]/20">
-                    <p className="text-[#38b6ff] text-xs font-semibold mb-1.5">🎯 Top of Funnel (TOF)</p>
+                    <p className="text-[#38b6ff] text-xs font-semibold mb-1.5">< Top of Funnel (TOF)</p>
                     <p className="text-gray-500 text-xs mb-2">Awareness & discovery</p>
                     <Textarea value={bf.tof_objective || ''} onChange={(e) => setBf('tof_objective', e.target.value)} className="bg-black/30 border-white/10 text-white text-xs min-h-[60px]" placeholder="e.g., Reach 50K new people/mo, grow LinkedIn followers by 20%" />
                   </div>
                   <div className="p-3 rounded-xl bg-[#cb6ce6]/10 border border-[#cb6ce6]/20">
-                    <p className="text-[#cb6ce6] text-xs font-semibold mb-1.5">🔍 Middle of Funnel (MOF)</p>
+                    <p className="text-[#cb6ce6] text-xs font-semibold mb-1.5">= Middle of Funnel (MOF)</p>
                     <p className="text-gray-500 text-xs mb-2">Consideration & nurturing</p>
                     <Textarea value={bf.mof_objective || ''} onChange={(e) => setBf('mof_objective', e.target.value)} className="bg-black/30 border-white/10 text-white text-xs min-h-[60px]" placeholder="e.g., Generate 200 MQLs/mo, 40% email open rate" />
                   </div>
                   <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20">
-                    <p className="text-green-400 text-xs font-semibold mb-1.5">💰 Bottom of Funnel (BOF)</p>
+                    <p className="text-green-400 text-xs font-semibold mb-1.5">= Bottom of Funnel (BOF)</p>
                     <p className="text-gray-500 text-xs mb-2">Conversion & closing</p>
                     <Textarea value={bf.bof_objective || ''} onChange={(e) => setBf('bof_objective', e.target.value)} className="bg-black/30 border-white/10 text-white text-xs min-h-[60px]" placeholder="e.g., 30 SQLs/mo, close 15 deals at $5K avg" />
                   </div>
@@ -284,7 +284,7 @@ export default function Settings() {
 
             {/* Positioning */}
             <div className="space-y-4 border-t border-white/5 pt-6">
-              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Posicionamento & Diferenciação' : 'Positioning & Differentiation'}</h3>
+              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Posicionamento & Diferencia��o' : 'Positioning & Differentiation'}</h3>
               <div><Label className="text-gray-400">How does the company position itself today?</Label><Textarea value={bf.positioning_today || ''} onChange={(e) => setBf('positioning_today', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5 min-h-[80px]" /></div>
               <div><Label className="text-gray-400">How does it want to be perceived?</Label><Textarea value={bf.desired_perception || ''} onChange={(e) => setBf('desired_perception', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5 min-h-[80px]" /></div>
               <div><Label className="text-gray-400">Main competitive advantages</Label><Textarea value={bf.competitive_advantages || ''} onChange={(e) => setBf('competitive_advantages', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" /></div>
@@ -296,7 +296,7 @@ export default function Settings() {
 
             {/* Product/Service */}
             <div className="space-y-4 border-t border-white/5 pt-6">
-              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Produto / Serviço' : 'Product / Service'}</h3>
+              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Produto / Servi�o' : 'Product / Service'}</h3>
               <div><Label className="text-gray-400">What is truly being sold?</Label><Textarea value={bf.what_sold || ''} onChange={(e) => setBf('what_sold', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" /></div>
               <div><Label className="text-gray-400">What transformation does it generate?</Label><Textarea value={bf.transformation || ''} onChange={(e) => setBf('transformation', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" /></div>
               <div><Label className="text-gray-400">Technical differentiator (that few competitors can explain)</Label><Textarea value={bf.technical_differentiator || ''} onChange={(e) => setBf('technical_differentiator', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" /></div>
@@ -308,7 +308,7 @@ export default function Settings() {
 
             {/* Content Strategy */}
             <div className="space-y-4 border-t border-white/5 pt-6">
-              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Estratégia de Conteúdo' : 'Content Strategy'}</h3>
+              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Estrat�gia de Conte�do' : 'Content Strategy'}</h3>
               <CheckboxGroup label="Primary platform(s):" options={['Instagram', 'LinkedIn', 'TikTok', 'YouTube', 'Facebook', 'X (Twitter)', 'Multi-channel']} values={bf.primary_platform} onChange={(v) => setBf('primary_platform', v)} />
               <CheckboxGroup label="Priority formats:" options={['Reels / Short-form video', 'Carousel', 'Text + image', 'Stories', 'Long-form video', 'Podcast', 'Blog']} values={bf.content_formats} onChange={(v) => setBf('content_formats', v)} />
               <div><Label className="text-gray-400">Ideal posting frequency (weekly/monthly)</Label><Input value={bf.content_frequency || ''} onChange={(e) => setBf('content_frequency', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" placeholder="e.g., 5x per week" /></div>
@@ -318,7 +318,7 @@ export default function Settings() {
 
             {/* Performance */}
             <div className="space-y-4 border-t border-white/5 pt-6">
-              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Estratégia de Performance (Mídia Paga)' : 'Performance Strategy (Paid Media)'}</h3>
+              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Estrat�gia de Performance (M�dia Paga)' : 'Performance Strategy (Paid Media)'}</h3>
               <div><Label className="text-gray-400">Average Monthly Budget</Label><Input value={bf.monthly_budget || ''} onChange={(e) => setBf('monthly_budget', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" placeholder="e.g., $10,000" /></div>
               <div><Label className="text-gray-400">Current Campaign Structure</Label><Textarea value={bf.campaign_structure || ''} onChange={(e) => setBf('campaign_structure', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" placeholder="Describe platforms, objectives, formats..." /></div>
               <CheckboxGroup label="Most important KPIs:" options={['CPA', 'ROAS', 'LTV', 'CAC', 'CPL', 'Conversion rate', 'Leads', 'MQLs', 'SQLs', 'New followers', 'Engagement rate', 'CTR', 'Revenue']} values={bf.key_kpis} onChange={(v) => setBf('key_kpis', v)} />
@@ -335,7 +335,7 @@ export default function Settings() {
 
             {/* Success Metrics */}
             <div className="space-y-4 border-t border-white/5 pt-6">
-              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'Métricas de Sucesso' : 'Success Metrics'}</h3>
+              <h3 className="text-[#38b6ff] font-semibold">{language === 'pt-BR' ? 'M�tricas de Sucesso' : 'Success Metrics'}</h3>
               <div><Label className="text-gray-400">How will we know this is working?</Label><Textarea value={bf.success_metrics || ''} onChange={(e) => setBf('success_metrics', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" /></div>
               <div><Label className="text-gray-400">Expected time frame for results</Label><Input value={bf.timeframe || ''} onChange={(e) => setBf('timeframe', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" placeholder="e.g., 90 days, 6 months" /></div>
               <div><Label className="text-gray-400">Ideal scenario in 6 months</Label><Textarea value={bf.ideal_6_months || ''} onChange={(e) => setBf('ideal_6_months', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" /></div>
@@ -372,7 +372,7 @@ export default function Settings() {
             <CheckboxGroup label="Customer awareness level:" options={['Unaware', 'Problem-aware', 'Solution-aware', 'Comparing suppliers', 'Ready to buy']} values={icpForm.awareness_level ? [icpForm.awareness_level] : []} onChange={(v) => setIcpForm(p => ({ ...p, awareness_level: v[v.length - 1] }))} />
             <div><Label className="text-gray-400">Who is this NOT for?</Label><Textarea value={icpForm.not_for || ''} onChange={(e) => setIcpForm(p => ({ ...p, not_for: e.target.value }))} className="bg-black/30 border-white/10 text-white mt-1.5" placeholder="Who should we NOT target?" /></div>
             <div><Label className="text-gray-400">Budget Range</Label><Input value={icpForm.budget_range} onChange={(e) => setIcpForm(p => ({ ...p, budget_range: e.target.value }))} className="bg-black/30 border-white/10 text-white mt-1.5" placeholder="e.g., $10,000 - $50,000" /></div>
-            <Button onClick={() => updateMutation.mutate({ icp: icpForm })} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2"><Save size={18} />{language === 'pt-BR' ? 'Salvar Configurações de ICP' : 'Save ICP Settings'}</Button>
+            <Button onClick={() => updateMutation.mutate({ icp: icpForm })} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2"><Save size={18} />{language === 'pt-BR' ? 'Salvar Configura��es de ICP' : 'Save ICP Settings'}</Button>
           </div>
         </TabsContent>
 
@@ -385,7 +385,7 @@ export default function Settings() {
         </TabsContent>
 
 
-        {/* AI Settings — image provider, model, personal agent name */}
+        {/* AI Settings  image provider, model, personal agent name */}
         <TabsContent value="ai-settings" className="space-y-6">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-6">
             <div>
@@ -430,8 +430,8 @@ export default function Settings() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
-                  { value: 'openai', label: 'OpenAI DALL-E', models: ['dall-e-3', 'dall-e-2'], icon: '🤖' },
-                  { value: 'stability', label: 'Stable Diffusion', models: ['stable-diffusion-xl-1024-v1-0'], icon: '🎨' },
+                  { value: 'openai', label: 'OpenAI DALL-E', models: ['dall-e-3', 'dall-e-2'], icon: '>' },
+                  { value: 'stability', label: 'Stable Diffusion', models: ['stable-diffusion-xl-1024-v1-0'], icon: '<' },
                 ].map((provider) => {
                   const isSelected = (company?.ai_image_provider || 'openai') === provider.value;
                   return (
@@ -488,7 +488,7 @@ export default function Settings() {
             <div>
               <h2 className="text-lg font-semibold text-white">{t('subscriptionPlan')}</h2>
               <p className="text-gray-400 text-sm">
-                {language === 'pt-BR' ? 'Gerencie sua assinatura, créditos e add-ons' : 'Manage your subscription, credits and add-ons'}
+                {language === 'pt-BR' ? 'Gerencie sua assinatura, cr�ditos e add-ons' : 'Manage your subscription, credits and add-ons'}
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
