@@ -16,7 +16,7 @@ async function provisionCompany(authUser) {
 
   const { data: company, error: companyErr } = await supabaseAdmin
     .from('companies')
-    .insert({ name: companyName, owner_email: authUser.email })
+    .insert({ name: companyName })
     .select()
     .single();
   if (companyErr) throw companyErr;
@@ -31,11 +31,11 @@ async function provisionCompany(authUser) {
 
   await supabaseAdmin.from('subscriptions').insert({
     company_id: company.id,
-    plan: 'free',
-    status: 'active',
-    ai_credits_total: 100,
+    plan: 'trial',
+    status: 'trialing',
+    ai_credits_total: 8000,
     ai_credits_used: 0,
-    contacts_limit: 250,
+    contacts_limit: 1500,
   });
 
   return { user: updatedUser, company };
@@ -78,7 +78,7 @@ router.get('/me', requireJWT, async (req, res) => {
     // Create company
     const { data: company, error: companyErr } = await supabaseAdmin
       .from('companies')
-      .insert({ name: companyName, owner_email: req.user.email })
+      .insert({ name: companyName })
       .select()
       .single();
     if (companyErr) throw companyErr;
@@ -100,11 +100,11 @@ router.get('/me', requireJWT, async (req, res) => {
     // Create free subscription
     await supabaseAdmin.from('subscriptions').insert({
       company_id: company.id,
-      plan: 'free',
-      status: 'active',
-      ai_credits_total: 100,
+      plan: 'trial',
+      status: 'trialing',
+      ai_credits_total: 8000,
       ai_credits_used: 0,
-      contacts_limit: 250,
+      contacts_limit: 1500,
     });
 
     console.log('[auth/me] JIT-provisioned new user', req.user.email);
@@ -144,7 +144,7 @@ router.post('/complete-profile', requireJWT, async (req, res) => {
     // Create company
     const { data: company, error: companyErr } = await supabaseAdmin
       .from('companies')
-      .insert({ name: company_name || 'My Company', owner_email: req.user.email })
+      .insert({ name: company_name || 'My Company' })
       .select()
       .single();
     if (companyErr) throw companyErr;
@@ -166,11 +166,11 @@ router.post('/complete-profile', requireJWT, async (req, res) => {
     // Create default subscription
     await supabaseAdmin.from('subscriptions').insert({
       company_id: company.id,
-      plan: 'free',
-      status: 'active',
-      ai_credits_total: 100,
+      plan: 'trial',
+      status: 'trialing',
+      ai_credits_total: 8000,
       ai_credits_used: 0,
-      contacts_limit: 250,
+      contacts_limit: 1500,
     });
 
     res.json({ user, company });
