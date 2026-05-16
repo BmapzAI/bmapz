@@ -21,12 +21,12 @@ import { Company, SocialPost } from '@/api/entities';
 import { InvokeLLM, GenerateImage, UploadFile } from '@/api/integrations';
 
 const PLATFORMS = [
-  { value: 'instagram', label: 'Instagram', color: '#E1306C', icon: '📸' },
-  { value: 'linkedin', label: 'LinkedIn', color: '#0077b5', icon: '💼' },
-  { value: 'tiktok', label: 'TikTok', color: '#000000', icon: '🎵' },
-  { value: 'twitter', label: 'X (Twitter)', color: '#1DA1F2', icon: '𝕏' },
-  { value: 'youtube', label: 'YouTube', color: '#FF0000', icon: '▶️' },
-  { value: 'facebook', label: 'Facebook', color: '#1877F2', icon: '📘' },
+  { value: 'instagram', label: 'Instagram', color: '#E1306C', icon: '=' },
+  { value: 'linkedin', label: 'LinkedIn', color: '#0077b5', icon: '=' },
+  { value: 'tiktok', label: 'TikTok', color: '#000000', icon: '<' },
+  { value: 'twitter', label: 'X (Twitter)', color: '#1DA1F2', icon: '5' },
+  { value: 'youtube', label: 'YouTube', color: '#FF0000', icon: '�' },
+  { value: 'facebook', label: 'Facebook', color: '#1877F2', icon: '=' },
 ];
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -280,12 +280,12 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
   };
 
   const PLATFORM_FORMATS = {
-    instagram: { image: '1:1 (1080×1080)', story: '9:16 (1080×1920)', carousel: '1:1 or 4:5', video: 'MP4, max 60s' },
-    linkedin: { image: '1.91:1 (1200×628)', article: '1:1 (1200×1200)', video: 'MP4, max 10min' },
-    tiktok: { video: '9:16 (1080×1920), MP4, max 10min' },
-    twitter: { image: '16:9 (1200×675)', video: 'MP4, max 2min 20s' },
-    youtube: { thumbnail: '16:9 (1280×720)', shorts: '9:16 (1080×1920)' },
-    facebook: { image: '1.91:1 (1200×630)', story: '9:16 (1080×1920)', video: 'MP4, max 240min' },
+    instagram: { image: '1:1 (1080�1080)', story: '9:16 (1080�1920)', carousel: '1:1 or 4:5', video: 'MP4, max 60s' },
+    linkedin: { image: '1.91:1 (1200�628)', article: '1:1 (1200�1200)', video: 'MP4, max 10min' },
+    tiktok: { video: '9:16 (1080�1920), MP4, max 10min' },
+    twitter: { image: '16:9 (1200�675)', video: 'MP4, max 2min 20s' },
+    youtube: { thumbnail: '16:9 (1280�720)', shorts: '9:16 (1080�1920)' },
+    facebook: { image: '1.91:1 (1200�630)', story: '9:16 (1080�1920)', video: 'MP4, max 240min' },
   };
 
   const savePost = () => {
@@ -372,7 +372,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
       </div>
       {!canPublish && post.status === 'draft' && (
         <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-          <span className="text-yellow-400">⚠️</span>
+          <span className="text-yellow-400">�</span>
           Connect accounts in <a href="/Settings" className="text-[#38b6ff] underline ml-1">Settings</a> to publish
         </p>
       )}
@@ -388,7 +388,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
             style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
             Social Media
           </h1>
-          <p className="text-gray-400 mt-1">Plan, create and schedule content • AI-powered performance optimization</p>
+          <p className="text-gray-400 mt-1">Plan, create and schedule content " AI-powered performance optimization</p>
         </div>
         <Button onClick={analyzeAndOptimize} disabled={isOptimizing}
           className="bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-2">
@@ -399,8 +399,8 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
         {/* Meta/LinkedIn connection status hints */}
         {!integrationStatus.meta && !integrationStatus.linkedin && (
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-xs text-gray-400">
-            <span className="text-yellow-400">⚠️</span>
-            <span>Connect social accounts in <a href="/Settings" className="text-[#38b6ff] underline">Settings → API Keys</a> to auto-publish</span>
+            <span className="text-yellow-400">�</span>
+            <span>Connect social accounts in <a href="/Settings" className="text-[#38b6ff] underline">Settings � API Keys</a> to auto-publish</span>
           </div>
         )}
       </div>
@@ -447,9 +447,9 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                   <div key={i} className="p-3 rounded-xl bg-black/30 border border-white/10 flex items-start gap-3">
                     <div className="flex-1">
                       <p className="text-white text-sm font-medium">{opt.post_title}</p>
-                      <p className="text-gray-400 text-xs">Move from <span className="text-red-400">{opt.current_time}</span> → <span className="text-green-400">{opt.suggested_time}</span></p>
+                      <p className="text-gray-400 text-xs">Move from <span className="text-red-400">{opt.current_time}</span> � <span className="text-green-400">{opt.suggested_time}</span></p>
                       <p className="text-gray-500 text-xs mt-1">{opt.reason}</p>
-                      {opt.content_tip && <p className="text-[#38b6ff] text-xs mt-1 italic">💡 {opt.content_tip}</p>}
+                      {opt.content_tip && <p className="text-[#38b6ff] text-xs mt-1 italic">= {opt.content_tip}</p>}
                     </div>
                   </div>
                 ))}
@@ -547,7 +547,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               <Sparkles size={18} className="text-[#38b6ff]" /> Generate with AI
               {company && <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 flex items-center gap-1 ml-2"><Check size={10} />Using {company.name} data</span>}
             </h3>
-            <p className="text-gray-400 text-sm mb-3">Describe what you want to post — AI creates platform-optimized versions using your company briefing and ICP</p>
+            <p className="text-gray-400 text-sm mb-3">Describe what you want to post  AI creates platform-optimized versions using your company briefing and ICP</p>
             <div className="flex gap-3">
               <Input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)}
                 placeholder="e.g., Why ICP matters for B2B sales, post for marketing directors..."
@@ -611,7 +611,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {generatedContent.linkedin_content && (
                     <div>
-                      <p className="text-[#0077b5] text-xs font-medium mb-1">💼 LinkedIn Version</p>
+                      <p className="text-[#0077b5] text-xs font-medium mb-1">= LinkedIn Version</p>
                       <Textarea value={generatedContent.linkedin_content}
                         onChange={e => setGeneratedContent(p => ({ ...p, linkedin_content: e.target.value }))}
                         className="min-h-[120px] bg-black/30 border-white/10 text-white text-xs" />
@@ -619,7 +619,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                   )}
                   {generatedContent.instagram_content && (
                     <div>
-                      <p className="text-[#E1306C] text-xs font-medium mb-1">📸 Instagram Version</p>
+                      <p className="text-[#E1306C] text-xs font-medium mb-1">= Instagram Version</p>
                       <Textarea value={generatedContent.instagram_content}
                         onChange={e => setGeneratedContent(p => ({ ...p, instagram_content: e.target.value }))}
                         className="min-h-[120px] bg-black/30 border-white/10 text-white text-xs" />
@@ -639,7 +639,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                     {(newPost.platforms || []).map(p => {
                       const formats = PLATFORM_FORMATS[p];
                       if (!formats) return null;
-                      return <div key={p}><span className="font-medium" style={{color: PLATFORMS.find(pl=>pl.value===p)?.color}}>{PLATFORMS.find(pl=>pl.value===p)?.label}:</span> {Object.entries(formats).map(([k,v])=>`${k}: ${v}`).join(' · ')}</div>;
+                      return <div key={p}><span className="font-medium" style={{color: PLATFORMS.find(pl=>pl.value===p)?.color}}>{PLATFORMS.find(pl=>pl.value===p)?.label}:</span> {Object.entries(formats).map(([k,v])=>`${k}: ${v}`).join(' � ')}</div>;
                     })}
                   </div>
                 )}
@@ -698,10 +698,10 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                         {m.type.startsWith('image/') ? (
                           <img src={m.url} alt={m.name} className="w-16 h-16 rounded-lg object-cover border border-white/10" />
                         ) : (
-                          <div className="w-16 h-16 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-xs text-gray-400">🎥</div>
+                          <div className="w-16 h-16 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-xs text-gray-400"><</div>
                         )}
                         <button onClick={() => setUploadedMedia(prev => prev.filter((_, idx) => idx !== i))}
-                          className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100">×</button>
+                          className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100">�</button>
                       </div>
                     ))}
                   </div>
@@ -718,8 +718,8 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                         {designBrief.color_palette.map((c, i) => <div key={i} className="w-5 h-5 rounded-full border border-white/20" style={{backgroundColor: c}} title={c} />)}
                       </div>
                     )}
-                    {designBrief.do_list?.length > 0 && <div className="text-xs text-green-400">✅ {designBrief.do_list.slice(0,2).join(' · ')}</div>}
-                    {designBrief.dont_list?.length > 0 && <div className="text-xs text-red-400">❌ {designBrief.dont_list.slice(0,2).join(' · ')}</div>}
+                    {designBrief.do_list?.length > 0 && <div className="text-xs text-green-400"> {designBrief.do_list.slice(0,2).join(' � ')}</div>}
+                    {designBrief.dont_list?.length > 0 && <div className="text-xs text-red-400">L {designBrief.dont_list.slice(0,2).join(' � ')}</div>}
                   </div>
                 )}
               </div>
@@ -762,7 +762,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
           )}
         </TabsContent>
 
-        {/* Posts Tab — Published history + Boosting suggestions */}
+        {/* Posts Tab  Published history + Boosting suggestions */}
         <TabsContent value="posts" className="space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h3 className="text-white font-semibold">Published Posts ({publishedPosts.length})</h3>
@@ -812,7 +812,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                           {post.performance.engagement_rate && <span className="flex items-center gap-1 text-[#38b6ff]"><TrendingUp size={12} />{post.performance.engagement_rate}% engagement</span>}
                         </div>
                       ) : (
-                        <p className="text-gray-600 text-xs italic">No performance data yet — connect your social accounts in Integrations to sync metrics</p>
+                        <p className="text-gray-600 text-xs italic">No performance data yet  connect your social accounts in Integrations to sync metrics</p>
                       )}
                     </div>
                     <div className="flex gap-2 flex-col items-end">
@@ -829,7 +829,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                         <Zap size={12} /> Boosting Suggestion
                       </p>
                       <p className="text-gray-300 text-xs mt-1">
-                        This post has low engagement ({post.performance.engagement_rate}%). Consider boosting it as a paid promotion, repurposing the content in a new format (Reel/Carousel), or reposting with a stronger hook at a peak time (Tue–Thu, 9–11am).
+                        This post has low engagement ({post.performance.engagement_rate}%). Consider boosting it as a paid promotion, repurposing the content in a new format (Reel/Carousel), or reposting with a stronger hook at a peak time (TueThu, 911am).
                       </p>
                     </div>
                   )}
@@ -851,7 +851,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
           )}
         </TabsContent>
 
-        {/* Performance Tab — Real channel stats */}
+        {/* Performance Tab  Real channel stats */}
         <TabsContent value="performance" className="space-y-6">
           <SocialPerformanceTab company={company} selectedPlatforms={selectedPlatforms} setSelectedPlatforms={setSelectedPlatforms} posts={posts} />
         </TabsContent>
@@ -890,10 +890,10 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { label: 'Total Posts', value: filtered.length, icon: '📝' },
-                    { label: 'Scheduled', value: filteredScheduled.length, icon: '📅' },
-                    { label: 'Published', value: filteredPublished.length, icon: '✅' },
-                    { label: 'Drafts', value: filteredDraft.length, icon: '📄' },
+                    { label: 'Total Posts', value: filtered.length, icon: '=' },
+                    { label: 'Scheduled', value: filteredScheduled.length, icon: '=' },
+                    { label: 'Published', value: filteredPublished.length, icon: '' },
+                    { label: 'Drafts', value: filteredDraft.length, icon: '=' },
                   ].map(stat => (
                     <div key={stat.label} className="rounded-2xl bg-white/5 border border-white/10 p-4 text-center">
                       <p className="text-2xl mb-1">{stat.icon}</p>
