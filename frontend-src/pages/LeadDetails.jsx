@@ -344,19 +344,19 @@ export default function LeadDetails() {
                 {lead.digital_presence_analysis.strengths?.length > 0 && (
                   <div>
                     <p className="text-green-400 text-xs font-medium mb-2">Strengths</p>
-                    <ul className="space-y-1">{lead.digital_presence_analysis.strengths.map((s, i) => <li key={i} className="text-gray-300 text-sm">â {s}</li>)}</ul>
+                    <ul className="space-y-1">{lead.digital_presence_analysis.strengths.map((s, i) => <li key={i} className="text-gray-300 text-sm">✅ {s}</li>)}</ul>
                   </div>
                 )}
                 {lead.digital_presence_analysis.gaps?.length > 0 && (
                   <div>
                     <p className="text-red-400 text-xs font-medium mb-2">Gaps</p>
-                    <ul className="space-y-1">{lead.digital_presence_analysis.gaps.map((g, i) => <li key={i} className="text-gray-300 text-sm">â {g}</li>)}</ul>
+                    <ul className="space-y-1">{lead.digital_presence_analysis.gaps.map((g, i) => <li key={i} className="text-gray-300 text-sm">❌ {g}</li>)}</ul>
                   </div>
                 )}
                 {lead.digital_presence_analysis.opportunities?.length > 0 && (
                   <div>
                     <p className="text-[#38b6ff] text-xs font-medium mb-2">Opportunities</p>
-                    <ul className="space-y-1">{lead.digital_presence_analysis.opportunities.map((o, i) => <li key={i} className="text-gray-300 text-sm">ð¡ {o}</li>)}</ul>
+                    <ul className="space-y-1">{lead.digital_presence_analysis.opportunities.map((o, i) => <li key={i} className="text-gray-300 text-sm">💡 {o}</li>)}</ul>
                   </div>
                 )}
               </div>
@@ -418,7 +418,7 @@ export default function LeadDetails() {
               ].map(({ ch, intKey }) => {
                 const connected = integrationStatus[intKey] === true;
                 return (
-                  <span key={ch} title={!connected ? `${ch} not connected â add API key in Settings â API Keys` : ''}>
+                  <span key={ch} title={!connected ? `${ch} not connected — add API key in Settings → API Keys` : ''}>
                     <Button size="sm" variant="outline"
                       disabled={!connected}
                       className={`gap-1.5 text-xs capitalize transition-all ${connected ? 'border-white/10 text-white hover:bg-white/5' : 'border-white/5 text-gray-600 cursor-not-allowed opacity-50'}`}
@@ -439,12 +439,12 @@ export default function LeadDetails() {
             {!integrationStatus.whatsapp && !integrationStatus.email && !integrationStatus.linkedin && (
               <div className="flex items-start gap-3 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 mb-2">
                 <Loader2 size={15} className="text-yellow-400 flex-shrink-0 mt-0.5 hidden" />
-                <span className="text-yellow-400 text-lg flex-shrink-0">â ï¸</span>
-                <p className="text-gray-300 text-xs">No messaging integrations connected. Go to <a href="/Settings" className="text-[#38b6ff] underline">Settings â API Keys</a> to connect WhatsApp, Email, or LinkedIn.</p>
+                <span className="text-yellow-400 text-lg flex-shrink-0">⚠️</span>
+                <p className="text-gray-300 text-xs">No messaging integrations connected. Go to <a href="/Settings" className="text-[#38b6ff] underline">Settings → API Keys</a> to connect WhatsApp, Email, or LinkedIn.</p>
               </div>
             )}
             {messages.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No messages yet â generate one above!</p>
+            <p className="text-gray-500 text-center py-8">No messages yet — generate one above!</p>
             ) : messages.map(msg => (
               <div key={msg.id} className={`p-4 rounded-xl border ${msg.direction === 'inbound' ? 'bg-[#38b6ff]/5 border-[#38b6ff]/20 ml-8' : 'bg-white/5 border-white/10 mr-8'}`}>
                 <div className="flex items-center justify-between mb-2">
@@ -460,7 +460,7 @@ export default function LeadDetails() {
                   const chKey = msg.channel === 'email' ? 'email' : msg.channel === 'whatsapp' ? 'whatsapp' : 'linkedin';
                   const connected = integrationStatus[chKey] === true;
                   return (
-                    <span title={!connected ? `${msg.channel} not connected. Add key in Settings â API Keys.` : ''}>
+                    <span title={!connected ? `${msg.channel} not connected. Add key in Settings → API Keys.` : ''}>
                       <Button size="sm"
                         disabled={!connected}
                         className={`mt-2 gap-1.5 text-xs ${connected ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-white/5 text-gray-600 cursor-not-allowed opacity-50'}`}
@@ -472,7 +472,7 @@ export default function LeadDetails() {
                             toast.success('Message sent!');
                           } catch(e) { toast.error('Failed to send'); }
                         }}>
-                        {connected ? 'Send' : 'ð Send (not connected)'}
+                        {connected ? 'Send' : '🔒 Send (not connected)'}
                       </Button>
                     </span>
                   );
