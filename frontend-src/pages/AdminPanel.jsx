@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { PLANS, formatBRL } from '@/lib/plans';
 import { Company, Subscription, User, BillingPurchase } from '@/api/entities';
+import { useAuth } from '@/lib/AuthContext';
 
 const PLAN_OPTIONS = ['trial', 'starter', 'growth', 'scale', 'enterprise'];
 const STATUS_OPTIONS = ['trialing', 'active', 'past_due', 'canceled', 'paused'];
@@ -450,8 +451,7 @@ function AssignUserToCompanyModal({ users, companies, onClose, onSave }) {
 
 export default function AdminPanel() {
   const queryClient = useQueryClient();
-  const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { dbUser: user, isAdmin } = useAuth();
   const [search, setSearch] = useState('');
 
   // Modal state
@@ -466,13 +466,6 @@ export default function AdminPanel() {
   const [deletingUser, setDeletingUser] = useState(null);
   const [showAssignUser, setShowAssignUser] = useState(false);
   const [settingAccount, setSettingAccount] = useState(null);
-
-  useEffect(() => {
-    api.get('/api/auth/me').then(r => { const u = r.user;
-      setUser(u);
-      setIsAdmin(u?.role === 'owner' || u?.role === 'system_admin');
-    }).catch(() => {});
-  }, []);
 
   const { data: allCompanies = [] } = useQuery({
     queryKey: ['admin_companies'],
