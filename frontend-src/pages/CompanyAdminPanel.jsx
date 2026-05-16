@@ -15,6 +15,7 @@ import {
   Crown, Zap, Building2, AlertTriangle, Lock, Plus, Sparkles, ArrowRight
 } from 'lucide-react';
 import { Company, User, Subscription } from '@/api/entities';
+import { useAuth } from '@/lib/AuthContext';
 
 function Badge({ color, children }) {
   const colors = {
@@ -219,19 +220,13 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
 
 export default function CompanyAdminPanel() {
   const queryClient = useQueryClient();
-  const [user, setUser] = useState(null);
+  const { dbUser: user, isAdmin, isCompanyAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [showAddCompany, setShowAddCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState(null);
   const [editingUserRole, setEditingUserRole] = useState(null);
   const [editingRoleValue, setEditingRoleValue] = useState('user');
-
-  useEffect(() => {
-    api.get('/api/auth/me').then(r => { const u = r.user;
-      setUser(u);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
 
   const isOwnerOrSysAdmin = user?.role === 'owner' || user?.role === 'system_admin';
   const isCompanyAdmin = user?.role === 'company_admin';
