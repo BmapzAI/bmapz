@@ -44,15 +44,15 @@ Best,
 
 We help [ICP] with [solution]. Quick question: is [pain point] a challenge for your team right now?
 
-If yes, I`d love to share how we solved this for [similar company]. Worth a 10-min call?`,
+If yes, I'd love to share how we solved this for [similar company]. Worth a 10-min call?`,
   },
   {
-    id: `st3', name: 'LinkedIn - Connection Request', channel: 'linkedin', tone: 'direct', category: 'initial_outreach`,
-    content: `Hi {{first_name}}, I work with [ICP role] at [ICP company type] helping them [transformation]. Your background at {{company_name}} caught my attention â would love to connect and share some insights that might be relevant.`,
+    id: 'st3', name: 'LinkedIn - Connection Request', channel: 'linkedin', tone: 'direct', category: 'initial_outreach',
+    content: 'Hi {{first_name}}, I work with [ICP role] at [ICP company type] helping them [transformation]. Your background at {{company_name}} caught my attention â would love to connect and share some insights that might be relevant.',
   },
   {
-    id: `st4', name: 'Follow-Up #1 - Added Value', channel: 'email', tone: 'consultative', category: 'follow_up`,
-    subject: `Re: Quick question about {{company_name}}`,
+    id: 'st4', name: 'Follow-Up #1 - Added Value', channel: 'email', tone: 'consultative', category: 'follow_up',
+    subject: 'Re: Quick question about {{company_name}}',
     content: `Hi {{first_name}},
 
 Following up on my previous message. I wanted to share [specific resource/insight] that I think could be valuable for {{company_name}}.
@@ -65,8 +65,8 @@ Best,
 {{sender_name}}`,
   },
   {
-    id: `st5', name: 'Pattern Interrupt - Break Through Silence', channel: 'email', tone: 'provocative', category: 'pattern_interrupt`,
-    subject: `Should I stop reaching out?`,
+    id: 'st5', name: 'Pattern Interrupt - Break Through Silence', channel: 'email', tone: 'provocative', category: 'pattern_interrupt',
+    subject: 'Should I stop reaching out?',
     content: `Hi {{first_name}},
 
 I've reached out a couple of times without hearing back. I'll take the hint â but before I close your file, I wanted to ask directly:
@@ -79,15 +79,15 @@ Thanks either way,
 {{sender_name}}`,
   },
   {
-    id: `st6', name: 'Meeting Request - Post Conversation', channel: 'email', tone: 'direct', category: 'meeting_request`,
-    subject: `Next step: {{date}} call?`,
+    id: 'st6', name: 'Meeting Request - Post Conversation', channel: 'email', tone: 'direct', category: 'meeting_request',
+    subject: 'Next step: {{date}} call?',
     content: `Hi {{first_name}},
 
-Great talking earlier! As promised, here`s the scheduling link: [LINK]
+Great talking earlier! As promised, here's the scheduling link: [LINK]
 
-I`ll come prepared with:
-â¢ A custom analysis of {{company_name}}`s current situation
-â¢ 2-3 specific strategies we`d recommend
+I'll come prepared with:
+â¢ A custom analysis of {{company_name}}'s current situation
+â¢ 2-3 specific strategies we'd recommend
 â¢ ROI estimates based on similar clients
 
 Looking forward to it!
@@ -98,26 +98,26 @@ Looking forward to it!
 
 export default function TextTemplates() {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState(``);
-  const [filterChannel, setFilterChannel] = useState(`all`);
+  const [search, setSearch] = useState('');
+  const [filterChannel, setFilterChannel] = useState('all');
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [sendModal, setSendModal] = useState(null);
   const [formData, setFormData] = useState(EMPTY_TEMPLATE);
   const [saving, setSaving] = useState(false);
 
-  const { data: companies = [] } = useQuery({ queryKey: [`companies`], queryFn: () => Company.list() });
+  const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
   const company = companies[0];
 
   const { data: templates = [] } = useQuery({
-    queryKey: [`messageTemplates`, company?.id],
+    queryKey: ['messageTemplates', company?.id],
     queryFn: () => company?.id ? MessageTemplate.filter({ company_id: company.id }) : [],
     enabled: !!company?.id,
   });
 
   const filtered = templates.filter(t => {
     const matchesSearch = !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.content.toLowerCase().includes(search.toLowerCase());
-    const matchesChannel = filterChannel === `all` || t.channel === filterChannel;
+    const matchesChannel = filterChannel === 'all' || t.channel === filterChannel;
     return matchesSearch && matchesChannel;
   });
 
@@ -129,39 +129,39 @@ export default function TextTemplates() {
 
   const openEdit = (t) => {
     setEditingTemplate(t);
-    setFormData({ name: t.name, channel: t.channel, subject: t.subject || `', content: t.content, tone: t.tone || 'professional', category: t.category || 'initial_outreach` });
+    setFormData({ name: t.name, channel: t.channel, subject: t.subject || '', content: t.content, tone: t.tone || 'professional', category: t.category || 'initial_outreach' });
     setShowForm(true);
   };
 
   const handleSave = async () => {
-    if (!formData.name || !formData.content) { toast.error(`Name and content are required`); return; }
+    if (!formData.name || !formData.content) { toast.error('Name and content are required'); return; }
     setSaving(true);
     try {
       const payload = { ...formData, company_id: company.id };
       if (editingTemplate) {
         await MessageTemplate.update(editingTemplate.id, payload);
-        toast.success(`Template updated`);
+        toast.success('Template updated');
       } else {
         await MessageTemplate.create(payload);
-        toast.success(`Template created`);
+        toast.success('Template created');
       }
-      queryClient.invalidateQueries({ queryKey: [`messageTemplates`] });
+      queryClient.invalidateQueries({ queryKey: ['messageTemplates'] });
       setShowForm(false);
-    } catch (e) { toast.error(`Save failed: ` + e.message); }
+    } catch (e) { toast.error('Save failed: ' + e.message); }
     finally { setSaving(false); }
   };
 
   const handleDelete = async (t) => {
-    if (!confirm(\`Delete "\${t.name}"?\`)) return;
+    if (!confirm(`Delete "${t.name}"?`)) return;
     await MessageTemplate.delete(t.id);
-    queryClient.invalidateQueries({ queryKey: [`messageTemplates`] });
-    toast.success(`Template deleted`);
+    queryClient.invalidateQueries({ queryKey: ['messageTemplates'] });
+    toast.success('Template deleted');
   };
 
   const handleDuplicate = async (t) => {
-    await MessageTemplate.create({ ...t, id: undefined, name: t.name + ` (Copy)`, company_id: company.id });
-    queryClient.invalidateQueries({ queryKey: [`messageTemplates`] });
-    toast.success(`Template duplicated`);
+    await MessageTemplate.create({ ...t, id: undefined, name: t.name + ' (Copy)', company_id: company.id });
+    queryClient.invalidateQueries({ queryKey: ['messageTemplates'] });
+    toast.success('Template duplicated');
   };
 
   return (
@@ -169,7 +169,7 @@ export default function TextTemplates() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight" style={{ fontFamily: "`Bebas Neue', sans-serif", letterSpacing: '0.05em` }}>
+          <h1 className="text-3xl font-bold text-white tracking-tight" style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
             Messaging & Email
           </h1>
           <p className="text-gray-400 mt-1">{templates.length} templates â WhatsApp, Email, LinkedIn</p>
@@ -186,10 +186,10 @@ export default function TextTemplates() {
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search templates..." className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-gray-500" />
         </div>
         <div className="flex gap-2">
-          {[`all', 'email', 'whatsapp', 'linkedin`].map(ch => (
+          {['all', 'email', 'whatsapp', 'linkedin'].map(ch => (
             <button key={ch} onClick={() => setFilterChannel(ch)}
-              className={\`px-3 py-1.5 rounded-lg text-sm transition-all \${filterChannel === ch ? `bg-[#38b6ff] text-black font-medium' : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white`}\`}>
-              {ch === `all' ? 'All` : CHANNEL_CONFIG[ch]?.label}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-all ${filterChannel === ch ? 'bg-[#38b6ff] text-black font-medium' : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'}`}>
+              {ch === 'all' ? 'All' : CHANNEL_CONFIG[ch]?.label}
             </button>
           ))}
         </div>
@@ -202,7 +202,7 @@ export default function TextTemplates() {
             No templates yet. Use one of these starters or create your own with the button above.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {STARTER_TEMPLATES.filter(t => filterChannel === `all` || t.channel === filterChannel).map(t => {
+            {STARTER_TEMPLATES.filter(t => filterChannel === 'all' || t.channel === filterChannel).map(t => {
               const cfg = CHANNEL_CONFIG[t.channel];
               const Icon = cfg?.icon;
               return (
@@ -217,7 +217,7 @@ export default function TextTemplates() {
                   <p className="font-semibold text-white text-sm mb-2">{t.name}</p>
                   <p className="text-xs text-gray-500 mb-4 line-clamp-3 whitespace-pre-line">{t.content.slice(0, 120)}...</p>
                   <button
-                    onClick={() => { setFormData({ name: t.name, channel: t.channel, subject: t.subject || ``, content: t.content, tone: t.tone, category: t.category }); setShowForm(true); }}
+                    onClick={() => { setFormData({ name: t.name, channel: t.channel, subject: t.subject || '', content: t.content, tone: t.tone, category: t.category }); setShowForm(true); }}
                     className="w-full py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-300 hover:border-[#38b6ff]/40 hover:text-[#38b6ff] transition-colors"
                   >
                     Use as Starting Point
@@ -245,12 +245,12 @@ export default function TextTemplates() {
               <div key={t.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 hover:border-white/20 transition-all group">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: ch.color + `20` }}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: ch.color + '20' }}>
                       <ChIcon size={16} style={{ color: ch.color }} />
                     </div>
                     <div>
                       <p className="text-white font-medium text-sm">{t.name}</p>
-                      <p className="text-gray-500 text-xs capitalize">{t.category?.replace(/_/g, ` `)}</p>
+                      <p className="text-gray-500 text-xs capitalize">{t.category?.replace(/_/g, ' ')}</p>
                     </div>
                   </div>
                   <Badge variant="outline" className="text-xs border-white/10 text-gray-400 capitalize">{t.tone}</Badge>
@@ -283,7 +283,7 @@ export default function TextTemplates() {
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="bg-[#1a1a1a] border-white/10 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingTemplate ? `Edit Template' : 'New Template`}</DialogTitle>
+            <DialogTitle>{editingTemplate ? 'Edit Template' : 'New Template'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
@@ -311,7 +311,7 @@ export default function TextTemplates() {
                   <SelectTrigger className="bg-black/30 border-white/10 text-white"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-[#1a1a1a] border-white/10">
                     {CATEGORY_OPTIONS.map(c => (
-                      <SelectItem key={c} value={c} className="text-white capitalize">{c.replace(/_/g, ` `)}</SelectItem>
+                      <SelectItem key={c} value={c} className="text-white capitalize">{c.replace(/_/g, ' ')}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -328,7 +328,7 @@ export default function TextTemplates() {
                 </Select>
               </div>
             </div>
-            {formData.channel === `email` && (
+            {formData.channel === 'email' && (
               <div>
                 <label className="text-gray-400 text-sm mb-1.5 block">Subject</label>
                 <Input value={formData.subject} onChange={e => setFormData(p => ({ ...p, subject: e.target.value }))}
@@ -344,7 +344,7 @@ export default function TextTemplates() {
             </div>
             <div className="flex gap-3 pt-2">
               <Button onClick={handleSave} disabled={saving} className="flex-1 bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">
-                {saving ? `Saving...' : editingTemplate ? 'Update Template' : 'Create Template'}
+                {saving ? 'Saving...' : editingTemplate ? 'Update Template' : 'Create Template'}
               </Button>
               <Button variant="outline" onClick={() => setShowForm(false)} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
             </div>
