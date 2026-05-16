@@ -181,6 +181,17 @@ Return JSON with: content (full article in markdown), meta_description (155 char
 
       {view === 'list' ? (
         <div className="space-y-4">
+          {posts.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-center rounded-2xl border border-dashed border-white/10">
+              <FileText size={40} className="text-gray-600 mb-4" />
+              <h3 className="text-white font-semibold mb-1">No posts yet</h3>
+              <p className="text-gray-500 text-sm mb-4">Create your first SEO-optimized blog post with AI</p>
+              <Button onClick={() => { setPost(emptyPost); setEditing(null); setView('editor'); }}
+                className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
+                <Plus size={16} /> New Post
+              </Button>
+            </div>
+          )}
           {posts.map(p => (
             <div key={p.id} className="rounded-2xl bg-white/5 border border-white/10 p-5 hover:border-white/20 transition-all">
               <div className="flex items-start justify-between gap-4">
