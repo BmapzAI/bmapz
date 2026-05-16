@@ -49,28 +49,60 @@ function IntegrationSection({ title, color, icon, status, onTest, isTesting, tes
             {status === undefined && <p className="text-gray-500 text-xs">Not tested</p>}
           </div>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onTest}
-          disabled={isTesting}
-          className="border-white/10 text-gray-300 hover:bg-white/10 gap-1.5 text-xs"
-        >
-          {isTesting ? <Loader2 size={12} className="animate-spin" /> : <TestTube size={12} />}
-          {testLabel || 'Test'}
-        </Button>
+        {onTest && (
+          <Button size="sm" variant="outline" onClick={onTest} disabled={isTesting}
+            className="border-white/10 text-gray-300 hover:bg-white/10 gap-1.5 text-xs">
+            {isTesting ? <Loader2 size={12} className="animate-spin" /> : <TestTube size={12} />}
+            {testLabel || 'Test'}
+          </Button>
+        )}
       </div>
-      <div className="space-y-3">
-        {children}
-      </div>
+      <div className="space-y-3">{children}</div>
     </div>
   );
 }
 
+const OPENAI_MODELS = [
+  { value: 'gpt-4o-mini', label: 'gpt-4o-mini — Fast & affordable (recommended)' },
+  { value: 'gpt-4o', label: 'gpt-4o — Most capable' },
+  { value: 'gpt-4.1', label: 'gpt-4.1 — Latest generation' },
+  { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini — Latest, fast & affordable' },
+  { value: 'gpt-4.1-nano', label: 'gpt-4.1-nano — Fastest & cheapest' },
+  { value: 'o3-mini', label: 'o3-mini — Advanced reasoning, efficient' },
+  { value: 'o1-mini', label: 'o1-mini — Reasoning model' },
+  { value: 'gpt-4-turbo', label: 'gpt-4-turbo' },
+  { value: 'gpt-3.5-turbo', label: 'gpt-3.5-turbo — Budget' },
+];
+
+const ANTHROPIC_MODELS = [
+  { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5 — Best balance (recommended)' },
+  { value: 'claude-opus-4-5', label: 'Claude Opus 4.5 — Most capable' },
+  { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — Fast & affordable' },
+  { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+  { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku — Fast' },
+  { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
+];
+
+const IMAGE_PROVIDERS = [
+  { value: 'openai', label: 'OpenAI DALL-E (uses OpenAI key)' },
+  { value: 'stability', label: 'Stability AI (Stable Diffusion)' },
+];
+
+const IMAGE_MODELS_OPENAI = [
+  { value: 'dall-e-3', label: 'DALL-E 3 — Best quality (recommended)' },
+  { value: 'dall-e-2', label: 'DALL-E 2 — Faster, cheaper' },
+];
+
 export default function ApiKeysTab({ company, onSave }) {
   const [keys, setKeys] = useState(() => ({
+    ai_provider: company?.ai_provider || 'openai',
     openai_api_key: company?.openai_api_key || '',
     openai_model: company?.openai_model || 'gpt-4o-mini',
+    anthropic_api_key: company?.anthropic_api_key || '',
+    anthropic_model: company?.anthropic_model || 'claude-sonnet-4-5',
+    ai_image_provider: company?.ai_image_provider || 'openai',
+    ai_image_model: company?.ai_image_model || 'dall-e-3',
+    stability_api_key: company?.stability_api_key || '',
     google_ads_developer_token: company?.google_ads_developer_token || '',
     google_ads_client_id: company?.google_ads_client_id || '',
     google_ads_client_secret: company?.google_ads_client_secret || '',
@@ -98,7 +130,6 @@ export default function ApiKeysTab({ company, onSave }) {
     custom_api_headers: company?.custom_api_headers || '',
     apollo_api_key: company?.apollo_api_key || '',
     hunter_api_key: company?.hunter_api_key || '',
-    stability_api_key: company?.stability_api_key || '',
   }));
   const [statuses, setStatuses] = useState(company?.integration_status || {});
   const [testing, setTesting] = useState({});
@@ -127,7 +158,6 @@ export default function ApiKeysTab({ company, onSave }) {
   const testIntegration = async (type) => {
     setTesting(prev => ({ ...prev, [type]: true }));
     try {
-      // Save current keys first
       await Company.update(company.id, { ...keys });
       const res = await api.get('/api/integrations/status');
       const { success, message } = res.data;
@@ -146,7 +176,7 @@ export default function ApiKeysTab({ company, onSave }) {
       await onSave({ ...keys, integration_status: statuses });
       toast.success('API keys saved');
     } catch (e) {
-      toast.error('Failed to save');
+      toast.error('Failed to save: ' + (e?.response?.data?.error || e.message));
     } finally {
       setSaving(false);
     }
@@ -159,122 +189,136 @@ export default function ApiKeysTab({ company, onSave }) {
         <p className="text-gray-400 text-sm mt-1">Connect your own accounts. All keys are stored securely in your company profile and never shared.</p>
       </div>
 
-      {/* OpenAI */}
-      <IntegrationSection
-        title="OpenAI (AI Engine)"
-        color="#10A37F"
-        icon="🤖"
-        status={statuses.openai}
-        onTest={() => testIntegration('openai')}
-        isTesting={testing.openai}
-        testLabel="Test API Key"
-      >
-        <SecretInput
-          label="OpenAI API Key"
-          value={keys.openai_api_key}
-          onChange={(v) => set('openai_api_key', v)}
-          placeholder="sk-..."
-          hint="Get yours at platform.openai.com/api-keys"
-        />
+      <div className="pt-1 pb-0">
+        <h3 className="text-white font-semibold text-base flex items-center gap-2">🧠 General AI Provider</h3>
+        <p className="text-gray-500 text-xs mt-0.5">Choose which AI model powers all text generation, analysis, and content creation features.</p>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
+        <div>
+          <Label className="text-gray-400 text-xs">Active AI Provider</Label>
+          <div className="flex gap-2 mt-2">
+            {[
+              { value: 'openai', label: '🤖 OpenAI' },
+              { value: 'anthropic', label: '🟣 Anthropic Claude' },
+            ].map(opt => (
+              <button key={opt.value} type="button" onClick={() => set('ai_provider', opt.value)}
+                className={`flex-1 py-2.5 px-4 rounded-xl border text-sm font-medium transition-all ${
+                  keys.ai_provider === opt.value
+                    ? 'border-[#38b6ff]/60 bg-[#38b6ff]/10 text-white'
+                    : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-gray-300'
+                }`}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-gray-600 text-xs mt-2">
+            {keys.ai_provider === 'anthropic'
+              ? 'All AI features will use Anthropic Claude. Add your Anthropic API key below.'
+              : 'All AI features will use OpenAI. Add your OpenAI API key below.'}
+          </p>
+        </div>
+      </div>
+
+      <IntegrationSection title="OpenAI" color="#10A37F" icon="🤖"
+        status={statuses.openai} onTest={() => testIntegration('openai')} isTesting={testing.openai} testLabel="Test Key">
+        <SecretInput label="OpenAI API Key" value={keys.openai_api_key} onChange={(v) => set('openai_api_key', v)}
+          placeholder="sk-..." hint="Get yours at platform.openai.com/api-keys" />
         <div>
           <Label className="text-gray-400 text-xs">Default Model</Label>
-          <select
-            value={keys.openai_model || 'gpt-4o-mini'}
-            onChange={(e) => set('openai_model', e.target.value)}
-            className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm"
-          >
-            <option value="gpt-4o-mini">gpt-4o-mini (Fast & affordable)</option>
-            <option value="gpt-4o">gpt-4o (Most capable)</option>
-            <option value="gpt-4-turbo">gpt-4-turbo</option>
-            <option value="gpt-3.5-turbo">gpt-3.5-turbo (Budget)</option>
+          <select value={keys.openai_model || 'gpt-4o-mini'} onChange={(e) => set('openai_model', e.target.value)}
+            className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm">
+            {OPENAI_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
-          <p className="text-gray-600 text-xs mt-1">If no key is set, BMAPZ's built-in AI is used (uses platform credits)</p>
+          <p className="text-gray-600 text-xs mt-1">Used when OpenAI is the active provider. If no key is set, platform credits are used.</p>
         </div>
       </IntegrationSection>
 
-      {/* ── AD ACCOUNTS ── */}
+      <IntegrationSection title="Anthropic Claude" color="#7C3AED" icon="🟣"
+        status={statuses.anthropic} onTest={() => testIntegration('anthropic')} isTesting={testing.anthropic} testLabel="Test Key">
+        <SecretInput label="Anthropic API Key" value={keys.anthropic_api_key} onChange={(v) => set('anthropic_api_key', v)}
+          placeholder="sk-ant-..." hint="Get yours at console.anthropic.com/settings/keys" />
+        <div>
+          <Label className="text-gray-400 text-xs">Default Model</Label>
+          <select value={keys.anthropic_model || 'claude-sonnet-4-5'} onChange={(e) => set('anthropic_model', e.target.value)}
+            className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm">
+            {ANTHROPIC_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+          <p className="text-gray-600 text-xs mt-1">Used when Anthropic is the active provider.</p>
+        </div>
+      </IntegrationSection>
+
+      <div className="pt-2 pb-0">
+        <h3 className="text-white font-semibold text-base flex items-center gap-2">🎨 Image Generation</h3>
+        <p className="text-gray-500 text-xs mt-0.5">Choose which provider generates images (ads, blog images, social content).</p>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
+        <div>
+          <Label className="text-gray-400 text-xs">Image Provider</Label>
+          <select value={keys.ai_image_provider || 'openai'} onChange={(e) => set('ai_image_provider', e.target.value)}
+            className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm">
+            {IMAGE_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+        </div>
+        {keys.ai_image_provider === 'openai' && (
+          <div>
+            <Label className="text-gray-400 text-xs">Image Model</Label>
+            <select value={keys.ai_image_model || 'dall-e-3'} onChange={(e) => set('ai_image_model', e.target.value)}
+              className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm">
+              {IMAGE_MODELS_OPENAI.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+            <p className="text-gray-600 text-xs mt-1">Uses your OpenAI API key above.</p>
+          </div>
+        )}
+        {keys.ai_image_provider === 'stability' && (
+          <SecretInput label="Stability AI API Key" value={keys.stability_api_key} onChange={(v) => set('stability_api_key', v)}
+            placeholder="sk-..." hint="Get yours at platform.stability.ai/account/keys" />
+        )}
+      </div>
+
       <div className="pt-2 pb-1">
         <h3 className="text-white font-semibold text-base flex items-center gap-2">📊 Ad Accounts</h3>
         <p className="text-gray-500 text-xs mt-0.5">Connect your ad platforms to pull real campaign data for AI-powered optimization.</p>
       </div>
 
-      {/* Meta Ads */}
-      <IntegrationSection
-        title="Meta Ads (Facebook / Instagram)"
-        color="#1877F2"
-        icon="📣"
-        status={statuses.meta_ads}
-        onTest={() => testIntegration('meta_ads')}
-        isTesting={testing.meta_ads}
-        testLabel="Test Connection"
-      >
-        <Button
-          onClick={() => connectMetaOAuth('meta_ads')}
-          disabled={testing.oauth_meta_ads}
-          className="w-full bg-[#1877F2] hover:bg-[#1877F2]/90 text-white gap-2 justify-center"
-        >
+      <IntegrationSection title="Meta Ads (Facebook / Instagram)" color="#1877F2" icon="📣"
+        status={statuses.meta_ads} onTest={() => testIntegration('meta_ads')} isTesting={testing.meta_ads} testLabel="Test Connection">
+        <Button onClick={() => connectMetaOAuth('meta_ads')} disabled={testing.oauth_meta_ads}
+          className="w-full bg-[#1877F2] hover:bg-[#1877F2]/90 text-white gap-2 justify-center">
           {testing.oauth_meta_ads ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
           Connect with Meta OAuth
         </Button>
-        {statuses.meta_ads && (
-          <p className="text-green-400 text-xs text-center">✓ Connected via OAuth. Token is managed automatically.</p>
-        )}
+        {statuses.meta_ads && <p className="text-green-400 text-xs text-center">✓ Connected via OAuth.</p>}
       </IntegrationSection>
 
-      {/* Google Ads */}
-      <IntegrationSection
-        title="Google Ads"
-        color="#4285F4"
-        icon="🔍"
-        status={statuses.google_ads}
-        onTest={() => testIntegration('google_ads')}
-        isTesting={testing.google_ads}
-        testLabel="Test Connection"
-      >
+      <IntegrationSection title="Google Ads" color="#4285F4" icon="🔍"
+        status={statuses.google_ads} onTest={() => testIntegration('google_ads')} isTesting={testing.google_ads} testLabel="Test Connection">
         <SecretInput label="Developer Token" value={keys.google_ads_developer_token} onChange={(v) => set('google_ads_developer_token', v)} placeholder="xxxx" hint="Google Ads → Tools → API Center → Developer Token" />
-        <SecretInput label="OAuth Client ID" value={keys.google_ads_client_id} onChange={(v) => set('google_ads_client_id', v)} placeholder="xxxx.apps.googleusercontent.com" hint="Google Cloud Console → OAuth 2.0 Credentials" />
+        <SecretInput label="OAuth Client ID" value={keys.google_ads_client_id} onChange={(v) => set('google_ads_client_id', v)} placeholder="xxxx.apps.googleusercontent.com" />
         <SecretInput label="OAuth Client Secret" value={keys.google_ads_client_secret} onChange={(v) => set('google_ads_client_secret', v)} placeholder="GOCSPX-..." />
-        <SecretInput label="OAuth Refresh Token" value={keys.google_ads_refresh_token} onChange={(v) => set('google_ads_refresh_token', v)} placeholder="1//0g..." hint="Generate via OAuth Playground with scope: https://www.googleapis.com/auth/adwords" />
+        <SecretInput label="OAuth Refresh Token" value={keys.google_ads_refresh_token} onChange={(v) => set('google_ads_refresh_token', v)} placeholder="1//0g..." hint="Generate via OAuth Playground with adwords scope" />
         <div>
           <Label className="text-gray-400 text-xs">Customer ID</Label>
           <Input value={keys.google_ads_customer_id || ''} onChange={(e) => set('google_ads_customer_id', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="123-456-7890" />
-          <p className="text-gray-600 text-xs mt-1">Found at top right of your Google Ads account</p>
         </div>
       </IntegrationSection>
 
-      {/* TikTok Ads */}
-      <IntegrationSection
-        title="TikTok Ads"
-        color="#010101"
-        icon="🎵"
-        status={statuses.tiktok_ads}
-        onTest={() => testIntegration('tiktok_ads')}
-        isTesting={testing.tiktok_ads}
-        testLabel="Test Connection"
-      >
+      <IntegrationSection title="TikTok Ads" color="#010101" icon="🎵"
+        status={statuses.tiktok_ads} onTest={() => testIntegration('tiktok_ads')} isTesting={testing.tiktok_ads} testLabel="Test Connection">
         <SecretInput label="Access Token" value={keys.tiktok_access_token} onChange={(v) => set('tiktok_access_token', v)} placeholder="xxxx" hint="TikTok for Business → My Apps → Access Token" />
         <div>
           <Label className="text-gray-400 text-xs">Advertiser ID</Label>
           <Input value={keys.tiktok_advertiser_id || ''} onChange={(e) => set('tiktok_advertiser_id', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="7xxxxxxxxx" />
-          <p className="text-gray-600 text-xs mt-1">Found in TikTok Ads Manager → Account → Advertiser ID</p>
         </div>
       </IntegrationSection>
 
-      {/* LinkedIn Ads */}
-      <IntegrationSection
-        title="LinkedIn Ads (Campaign Manager)"
-        color="#0077b5"
-        icon="💼"
-        status={statuses.linkedin_ads}
-        onTest={() => testIntegration('linkedin_ads')}
-        isTesting={testing.linkedin_ads}
-        testLabel="Test Connection"
-      >
-        <SecretInput label="Access Token" value={keys.linkedin_ads_access_token} onChange={(v) => set('linkedin_ads_access_token', v)} placeholder="AQV..." hint="LinkedIn Developer Portal → App → OAuth tokens with r_ads and r_ads_reporting scopes" />
+      <IntegrationSection title="LinkedIn Ads" color="#0077b5" icon="💼"
+        status={statuses.linkedin_ads} onTest={() => testIntegration('linkedin_ads')} isTesting={testing.linkedin_ads} testLabel="Test Connection">
+        <SecretInput label="Access Token" value={keys.linkedin_ads_access_token} onChange={(v) => set('linkedin_ads_access_token', v)} placeholder="AQV..." hint="LinkedIn Developer Portal → OAuth tokens with r_ads scope" />
         <div>
           <Label className="text-gray-400 text-xs">Ad Account ID</Label>
           <Input value={keys.linkedin_ads_account_id || ''} onChange={(e) => set('linkedin_ads_account_id', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="123456789" />
-          <p className="text-gray-600 text-xs mt-1">LinkedIn Campaign Manager → Account Assets → Account ID</p>
         </div>
       </IntegrationSection>
 
@@ -282,47 +326,23 @@ export default function ApiKeysTab({ company, onSave }) {
         <h3 className="text-white font-semibold text-base flex items-center gap-2">📬 Messaging & Communication</h3>
       </div>
 
-      {/* WhatsApp */}
-      <IntegrationSection
-        title="WhatsApp Business API"
-        color="#25D366"
-        icon="💬"
-        status={statuses.whatsapp}
-        onTest={() => testIntegration('whatsapp')}
-        isTesting={testing.whatsapp}
-        testLabel="Test Connection"
-      >
-        <SecretInput label="Access Token" value={keys.whatsapp_api_token} onChange={(v) => set('whatsapp_api_token', v)} placeholder="EAAxxxxxxx" hint="From Meta for Developers → WhatsApp → API Setup" />
+      <IntegrationSection title="WhatsApp Business API" color="#25D366" icon="💬"
+        status={statuses.whatsapp} onTest={() => testIntegration('whatsapp')} isTesting={testing.whatsapp} testLabel="Test Connection">
+        <SecretInput label="Access Token" value={keys.whatsapp_api_token} onChange={(v) => set('whatsapp_api_token', v)} placeholder="EAAxxxxxxx" hint="Meta for Developers → WhatsApp → API Setup" />
         <SecretInput label="Phone Number ID" value={keys.whatsapp_phone_id} onChange={(v) => set('whatsapp_phone_id', v)} placeholder="1234567890" />
         <SecretInput label="Webhook Verify Token (optional)" value={keys.whatsapp_verify_token} onChange={(v) => set('whatsapp_verify_token', v)} placeholder="Your custom verify token" />
       </IntegrationSection>
 
-      {/* Gmail / Email */}
-      <IntegrationSection
-        title="Gmail (Email Sending)"
-        color="#EA4335"
-        icon="📧"
-        status={statuses.gmail}
-        onTest={() => testIntegration('gmail')}
-        isTesting={testing.gmail}
-        testLabel="Test OAuth"
-      >
+      <IntegrationSection title="Gmail (Email Sending)" color="#EA4335" icon="📧"
+        status={statuses.gmail} onTest={() => testIntegration('gmail')} isTesting={testing.gmail} testLabel="Test OAuth">
         <SecretInput label="Gmail Sender Email" value={keys.gmail_sender_email} onChange={(v) => set('gmail_sender_email', v)} placeholder="you@gmail.com" hint="The Gmail account that sends emails" />
-        <SecretInput label="OAuth Client ID" value={keys.gmail_client_id} onChange={(v) => set('gmail_client_id', v)} placeholder="xxxx.apps.googleusercontent.com" hint="From Google Cloud Console → OAuth 2.0 Client" />
+        <SecretInput label="OAuth Client ID" value={keys.gmail_client_id} onChange={(v) => set('gmail_client_id', v)} placeholder="xxxx.apps.googleusercontent.com" />
         <SecretInput label="OAuth Client Secret" value={keys.gmail_client_secret} onChange={(v) => set('gmail_client_secret', v)} placeholder="GOCSPX-..." />
         <SecretInput label="Refresh Token" value={keys.gmail_refresh_token} onChange={(v) => set('gmail_refresh_token', v)} placeholder="1//0g..." hint="Get via OAuth Playground (oauth2.googleapis.com)" />
       </IntegrationSection>
 
-      {/* WordPress */}
-      <IntegrationSection
-        title="WordPress (Blog Publishing)"
-        color="#21759B"
-        icon="📝"
-        status={statuses.wordpress}
-        onTest={() => testIntegration('wordpress')}
-        isTesting={testing.wordpress}
-        testLabel="Test Connection"
-      >
+      <IntegrationSection title="WordPress (Blog Publishing)" color="#21759B" icon="📝"
+        status={statuses.wordpress} onTest={() => testIntegration('wordpress')} isTesting={testing.wordpress} testLabel="Test Connection">
         <div>
           <Label className="text-gray-400 text-xs">WordPress Site URL</Label>
           <Input value={keys.wordpress_url || ''} onChange={(e) => set('wordpress_url', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm" placeholder="https://yourblog.com" />
@@ -331,66 +351,44 @@ export default function ApiKeysTab({ company, onSave }) {
         <SecretInput label="Application Password" value={keys.wordpress_app_password} onChange={(v) => set('wordpress_app_password', v)} placeholder="xxxx xxxx xxxx xxxx" hint="WordPress Admin → Users → Profile → Application Passwords" />
       </IntegrationSection>
 
-      {/* Zapier */}
-      <IntegrationSection
-        title="Zapier Webhook"
-        color="#FF4A00"
-        icon="⚡"
-        status={statuses.zapier}
-        onTest={() => testIntegration('zapier')}
-        isTesting={testing.zapier}
-        testLabel="Send Test"
-      >
+      <div className="border-t border-white/10 pt-4">
+        <h3 className="text-white font-semibold text-base flex items-center gap-2">🔍 Prospecting & Data</h3>
+      </div>
+
+      <IntegrationSection title="Apollo.io" color="#FF6B35" icon="🚀" status={statuses.apollo} onTest={() => testIntegration('apollo')} isTesting={testing.apollo} testLabel="Test Key">
+        <SecretInput label="Apollo API Key" value={keys.apollo_api_key} onChange={(v) => set('apollo_api_key', v)} placeholder="xxxx" hint="app.apollo.io → Settings → Integrations → API Keys" />
+      </IntegrationSection>
+
+      <IntegrationSection title="Hunter.io (Email Finder)" color="#F87900" icon="🎯" status={statuses.hunter} onTest={() => testIntegration('hunter')} isTesting={testing.hunter} testLabel="Test Key">
+        <SecretInput label="Hunter API Key" value={keys.hunter_api_key} onChange={(v) => set('hunter_api_key', v)} placeholder="xxxx" hint="hunter.io → Dashboard → API" />
+      </IntegrationSection>
+
+      <div className="border-t border-white/10 pt-4">
+        <h3 className="text-white font-semibold text-base flex items-center gap-2">⚡ Automation Webhooks</h3>
+      </div>
+
+      <IntegrationSection title="Zapier Webhook" color="#FF4A00" icon="⚡" status={statuses.zapier} onTest={() => testIntegration('zapier')} isTesting={testing.zapier} testLabel="Send Test">
         <div>
           <Label className="text-gray-400 text-xs">Zapier Webhook URL</Label>
           <Input value={keys.zapier_webhook_url || ''} onChange={(e) => set('zapier_webhook_url', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://hooks.zapier.com/hooks/catch/..." />
-          <p className="text-gray-600 text-xs mt-1">Create a Zap → Trigger: Webhooks by Zapier → Catch Hook</p>
         </div>
       </IntegrationSection>
 
-      {/* Make / Integromat */}
-      <IntegrationSection
-        title="Make (formerly Integromat)"
-        color="#6D00CC"
-        icon="🔧"
-        status={statuses.make}
-        onTest={() => testIntegration('make')}
-        isTesting={testing.make}
-        testLabel="Send Test"
-      >
+      <IntegrationSection title="Make (formerly Integromat)" color="#6D00CC" icon="🔧" status={statuses.make} onTest={() => testIntegration('make')} isTesting={testing.make} testLabel="Send Test">
         <div>
           <Label className="text-gray-400 text-xs">Make Webhook URL</Label>
           <Input value={keys.make_webhook_url || ''} onChange={(e) => set('make_webhook_url', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://hook.eu1.make.com/..." />
-          <p className="text-gray-600 text-xs mt-1">Make → Create Scenario → Add Webhooks → Custom webhook</p>
         </div>
       </IntegrationSection>
 
-      {/* n8n */}
-      <IntegrationSection
-        title="n8n Webhook"
-        color="#EA4B71"
-        icon="🔁"
-        status={statuses.n8n}
-        onTest={() => testIntegration('n8n')}
-        isTesting={testing.n8n}
-        testLabel="Send Test"
-      >
+      <IntegrationSection title="n8n Webhook" color="#EA4B71" icon="🔁" status={statuses.n8n} onTest={() => testIntegration('n8n')} isTesting={testing.n8n} testLabel="Send Test">
         <div>
           <Label className="text-gray-400 text-xs">n8n Webhook URL</Label>
           <Input value={keys.n8n_webhook_url || ''} onChange={(e) => set('n8n_webhook_url', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://your-n8n.app/webhook/..." />
         </div>
       </IntegrationSection>
 
-      {/* Custom API */}
-      <IntegrationSection
-        title="Custom API / Webhook"
-        color="#38b6ff"
-        icon="🌐"
-        status={statuses.custom}
-        onTest={() => testIntegration('custom')}
-        isTesting={testing.custom}
-        testLabel="Send Test"
-      >
+      <IntegrationSection title="Custom API / Webhook" color="#38b6ff" icon="🌐" status={statuses.custom} onTest={() => testIntegration('custom')} isTesting={testing.custom} testLabel="Send Test">
         <div>
           <Label className="text-gray-400 text-xs">Endpoint URL</Label>
           <Input value={keys.custom_api_url || ''} onChange={(e) => set('custom_api_url', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1 text-sm font-mono" placeholder="https://api.yourservice.com/webhook" />
@@ -402,7 +400,7 @@ export default function ApiKeysTab({ company, onSave }) {
         </div>
       </IntegrationSection>
 
-      <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
+      <Button onClick={handleSave} disabled={saving} className="w-full bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2 py-3">
         {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
         Save All API Keys
       </Button>
