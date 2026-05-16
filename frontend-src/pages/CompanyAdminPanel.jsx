@@ -14,7 +14,7 @@ import {
   Settings, Users, CreditCard, UserPlus, Edit3, Check, X,
   Crown, Zap, Building2, AlertTriangle, Lock, Plus, Sparkles, ArrowRight
 } from 'lucide-react';
-import { Company, User } from '@/api/entities';
+import { Company, User, Subscription } from '@/api/entities';
 
 function Badge({ color, children }) {
   const colors = {
@@ -260,21 +260,13 @@ export default function CompanyAdminPanel() {
   // All companies under the same account (for counting against plan limit)
   const { data: accountCompanies = [] } = useQuery({
     queryKey: ['account_companies', user?.account_id, user?.email],
-    queryFn: async () => {
-      if (user?.account_id) {
-        const accs = await Account.filter({ id: user.account_id });
-        const companyIds = accs[0]?.company_ids || [];
-        if (companyIds.length === 0) return companies;
-        return Company.list().then(all => all.filter(c => companyIds.includes(c.id)));
-      }
-      return Company.filter({ created_by: user?.email });
-    },
+    queryFn: async () => Company.filter({ created_by: user?.email }),
     enabled: !!user,
   });
 
   const { data: subscription } = useQuery({
     queryKey: ['my_subscription', company?.id],
-    queryFn: () => Subscription.filter({ company_id: company.id }).then(r => r[0]),
+    queryFn: () => Subscription.list().then(list => list.find(s => s.company_id === company.id)),
     enabled: !!company?.id,
   });
 
@@ -302,16 +294,7 @@ export default function CompanyAdminPanel() {
 
   const handleCreateCompany = async (formData) => {
     const newCompany = await Company.create(formData);
-    // Link to account if exists
-    if (user?.account_id) {
-      const accs = await Account.filter({ id: user.account_id });
-      const acc = accs[0];
-      if (acc) {
-        const updatedIds = [...(acc.company_ids || []), newCompany.id];
-        await Account.update(acc.id, { company_ids: updatedIds });
-      }
-    }
-    // company switch handled server-side
+    // New company created — no account linking needed
     queryClient.invalidateQueries({ queryKey: ['my_companies'] });
     queryClient.invalidateQueries({ queryKey: ['account_companies'] });
     toast.success(`Company "${formData.name}" created!`);
