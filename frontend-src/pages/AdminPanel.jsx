@@ -558,13 +558,7 @@ export default function AdminPanel() {
     if (credits > 0) updates.ai_credits_total = (subscription.ai_credits_total || 0) + credits;
     if (scanTokens > 0) updates.scan_tokens_total = (subscription.scan_tokens_total || 0) + scanTokens;
     updateSubMutation.mutate({ id: subscription.id, data: updates });
-    await CreditTransaction.create({
-      company_id: subscription.company_id,
-      subscription_id: subscription.id,
-      type: 'bonus',
-      credits_delta: credits,
-      description: note || 'Admin grant',
-    });
+    // Credit transaction logged server-side
     await logChange(user, 'grant_credits', 'company', subscription.company_id, comp?.name,
       { ai_credits: credits, scan_tokens: scanTokens, note },
       `Granted ${credits} AI credits and ${scanTokens} scan tokens to ${comp?.name}`);
