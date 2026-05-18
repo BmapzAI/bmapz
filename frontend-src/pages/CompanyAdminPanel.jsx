@@ -220,8 +220,7 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
 
 export default function CompanyAdminPanel() {
   const queryClient = useQueryClient();
-  const { dbUser: user, isAdmin, isCompanyAdmin } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const { dbUser: user, isLoadingAuth: loading } = useAuth();
   const [showInvite, setShowInvite] = useState(false);
   const [showAddCompany, setShowAddCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState(null);
