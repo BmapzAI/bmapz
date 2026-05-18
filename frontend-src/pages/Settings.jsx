@@ -259,7 +259,7 @@ export default function Settings() {
                 <Label className="text-gray-400 block">Funnel Stage Objectives</Label>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="p-3 rounded-xl bg-[#38b6ff]/10 border border-[#38b6ff]/20">
-                    <p className="text-[#38b6ff] text-xs font-semibold mb-1.5">< Top of Funnel (TOF)</p>
+                    <p className="text-[#38b6ff] text-xs font-semibold mb-1.5">{'<'} Top of Funnel (TOF)</p>
                     <p className="text-gray-500 text-xs mb-2">Awareness & discovery</p>
                     <Textarea value={bf.tof_objective || ''} onChange={(e) => setBf('tof_objective', e.target.value)} className="bg-black/30 border-white/10 text-white text-xs min-h-[60px]" placeholder="e.g., Reach 50K new people/mo, grow LinkedIn followers by 20%" />
                   </div>
