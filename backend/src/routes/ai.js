@@ -6,27 +6,24 @@ const router = Router();
 
 /**
  * Helper: get company AI settings (provider, model, keys).
+ * Keys are stored in the api_keys JSONB column — must select that column,
+ * NOT individual field names (those are not direct columns on the table).
  */
 async function getCompanyAISettings(companyId) {
   const { data: company } = await supabaseAdmin
     .from('companies')
-    .select('openai_api_key, openai_model, anthropic_api_key, anthropic_model, ai_provider, ai_image_provider, ai_image_model, stability_api_key')
+    .select('api_keys')
     .eq('id', companyId)
     .single();
-  return company || {};
+  return company?.api_keys || {};
 }
 
 /**
  * Helper: get OpenAI client using company key or platform key.
  */
 async function getOpenAIClient(companyId) {
-  const { data: company } = await supabaseAdmin
-    .from('companies')
-    .select('openai_api_key')
-    .eq('id', companyId)
-    .single();
-
-  const apiKey = company?.openai_api_key || process.env.OPENAI_API_KEY;
+  const settings = await getCompanyAISettings(companyId);
+  const apiKey = settings.openai_api_key || process.env.OPENAI_API_KEY;
   if (!apiKey) {
     const err = new Error('OpenAI API key not configured. Add your key in Settings > API Keys.');
     err.code = 'MISSING_API_KEY';
@@ -41,13 +38,8 @@ async function getOpenAIClient(companyId) {
  * Helper: get Anthropic client using company key or platform key.
  */
 async function getAnthropicClient(companyId) {
-  const { data: company } = await supabaseAdmin
-    .from('companies')
-    .select('anthropic_api_key')
-    .eq('id', companyId)
-    .single();
-
-  const apiKey = company?.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
+  const settings = await getCompanyAISettings(companyId);
+  const apiKey = settings.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     const err = new Error('Anthropic API key not configured. Add your key in Settings > API Keys.');
     err.code = 'MISSING_API_KEY';
@@ -60,6 +52,7 @@ async function getAnthropicClient(companyId) {
 
 /**
  * Unified AI chat completion — supports OpenAI and Anthropic based on company setting.
+ * Returns: { content: string, usage: object }
  */
 async function runAIChat({ companyId, messages, model, temperature = 0.7, max_tokens, response_format, system }) {
   const settings = await getCompanyAISettings(companyId);
@@ -68,10 +61,19 @@ async function runAIChat({ companyId, messages, model, temperature = 0.7, max_to
   if (provider === 'anthropic') {
     const client = await getAnthropicClient(companyId);
     const anthropicModel = model || settings.anthropic_model || 'claude-sonnet-4-5';
+
+    // Anthropic messages format: system is separate, no 'system' role in messages
     const anthropicMessages = (messages || []).filter(m => m.role !== 'system');
     const systemPrompt = system || (messages || []).find(m => m.role === 'system')?.content;
-    const params = { model: anthropicModel, messages: anthropicMessages, max_tokens: max_tokens || 4096, temperature };
+
+    const params = {
+      model: anthropicModel,
+      messages: anthropicMessages,
+      max_tokens: max_tokens || 4096,
+      temperature,
+    };
     if (systemPrompt) params.system = systemPrompt;
+
     const response = await client.messages.create(params);
     return {
       content: response.content[0]?.text || '',
@@ -89,11 +91,16 @@ async function runAIChat({ companyId, messages, model, temperature = 0.7, max_to
   const msgs = [];
   if (system) msgs.push({ role: 'system', content: system });
   msgs.push(...(messages || []));
+
   const params = { model: openaiModel, messages: msgs, temperature };
   if (max_tokens) params.max_tokens = max_tokens;
   if (response_format) params.response_format = response_format;
+
   const completion = await client.chat.completions.create(params);
-  return { content: completion.choices[0].message.content, usage: completion.usage };
+  return {
+    content: completion.choices[0].message.content,
+    usage: completion.usage,
+  };
 }
 
 // POST /api/ai/chat
@@ -114,12 +121,15 @@ router.post('/transcribe', requireAuth, async (req, res) => {
   try {
     const { audio_base64, filename = 'audio.webm', language } = req.body;
     if (!audio_base64) return res.status(400).json({ error: 'audio_base64 is required' });
+
     const client = await getOpenAIClient(req.companyId);
     const buffer = Buffer.from(audio_base64, 'base64');
     const blob = new Blob([buffer], { type: 'audio/webm' });
     const file = new File([blob], filename, { type: 'audio/webm' });
+
     const params = { file, model: 'whisper-1' };
     if (language) params.language = language;
+
     const transcription = await client.audio.transcriptions.create(params);
     res.json({ text: transcription.text });
   } catch (err) {
@@ -134,6 +144,7 @@ router.post('/generate-image', requireAuth, async (req, res) => {
   try {
     const { prompt, size = '1024x1024', quality = 'standard', n = 1 } = req.body;
     const settings = await getCompanyAISettings(req.companyId);
+
     const provider = settings.ai_image_provider || 'openai';
     const model = settings.ai_image_model || 'dall-e-3';
 
@@ -150,6 +161,7 @@ router.post('/generate-image', requireAuth, async (req, res) => {
       return res.json({ urls });
     }
 
+    // Default: OpenAI DALL-E
     const client = await getOpenAIClient(req.companyId);
     const result = await client.images.generate({ model: model || 'dall-e-3', prompt, size, quality, n });
     res.json({ urls: result.data.map(img => img.url) });
