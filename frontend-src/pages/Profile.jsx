@@ -96,14 +96,18 @@ export default function Profile() {
   };
 
   const accessLevelLabels = {
+    owner: 'Owner',
     webmaster: 'Webmaster',
     admin: 'Administrator',
+    company_admin: 'Company Admin',
     user: 'User',
   };
 
   const accessLevelColors = {
+    owner: 'from-[#f59e0b] to-[#fbbf24]',
     webmaster: 'from-[#cb6ce6] to-[#38b6ff]',
     admin: 'from-[#3572b9] to-[#38b6ff]',
+    company_admin: 'from-[#8b5cf6] to-[#a78bfa]',
     user: 'from-[#38b6ff] to-[#00e7ff]',
   };
 
@@ -176,9 +180,9 @@ export default function Profile() {
               <p className="text-gray-400">{user?.email}</p>
             </div>
 
-            <div className={`px-4 py-1.5 rounded-full bg-gradient-to-r ${accessLevelColors[user?.access_level || 'user']} text-white text-sm font-medium`}>
+            <div className={`px-4 py-1.5 rounded-full bg-gradient-to-r ${accessLevelColors[user?.role || 'user']} text-white text-sm font-medium`}>
               <Shield size={14} className="inline-block mr-1.5 -mt-0.5" />
-              {accessLevelLabels[user?.access_level || 'user']}
+              {accessLevelLabels[user?.role || 'user']}
             </div>
           </div>
 
