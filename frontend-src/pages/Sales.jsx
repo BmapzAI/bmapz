@@ -33,7 +33,7 @@ import KanbanFilters from '@/components/sales/KanbanFilters.jsx';
 import LeadListManagerFull from '@/components/sales/LeadListManagerFull.jsx';
 import LeadListView from '@/components/sales/LeadListView.jsx';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
-import { Company, Lead, LeadList } from '@/api/entities';
+import { Company, Lead, LeadList, Funnel } from '@/api/entities';
 
 const FUNNEL_STAGES_ORDERED = [
   { id: 'prospect', name: 'Prospect', color: '#9ca3af' },

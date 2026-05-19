@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, Area, AreaChart } from 'recharts';
 import StatsCard from '@/components/dashboard/StatsCard';
 import { toast } from 'sonner';
-import { Company, Lead, Message, Activity } from '@/api/entities';
+import { Company, Lead, Message, Activity, DashboardConfig } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
 
 const WIDGET_TYPES = [

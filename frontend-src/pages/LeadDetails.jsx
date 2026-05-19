@@ -116,7 +116,6 @@ export default function LeadDetails() {
     enabled: !!leadId,
   });
 
-  const { data: funnels = [] } = useQuery({ queryKey: ['funnels'], queryFn: () => Funnel.list() });
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
   const integrationStatus = companies[0]?.integration_status || {};
 

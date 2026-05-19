@@ -163,6 +163,21 @@ export const CreditTransaction = {
   filter: () => api.get('/api/billing/transactions'),
 };
 
+// ─── Funnels ─────────────────────────────────────────────────────────────────
+
+export const Funnel = createEntity('/api/funnels');
+
+// ─── Dashboard Configs ────────────────────────────────────────────────────────
+
+export const DashboardConfig = {
+  list: (params) => api.get('/api/dashboard-configs', params),
+  filter: (params) => api.get('/api/dashboard-configs', params),
+  get: (id) => api.get(`/api/dashboard-configs/${id}`),
+  create: (data) => api.post('/api/dashboard-configs', data),
+  update: (id, data) => api.patch(`/api/dashboard-configs/${id}`, data),
+  delete: (id) => api.delete(`/api/dashboard-configs/${id}`),
+};
+
 // ─── Brand Scans ─────────────────────────────────────────────────────────────
 
 export const BrandScanData = {
