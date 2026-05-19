@@ -187,17 +187,46 @@ router.post('/tts', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * Flatten an ai_outputs row: merge metadata JSONB into top-level keys
+ * so the frontend can access title, content, status, etc. transparently.
+ * Also expose created_date alias for created_at.
+ */
+function flattenAIOutput(row) {
+  if (!row) return null;
+  const { metadata, ...rest } = row;
+  return {
+    ...rest,
+    ...(metadata || {}),
+    // Map schema columns to frontend-expected aliases
+    status: (metadata || {}).status || (row.approved ? 'approved' : row.applied ? 'applied' : 'pending'),
+    created_date: row.created_at,
+  };
+}
+
 // POST /api/ai/outputs
 router.post('/outputs', requireAuth, async (req, res) => {
   try {
-    const { type, title, content, metadata } = req.body;
+    // Store all non-schema fields (title, content, status, channel, etc.) in metadata
+    const { type, prompt, output: outputText, model, tokens_used, ...extra } = req.body;
+    const mergedMetadata = { ...((req.body.metadata) || {}), ...extra };
+    delete mergedMetadata.metadata; // avoid double-nesting
+
     const { data, error } = await supabaseAdmin
       .from('ai_outputs')
-      .insert({ company_id: req.companyId, created_by: req.dbUser.id, type, title, content, metadata })
+      .insert({
+        company_id: req.companyId,
+        type: type || 'general',
+        prompt: prompt || null,
+        output: outputText || null,
+        model: model || null,
+        tokens_used: tokens_used || null,
+        metadata: mergedMetadata,
+      })
       .select()
       .single();
     if (error) throw error;
-    res.json(data);
+    res.json(flattenAIOutput(data));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -216,7 +245,7 @@ router.get('/outputs', requireAuth, async (req, res) => {
     if (type) query = query.eq('type', type);
     const { data, error, count } = await query;
     if (error) throw error;
-    res.json({ data, total: count });
+    res.json({ data: (data || []).map(flattenAIOutput), total: count });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -225,15 +254,33 @@ router.get('/outputs', requireAuth, async (req, res) => {
 // PATCH /api/ai/outputs/:id
 router.patch('/outputs/:id', requireAuth, async (req, res) => {
   try {
+    // Fetch existing to merge metadata
+    const { data: existing } = await supabaseAdmin
+      .from('ai_outputs')
+      .select('metadata')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+
+    const { type, prompt, output: outputText, model, ...extra } = req.body;
+    const mergedMetadata = { ...(existing?.metadata || {}), ...extra };
+    delete mergedMetadata.metadata;
+
+    const updates = { metadata: mergedMetadata };
+    if (type !== undefined) updates.type = type;
+    if (prompt !== undefined) updates.prompt = prompt;
+    if (outputText !== undefined) updates.output = outputText;
+    if (model !== undefined) updates.model = model;
+
     const { data, error } = await supabaseAdmin
       .from('ai_outputs')
-      .update(req.body)
+      .update(updates)
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .select()
       .single();
     if (error) throw error;
-    res.json(data);
+    res.json(flattenAIOutput(data));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

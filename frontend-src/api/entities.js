@@ -142,7 +142,9 @@ export const BlogPost = {
 export const AIOutput = {
   list: (params) => api.get('/api/ai/outputs', params).then(r => r.data ?? r),
   filter: (params) => api.get('/api/ai/outputs', params).then(r => r.data ?? r),
+  get: (id) => api.get(`/api/ai/outputs/${id}`),
   create: (data) => api.post('/api/ai/outputs', data),
+  update: (id, data) => api.patch(`/api/ai/outputs/${id}`, data),
   delete: (id) => api.delete(`/api/ai/outputs/${id}`),
 };
 
