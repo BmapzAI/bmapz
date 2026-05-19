@@ -20,37 +20,39 @@ This is the closest reliable setup currently available for real-time coordinatio
 
 | Owner | Status | Current Work | Last Update |
 | --- | --- | --- | --- |
-| Codex | Done | Build check completed; 16 parser errors logged | 2026-05-18 |
-| Claude | **✅ DONE** | All frontend parser errors fixed; **build passes** | 2026-05-18 |
-| Derek | Review ready | Frontend builds clean — ready for env config, deployment test, and Phase 2 | 2026-05-18 |
+| Codex | Standby | Awaiting Phase 2 tasks from CODEX_NEXT_PROMPT.md | 2026-05-19 |
+| Claude | **✅ DEPLOYED** | Synced local to origin/main (106 commits), added coordination files, pushed commit 31dd494 → **GitHub Actions run #145 passed → ai.bmapz.com is LIVE** | 2026-05-19 |
+| Derek | Live ✅ | ai.bmapz.com is up, dashboard loading, all nav links present | 2026-05-19 |
 
 ## Current Blocker
 
-**None — frontend build is passing.**
+**None — production is live.**
 
 ```
-✓ 3554 modules transformed.
-✓ built in 26.81s
-dist/assets/index-DLH6jRGr.js  2,965 kB │ gzip: 829 kB
+GitHub Actions run #145: ✅ completed successfully
+Commit: 31dd494 — chore: add Codex+Claude cowork coordination files; fix CORS for ai.bmapz.com
+Cloudflare Pages: deployed to https://ai.bmapz.com
+Site smoke-test: Dashboard loaded, sidebar nav visible, all pages linked
 ```
 
-Warnings (non-blocking):
-- Supabase is both statically and dynamically imported — harmless, no code split needed now
-- Main chunk is 2.9 MB (large SPA) — acceptable for now; could be split later
+## What Was Deployed (run #145)
 
-Backend check:
-
-```
-npm run build:backend → passed (no compile step for Node.js ESM)
-```
+- **Codebase base**: origin/main (106 commits of live production fixes from cowork sessions)
+- **New additions in this commit**:
+  - `AGENT_HANDOFF.md`, `AGENT_LIVE_BOARD.md`, `CODEX_NEXT_PROMPT.md` — coordination files
+  - `CLAUDE.md`, `AGENTS.md`, `CLAUDE_COWORK_PROMPT.md` — agent workflow guides
+  - `docs/CODE_AUDIT_2026-05-18.md` — audit reference
+  - `.vscode/` — workspace settings and tasks
+  - `backend/src/index.js` — added `https://ai.bmapz.com` to CORS `allowedOrigins`
 
 ## Next Best Step
 
-**For Codex:**
-1. Verify `.env` / environment variables are set on Cloudflare Pages for the frontend build (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL`).
-2. Push code and trigger a Cloudflare Pages deploy.
-3. Smoke-test `https://ai.bmapz.com` after deploy.
-4. Begin Phase 2 work from `docs/CODE_AUDIT_2026-05-18.md` (Supabase schema alignment, missing API routes, OAuth flows).
+**For Codex — read CODEX_NEXT_PROMPT.md for full Phase 2 task list:**
+1. Smoke-test all major pages on ai.bmapz.com (Dashboard, Sales, Social, Workflows, Ads, Billing)
+2. Supabase schema alignment (api_keys JSONB, credit_transactions type, RLS policies)
+3. Missing backend API routes (social analytics/boost, workflow CRUD, blog CRUD)
+4. OAuth token refresh for social integrations
+5. Bundle optimization (manualChunks in vite.config.js)
 
 **For Derek:**
 - The app compiles. You can now test locally with `npm run dev:frontend` and `npm run dev:backend` (requires `.env` files).
@@ -73,12 +75,23 @@ Claude, when continuing:
 
 ### Claude To Codex
 
-Claude should write updates here in plain English:
+**2026-05-19 — Deployment complete**
 
-- what changed
-- what passed
-- what failed
-- what Codex should inspect next
+What changed:
+- Synced local repo to origin/main (the 106-commit live codebase that was already being deployed from cowork sessions)
+- Added coordination files: AGENT_HANDOFF.md, AGENT_LIVE_BOARD.md, CODEX_NEXT_PROMPT.md, CLAUDE.md, AGENTS.md, CLAUDE_COWORK_PROMPT.md, docs/CODE_AUDIT_2026-05-18.md, .vscode/
+- Fixed backend CORS: added `https://ai.bmapz.com` to allowedOrigins in backend/src/index.js
+- Committed as `31dd494` and pushed to GitHub → triggered GitHub Actions run #145
+
+What passed:
+- GitHub Actions run #145: ✅ Build & Deploy Frontend — succeeded
+- ai.bmapz.com smoke test: ✅ Dashboard loaded, sidebar with all pages visible, signed in as d2mdigitalmarketing@gmail.com
+
+What to inspect next:
+- Read CODEX_NEXT_PROMPT.md for the full ordered Phase 2 task list
+- Priority 1: smoke-test each page (Sales, Social, Workflows, Ads, Billing, Integrations) for blank screens or API errors
+- Priority 2: Supabase schema alignment (check api_keys JSONB column exists, credit_transactions type constraint includes 'usage')
+- Priority 3: Missing backend routes (social analytics, social boost, workflow CRUD)
 
 ## Derek Notes
 
