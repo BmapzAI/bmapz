@@ -62,22 +62,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/:id', requireAuth, async (req, res) => {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('seo_analyses')
-      .select('*')
-      .eq('id', req.params.id)
-      .eq('company_id', req.companyId)
-      .single();
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(404).json({ error: 'SEO analysis not found' });
-  }
-});
-
-// GET /api/seo/search-console — fetch real Google Search Console data
+// GET /api/seo/search-console — fetch real Google Search Console data (must be before /:id)
 router.get('/search-console', requireAuth, async (req, res) => {
   try {
     const { days = 28 } = req.query;
@@ -111,6 +96,22 @@ router.get('/search-console', requireAuth, async (req, res) => {
     res.json(d);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /:id — must come after all named routes like /search-console
+router.get('/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('seo_analyses')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(404).json({ error: 'SEO analysis not found' });
   }
 });
 

@@ -4,75 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-// ─── Messages ─────────────────────────────────────────────────────────────────
-
-router.get('/', requireAuth, async (req, res) => {
-  try {
-    const { lead_id, status, limit = 50, offset = 0 } = req.query;
-    let query = supabaseAdmin
-      .from('messages')
-      .select('*', { count: 'exact' })
-      .eq('company_id', req.companyId)
-      .order('created_at', { ascending: false })
-      .range(Number(offset), Number(offset) + Number(limit) - 1);
-
-    if (lead_id) query = query.eq('lead_id', lead_id);
-    if (status) query = query.eq('status', status);
-
-    const { data, error, count } = await query;
-    if (error) throw error;
-    res.json({ data, total: count });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/', requireAuth, async (req, res) => {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('messages')
-      .insert({ ...req.body, company_id: req.companyId })
-      .select()
-      .single();
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/:id', requireAuth, async (req, res) => {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('messages')
-      .select('*')
-      .eq('id', req.params.id)
-      .eq('company_id', req.companyId)
-      .single();
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(404).json({ error: 'Message not found' });
-  }
-});
-
-router.patch('/:id', requireAuth, async (req, res) => {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('messages')
-      .update(req.body)
-      .eq('id', req.params.id)
-      .eq('company_id', req.companyId)
-      .select()
-      .single();
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── Message Templates ────────────────────────────────────────────────────────
+// ─── Message Templates (must be before /:id) ─────────────────────────────────
 
 router.get('/templates', requireAuth, async (req, res) => {
   try {
@@ -132,7 +64,7 @@ router.delete('/templates/:id', requireAuth, async (req, res) => {
   }
 });
 
-// ─── Activities ───────────────────────────────────────────────────────────────
+// ─── Activities (must be before /:id) ────────────────────────────────────────
 
 router.get('/activities', requireAuth, async (req, res) => {
   try {
@@ -160,6 +92,76 @@ router.post('/activities', requireAuth, async (req, res) => {
     const { data, error } = await supabaseAdmin
       .from('activities')
       .insert({ ...req.body, company_id: req.companyId })
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+router.get('/', requireAuth, async (req, res) => {
+  try {
+    const { lead_id, status, limit = 50, offset = 0 } = req.query;
+    let query = supabaseAdmin
+      .from('messages')
+      .select('*', { count: 'exact' })
+      .eq('company_id', req.companyId)
+      .order('created_at', { ascending: false })
+      .range(Number(offset), Number(offset) + Number(limit) - 1);
+
+    if (lead_id) query = query.eq('lead_id', lead_id);
+    if (status) query = query.eq('status', status);
+
+    const { data, error, count } = await query;
+    if (error) throw error;
+    res.json({ data, total: count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('messages')
+      .insert({ ...req.body, company_id: req.companyId })
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Parameterized routes last (after all named paths) ───────────────────────
+
+router.get('/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('messages')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(404).json({ error: 'Message not found' });
+  }
+});
+
+router.patch('/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('messages')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
       .select()
       .single();
     if (error) throw error;
