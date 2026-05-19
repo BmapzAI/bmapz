@@ -151,6 +151,35 @@ router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
   }
 });
 
+// POST /api/companies — create a new company for the authenticated user
+router.post('/', requireAuth, async (req, res) => {
+  try {
+    const { name, website, industry, description } = req.body;
+    if (!name) return res.status(400).json({ error: 'Company name is required' });
+
+    // Create company
+    const { data: company, error: companyErr } = await supabaseAdmin
+      .from('companies')
+      .insert({ name, website, industry, description })
+      .select()
+      .single();
+    if (companyErr) throw companyErr;
+
+    // Create trial subscription for new company
+    await supabaseAdmin.from('subscriptions').insert({
+      company_id: company.id,
+      plan: 'trial',
+      status: 'trialing',
+      ai_credits_total: 100,
+      ai_credits_used: 0,
+    });
+
+    res.json(flattenCompany(company));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/companies/subscription
 router.get('/subscription', requireAuth, async (req, res) => {
   try {

@@ -23,6 +23,7 @@ export const Company = {
   list: () => api.get('/api/companies/current').then(c => [c]),
   filter: () => api.get('/api/companies/current').then(c => [c]),
   get: () => api.get('/api/companies/current'),
+  create: (data) => api.post('/api/companies', data),
   update: (_id, data) => api.patch('/api/companies/current', data),
 };
 

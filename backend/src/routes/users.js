@@ -95,6 +95,33 @@ router.patch('/:id/role', requireAuth, requireCompanyAdmin, async (req, res) => 
   }
 });
 
+// PATCH /api/users/:id — update a user in the company (admin only)
+router.patch('/:id', requireAuth, requireCompanyAdmin, async (req, res) => {
+  try {
+    const { full_name, role, profile_picture } = req.body;
+    const updates = {};
+    if (full_name !== undefined) updates.full_name = full_name;
+    if (profile_picture !== undefined) updates.profile_picture = profile_picture;
+    if (role !== undefined) {
+      const validRoles = ['owner', 'company_admin', 'user'];
+      if (!validRoles.includes(role)) return res.status(400).json({ error: 'Invalid role' });
+      updates.role = role;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .update(updates)
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/users/:id — remove a user from the company
 router.delete('/:id', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {

@@ -35,6 +35,22 @@ router.post('/lists', requireAuth, async (req, res) => {
   }
 });
 
+router.patch('/lists/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('lead_lists')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.delete('/lists/:id', requireAuth, async (req, res) => {
   try {
     const { error } = await supabaseAdmin
