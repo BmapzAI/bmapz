@@ -34,6 +34,7 @@ app.use(helmet({
 // ─── CORS ────────────────────────────────────────────────────────────────────
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
+  'https://ai.bmapz.com',
   'https://bmapzai.com',
   'https://www.bmapzai.com',
   'https://bmapzai.app',

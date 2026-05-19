@@ -1,0 +1,13 @@
+{
+  "folders": [
+    {
+      "name": "Bmapz App",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "explorer.compactFolders": false,
+    "git.autofetch": false,
+    "workbench.startupEditor": "none"
+  }
+}
