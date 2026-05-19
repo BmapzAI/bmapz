@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RefreshCw, Plus, List, Trash2, Users, Edit, Zap, UserMinus, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
+import { LeadList } from '@/api/entities';
 
 const SOURCE_CATEGORIES = ['inbound', 'outbound', 'offline'];
 const FUNNEL_STAGES = ['prospect', 'awareness', 'consideration', 'mql', 'sql', 'opportunity', 'customer', 'retention', 'advocacy'];

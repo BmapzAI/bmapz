@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, List, Trash2, Users, Edit } from 'lucide-react';
 import { toast } from 'sonner';
+import { LeadList } from '@/api/entities';
 
 export default function LeadListManager({ companyId }) {
   const queryClient = useQueryClient();
