@@ -7,29 +7,14 @@ const router = Router();
 // GET /api/integrations/status — full integration status for the company
 router.get('/status', requireAuth, async (req, res) => {
   try {
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
-      .select(`
-        integration_status,
-        google_access_token, google_connected_email, google_token_expires_at,
-        meta_access_token, meta_token_expires_at,
-        facebook_page_id, instagram_business_account_id,
-        linkedin_access_token, linkedin_token_expires_at,
-        twitter_access_token,
-        tiktok_access_token, tiktok_token_expires_at,
-        google_ads_customer_id, meta_ads_account_id,
-        linkedin_ads_account_id, tiktok_ads_account_id,
-        google_analytics_property_id, google_search_console_url,
-        google_drive_token,
-        smtp_host, smtp_user,
-        resend_api_key,
-        apollo_api_key, hunter_api_key,
-        stripe_connected
-      `)
+      .select('integration_status, api_keys')
       .eq('id', req.companyId)
       .single();
 
-    const status = company?.integration_status || {};
+    const company = { ...(companyRow?.api_keys || {}) };
+    const status = companyRow?.integration_status || {};
 
     // Auto-detect connections from stored tokens
     const detected = {
@@ -72,13 +57,14 @@ router.get('/google/drive/files', requireAuth, async (req, res) => {
   try {
     const { query = '', page_token, mime_type } = req.query;
 
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
-      .select('google_drive_token, google_access_token')
+      .select('api_keys')
       .eq('id', req.companyId)
       .single();
+    const company = companyRow?.api_keys || {};
 
-    const token = company?.google_drive_token || company?.google_access_token;
+    const token = company.google_drive_token || company.google_access_token;
     if (!token) return res.status(401).json({ error: 'Google Drive not connected' });
 
     const params = new URLSearchParams({
@@ -121,13 +107,14 @@ router.get('/google/drive/files', requireAuth, async (req, res) => {
 router.get('/google/analytics', requireAuth, async (req, res) => {
   try {
     const { days = 28 } = req.query;
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
-      .select('google_access_token, google_analytics_property_id')
+      .select('api_keys')
       .eq('id', req.companyId)
       .single();
+    const company = companyRow?.api_keys || {};
 
-    if (!company?.google_access_token || !company?.google_analytics_property_id) {
+    if (!company.google_access_token || !company.google_analytics_property_id) {
       return res.json({ error: 'Google Analytics not connected' });
     }
 
@@ -140,7 +127,7 @@ router.get('/google/analytics', requireAuth, async (req, res) => {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${company.google_access_token}`,
-          'Content-Type': 'application/json',
+        'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           dateRanges: [{ startDate, endDate }],
@@ -168,13 +155,13 @@ router.get('/google/analytics', requireAuth, async (req, res) => {
 router.post('/apollo/enrich', requireAuth, async (req, res) => {
   try {
     const { email, domain } = req.body;
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
-      .select('apollo_api_key')
+      .select('api_keys')
       .eq('id', req.companyId)
       .single();
 
-    const apiKey = company?.apollo_api_key || process.env.APOLLO_API_KEY;
+    const apiKey = companyRow?.api_keys?.apollo_api_key || process.env.APOLLO_API_KEY;
     if (!apiKey) return res.status(400).json({ error: 'Apollo API key not configured' });
 
     const r = await fetch('https://api.apollo.io/api/v1/people/match', {
@@ -193,13 +180,13 @@ router.post('/apollo/enrich', requireAuth, async (req, res) => {
 router.post('/hunter/find-email', requireAuth, async (req, res) => {
   try {
     const { domain, first_name, last_name } = req.body;
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
-      .select('hunter_api_key')
+      .select('api_keys')
       .eq('id', req.companyId)
       .single();
 
-    const apiKey = company?.hunter_api_key || process.env.HUNTER_API_KEY;
+    const apiKey = companyRow?.api_keys?.hunter_api_key || process.env.HUNTER_API_KEY;
     if (!apiKey) return res.status(400).json({ error: 'Hunter API key not configured' });
 
     const params = new URLSearchParams({ domain, first_name, last_name, api_key: apiKey });

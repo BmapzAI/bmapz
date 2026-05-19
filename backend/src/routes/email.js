@@ -12,11 +12,12 @@ router.post('/send', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'to and subject are required' });
     }
 
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
-      .select('smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, resend_api_key, resend_from_email, google_access_token, google_connected_email')
+      .select('api_keys')
       .eq('id', req.companyId)
       .single();
+    const company = companyRow?.api_keys || {};
 
     // Priority: Gmail OAuth → SMTP → Resend → Platform Resend
     if (company?.google_access_token && company?.google_connected_email) {
