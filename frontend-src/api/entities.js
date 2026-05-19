@@ -163,6 +163,17 @@ export const CreditTransaction = {
   filter: () => api.get('/api/billing/transactions'),
 };
 
+// ─── Brand Scans ─────────────────────────────────────────────────────────────
+
+export const BrandScanData = {
+  list: (params) => api.get('/api/brand-scans', params),
+  filter: (params) => api.get('/api/brand-scans', params),
+  get: (id) => api.get(`/api/brand-scans/${id}`),
+  create: (data) => api.post('/api/brand-scans', data),
+  update: (id, data) => api.patch(`/api/brand-scans/${id}`, data),
+  delete: (id) => api.delete(`/api/brand-scans/${id}`),
+};
+
 // ─── Workflow Runs ─────────────────────────────────────────────────────────────
 
 export const WorkflowRun = {

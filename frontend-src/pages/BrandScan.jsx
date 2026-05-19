@@ -9,7 +9,7 @@ import { useLanguage } from '@/components/ui/LanguageContext';
 import BrandScanSetup from '@/components/brandscan/BrandScanSetup';
 import BrandScanReport from '@/components/brandscan/BrandScanReport';
 import { toast } from 'sonner';
-import { Company } from '@/api/entities';
+import { Company, BrandScanData } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
 
 const MAX_VERSIONS = 6;
@@ -36,7 +36,7 @@ export default function BrandScan() {
 
   const { data: scans = [] } = useQuery({
     queryKey: ['brandscans'],
-    queryFn: () => BrandScan.list('-created_date', 20),
+    queryFn: () => BrandScanData.list({ limit: 20 }),
     enabled: !!user,
   });
 
@@ -53,7 +53,7 @@ export default function BrandScan() {
 
   const deleteScan = async (id, e) => {
     e.stopPropagation();
-    await BrandScan.delete(id);
+    await BrandScanData.delete(id);
     if (activeScanId === id) setActiveScanId(null);
     queryClient.invalidateQueries({ queryKey: ['brandscans'] });
     toast.success(language === 'pt' ? 'Scan removido' : 'Scan deleted');
@@ -64,14 +64,14 @@ export default function BrandScan() {
     if (completedScans.length >= MAX_VERSIONS) {
       const oldest = [...completedScans].sort((a, b) => new Date(a.created_date) - new Date(b.created_date))[0];
       if (oldest) {
-        await BrandScan.delete(oldest.id);
+        await BrandScanData.delete(oldest.id);
       }
     }
 
     setGenerating(true);
     setShowSetup(false);
     try {
-      const scan = await BrandScan.create({
+      const scan = await BrandScanData.create({
         company_id: company?.id || 'default',
         title: `Brand Scan  ${formData.name}`,
         status: 'generating',
@@ -206,7 +206,7 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
         model: 'gemini_3_flash'
       });
 
-      await BrandScan.update(scan.id, {
+      await BrandScanData.update(scan.id, {
         status: 'complete',
         report,
       });

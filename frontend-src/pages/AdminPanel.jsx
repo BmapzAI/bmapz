@@ -487,7 +487,7 @@ export default function AdminPanel() {
 
   const { data: allPurchases = [] } = useQuery({
     queryKey: ['admin_purchases'],
-    queryFn: () => BillingPurchase.list('-created_date', 100),
+    queryFn: () => BillingPurchase.list(),
     enabled: isAdmin,
   });
 

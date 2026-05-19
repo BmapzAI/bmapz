@@ -32,7 +32,7 @@ export default function Home() {
 
   const { data: leads = [] }      = useQuery({ queryKey: ['leads'],      queryFn: () => Lead.list() });
   const { data: messages = [] }   = useQuery({ queryKey: ['messages'],   queryFn: () => Message.list() });
-  const { data: activities = [] } = useQuery({ queryKey: ['activities'], queryFn: () => Activity.list('-created_date', 10) });
+  const { data: activities = [] } = useQuery({ queryKey: ['activities'], queryFn: () => Activity.list({ limit: 10 }) });
   const { data: workflows = [] }  = useQuery({ queryKey: ['workflows'],  queryFn: () => Workflow.list() });
   const { data: companies = [] }  = useQuery({ queryKey: ['companies'],  queryFn: () => Company.list() });
 

@@ -242,7 +242,7 @@ export default function CompanyAdminPanel() {
       const byCreator = await Company.filter({ created_by: user?.email });
       if (byCreator.length > 0) return byCreator;
       if (isOwnerOrSysAdmin) {
-        return Company.list('-created_date', 1);
+        return Company.list();
       }
       return [];
     },

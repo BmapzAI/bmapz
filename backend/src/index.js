@@ -21,6 +21,7 @@ import billingRoutes from './routes/billing.js';
 import adminRoutes from './routes/admin.js';
 import emailRoutes from './routes/email.js';
 import blogRoutes from './routes/blog.js';
+import brandScansRoutes from './routes/brandScans.js';
 import stripeWebhookRoutes from './routes/stripeWebhook.js';
 
 const app = express();
@@ -89,6 +90,7 @@ app.use('/api/billing', billingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/blog', blogRoutes);
+app.use('/api/brand-scans', brandScansRoutes);
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
