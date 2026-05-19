@@ -6,6 +6,7 @@ import { Heart, MessageCircle, Share2, Eye, TrendingUp, RefreshCw, BarChart3, Za
 import { toast } from 'sonner';
 import { InvokeLLM } from '@/api/integrations';
 import { api } from '@/api/apiClient';
+import { SocialPost } from '@/api/entities';
 
 const PLATFORMS = [
   { value: 'instagram', label: 'Instagram', color: '#E1306C', icon: '📸' },

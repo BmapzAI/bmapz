@@ -27,12 +27,13 @@ export default function AdsLeadsTab() {
         setLastSync(new Date());
         localStorage.setItem('adLeadsLastSync', new Date().toISOString());
 
-        // Fetch updated leads
-        const adLeads = await Lead.filter({ source: 'meta_ads' }).concat(
-          await Lead.filter({ source: 'tiktok_ads' }).concat(
-            await Lead.filter({ source: 'linkedin_ads' })
-          )
-        );
+        // Fetch updated leads from all ad platforms
+        const [meta, tiktok, linkedin] = await Promise.all([
+          Lead.filter({ source: 'meta_ads' }),
+          Lead.filter({ source: 'tiktok_ads' }),
+          Lead.filter({ source: 'linkedin_ads' }),
+        ]);
+        const adLeads = [...(meta || []), ...(tiktok || []), ...(linkedin || [])];
         setLeads(adLeads);
       } else {
         toast.error(result.data?.message || 'Failed to sync leads');

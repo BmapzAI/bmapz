@@ -222,6 +222,23 @@ router.get('/outputs', requireAuth, async (req, res) => {
   }
 });
 
+// PATCH /api/ai/outputs/:id
+router.patch('/outputs/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('ai_outputs')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/ai/outputs/:id
 router.delete('/outputs/:id', requireAuth, async (req, res) => {
   try {
