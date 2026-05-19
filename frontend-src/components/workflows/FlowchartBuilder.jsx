@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import AIOptimizationPanel from './AIOptimizationPanel';
 import { InvokeLLM, UploadFile } from '@/api/integrations';
-import { Company, Workflow } from '@/api/entities';
+import { Company, Workflow, NodeTemplate } from '@/api/entities';
 
 const NODE_TYPES = {
   trigger: { name: 'Start', icon: Play, color: '#22c55e', category: 'trigger' },

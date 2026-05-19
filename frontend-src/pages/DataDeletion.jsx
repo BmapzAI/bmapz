@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Shield, Trash2, CheckCircle } from 'lucide-react';
+import { DataDeletionRequest } from '@/api/entities';
 
 
 export default function DataDeletion() {

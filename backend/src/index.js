@@ -24,6 +24,8 @@ import blogRoutes from './routes/blog.js';
 import brandScansRoutes from './routes/brandScans.js';
 import funnelsRoutes from './routes/funnels.js';
 import dashboardConfigsRoutes from './routes/dashboardConfigs.js';
+import nodeTemplatesRoutes from './routes/nodeTemplates.js';
+import dataDeletionRoutes from './routes/dataDeletion.js';
 import stripeWebhookRoutes from './routes/stripeWebhook.js';
 
 const app = express();
@@ -95,6 +97,8 @@ app.use('/api/blog', blogRoutes);
 app.use('/api/brand-scans', brandScansRoutes);
 app.use('/api/funnels', funnelsRoutes);
 app.use('/api/dashboard-configs', dashboardConfigsRoutes);
+app.use('/api/node-templates', nodeTemplatesRoutes);
+app.use('/api/data-deletion', dataDeletionRoutes);
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {

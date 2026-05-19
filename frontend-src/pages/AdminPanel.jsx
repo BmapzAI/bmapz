@@ -14,7 +14,7 @@ import {
   History, Lock
 } from 'lucide-react';
 import { PLANS, formatBRL } from '@/lib/plans';
-import { Company, Subscription, User, BillingPurchase } from '@/api/entities';
+// AdminPanel uses /api/admin/* endpoints directly for cross-company access
 import { useAuth } from '@/lib/AuthContext';
 
 const PLAN_OPTIONS = ['trial', 'starter', 'growth', 'scale', 'enterprise'];
@@ -469,25 +469,25 @@ export default function AdminPanel() {
 
   const { data: allCompanies = [] } = useQuery({
     queryKey: ['admin_companies'],
-    queryFn: () => Company.list(),
+    queryFn: () => api.get('/api/admin/companies').then(r => r.data ?? r),
     enabled: isAdmin,
   });
 
   const { data: allSubscriptions = [] } = useQuery({
     queryKey: ['admin_subscriptions'],
-    queryFn: () => Subscription.list(),
+    queryFn: () => api.get('/api/admin/subscriptions'),
     enabled: isAdmin,
   });
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['admin_users'],
-    queryFn: () => User.list(),
+    queryFn: () => api.get('/api/admin/users').then(r => r.data ?? r),
     enabled: isAdmin,
   });
 
   const { data: allPurchases = [] } = useQuery({
     queryKey: ['admin_purchases'],
-    queryFn: () => BillingPurchase.list(),
+    queryFn: () => api.get('/api/admin/purchases'),
     enabled: isAdmin,
   });
 
@@ -500,42 +500,42 @@ export default function AdminPanel() {
   });
 
   const updateSubMutation = useMutation({
-    mutationFn: ({ id, data }) => Subscription.update(id, data),
+    mutationFn: ({ id, data }) => api.patch(`/api/admin/subscriptions/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin_subscriptions'] }); toast.success('Subscription updated'); },
   });
 
   const createSubMutation = useMutation({
-    mutationFn: (data) => Subscription.create(data),
+    mutationFn: (data) => api.post('/api/admin/subscriptions', data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin_subscriptions'] }); toast.success('Subscription created'); },
   });
 
   const createCompanyMutation = useMutation({
-    mutationFn: (data) => Company.create(data),
+    mutationFn: (data) => api.post('/api/admin/companies', data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin_companies'] }); toast.success('Company created'); setShowCreateCompany(false); },
   });
 
   const updateCompanyMutation = useMutation({
-    mutationFn: ({ id, data }) => Company.update(id, data),
+    mutationFn: ({ id, data }) => api.patch(`/api/admin/companies/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin_companies'] }); toast.success('Company updated'); setEditingCompany(null); },
   });
 
   const deleteCompanyMutation = useMutation({
-    mutationFn: (id) => Company.delete(id),
+    mutationFn: (id) => api.delete(`/api/admin/companies/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin_companies'] }); toast.success('Company deleted'); setDeletingCompany(null); },
   });
 
   const updateUserMutation = useMutation({
-    mutationFn: ({ id, data }) => User.update(id, data),
+    mutationFn: ({ id, data }) => api.patch(`/api/admin/users/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin_users'] }); toast.success('User updated'); setEditingUser(null); },
   });
 
   const deleteUserMutation = useMutation({
-    mutationFn: (id) => User.delete(id),
+    mutationFn: (id) => api.delete(`/api/admin/users/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin_users'] }); toast.success('User removed'); setDeletingUser(null); },
   });
 
   const updatePurchaseMutation = useMutation({
-    mutationFn: ({ id, data }) => BillingPurchase.update(id, data),
+    mutationFn: ({ id, data }) => api.patch(`/api/admin/purchases/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin_purchases'] }); toast.success('Purchase updated'); },
   });
 

@@ -163,6 +163,12 @@ export const CreditTransaction = {
   filter: () => api.get('/api/billing/transactions'),
 };
 
+// ─── Data Deletion Requests (GDPR) ───────────────────────────────────────────
+
+export const DataDeletionRequest = {
+  create: (data) => api.post('/api/data-deletion', data),
+};
+
 // ─── Funnels ─────────────────────────────────────────────────────────────────
 
 export const Funnel = createEntity('/api/funnels');
@@ -187,6 +193,17 @@ export const BrandScanData = {
   create: (data) => api.post('/api/brand-scans', data),
   update: (id, data) => api.patch(`/api/brand-scans/${id}`, data),
   delete: (id) => api.delete(`/api/brand-scans/${id}`),
+};
+
+// ─── Node Templates ───────────────────────────────────────────────────────────
+
+export const NodeTemplate = {
+  list: (params) => api.get('/api/node-templates', params),
+  filter: (params) => api.get('/api/node-templates', params),
+  get: (id) => api.get(`/api/node-templates/${id}`),
+  create: (data) => api.post('/api/node-templates', data),
+  update: (id, data) => api.patch(`/api/node-templates/${id}`, data),
+  delete: (id) => api.delete(`/api/node-templates/${id}`),
 };
 
 // ─── Workflow Runs ─────────────────────────────────────────────────────────────

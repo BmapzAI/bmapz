@@ -120,6 +120,156 @@ router.post('/grant-credits', async (req, res) => {
   }
 });
 
+// ─── Admin Company CRUD ───────────────────────────────────────────────────────
+
+router.post('/companies', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('companies')
+      .insert(req.body)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/companies/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('companies')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/companies/:id', async (req, res) => {
+  try {
+    const { error } = await supabaseAdmin
+      .from('companies')
+      .delete()
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Admin Subscription CRUD ──────────────────────────────────────────────────
+
+router.get('/subscriptions', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('subscriptions')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/subscriptions', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('subscriptions')
+      .insert(req.body)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/subscriptions/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('subscriptions')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Admin Billing Purchases ──────────────────────────────────────────────────
+
+router.get('/purchases', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('billing_purchases')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/purchases/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('billing_purchases')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Admin User CRUD ──────────────────────────────────────────────────────────
+
+router.patch('/users/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const { error } = await supabaseAdmin
+      .from('users')
+      .delete()
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Admin Data Deletion Requests ─────────────────────────────────────────────
+
 // GET /api/admin/data-deletion-requests
 router.get('/data-deletion-requests', async (req, res) => {
   try {
