@@ -9,7 +9,7 @@ router.get('/', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('id, email, full_name, role, created_at, last_login_at')
+      .select('id, email, full_name, role, created_at')
       .eq('company_id', req.companyId)
       .order('created_at', { ascending: false });
     if (error) throw error;
@@ -27,10 +27,10 @@ router.get('/me', requireAuth, (req, res) => {
 // PATCH /api/users/me — update own profile
 router.patch('/me', requireAuth, async (req, res) => {
   try {
-    const { full_name, avatar_url, preferences } = req.body;
+    const { full_name, profile_picture } = req.body;
     const { data, error } = await supabaseAdmin
       .from('users')
-      .update({ full_name, avatar_url, preferences })
+      .update({ full_name, profile_picture })
       .eq('id', req.dbUser.id)
       .select()
       .single();

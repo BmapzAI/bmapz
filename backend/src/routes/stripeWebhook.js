@@ -73,18 +73,17 @@ router.post('/api/stripe/webhook', async (req, res) => {
         // Log purchase
         await supabaseAdmin.from('billing_purchases').insert({
           company_id: companyId,
-          type: 'subscription',
-          amount_usd: (session.amount_total || 0) / 100,
-          status: 'completed',
+          type: 'plan_upgrade',
+          amount_brl: (session.amount_total || 0) / 100,
+          status: 'paid',
           stripe_payment_intent_id: session.payment_intent,
           credits_granted: credits,
-          plan,
         });
 
         // Credit transaction
         await supabaseAdmin.from('credit_transactions').insert({
           company_id: companyId,
-          type: 'subscription_grant',
+          type: 'monthly_grant',
           feature: 'subscription',
           credits_delta: credits,
           credits_after: credits,
@@ -108,7 +107,7 @@ router.post('/api/stripe/webhook', async (req, res) => {
         const sub = event.data.object;
         await supabaseAdmin
           .from('subscriptions')
-          .update({ status: 'cancelled', plan: 'free', ai_credits_total: 100 })
+          .update({ status: 'canceled', plan: 'trial', ai_credits_total: 100 })
           .eq('stripe_customer_id', sub.customer);
         break;
       }

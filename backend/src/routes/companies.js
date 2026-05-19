@@ -215,7 +215,7 @@ router.post('/deduct-credits', requireAuth, async (req, res) => {
       .from('credit_transactions')
       .insert({
         company_id: req.companyId,
-        type: 'deduction',
+        type: 'usage',
         feature,
         credits_delta: -amount,
         credits_after: (sub.ai_credits_total || 0) - newUsed,

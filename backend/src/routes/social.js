@@ -31,7 +31,7 @@ router.post('/posts', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('social_posts')
-      .insert({ ...req.body, company_id: req.companyId, created_by: req.dbUser.id })
+      .insert({ ...req.body, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -83,11 +83,14 @@ router.post('/posts/:id/publish', requireAuth, async (req, res) => {
       .single();
     if (!post) return res.status(404).json({ error: 'Post not found' });
 
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
       .select('*')
       .eq('id', req.companyId)
       .single();
+    const company = companyRow
+      ? { ...companyRow, ...(companyRow.api_keys || {}), ...(companyRow.settings || {}) }
+      : {};
 
     const results = {};
     const platforms = post.platforms || [];
@@ -116,7 +119,7 @@ router.post('/posts/:id/publish', requireAuth, async (req, res) => {
 
     await supabaseAdmin.from('social_posts').update({
       status: newStatus,
-      external_post_ids: results,
+      platform_post_ids: results,
       published_at: allSuccess ? new Date().toISOString() : null,
     }).eq('id', post.id);
 
@@ -131,11 +134,14 @@ router.post('/posts/:id/publish', requireAuth, async (req, res) => {
 router.get('/feed', requireAuth, async (req, res) => {
   try {
     const { platform } = req.query;
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
       .select('*')
       .eq('id', req.companyId)
       .single();
+    const company = companyRow
+      ? { ...companyRow, ...(companyRow.api_keys || {}), ...(companyRow.settings || {}) }
+      : {};
 
     const feed = [];
 
@@ -227,11 +233,14 @@ router.get('/feed', requireAuth, async (req, res) => {
 router.get('/analytics', requireAuth, async (req, res) => {
   try {
     const { platform, period = '30d' } = req.query;
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
       .select('*')
       .eq('id', req.companyId)
       .single();
+    const company = companyRow
+      ? { ...companyRow, ...(companyRow.api_keys || {}), ...(companyRow.settings || {}) }
+      : {};
 
     const analytics = {};
 

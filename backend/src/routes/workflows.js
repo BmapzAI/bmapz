@@ -27,7 +27,7 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('workflows')
-      .insert({ ...req.body, company_id: req.companyId, created_by: req.dbUser.id })
+      .insert({ ...req.body, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -113,9 +113,8 @@ router.post('/:id/run', requireAuth, async (req, res) => {
       .insert({
         workflow_id: workflow.id,
         company_id: req.companyId,
-        status: 'running',
-        triggered_by: 'manual',
-        input_data: req.body,
+        status: 'active',
+        context: req.body,
       })
       .select()
       .single();

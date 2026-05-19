@@ -57,7 +57,7 @@ router.get('/stats', async (req, res) => {
       supabaseAdmin.from('companies').select('*', { count: 'exact', head: true }),
       supabaseAdmin.from('users').select('*', { count: 'exact', head: true }),
       supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }),
-      supabaseAdmin.from('subscriptions').select('*', { count: 'exact', head: true }).eq('status', 'active').neq('plan', 'free'),
+      supabaseAdmin.from('subscriptions').select('*', { count: 'exact', head: true }).eq('status', 'active').neq('plan', 'trial'),
     ]);
 
     res.json({ totalCompanies, totalUsers, totalLeads, activeSubscriptions });
@@ -100,8 +100,8 @@ router.post('/grant-credits', async (req, res) => {
 
     await supabaseAdmin.from('credit_transactions').insert({
       company_id,
-      type: 'admin_grant',
-      feature: reason || 'admin_grant',
+      type: 'bonus',
+      feature: reason || 'admin_bonus',
       credits_delta: amount,
       credits_after: newTotal - (sub.ai_credits_used || 0),
     });

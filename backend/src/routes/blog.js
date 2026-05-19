@@ -27,7 +27,7 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('blog_posts')
-      .insert({ ...req.body, company_id: req.companyId, created_by: req.dbUser.id })
+      .insert({ ...req.body, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;

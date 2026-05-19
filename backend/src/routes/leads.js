@@ -25,7 +25,7 @@ router.post('/lists', requireAuth, async (req, res) => {
     const { name, description } = req.body;
     const { data, error } = await supabaseAdmin
       .from('lead_lists')
-      .insert({ name, description, company_id: req.companyId, created_by: req.dbUser.id })
+      .insert({ name, description, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -65,7 +65,7 @@ router.get('/', requireAuth, async (req, res) => {
     if (list_id) query = query.eq('list_id', list_id);
     if (status) query = query.eq('status', status);
     if (stage) query = query.eq('pipeline_stage', stage);
-    if (search) query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,company.ilike.%${search}%`);
+    if (search) query = query.or(`lead_name.ilike.%${search}%,email.ilike.%${search}%,lead_company_name.ilike.%${search}%`);
 
     const { data, error, count } = await query;
     if (error) throw error;
@@ -79,7 +79,7 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('leads')
-      .insert({ ...req.body, company_id: req.companyId, created_by: req.dbUser.id })
+      .insert({ ...req.body, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -97,7 +97,6 @@ router.post('/bulk', requireAuth, async (req, res) => {
     const rows = leads.map(l => ({
       ...l,
       company_id: req.companyId,
-      created_by: req.dbUser.id,
     }));
 
     const { data, error } = await supabaseAdmin.from('leads').insert(rows).select();
@@ -166,23 +165,27 @@ router.post('/:id/score', requireAuth, async (req, res) => {
 
     const { data: company } = await supabaseAdmin
       .from('companies')
-      .select('icp_description, target_audience, openai_api_key')
+      .select('api_keys, settings')
       .eq('id', req.companyId)
       .single();
 
+    const openaiApiKey = company?.api_keys?.openai_api_key;
+    const icp_description = company?.settings?.icp_description;
+    const target_audience = company?.settings?.target_audience;
+
     const OpenAI = (await import('openai')).default;
     const client = new OpenAI({
-      apiKey: company?.openai_api_key || process.env.OPENAI_API_KEY,
+      apiKey: openaiApiKey || process.env.OPENAI_API_KEY,
     });
 
     const prompt = `You are a B2B sales expert. Score this lead against the company's ICP.
-Company ICP: ${company?.icp_description || 'Not defined'}
-Target Audience: ${company?.target_audience || 'Not defined'}
+Company ICP: ${icp_description || 'Not defined'}
+Target Audience: ${target_audience || 'Not defined'}
 
 Lead:
-- Name: ${lead.name}
-- Company: ${lead.company || 'Unknown'}
-- Title: ${lead.title || 'Unknown'}
+- Name: ${lead.lead_name || 'Unknown'}
+- Company: ${lead.lead_company_name || 'Unknown'}
+- Title: ${lead.role || 'Unknown'}
 - Industry: ${lead.industry || 'Unknown'}
 - Email: ${lead.email || ''}
 - Website: ${lead.website || ''}
@@ -201,7 +204,7 @@ Return JSON: { "score": 0-100, "fit": "high|medium|low", "reasoning": "...", "ne
     // Save score to lead
     await supabaseAdmin
       .from('leads')
-      .update({ icp_score: result.score, icp_fit: result.fit, ai_notes: result.reasoning })
+      .update({ icp_score: result.score, icp_reasoning: result.reasoning })
       .eq('id', req.params.id);
 
     res.json(result);

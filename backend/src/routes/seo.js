@@ -22,7 +22,7 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('seo_analyses')
-      .insert({ ...req.body, company_id: req.companyId, created_by: req.dbUser.id })
+      .insert({ ...req.body, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -66,11 +66,12 @@ router.delete('/:id', requireAuth, async (req, res) => {
 router.get('/search-console', requireAuth, async (req, res) => {
   try {
     const { days = 28 } = req.query;
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
-      .select('google_access_token, google_search_console_url')
+      .select('api_keys')
       .eq('id', req.companyId)
       .single();
+    const company = { ...(companyRow?.api_keys || {}) };
 
     if (!company?.google_access_token || !company?.google_search_console_url) {
       return res.json({ error: 'Google Search Console not connected' });

@@ -31,7 +31,7 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('messages')
-      .insert({ ...req.body, company_id: req.companyId, created_by: req.dbUser.id })
+      .insert({ ...req.body, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -77,7 +77,7 @@ router.post('/templates', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('message_templates')
-      .insert({ ...req.body, company_id: req.companyId, created_by: req.dbUser.id })
+      .insert({ ...req.body, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -144,7 +144,7 @@ router.post('/activities', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('activities')
-      .insert({ ...req.body, company_id: req.companyId, created_by: req.dbUser.id })
+      .insert({ ...req.body, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
