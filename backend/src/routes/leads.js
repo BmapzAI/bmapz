@@ -35,6 +35,21 @@ router.post('/lists', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/lists/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('lead_lists')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(404).json({ error: 'Lead list not found' });
+  }
+});
+
 router.patch('/lists/:id', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
