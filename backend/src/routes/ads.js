@@ -31,13 +31,28 @@ router.post('/records', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('ad_records')
-      .insert({ ...req.body, company_id: req.companyId, created_by: req.dbUser.id })
+      .insert({ ...req.body, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/records/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('ad_records')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(404).json({ error: 'Ad record not found' });
   }
 });
 
@@ -76,11 +91,14 @@ router.delete('/records/:id', requireAuth, async (req, res) => {
 router.get('/campaigns', requireAuth, async (req, res) => {
   try {
     const { platform } = req.query;
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
       .select('*')
       .eq('id', req.companyId)
       .single();
+    const company = companyRow
+      ? { ...companyRow, ...(companyRow.api_keys || {}), ...(companyRow.settings || {}) }
+      : {};
 
     const campaigns = {};
 
@@ -145,15 +163,18 @@ router.get('/campaigns', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/ads/leads — fetch leads from ad platforms
+// GET /api/ads/platform-leads — fetch leads from ad platforms
 router.get('/platform-leads', requireAuth, async (req, res) => {
   try {
     const { platform, campaign_id } = req.query;
-    const { data: company } = await supabaseAdmin
+    const { data: companyRow } = await supabaseAdmin
       .from('companies')
       .select('*')
       .eq('id', req.companyId)
       .single();
+    const company = companyRow
+      ? { ...companyRow, ...(companyRow.api_keys || {}), ...(companyRow.settings || {}) }
+      : {};
 
     const leads = [];
 

@@ -150,6 +150,51 @@ workflowRunsRouter.get('/', requireAuth, async (req, res) => {
   }
 });
 
+workflowRunsRouter.get('/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('workflow_runs')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(404).json({ error: 'Workflow run not found' });
+  }
+});
+
+workflowRunsRouter.post('/', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('workflow_runs')
+      .insert({ ...req.body, company_id: req.companyId })
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+workflowRunsRouter.patch('/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('workflow_runs')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/workflows/:id/runs
 router.get('/:id/runs', requireAuth, async (req, res) => {
   try {

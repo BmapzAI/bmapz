@@ -37,6 +37,21 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('blog_posts')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(404).json({ error: 'Blog post not found' });
+  }
+});
+
 router.patch('/:id', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin

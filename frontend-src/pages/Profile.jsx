@@ -86,7 +86,7 @@ export default function Profile() {
     try {
       const { url: file_url } = await UploadFile({ file });
       setFormData(prev => ({ ...prev, profile_picture: file_url }));
-      await api.patch('/api/users/me', { avatar_url: file_url });
+      await api.patch('/api/users/me', { profile_picture: file_url });
       toast.success('Profile picture updated');
     } catch (error) {
       toast.error('Failed to upload image');
