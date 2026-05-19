@@ -144,3 +144,52 @@ Fixed all remaining parser errors from Codex's build check. Errors were a second
 ✓ built in 26.81s
 ```
 Non-blocking warnings: supabase dynamic+static import overlap, main chunk 2.9 MB (both expected for a large SPA).
+
+### 2026-05-19 - Claude (Phase 3: Full entity/route audit — all broken refs fixed)
+
+**Commits pushed (8 total in this session):**
+
+1. `8076c51` — BrandScan page: created `/api/brand-scans` backend CRUD route with status/field mapping; added `BrandScanData` entity; replaced `BrandScan.list/create/update/delete` (calls on the React component) with `BrandScanData.*`. Also fixed legacy sort-string bug in Home.jsx (`Activity.list({limit:10})`), CompanyAdminPanel.jsx, AdminPanel.jsx.
+
+2. `8068eb1` — Created `funnels.js` and `dashboardConfigs.js` backend routes; added `Funnel` and `DashboardConfig` entities; fixed Sales.jsx and Dashboards.jsx imports. Fixed LeadDetails.jsx: removed undefined `Funnel.list()` call.
+
+3. `afd695d` — Created `nodeTemplates.js` backend route; created `dataDeletion.js` public POST route (GDPR); added `NodeTemplate` and `DataDeletionRequest` entities; fixed `FlowchartBuilder.jsx` import; fixed `DataDeletion.jsx` import; fixed `AdminPanel.jsx` to use `/api/admin/*` direct calls instead of entity methods (Company/Subscription/User/BillingPurchase all need cross-company admin access); added admin CRUD routes to `admin.js` (companies, subscriptions, purchases, users).
+
+4. `8757ff4` — Added `PATCH /api/leads/lists/:id` (LeadList.update); added `PATCH /api/users/:id` (User.update by company admin); added `POST /api/companies` (Company.create + trial subscription); added `Company.create` to entity.
+
+5. `af25675` — Added `PATCH /api/ai/outputs/:id` for `AIOutput.update`; fixed `AdsLeadsTab.jsx` `Lead.filter().concat()` anti-pattern → `Promise.all + spread`; added missing `SocialPost` import in `SocialPerformanceTab.jsx`; added missing `LeadList` import in `LeadListView.jsx`.
+
+6. `2323d45` — Fixed `ai_outputs` schema mismatch: table lacks `title`, `content`, `status`, `channel`, `category` columns that frontend expects. Fixed POST to store extra fields in `metadata` JSONB; fixed GET to flatten `metadata` into response; fixed PATCH to merge metadata on update. Added `flattenAIOutput()` transformer.
+
+7. `a607f38` — Added missing `LeadList` import to `LeadListManager.jsx` and `LeadListManagerFull.jsx` (both used `LeadList.*` without import → ReferenceError).
+
+8. `4c29ec2` — Added `GET /api/leads/lists/:id` backend route for `LeadList.get()` completeness.
+
+**Backend routes created this session:**
+- `/api/brand-scans` (CRUD + status mapping)
+- `/api/funnels` (CRUD)
+- `/api/dashboard-configs` (CRUD)
+- `/api/node-templates` (CRUD, global + company scope)
+- `/api/data-deletion` (public POST, GDPR)
+- `/api/admin/companies` (POST/PATCH/DELETE)
+- `/api/admin/subscriptions` (GET/POST/PATCH)
+- `/api/admin/purchases` (GET/PATCH)
+- `/api/admin/users` (PATCH/DELETE)
+- `PATCH /api/leads/lists/:id`, `GET /api/leads/lists/:id`
+- `PATCH /api/users/:id`
+- `POST /api/companies`
+- `PATCH /api/ai/outputs/:id`
+
+**Entities added to entities.js:**
+`BrandScanData`, `Funnel`, `DashboardConfig`, `NodeTemplate`, `DataDeletionRequest`, `Company.create`
+
+**Live status (2026-05-19):**
+- Backend Railway: ✅ `{"status":"ok"}` 
+- Frontend ai.bmapz.com: ✅ Loads
+- Build: ✅ 3553 modules, no errors (only chunk-size warnings)
+
+**Remaining known gaps (not yet addressed):**
+- `Company.filter({ id: ... })` / `Company.filter({ created_by: ... })` in CompanyAdminPanel ignores params — always returns current company. Logic is tolerable (returns a company either way) but not precise.
+- No Cloudflare Pages edge cache purge after deploy (auto-handled by CF).
+- OAuth token refresh for Google/Meta tokens (when tokens expire, reconnect needed from Settings).
+- No real-time workflow execution engine (workflows save state but don't auto-run on schedule).
