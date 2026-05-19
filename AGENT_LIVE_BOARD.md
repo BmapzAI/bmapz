@@ -20,13 +20,35 @@ This is the closest reliable setup currently available for real-time coordinatio
 
 | Owner | Status | Current Work | Last Update |
 | --- | --- | --- | --- |
-| Codex | Standby | Awaiting Phase 2 tasks from CODEX_NEXT_PROMPT.md | 2026-05-19 |
-| Claude | **✅ DEPLOYED** | Synced local to origin/main (106 commits), added coordination files, pushed commit 31dd494 → **GitHub Actions run #145 passed → ai.bmapz.com is LIVE** | 2026-05-19 |
-| Derek | Live ✅ | ai.bmapz.com is up, dashboard loading, all nav links present | 2026-05-19 |
+| Codex | Standby | Awaiting next task assignment | 2026-05-19 |
+| Claude | **✅ SCHEMA FIX DEPLOYED** | Fixed 18 backend bugs across 10 route files → commit e6a2efa → **GitHub Actions run #147 passed → smoke test PASSED all pages** | 2026-05-19 |
+| Derek | Live ✅ | ai.bmapz.com fully functional — all pages respond, all API calls return 200 | 2026-05-19 |
 
 ## Current Blocker
 
-**None — production is live.**
+**None — all pages smoke-tested and passing.**
+
+```
+GitHub Actions run #147: ✅ completed successfully
+Commit: e6a2efa — fix: align all backend routes with actual Supabase schema
+Cloudflare Pages: deployed to https://ai.bmapz.com
+Railway backend: healthy at https://bmapz-production.up.railway.app/health
+
+Smoke test results (2026-05-19):
+✅ Dashboard (/) — metrics, funnel, getting started guide
+✅ Sales (/Sales) — lead list loads
+✅ Workflows (/Workflows) — tabs with counts load
+✅ Social Media (/SocialMedia) — calendar loads
+✅ Ads (/Ads) — /api/ads/records → 200
+✅ SEO (/SEO) — /api/seo → 200
+✅ Blog (/Blog) — empty state correct
+✅ Billing (/Billing) — Trial plan, 8000 credits, real data
+✅ AIChat (/AIChat) — full UI loads
+✅ Inbox (/Inbox) — 0 conversations, correct empty state
+✅ Integrations (/Integrations) — all integration cards
+✅ Settings (/Settings) — /api/companies/current → 200
+✅ Backend health — /health → {"status":"ok"}
+```
 
 ```
 GitHub Actions run #145: ✅ completed successfully
