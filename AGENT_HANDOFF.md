@@ -26,12 +26,14 @@ Shared coordination file for Codex and Claude Code.
 
 ## Next Recommended Step
 
-**Frontend build is passing. ✅ Ready for Phase 2.**
+**Runtime integration wiring is now fixed. Next: live-environment smoke test by feature, not just page load.**
 
-1. Verify Cloudflare Pages environment variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL`.
-2. Push to GitHub → Cloudflare Pages auto-deploys.
-3. Smoke-test `https://ai.bmapz.com` after deploy.
-4. Phase 2 from `docs/CODE_AUDIT_2026-05-18.md`: Supabase schema alignment, missing social analytics/boost routes, OAuth token refresh.
+1. **Test API key saving**: In Settings → API Keys, enter an OpenAI key, save, reload page — confirm key is pre-filled. Then click "Test Key" — confirm "OpenAI connected" toast.
+2. **Test OAuth**: In Integrations, connect Meta (if app ID is configured). Check `companies.api_keys.meta_access_token` in Supabase after callback.
+3. **Test `/api/integrations/test/openai`**: POST directly to backend with a valid key, expect `{ success: true }`.
+4. **Test workflow node-templates**: GET `/api/workflows/meta/node-templates` — should return array, not 404.
+5. **Workflow execution engine**: `POST /api/workflows/:id/run` still only creates a run record. Actual node execution is a future task.
+6. **Remaining known gaps**: OAuth token refresh when tokens expire, real-time workflow scheduling, admin smoke-test by role.
 
 ## Work Log
 
@@ -193,3 +195,23 @@ Non-blocking warnings: supabase dynamic+static import overlap, main chunk 2.9 MB
 - No Cloudflare Pages edge cache purge after deploy (auto-handled by CF).
 - OAuth token refresh for Google/Meta tokens (when tokens expire, reconnect needed from Settings).
 - No real-time workflow execution engine (workflows save state but don't auto-run on schedule).
+
+### 2026-05-27 - Claude (Phase 4: Runtime integration fixes)
+
+Fixed all runtime blockers identified in `docs/RUNTIME_AUDIT_2026-05-27.md`.
+
+**Files changed:**
+- `backend/src/routes/oauth.js` — **Rewritten**: all 5 OAuth providers (Google, Meta, LinkedIn, Twitter, TikTok) now read client credentials from `api_keys` JSONB and write tokens back into `api_keys` JSONB. `integration_status` now uses boolean `true` not string `'connected'`. Added `getCompanyKeys()` / `saveOAuthTokens()` / `clearOAuthTokens()` helpers. Disconnect endpoint now removes token fields from `api_keys` instead of nulling non-existent direct columns.
+- `backend/src/routes/integrations.js` — Expanded status detection to cover openai, anthropic, stability, meta_ads, linkedin_ads, tiktok_ads, whatsapp, wordpress, zapier, make, n8n, custom, lusha, clay, cal_com. Added `POST /api/integrations/test/:type` with real API calls for 14 integration types.
+- `backend/src/routes/workflows.js` — Moved `GET /meta/node-templates` before `GET /:id` to prevent route shadowing.
+- `backend/src/routes/companies.js` — Added `lusha_api_key`, `clay_api_key`, `cal_com_api_key`, `chilipiper_api_key`, `chilipiper_tenant` to `API_KEY_FIELDS`.
+- `frontend-src/components/integrations/ConnectIntegrationModal.jsx` — Fixed `handleSaveCreds`: now sends flat `credValues` instead of nested `api_keys` object.
+- `frontend-src/components/settings/ApiKeysTab.jsx` — Fixed `connectMetaOAuth`: replaced broken `window.open() → res.data` with proper popup + postMessage listener. Fixed `testIntegration`: now calls `POST /api/integrations/test/:type` and reads response directly (no `.data` wrapper). Added `useQueryClient`.
+- `frontend-src/api/apiClient.js` — Fixed empty `catch {}` block (lint error).
+- `frontend-src/components/workflows/FlowchartBuilder.jsx` — Fixed `no-case-declarations` lint error (wrapped `case 'angled'` in braces).
+- `frontend-src/lib/AuthContext.jsx` — Fixed empty catch block.
+- `frontend-src/pages/AuthCallback.jsx` — Fixed empty catch block.
+- `eslint.config.js` — **Created**: ESLint 9 flat config; `npm run lint` now passes with zero errors.
+
+**Build result:** ✅ 3553 modules, 14.65s
+**Lint result:** ✅ 0 errors, 1516 warnings (warnings are unused-vars in existing code, non-blocking)

@@ -72,7 +72,7 @@ export default function AuthCallback() {
             navigate('/', { replace: true });
             return;
           }
-        } catch {}
+        } catch (_e) { /* fall through to login redirect */ }
       }
       navigate('/login?error=callback_failed', { replace: true });
     }, 8000);

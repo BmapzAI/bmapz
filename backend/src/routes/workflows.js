@@ -37,6 +37,20 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/workflows/meta/node-templates — MUST be before /:id to avoid shadowing
+router.get('/meta/node-templates', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('node_templates')
+      .select('*')
+      .order('category');
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -77,20 +91,6 @@ router.delete('/:id', requireAuth, async (req, res) => {
       .eq('company_id', req.companyId);
     if (error) throw error;
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /api/workflows/node-templates — get all available node templates
-router.get('/meta/node-templates', requireAuth, async (req, res) => {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('node_templates')
-      .select('*')
-      .order('category');
-    if (error) throw error;
-    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

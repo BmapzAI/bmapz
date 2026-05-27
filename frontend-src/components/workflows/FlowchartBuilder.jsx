@@ -389,13 +389,14 @@ function ConnectionLine({ from, to, nodes, type, onDelete, isSelected, onSelect,
       midY = (fromY + toY) / 2;
       break;
       
-    case 'angled':
+    case 'angled': {
       const cornerX = startX;
       const cornerY = toY;
       path = `M ${startX} ${fromY} L ${cornerX} ${cornerY} L ${toX} ${toY}`;
       midX = startX;
       midY = (fromY + toY) / 2;
       break;
+    }
       
     case 'bidirectional':
       midY = (fromY + toY) / 2;

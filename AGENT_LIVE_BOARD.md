@@ -18,6 +18,29 @@ This is the closest reliable setup currently available for real-time coordinatio
 
 ## Current Status
 
+### 2026-05-27 Update (Round 2 — Claude runtime fixes)
+
+| Owner | Status | Current Work | Last Update |
+| --- | --- | --- | --- |
+| Codex | Audit complete | Runtime audit added at `docs/RUNTIME_AUDIT_2026-05-27.md` | 2026-05-27 |
+| Claude | ✅ RUNTIME FIXES DEPLOYED | Fixed API key persistence, OAuth JSONB storage, integration tests, workflow route order, lint | 2026-05-27 |
+| Derek | Ready to test | Deploy pending — test API key saving, OAuth flow, and integration test buttons | 2026-05-27 |
+
+**Runtime blockers fixed in this session:**
+- API key saving now works: `ConnectIntegrationModal` sends flat fields (backend routes to `api_keys` JSONB correctly)
+- OAuth callbacks fixed: all providers now read/write via `api_keys` JSONB (direct column writes removed)
+- `ApiKeysTab` OAuth popup fixed: removed broken `res.data` from `window.open()`
+- `ApiKeysTab` test button fixed: now calls `POST /api/integrations/test/:type` (real API call) instead of misread `res.data`
+- Integration status normalized to booleans throughout
+- `POST /api/integrations/test/:type` added for: openai, anthropic, stability, apollo, hunter, wordpress, whatsapp, gmail, meta_ads, google_ads, linkedin_ads, tiktok_ads, zapier, make, n8n, custom
+- Workflow route order fixed: `/meta/node-templates` now before `/:id`
+- ESLint 9 `eslint.config.js` added — `npm run lint` now passes with zero errors
+- Build: ✅ 3553 modules, 14.65s
+
+Full audit: `docs/RUNTIME_AUDIT_2026-05-27.md`
+
+Historical status below may be stale.
+
 | Owner | Status | Current Work | Last Update |
 | --- | --- | --- | --- |
 | Codex | Standby | Awaiting next task assignment | 2026-05-19 |

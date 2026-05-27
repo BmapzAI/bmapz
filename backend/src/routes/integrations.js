@@ -13,42 +13,248 @@ router.get('/status', requireAuth, async (req, res) => {
       .eq('id', req.companyId)
       .single();
 
-    const company = { ...(companyRow?.api_keys || {}) };
+    const k = companyRow?.api_keys || {};
     const status = companyRow?.integration_status || {};
 
-    // Auto-detect connections from stored tokens
+    // Auto-detect connections from stored keys/tokens (all booleans)
     const detected = {
-      gmail: !!(company?.google_access_token),
-      google_analytics: !!(company?.google_access_token && company?.google_analytics_property_id),
-      google_search_console: !!(company?.google_access_token && company?.google_search_console_url),
-      google_ads: !!(company?.google_access_token && company?.google_ads_customer_id),
-      google_drive: !!(company?.google_drive_token),
-      youtube: !!(company?.google_access_token),
-      meta: !!(company?.meta_access_token),
-      facebook: !!(company?.meta_access_token && company?.facebook_page_id),
-      instagram: !!(company?.meta_access_token && company?.instagram_business_account_id),
-      linkedin: !!(company?.linkedin_access_token),
-      twitter: !!(company?.twitter_access_token),
-      tiktok: !!(company?.tiktok_access_token),
-      email_smtp: !!(company?.smtp_host && company?.smtp_user),
-      email_resend: !!(company?.resend_api_key),
-      apollo: !!(company?.apollo_api_key),
-      hunter: !!(company?.hunter_api_key),
-      stripe: !!(company?.stripe_connected),
+      // AI providers
+      openai: !!(k.openai_api_key),
+      anthropic: !!(k.anthropic_api_key),
+      stability: !!(k.stability_api_key),
+      // Google
+      gmail: !!(k.google_access_token),
+      google_analytics: !!(k.google_access_token && k.google_analytics_property_id),
+      google_search_console: !!(k.google_access_token && k.google_search_console_url),
+      google_ads: !!(k.google_access_token && k.google_ads_customer_id),
+      google_drive: !!(k.google_drive_token),
+      youtube: !!(k.google_access_token),
+      // Meta
+      meta: !!(k.meta_access_token),
+      meta_ads: !!(k.meta_access_token),
+      facebook: !!(k.meta_access_token && k.facebook_page_id),
+      instagram: !!(k.meta_access_token && k.instagram_business_account_id),
+      // Social
+      linkedin: !!(k.linkedin_access_token),
+      linkedin_ads: !!(k.linkedin_ads_access_token || k.linkedin_access_token),
+      twitter: !!(k.twitter_access_token),
+      tiktok: !!(k.tiktok_access_token),
+      tiktok_ads: !!(k.tiktok_access_token && k.tiktok_advertiser_id),
+      // Messaging
+      whatsapp: !!(k.whatsapp_api_token && k.whatsapp_phone_id),
+      // Email
+      email_smtp: !!(k.smtp_host && k.smtp_user),
+      email_resend: !!(k.resend_api_key),
+      // Prospecting
+      apollo: !!(k.apollo_api_key),
+      hunter: !!(k.hunter_api_key),
+      lusha: !!(k.lusha_api_key),
+      clay: !!(k.clay_api_key),
+      // Publishing
+      wordpress: !!(k.wordpress_url && k.wordpress_user && k.wordpress_app_password),
+      // Automation webhooks
+      zapier: !!(k.zapier_webhook_url),
+      make: !!(k.make_webhook_url),
+      n8n: !!(k.n8n_webhook_url),
+      custom: !!(k.custom_api_url),
+      // Scheduling
+      google_calendar: !!(k.google_access_token),
+      cal_com: !!(k.cal_com_api_key),
+      // Other
+      stripe: !!(k.stripe_connected),
     };
 
-    // Merge: use stored status, then detected
+    // Merge: auto-detected takes precedence for presence, stored status for OAuth-confirmed ones
     const merged = { ...detected, ...status };
 
-    // Include google_connected_email for display
     res.json({
       status: merged,
-      google_connected_email: company?.google_connected_email,
-      facebook_page_id: company?.facebook_page_id,
-      instagram_business_account_id: company?.instagram_business_account_id,
+      google_connected_email: k.google_connected_email,
+      facebook_page_id: k.facebook_page_id,
+      instagram_business_account_id: k.instagram_business_account_id,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/integrations/test/:type — actively test a connection with a real API call
+router.post('/test/:type', requireAuth, async (req, res) => {
+  try {
+    const { type } = req.params;
+
+    const { data: companyRow } = await supabaseAdmin
+      .from('companies')
+      .select('api_keys')
+      .eq('id', req.companyId)
+      .single();
+    const k = companyRow?.api_keys || {};
+
+    switch (type) {
+      case 'openai': {
+        const apiKey = k.openai_api_key || process.env.OPENAI_API_KEY;
+        if (!apiKey) return res.json({ success: false, message: 'OpenAI API key not set' });
+        const r = await fetch('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${apiKey}` } });
+        if (r.ok) return res.json({ success: true, message: 'OpenAI connected' });
+        const d = await r.json();
+        return res.json({ success: false, message: d.error?.message || 'OpenAI key invalid' });
+      }
+
+      case 'anthropic': {
+        const apiKey = k.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) return res.json({ success: false, message: 'Anthropic API key not set' });
+        // Minimal test: list models endpoint
+        const r = await fetch('https://api.anthropic.com/v1/models', {
+          headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        });
+        if (r.ok) return res.json({ success: true, message: 'Anthropic connected' });
+        const d = await r.json();
+        return res.json({ success: false, message: d.error?.message || 'Anthropic key invalid' });
+      }
+
+      case 'stability': {
+        const apiKey = k.stability_api_key;
+        if (!apiKey) return res.json({ success: false, message: 'Stability AI key not set' });
+        const r = await fetch('https://api.stability.ai/v1/user/account', {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (r.ok) return res.json({ success: true, message: 'Stability AI connected' });
+        return res.json({ success: false, message: 'Stability AI key invalid' });
+      }
+
+      case 'apollo': {
+        const apiKey = k.apollo_api_key || process.env.APOLLO_API_KEY;
+        if (!apiKey) return res.json({ success: false, message: 'Apollo API key not set' });
+        const r = await fetch('https://api.apollo.io/api/v1/auth/health', {
+          headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+        });
+        if (r.ok) return res.json({ success: true, message: 'Apollo.io connected' });
+        return res.json({ success: false, message: 'Apollo key invalid or not authorized' });
+      }
+
+      case 'hunter': {
+        const apiKey = k.hunter_api_key || process.env.HUNTER_API_KEY;
+        if (!apiKey) return res.json({ success: false, message: 'Hunter API key not set' });
+        const r = await fetch(`https://api.hunter.io/v2/account?api_key=${apiKey}`);
+        const d = await r.json();
+        if (d.data?.email) return res.json({ success: true, message: `Hunter connected (${d.data.email})` });
+        return res.json({ success: false, message: d.errors?.[0]?.details || 'Hunter key invalid' });
+      }
+
+      case 'wordpress': {
+        const { wordpress_url, wordpress_user, wordpress_app_password } = k;
+        if (!wordpress_url || !wordpress_user || !wordpress_app_password) {
+          return res.json({ success: false, message: 'WordPress URL, username, and app password required' });
+        }
+        const credentials = Buffer.from(`${wordpress_user}:${wordpress_app_password}`).toString('base64');
+        const r = await fetch(`${wordpress_url.replace(/\/$/, '')}/wp-json/wp/v2/users/me`, {
+          headers: { Authorization: `Basic ${credentials}` },
+        });
+        if (r.ok) return res.json({ success: true, message: 'WordPress connected' });
+        return res.json({ success: false, message: 'WordPress credentials invalid or REST API not accessible' });
+      }
+
+      case 'whatsapp': {
+        const { whatsapp_api_token, whatsapp_phone_id } = k;
+        if (!whatsapp_api_token || !whatsapp_phone_id) {
+          return res.json({ success: false, message: 'WhatsApp API token and Phone Number ID required' });
+        }
+        const r = await fetch(`https://graph.facebook.com/v19.0/${whatsapp_phone_id}`, {
+          headers: { Authorization: `Bearer ${whatsapp_api_token}` },
+        });
+        if (r.ok) return res.json({ success: true, message: 'WhatsApp Business connected' });
+        return res.json({ success: false, message: 'WhatsApp credentials invalid' });
+      }
+
+      case 'gmail': {
+        const hasOAuth = !!(k.google_access_token);
+        const hasManual = !!(k.gmail_client_id && k.gmail_refresh_token);
+        if (!hasOAuth && !hasManual) {
+          return res.json({ success: false, message: 'Gmail not configured. Use OAuth or add Client ID + Refresh Token.' });
+        }
+        return res.json({ success: true, message: 'Gmail credentials present' });
+      }
+
+      case 'meta_ads': {
+        const token = k.meta_access_token;
+        if (!token) return res.json({ success: false, message: 'Meta not connected via OAuth' });
+        const r = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${token}`);
+        if (r.ok) return res.json({ success: true, message: 'Meta Ads connected' });
+        return res.json({ success: false, message: 'Meta token invalid or expired. Please reconnect.' });
+      }
+
+      case 'google_ads': {
+        const hasCredentials = k.google_ads_developer_token && k.google_ads_customer_id &&
+          (k.google_ads_refresh_token || k.google_access_token);
+        if (!hasCredentials) {
+          return res.json({ success: false, message: 'Google Ads requires Developer Token, Customer ID, and OAuth token' });
+        }
+        return res.json({ success: true, message: 'Google Ads credentials present' });
+      }
+
+      case 'linkedin_ads': {
+        const token = k.linkedin_ads_access_token || k.linkedin_access_token;
+        if (!token) return res.json({ success: false, message: 'LinkedIn not connected' });
+        return res.json({ success: true, message: 'LinkedIn Ads token present' });
+      }
+
+      case 'tiktok_ads': {
+        const token = k.tiktok_access_token;
+        if (!token) return res.json({ success: false, message: 'TikTok not connected via OAuth' });
+        return res.json({ success: true, message: 'TikTok Ads token present' });
+      }
+
+      case 'zapier': {
+        const webhookUrl = k.zapier_webhook_url;
+        if (!webhookUrl) return res.json({ success: false, message: 'Zapier webhook URL not set' });
+        const r = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ test: true, source: 'bmapz', timestamp: new Date().toISOString() }),
+        });
+        return res.json({ success: r.ok, message: r.ok ? 'Zapier webhook test sent' : 'Zapier webhook URL not reachable' });
+      }
+
+      case 'make': {
+        const webhookUrl = k.make_webhook_url;
+        if (!webhookUrl) return res.json({ success: false, message: 'Make webhook URL not set' });
+        const r = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ test: true, source: 'bmapz', timestamp: new Date().toISOString() }),
+        });
+        return res.json({ success: r.ok, message: r.ok ? 'Make webhook test sent' : 'Make webhook URL not reachable' });
+      }
+
+      case 'n8n': {
+        const webhookUrl = k.n8n_webhook_url;
+        if (!webhookUrl) return res.json({ success: false, message: 'n8n webhook URL not set' });
+        const r = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ test: true, source: 'bmapz', timestamp: new Date().toISOString() }),
+        });
+        return res.json({ success: r.ok, message: r.ok ? 'n8n webhook test sent' : 'n8n webhook URL not reachable' });
+      }
+
+      case 'custom': {
+        const { custom_api_url, custom_api_key } = k;
+        if (!custom_api_url) return res.json({ success: false, message: 'Custom API URL not set' });
+        const headers = { 'Content-Type': 'application/json' };
+        if (custom_api_key) headers['Authorization'] = `Bearer ${custom_api_key}`;
+        const r = await fetch(custom_api_url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ test: true, source: 'bmapz', timestamp: new Date().toISOString() }),
+        });
+        return res.json({ success: r.ok, message: r.ok ? 'Custom webhook responded successfully' : `Custom endpoint returned ${r.status}` });
+      }
+
+      default:
+        return res.json({ success: false, message: `No test defined for integration type: ${type}` });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

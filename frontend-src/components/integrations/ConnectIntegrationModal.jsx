@@ -233,8 +233,9 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
     setSaving(true);
     try {
       const statusKey = STATUS_KEY_MAP[integration.type];
+      // Send flat credential fields — backend PATCH routes them to api_keys JSONB automatically
       await Company.update(company.id, {
-        api_keys: { ...(company.api_keys || {}), ...credValues },
+        ...credValues,
         ...(statusKey ? { integration_status: { ...(company.integration_status || {}), [statusKey]: true } } : {}),
       });
       queryClient.invalidateQueries({ queryKey: ['companies'] });

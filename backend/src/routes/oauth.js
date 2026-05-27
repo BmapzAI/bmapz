@@ -1,11 +1,60 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
-import { requireAuth, optionalAuth } from '../middleware/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const API_URL = process.env.API_URL || 'http://localhost:3001';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch a company's api_keys and integration_status in one call.
+ */
+async function getCompanyKeys(companyId) {
+  const { data } = await supabaseAdmin
+    .from('companies')
+    .select('api_keys, integration_status')
+    .eq('id', companyId)
+    .single();
+  return {
+    apiKeys: data?.api_keys || {},
+    integrationStatus: data?.integration_status || {},
+  };
+}
+
+/**
+ * Merge newKeys into api_keys JSONB and update integration_status for the given type.
+ * All OAuth tokens live in api_keys; integration_status is a direct JSONB column.
+ */
+async function saveOAuthTokens(companyId, newKeys, integrationType, extraDirectFields = {}) {
+  const { apiKeys, integrationStatus } = await getCompanyKeys(companyId);
+  const mergedKeys = { ...apiKeys, ...newKeys };
+  const mergedStatus = { ...integrationStatus, [integrationType]: true };
+
+  await supabaseAdmin
+    .from('companies')
+    .update({ api_keys: mergedKeys, integration_status: mergedStatus, ...extraDirectFields })
+    .eq('id', companyId);
+}
+
+/**
+ * Remove a set of keys from api_keys JSONB and remove the integration type from integration_status.
+ */
+async function clearOAuthTokens(companyId, keysToRemove, statusKeys) {
+  const { apiKeys, integrationStatus } = await getCompanyKeys(companyId);
+  const updatedApiKeys = { ...apiKeys };
+  for (const k of keysToRemove) delete updatedApiKeys[k];
+
+  const updatedStatus = { ...integrationStatus };
+  for (const k of statusKeys) delete updatedStatus[k];
+
+  await supabaseAdmin
+    .from('companies')
+    .update({ api_keys: updatedApiKeys, integration_status: updatedStatus })
+    .eq('id', companyId);
+}
 
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
 
@@ -47,17 +96,13 @@ const GOOGLE_SCOPES_MAP = {
   ],
 };
 
-// GET /api/oauth/google/initiate?type=gmail&userId=...&origin=...
+// GET /api/oauth/google/initiate?type=gmail&origin=...
 router.get('/google/initiate', requireAuth, async (req, res) => {
   try {
     const { type = 'gmail', origin } = req.query;
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('google_client_id')
-      .eq('id', req.companyId)
-      .single();
+    const { apiKeys } = await getCompanyKeys(req.companyId);
 
-    const clientId = company?.google_client_id || process.env.GOOGLE_CLIENT_ID;
+    const clientId = apiKeys.google_client_id || process.env.GOOGLE_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'Google Client ID not configured' });
 
     const scopes = GOOGLE_SCOPES_MAP[type] || GOOGLE_SCOPES_MAP.gmail;
@@ -97,15 +142,11 @@ router.get('/google/callback', async (req, res) => {
     const stateData = JSON.parse(Buffer.from(state, 'base64url').toString());
     const { companyId, integrationType } = stateData;
 
-    // Get company credentials
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('google_client_id, google_client_secret')
-      .eq('id', companyId)
-      .single();
+    // Get company credentials from api_keys JSONB
+    const { apiKeys } = await getCompanyKeys(companyId);
 
-    const clientId = company?.google_client_id || process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = company?.google_client_secret || process.env.GOOGLE_CLIENT_SECRET;
+    const clientId = apiKeys.google_client_id || process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = apiKeys.google_client_secret || process.env.GOOGLE_CLIENT_SECRET;
     const redirectUri = `${API_URL}/api/oauth/google/callback`;
 
     // Exchange code for tokens
@@ -122,38 +163,18 @@ router.get('/google/callback', async (req, res) => {
     const userInfoResp = await fetch(`https://www.googleapis.com/oauth2/v2/userinfo?access_token=${tokens.access_token}`);
     const userInfo = await userInfoResp.json();
 
-    // Build update object based on integration type
-    const updates = {
-      integration_status: { ...{}, [integrationType]: 'connected' },
-    };
-
+    // Build new tokens to store in api_keys JSONB
+    const newKeys = {};
     if (integrationType === 'google_drive') {
-      updates.google_drive_token = tokens.access_token;
-    } else if (integrationType === 'gmail') {
-      updates.google_access_token = tokens.access_token;
-      updates.google_refresh_token = tokens.refresh_token;
-      updates.google_token_expires_at = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-      updates.google_connected_email = userInfo.email;
+      newKeys.google_drive_token = tokens.access_token;
     } else {
-      updates.google_access_token = tokens.access_token;
-      updates.google_refresh_token = tokens.refresh_token;
-      updates.google_token_expires_at = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-      updates.google_connected_email = userInfo.email;
+      newKeys.google_access_token = tokens.access_token;
+      if (tokens.refresh_token) newKeys.google_refresh_token = tokens.refresh_token;
+      newKeys.google_token_expires_at = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+      if (userInfo.email) newKeys.google_connected_email = userInfo.email;
     }
 
-    // Save tokens
-    const { data: existingCompany } = await supabaseAdmin
-      .from('companies')
-      .select('integration_status')
-      .eq('id', companyId)
-      .single();
-
-    const mergedStatus = { ...(existingCompany?.integration_status || {}), [integrationType]: 'connected' };
-    await supabaseAdmin
-      .from('companies')
-      .update({ ...updates, integration_status: mergedStatus })
-      .eq('id', companyId);
-
+    await saveOAuthTokens(companyId, newKeys, integrationType);
     res.send(popupHtml('success', 'Google', null, integrationType));
   } catch (err) {
     console.error('[google callback]', err);
@@ -166,13 +187,9 @@ router.get('/google/callback', async (req, res) => {
 router.get('/meta/initiate', requireAuth, async (req, res) => {
   try {
     const { type = 'meta', origin } = req.query;
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('meta_app_id')
-      .eq('id', req.companyId)
-      .single();
+    const { apiKeys } = await getCompanyKeys(req.companyId);
 
-    const appId = company?.meta_app_id || process.env.META_APP_ID;
+    const appId = apiKeys.meta_app_id || process.env.META_APP_ID;
     if (!appId) return res.status(400).json({ error: 'Meta App ID not configured' });
 
     const state = Buffer.from(JSON.stringify({
@@ -206,14 +223,10 @@ router.get('/meta/callback', async (req, res) => {
     const stateData = JSON.parse(Buffer.from(state, 'base64url').toString());
     const { companyId } = stateData;
 
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('meta_app_id, meta_app_secret, integration_status')
-      .eq('id', companyId)
-      .single();
+    const { apiKeys } = await getCompanyKeys(companyId);
 
-    const appId = company?.meta_app_id || process.env.META_APP_ID;
-    const appSecret = company?.meta_app_secret || process.env.META_APP_SECRET;
+    const appId = apiKeys.meta_app_id || process.env.META_APP_ID;
+    const appSecret = apiKeys.meta_app_secret || process.env.META_APP_SECRET;
     const redirectUri = `${API_URL}/api/oauth/meta/callback`;
 
     // Exchange code for token
@@ -246,21 +259,28 @@ router.get('/meta/callback', async (req, res) => {
       igAccountId = igData.instagram_business_account?.id;
     }
 
-    const mergedStatus = {
-      ...(company?.integration_status || {}),
-      meta: 'connected',
-      facebook: 'connected',
-      ...(igAccountId ? { instagram: 'connected' } : {}),
-    };
-
-    await supabaseAdmin.from('companies').update({
+    const newKeys = {
       meta_access_token: accessToken,
       meta_token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
       facebook_page_id: page?.id || null,
       facebook_page_access_token: page?.access_token || null,
-      instagram_business_account_id: igAccountId,
-      integration_status: mergedStatus,
-    }).eq('id', companyId);
+      instagram_business_account_id: igAccountId || null,
+    };
+
+    // Merge keys and update status for all connected Meta platforms
+    const { apiKeys: currentKeys, integrationStatus } = await getCompanyKeys(companyId);
+    const mergedKeys = { ...currentKeys, ...newKeys };
+    const mergedStatus = {
+      ...integrationStatus,
+      meta: true,
+      facebook: true,
+      ...(igAccountId ? { instagram: true } : {}),
+    };
+
+    await supabaseAdmin
+      .from('companies')
+      .update({ api_keys: mergedKeys, integration_status: mergedStatus })
+      .eq('id', companyId);
 
     res.send(popupHtml('success', 'Meta'));
   } catch (err) {
@@ -273,13 +293,9 @@ router.get('/meta/callback', async (req, res) => {
 
 router.get('/linkedin/initiate', requireAuth, async (req, res) => {
   try {
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('linkedin_client_id')
-      .eq('id', req.companyId)
-      .single();
+    const { apiKeys } = await getCompanyKeys(req.companyId);
 
-    const clientId = company?.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
+    const clientId = apiKeys.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'LinkedIn Client ID not configured' });
 
     const state = Buffer.from(JSON.stringify({ companyId: req.companyId })).toString('base64url');
@@ -304,14 +320,10 @@ router.get('/linkedin/callback', async (req, res) => {
     if (oauthError) return res.send(popupHtml('error', 'LinkedIn', oauthError));
 
     const { companyId } = JSON.parse(Buffer.from(state, 'base64url').toString());
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('linkedin_client_id, linkedin_client_secret, integration_status')
-      .eq('id', companyId)
-      .single();
+    const { apiKeys } = await getCompanyKeys(companyId);
 
-    const clientId = company?.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
-    const clientSecret = company?.linkedin_client_secret || process.env.LINKEDIN_CLIENT_SECRET;
+    const clientId = apiKeys.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
+    const clientSecret = apiKeys.linkedin_client_secret || process.env.LINKEDIN_CLIENT_SECRET;
     const redirectUri = `${API_URL}/api/oauth/linkedin/callback`;
 
     const tokenResp = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
@@ -322,13 +334,12 @@ router.get('/linkedin/callback', async (req, res) => {
     const tokens = await tokenResp.json();
     if (tokens.error) return res.send(popupHtml('error', 'LinkedIn', tokens.error_description));
 
-    const mergedStatus = { ...(company?.integration_status || {}), linkedin: 'connected' };
-    await supabaseAdmin.from('companies').update({
+    const newKeys = {
       linkedin_access_token: tokens.access_token,
       linkedin_token_expires_at: new Date(Date.now() + (tokens.expires_in || 5184000) * 1000).toISOString(),
-      integration_status: mergedStatus,
-    }).eq('id', companyId);
+    };
 
+    await saveOAuthTokens(companyId, newKeys, 'linkedin');
     res.send(popupHtml('success', 'LinkedIn'));
   } catch (err) {
     res.send(popupHtml('error', 'LinkedIn', err.message));
@@ -339,18 +350,13 @@ router.get('/linkedin/callback', async (req, res) => {
 
 router.get('/twitter/initiate', requireAuth, async (req, res) => {
   try {
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('twitter_client_id')
-      .eq('id', req.companyId)
-      .single();
+    const { apiKeys } = await getCompanyKeys(req.companyId);
 
-    const clientId = company?.twitter_client_id || process.env.TWITTER_CLIENT_ID;
+    const clientId = apiKeys.twitter_client_id || process.env.TWITTER_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'Twitter Client ID not configured' });
 
     const state = Buffer.from(JSON.stringify({ companyId: req.companyId })).toString('base64url');
     const codeVerifier = Buffer.from(crypto.randomUUID()).toString('base64url');
-    const codeChallenge = codeVerifier; // plain for simplicity (use SHA-256 in production)
 
     const redirectUri = `${API_URL}/api/oauth/twitter/callback`;
     const params = new URLSearchParams({
@@ -359,7 +365,7 @@ router.get('/twitter/initiate', requireAuth, async (req, res) => {
       redirect_uri: redirectUri,
       scope: 'tweet.read tweet.write users.read offline.access',
       state,
-      code_challenge: codeChallenge,
+      code_challenge: codeVerifier,
       code_challenge_method: 'plain',
     });
 
@@ -375,14 +381,10 @@ router.get('/twitter/callback', async (req, res) => {
     if (oauthError) return res.send(popupHtml('error', 'Twitter/X', oauthError));
 
     const { companyId } = JSON.parse(Buffer.from(state, 'base64url').toString());
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('twitter_client_id, twitter_client_secret, integration_status')
-      .eq('id', companyId)
-      .single();
+    const { apiKeys } = await getCompanyKeys(companyId);
 
-    const clientId = company?.twitter_client_id || process.env.TWITTER_CLIENT_ID;
-    const clientSecret = company?.twitter_client_secret || process.env.TWITTER_CLIENT_SECRET;
+    const clientId = apiKeys.twitter_client_id || process.env.TWITTER_CLIENT_ID;
+    const clientSecret = apiKeys.twitter_client_secret || process.env.TWITTER_CLIENT_SECRET;
     const redirectUri = `${API_URL}/api/oauth/twitter/callback`;
 
     const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
@@ -396,18 +398,13 @@ router.get('/twitter/callback', async (req, res) => {
         grant_type: 'authorization_code',
         code,
         redirect_uri: redirectUri,
-        code_verifier: Buffer.from(companyId).toString('base64url'), // must match what was sent
+        code_verifier: Buffer.from(companyId).toString('base64url'),
       }),
     });
     const tokens = await tokenResp.json();
     if (tokens.error) return res.send(popupHtml('error', 'Twitter/X', tokens.error_description));
 
-    const mergedStatus = { ...(company?.integration_status || {}), twitter: 'connected' };
-    await supabaseAdmin.from('companies').update({
-      twitter_access_token: tokens.access_token,
-      integration_status: mergedStatus,
-    }).eq('id', companyId);
-
+    await saveOAuthTokens(companyId, { twitter_access_token: tokens.access_token }, 'twitter');
     res.send(popupHtml('success', 'Twitter/X'));
   } catch (err) {
     res.send(popupHtml('error', 'Twitter/X', err.message));
@@ -418,13 +415,9 @@ router.get('/twitter/callback', async (req, res) => {
 
 router.get('/tiktok/initiate', requireAuth, async (req, res) => {
   try {
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('tiktok_client_key')
-      .eq('id', req.companyId)
-      .single();
+    const { apiKeys } = await getCompanyKeys(req.companyId);
 
-    const clientKey = company?.tiktok_client_key || process.env.TIKTOK_CLIENT_KEY;
+    const clientKey = apiKeys.tiktok_client_key || process.env.TIKTOK_CLIENT_KEY;
     if (!clientKey) return res.status(400).json({ error: 'TikTok Client Key not configured' });
 
     const state = Buffer.from(JSON.stringify({ companyId: req.companyId })).toString('base64url');
@@ -449,14 +442,10 @@ router.get('/tiktok/callback', async (req, res) => {
     if (oauthError) return res.send(popupHtml('error', 'TikTok', oauthError));
 
     const { companyId } = JSON.parse(Buffer.from(state, 'base64url').toString());
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('tiktok_client_key, tiktok_client_secret, integration_status')
-      .eq('id', companyId)
-      .single();
+    const { apiKeys } = await getCompanyKeys(companyId);
 
-    const clientKey = company?.tiktok_client_key || process.env.TIKTOK_CLIENT_KEY;
-    const clientSecret = company?.tiktok_client_secret || process.env.TIKTOK_CLIENT_SECRET;
+    const clientKey = apiKeys.tiktok_client_key || process.env.TIKTOK_CLIENT_KEY;
+    const clientSecret = apiKeys.tiktok_client_secret || process.env.TIKTOK_CLIENT_SECRET;
     const redirectUri = `${API_URL}/api/oauth/tiktok/callback`;
 
     const tokenResp = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
@@ -467,13 +456,12 @@ router.get('/tiktok/callback', async (req, res) => {
     const tokens = await tokenResp.json();
     if (tokens.error) return res.send(popupHtml('error', 'TikTok', tokens.error_description));
 
-    const mergedStatus = { ...(company?.integration_status || {}), tiktok: 'connected' };
-    await supabaseAdmin.from('companies').update({
+    const newKeys = {
       tiktok_access_token: tokens.access_token,
       tiktok_token_expires_at: new Date(Date.now() + (tokens.expires_in || 86400) * 1000).toISOString(),
-      integration_status: mergedStatus,
-    }).eq('id', companyId);
+    };
 
+    await saveOAuthTokens(companyId, newKeys, 'tiktok');
     res.send(popupHtml('success', 'TikTok'));
   } catch (err) {
     res.send(popupHtml('error', 'TikTok', err.message));
@@ -484,29 +472,32 @@ router.get('/tiktok/callback', async (req, res) => {
 
 router.post('/google/refresh', requireAuth, async (req, res) => {
   try {
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('google_client_id, google_client_secret, google_refresh_token')
-      .eq('id', req.companyId)
-      .single();
+    const { apiKeys } = await getCompanyKeys(req.companyId);
 
-    if (!company?.google_refresh_token) return res.status(400).json({ error: 'No refresh token stored' });
+    if (!apiKeys.google_refresh_token) return res.status(400).json({ error: 'No refresh token stored' });
 
-    const clientId = company.google_client_id || process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = company.google_client_secret || process.env.GOOGLE_CLIENT_SECRET;
+    const clientId = apiKeys.google_client_id || process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = apiKeys.google_client_secret || process.env.GOOGLE_CLIENT_SECRET;
 
     const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: company.google_refresh_token, client_id: clientId, client_secret: clientSecret }),
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: apiKeys.google_refresh_token, client_id: clientId, client_secret: clientSecret }),
     });
     const tokens = await tokenResp.json();
     if (tokens.error) throw new Error(tokens.error_description || tokens.error);
 
-    await supabaseAdmin.from('companies').update({
+    // Update only the new access token in api_keys (keep existing refresh token)
+    const updatedKeys = {
+      ...apiKeys,
       google_access_token: tokens.access_token,
       google_token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-    }).eq('id', req.companyId);
+    };
+
+    await supabaseAdmin
+      .from('companies')
+      .update({ api_keys: updatedKeys })
+      .eq('id', req.companyId);
 
     res.json({ access_token: tokens.access_token });
   } catch (err) {
@@ -519,40 +510,30 @@ router.post('/google/refresh', requireAuth, async (req, res) => {
 router.post('/disconnect', requireAuth, async (req, res) => {
   try {
     const { provider } = req.body;
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('integration_status')
-      .eq('id', req.companyId)
-      .single();
 
-    const newStatus = { ...(company?.integration_status || {}) };
-    delete newStatus[provider];
+    // Define which api_keys fields to clear for each provider
+    const TOKEN_KEYS_BY_PROVIDER = {
+      gmail: ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email'],
+      google_ads: ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email'],
+      google_analytics: ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email'],
+      google_search_console: ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email'],
+      google_drive: ['google_drive_token'],
+      google_calendar: ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email'],
+      meta: ['meta_access_token', 'meta_token_expires_at', 'facebook_page_id', 'facebook_page_access_token', 'instagram_business_account_id'],
+      facebook: ['meta_access_token', 'meta_token_expires_at', 'facebook_page_id', 'facebook_page_access_token'],
+      instagram: ['instagram_business_account_id'],
+      linkedin: ['linkedin_access_token', 'linkedin_token_expires_at'],
+      twitter: ['twitter_access_token', 'twitter_access_secret'],
+      tiktok: ['tiktok_access_token', 'tiktok_token_expires_at'],
+    };
 
-    const updates = { integration_status: newStatus };
-
-    // Clear tokens based on provider
-    if (provider?.startsWith('google') || provider === 'gmail') {
-      updates.google_access_token = null;
-      updates.google_refresh_token = null;
-      updates.google_token_expires_at = null;
-      updates.google_connected_email = null;
-    } else if (provider === 'meta' || provider === 'facebook' || provider === 'instagram') {
-      updates.meta_access_token = null;
-      updates.facebook_page_id = null;
-      updates.facebook_page_access_token = null;
-      updates.instagram_business_account_id = null;
-    } else if (provider === 'linkedin') {
-      updates.linkedin_access_token = null;
-      updates.linkedin_token_expires_at = null;
-    } else if (provider === 'twitter') {
-      updates.twitter_access_token = null;
-      updates.twitter_access_secret = null;
-    } else if (provider === 'tiktok') {
-      updates.tiktok_access_token = null;
-      updates.tiktok_token_expires_at = null;
+    // Fallback: for google* prefixed providers, clear google tokens
+    let keysToRemove = TOKEN_KEYS_BY_PROVIDER[provider] || [];
+    if (!keysToRemove.length && provider?.startsWith('google')) {
+      keysToRemove = TOKEN_KEYS_BY_PROVIDER.gmail;
     }
 
-    await supabaseAdmin.from('companies').update(updates).eq('id', req.companyId);
+    await clearOAuthTokens(req.companyId, keysToRemove, [provider]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

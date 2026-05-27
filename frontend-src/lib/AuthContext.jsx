@@ -89,7 +89,7 @@ export function AuthProvider({ children }) {
       const co = await api.get('/api/companies/current');
       setCompany(co);
       return co;
-    } catch {}
+    } catch (_e) { /* silently ignore — company stays as last fetched value */ }
   }, []);
 
   const updateCompany = useCallback(async (updates) => {

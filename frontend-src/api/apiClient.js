@@ -36,7 +36,7 @@ export async function apiFetch(path, options = {}) {
     try {
       const body = await response.json();
       errorMsg = body.error || body.message || errorMsg;
-    } catch {}
+    } catch (_e) { /* use the default errorMsg */ }
     throw new Error(errorMsg);
   }
 

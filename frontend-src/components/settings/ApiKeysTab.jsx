@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -94,6 +94,7 @@ const IMAGE_MODELS_OPENAI = [
 ];
 
 export default function ApiKeysTab({ company, onSave }) {
+  const queryClient = useQueryClient();
   const [keys, setKeys] = useState(() => ({
     ai_provider: company?.ai_provider || 'openai',
     openai_api_key: company?.openai_api_key || '',
@@ -137,34 +138,64 @@ export default function ApiKeysTab({ company, onSave }) {
 
   const set = (field, val) => setKeys(prev => ({ ...prev, [field]: val }));
 
-  const connectMetaOAuth = async (integrationType) => {
+  const connectMetaOAuth = (integrationType) => {
     setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: true }));
-    try {
-      const res = await window.open(`${import.meta.env.VITE_API_URL}/api/oauth/meta/initiate?type=${integrationType}&origin=${encodeURIComponent(window.location.origin)}`, 'oauth_popup', 'width=620,height=720');
-      const { authUrl } = res.data;
-      if (authUrl) {
-        window.open(authUrl, '_blank', 'width=600,height=700');
-        toast.info('Authorize in the popup window. Once done, refresh this page to see your updated token.');
-      } else {
-        toast.error('Could not get authorization URL');
+
+    // Open the backend OAuth initiate URL directly — it returns a 302 redirect to Meta
+    window.open(
+      `${import.meta.env.VITE_API_URL}/api/oauth/meta/initiate?type=${integrationType}&origin=${encodeURIComponent(window.location.origin)}`,
+      'oauth_popup',
+      'width=620,height=720,left=200,top=80'
+    );
+
+    const onMessage = (event) => {
+      if (event.data?.type === 'oauth_success') {
+        window.removeEventListener('message', onMessage);
+        setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
+        setStatuses(prev => ({ ...prev, [integrationType]: true }));
+        queryClient.invalidateQueries({ queryKey: ['companies'] });
+        toast.success('Meta connected!');
+      } else if (event.data?.type === 'oauth_error') {
+        window.removeEventListener('message', onMessage);
+        setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
+        toast.error(`OAuth failed: ${event.data.error || 'Unknown error'}`);
       }
-    } catch (e) {
-      toast.error('OAuth failed: ' + (e?.response?.data?.error || e.message));
-    } finally {
+    };
+    window.addEventListener('message', onMessage);
+
+    // Fallback: stop spinner if popup is closed without postMessage
+    const pollTimer = setInterval(() => {
+      setTesting(prev => {
+        if (!prev[`oauth_${integrationType}`]) { clearInterval(pollTimer); return prev; }
+        return prev;
+      });
+    }, 1000);
+    setTimeout(() => {
+      clearInterval(pollTimer);
+      window.removeEventListener('message', onMessage);
       setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
-    }
+    }, 120000); // 2 min timeout
   };
 
   const testIntegration = async (type) => {
     setTesting(prev => ({ ...prev, [type]: true }));
     try {
+      // Save keys first so the backend has the latest values
       await Company.update(company.id, { ...keys });
-      const res = await api.get('/api/integrations/status');
-      const { success, message } = res.data;
+      // Call the dedicated test endpoint for this integration type
+      const result = await api.post(`/api/integrations/test/${type}`);
+      const success = result?.success === true;
+      const message = result?.message || (success ? `${type} connected` : `${type} connection failed`);
       setStatuses(prev => ({ ...prev, [type]: success }));
-      success ? toast.success(message) : toast.error(message);
+      if (success) {
+        toast.success(message);
+      } else {
+        toast.error(message);
+      }
     } catch (e) {
-      toast.error('Test failed: ' + (e?.response?.data?.error || e.message));
+      const errMsg = e?.response?.data?.error || e?.message || 'Test failed';
+      setStatuses(prev => ({ ...prev, [type]: false }));
+      toast.error(`Test failed: ${errMsg}`);
     } finally {
       setTesting(prev => ({ ...prev, [type]: false }));
     }
