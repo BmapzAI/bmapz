@@ -7,11 +7,7 @@ import { CheckCircle, Loader2, X, ExternalLink, Lock, Eye, EyeOff, ArrowRight } 
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Company } from '@/api/entities';
-
-// Get backend API base URL
-function getBackendBase() {
-  return import.meta.env.VITE_API_URL || 'http://localhost:3001';
-}
+import { api } from '@/api/apiClient';
 
 // All integrations that use BMAPZ's own internalized OAuth flow (server-side)
 // These use the `initiateOAuth` backend function to generate the OAuth URL
@@ -151,12 +147,9 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
   const isExternalOAuth = !isInternalizedOAuth && !!externalOAuth;
   const isManualCreds = !isInternalizedOAuth && !isExternalOAuth && credFields.length > 0;
 
-  const handleInternalizedOAuth = () => {
+  const handleInternalizedOAuth = async () => {
     setConnecting(true);
 
-    // Build the backend URL directly — the function returns a 302 redirect to the provider
-    // so we open the backend URL directly in the popup (no JSON fetch needed)
-    const backendBase = getBackendBase();
     let oauthPath = '/api/oauth/google/initiate';
     if (integration.type === 'meta_ads' || integration.type === 'instagram' || integration.type === 'facebook') {
       oauthPath = '/api/oauth/meta/initiate';
@@ -168,28 +161,9 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
       oauthPath = '/api/oauth/tiktok/initiate';
     }
 
-    const popup = window.open(
-      `${backendBase}${oauthPath}?type=${integration.type}&origin=${encodeURIComponent(window.location.origin)}`,
-      'oauth_popup',
-      'width=620,height=720,left=200,top=80'
-    );
-
     let handledByMessage = false;
+    let pollTimer;
 
-    const pollTimer = setInterval(() => {
-      if (!popup || popup.closed) {
-        clearInterval(pollTimer);
-        window.removeEventListener('message', onMessage);
-        if (!handledByMessage) {
-          setConnecting(false);
-          queryClient.invalidateQueries({ queryKey: ['companies'] });
-          setStep(3);
-          onSuccess?.();
-        }
-      }
-    }, 800);
-
-    // Listen for postMessage from the callback page
     const onMessage = (event) => {
       if (event.data?.type === 'oauth_success') {
         handledByMessage = true;
@@ -207,7 +181,40 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
         toast.error(`Connection failed: ${event.data.error || 'Unknown error'}`);
       }
     };
-    window.addEventListener('message', onMessage);
+    try {
+      const { authUrl } = await api.get(`${oauthPath}-url`, {
+        type: integration.type,
+        origin: window.location.origin,
+      });
+
+      const popup = window.open(
+        authUrl,
+        'oauth_popup',
+        'width=620,height=720,left=200,top=80'
+      );
+
+      if (!popup) {
+        setConnecting(false);
+        toast.error('Popup blocked. Please allow popups for Bmapz AI and try again.');
+        return;
+      }
+
+      pollTimer = setInterval(() => {
+        if (!popup || popup.closed) {
+          clearInterval(pollTimer);
+          window.removeEventListener('message', onMessage);
+          if (!handledByMessage) {
+            setConnecting(false);
+            toast.error('Connection was not completed. Please finish the provider login and approve access.');
+          }
+        }
+      }, 800);
+
+      window.addEventListener('message', onMessage);
+    } catch (e) {
+      setConnecting(false);
+      toast.error(`Connection failed: ${e?.message || 'Could not start OAuth login'}`);
+    }
   };
 
   const handleExternalOAuthConnect = () => {

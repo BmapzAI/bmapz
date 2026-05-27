@@ -50,44 +50,21 @@ async function getAnthropicClient(companyId) {
   return new Anthropic({ apiKey });
 }
 
-/**
- * Unified AI chat completion — supports OpenAI and Anthropic based on company setting.
- * Returns: { content: string, usage: object }
- */
-async function runAIChat({ companyId, messages, model, temperature = 0.7, max_tokens, response_format, system }) {
-  const settings = await getCompanyAISettings(companyId);
-  const provider = settings.ai_provider || 'openai';
+function isAnthropicBillingOrQuotaError(err) {
+  const message = `${err?.message || ''} ${err?.error?.message || ''}`.toLowerCase();
+  return (
+    message.includes('credit balance') ||
+    message.includes('billing') ||
+    message.includes('purchase credits') ||
+    message.includes('quota') ||
+    message.includes('insufficient')
+  );
+}
 
-  if (provider === 'anthropic') {
-    const client = await getAnthropicClient(companyId);
-    const anthropicModel = model || settings.anthropic_model || 'claude-sonnet-4-5';
-
-    // Anthropic messages format: system is separate, no 'system' role in messages
-    const anthropicMessages = (messages || []).filter(m => m.role !== 'system');
-    const systemPrompt = system || (messages || []).find(m => m.role === 'system')?.content;
-
-    const params = {
-      model: anthropicModel,
-      messages: anthropicMessages,
-      max_tokens: max_tokens || 4096,
-      temperature,
-    };
-    if (systemPrompt) params.system = systemPrompt;
-
-    const response = await client.messages.create(params);
-    return {
-      content: response.content[0]?.text || '',
-      usage: {
-        prompt_tokens: response.usage?.input_tokens,
-        completion_tokens: response.usage?.output_tokens,
-        total_tokens: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
-      },
-    };
-  }
-
-  // Default: OpenAI
+async function runOpenAIChat({ companyId, settings, messages, model, temperature, max_tokens, response_format, system }) {
   const client = await getOpenAIClient(companyId);
-  const openaiModel = model || settings.openai_model || 'gpt-4o-mini';
+  const requestedModel = model && !model.startsWith('claude') ? model : null;
+  const openaiModel = requestedModel || settings.openai_model || 'gpt-4o-mini';
   const msgs = [];
   if (system) msgs.push({ role: 'system', content: system });
   msgs.push(...(messages || []));
@@ -103,6 +80,67 @@ async function runAIChat({ companyId, messages, model, temperature = 0.7, max_to
   };
 }
 
+/**
+ * Unified AI chat completion — supports OpenAI and Anthropic based on company setting.
+ * Returns: { content: string, usage: object }
+ */
+async function runAIChat({ companyId, messages, model, temperature = 0.7, max_tokens, response_format, system }) {
+  const settings = await getCompanyAISettings(companyId);
+  const provider = settings.ai_provider || 'openai';
+
+  if (provider === 'anthropic') {
+    try {
+      const client = await getAnthropicClient(companyId);
+      const requestedModel = model && model.startsWith('claude') ? model : null;
+      const anthropicModel = requestedModel || settings.anthropic_model || 'claude-3-5-sonnet-20241022';
+
+      // Anthropic messages format: system is separate, no 'system' role in messages
+      const anthropicMessages = (messages || []).filter(m => m.role !== 'system');
+      const systemPrompt = system || (messages || []).find(m => m.role === 'system')?.content;
+
+      const params = {
+        model: anthropicModel,
+        messages: anthropicMessages,
+        max_tokens: max_tokens || 4096,
+        temperature,
+      };
+      if (systemPrompt) params.system = systemPrompt;
+
+      const response = await client.messages.create(params);
+      return {
+        content: response.content[0]?.text || '',
+        usage: {
+          prompt_tokens: response.usage?.input_tokens,
+          completion_tokens: response.usage?.output_tokens,
+          total_tokens: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
+        },
+      };
+    } catch (err) {
+      const hasOpenAIFallback = settings.openai_api_key || process.env.OPENAI_API_KEY;
+      if (hasOpenAIFallback && (err.code === 'MISSING_API_KEY' || isAnthropicBillingOrQuotaError(err))) {
+        return runOpenAIChat({
+          companyId,
+          settings: { ...settings, ai_provider: 'openai' },
+          messages,
+          model: null,
+          temperature,
+          max_tokens,
+          response_format,
+          system,
+        });
+      }
+
+      if (isAnthropicBillingOrQuotaError(err)) {
+        err.publicMessage = 'Anthropic is selected as the AI provider, but the Anthropic account cannot process requests because billing/credits are not available. Add Anthropic credits or switch Settings > API Keys > Active AI Provider to OpenAI.';
+      }
+      throw err;
+    }
+  }
+
+  // Default: OpenAI
+  return runOpenAIChat({ companyId, settings, messages, model, temperature, max_tokens, response_format, system });
+}
+
 // POST /api/ai/chat
 router.post('/chat', requireAuth, async (req, res) => {
   try {
@@ -112,7 +150,7 @@ router.post('/chat', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[ai/chat]', err.message);
     const status = err.code === 'MISSING_API_KEY' ? 402 : 500;
-    res.status(status).json({ error: err.message, code: err.code });
+    res.status(status).json({ error: err.publicMessage || err.message, code: err.code });
   }
 });
 

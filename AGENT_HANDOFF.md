@@ -215,3 +215,31 @@ Fixed all runtime blockers identified in `docs/RUNTIME_AUDIT_2026-05-27.md`.
 
 **Build result:** ✅ 3553 modules, 14.65s
 **Lint result:** ✅ 0 errors, 1516 warnings (warnings are unused-vars in existing code, non-blocking)
+### 2026-05-27 - Codex (Post-Claude runtime audit and targeted repairs)
+
+User screenshots showed Phase 4 was not fully fixed in production-like behavior:
+
+- AI Chat returned raw Anthropic billing JSON: `Your credit balance is too low to access the Anthropic API`.
+- Meta OAuth popup opened `/api/oauth/meta/initiate?...` directly and failed with `Missing or invalid Authorization header`.
+- Settings/API key UI could show blank values when company data arrived after the tab initialized.
+- Google login still displayed the Supabase project host `jmtnubzgnfjmtcwbegow.supabase.co`; this is Supabase/Google OAuth branding configuration, not a frontend code string.
+
+Codex changes:
+
+- `backend/src/routes/oauth.js`: added authenticated `*-url` endpoints for Google, Meta, LinkedIn, Twitter, and TikTok (`/api/oauth/{provider}/initiate-url`) that return `{ authUrl }`. Kept existing redirect endpoints for compatibility. Fixed callback status updates to preserve requested integration types such as `meta_ads`. Fixed Twitter PKCE verifier mismatch by carrying `codeVerifier` through OAuth state.
+- `frontend-src/components/integrations/ConnectIntegrationModal.jsx`: changed internal OAuth flow to call the backend with the app auth token first, then open the returned provider URL. Popup close without callback is no longer treated as success.
+- `frontend-src/components/settings/ApiKeysTab.jsx`: changed Meta OAuth button to use `/api/oauth/meta/initiate-url`; added popup-blocked and incomplete-login errors. Added `useEffect` sync so saved company API keys/statuses populate once company data loads.
+- `frontend-src/pages/AIChat.jsx`: removed hardcoded `model: 'gpt-4o-mini'` from chat requests so backend provider settings decide the model.
+- `backend/src/routes/ai.js`: added provider-safe model selection. Anthropic ignores non-Claude model IDs; OpenAI ignores Claude model IDs. If Anthropic is selected but missing key/credits and OpenAI is available, chat falls back to OpenAI. If no fallback exists, the backend returns a clear user-facing billing/provider message instead of raw provider JSON.
+
+Verification:
+
+- `npm run build`: passed, 3553 modules transformed.
+- `npm run build --prefix backend`: passed, no build step needed.
+- `npm run lint`: passed with 0 errors and 1518 existing warnings.
+
+Remaining important work:
+
+1. Deploy these changes, then smoke-test production `https://ai.bmapz.com`.
+2. In Supabase Dashboard, fix Google Auth branding/custom OAuth credentials so Google consent no longer displays the Supabase project host. Code cannot rename Supabase's hosted OAuth app by itself.
+3. Continue feature smoke-testing by page and integration. Lint warnings still reveal likely dead/incomplete UI code in older modules, including `AdsCampaignsTab.jsx` references to `AdRecord` reported as warnings by current ESLint config.

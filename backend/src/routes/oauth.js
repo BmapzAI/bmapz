@@ -97,7 +97,8 @@ const GOOGLE_SCOPES_MAP = {
 };
 
 // GET /api/oauth/google/initiate?type=gmail&origin=...
-router.get('/google/initiate', requireAuth, async (req, res) => {
+// GET /api/oauth/google/initiate-url?type=gmail&origin=...
+router.get(['/google/initiate', '/google/initiate-url'], requireAuth, async (req, res) => {
   try {
     const { type = 'gmail', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
@@ -124,7 +125,9 @@ router.get('/google/initiate', requireAuth, async (req, res) => {
       state,
     });
 
-    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+    if (req.path.endsWith('/initiate-url')) return res.json({ authUrl });
+    res.redirect(authUrl);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -184,7 +187,7 @@ router.get('/google/callback', async (req, res) => {
 
 // ─── Meta (Facebook/Instagram) OAuth ─────────────────────────────────────────
 
-router.get('/meta/initiate', requireAuth, async (req, res) => {
+router.get(['/meta/initiate', '/meta/initiate-url'], requireAuth, async (req, res) => {
   try {
     const { type = 'meta', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
@@ -209,7 +212,9 @@ router.get('/meta/initiate', requireAuth, async (req, res) => {
       state,
     });
 
-    res.redirect(`https://www.facebook.com/v19.0/dialog/oauth?${params}`);
+    const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?${params}`;
+    if (req.path.endsWith('/initiate-url')) return res.json({ authUrl });
+    res.redirect(authUrl);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -221,7 +226,7 @@ router.get('/meta/callback', async (req, res) => {
     if (oauthError) return res.send(popupHtml('error', 'Meta', oauthError));
 
     const stateData = JSON.parse(Buffer.from(state, 'base64url').toString());
-    const { companyId } = stateData;
+    const { companyId, integrationType = 'meta' } = stateData;
 
     const { apiKeys } = await getCompanyKeys(companyId);
 
@@ -273,6 +278,7 @@ router.get('/meta/callback', async (req, res) => {
     const mergedStatus = {
       ...integrationStatus,
       meta: true,
+      [integrationType]: true,
       facebook: true,
       ...(igAccountId ? { instagram: true } : {}),
     };
@@ -282,7 +288,7 @@ router.get('/meta/callback', async (req, res) => {
       .update({ api_keys: mergedKeys, integration_status: mergedStatus })
       .eq('id', companyId);
 
-    res.send(popupHtml('success', 'Meta'));
+    res.send(popupHtml('success', 'Meta', null, integrationType));
   } catch (err) {
     console.error('[meta callback]', err);
     res.send(popupHtml('error', 'Meta', err.message));
@@ -291,14 +297,19 @@ router.get('/meta/callback', async (req, res) => {
 
 // ─── LinkedIn OAuth ───────────────────────────────────────────────────────────
 
-router.get('/linkedin/initiate', requireAuth, async (req, res) => {
+router.get(['/linkedin/initiate', '/linkedin/initiate-url'], requireAuth, async (req, res) => {
   try {
+    const { type = 'linkedin', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
 
     const clientId = apiKeys.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'LinkedIn Client ID not configured' });
 
-    const state = Buffer.from(JSON.stringify({ companyId: req.companyId })).toString('base64url');
+    const state = Buffer.from(JSON.stringify({
+      companyId: req.companyId,
+      integrationType: type,
+      origin: origin || FRONTEND_URL,
+    })).toString('base64url');
     const redirectUri = `${API_URL}/api/oauth/linkedin/callback`;
     const params = new URLSearchParams({
       response_type: 'code',
@@ -308,7 +319,9 @@ router.get('/linkedin/initiate', requireAuth, async (req, res) => {
       scope: 'openid profile email w_member_social r_liteprofile r_emailaddress',
     });
 
-    res.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params}`);
+    const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params}`;
+    if (req.path.endsWith('/initiate-url')) return res.json({ authUrl });
+    res.redirect(authUrl);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -319,7 +332,7 @@ router.get('/linkedin/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'LinkedIn', oauthError));
 
-    const { companyId } = JSON.parse(Buffer.from(state, 'base64url').toString());
+    const { companyId, integrationType = 'linkedin' } = JSON.parse(Buffer.from(state, 'base64url').toString());
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientId = apiKeys.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
@@ -339,8 +352,8 @@ router.get('/linkedin/callback', async (req, res) => {
       linkedin_token_expires_at: new Date(Date.now() + (tokens.expires_in || 5184000) * 1000).toISOString(),
     };
 
-    await saveOAuthTokens(companyId, newKeys, 'linkedin');
-    res.send(popupHtml('success', 'LinkedIn'));
+    await saveOAuthTokens(companyId, newKeys, integrationType);
+    res.send(popupHtml('success', 'LinkedIn', null, integrationType));
   } catch (err) {
     res.send(popupHtml('error', 'LinkedIn', err.message));
   }
@@ -348,15 +361,21 @@ router.get('/linkedin/callback', async (req, res) => {
 
 // ─── Twitter/X OAuth ──────────────────────────────────────────────────────────
 
-router.get('/twitter/initiate', requireAuth, async (req, res) => {
+router.get(['/twitter/initiate', '/twitter/initiate-url'], requireAuth, async (req, res) => {
   try {
+    const { type = 'twitter', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
 
     const clientId = apiKeys.twitter_client_id || process.env.TWITTER_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'Twitter Client ID not configured' });
 
-    const state = Buffer.from(JSON.stringify({ companyId: req.companyId })).toString('base64url');
     const codeVerifier = Buffer.from(crypto.randomUUID()).toString('base64url');
+    const state = Buffer.from(JSON.stringify({
+      companyId: req.companyId,
+      codeVerifier,
+      integrationType: type,
+      origin: origin || FRONTEND_URL,
+    })).toString('base64url');
 
     const redirectUri = `${API_URL}/api/oauth/twitter/callback`;
     const params = new URLSearchParams({
@@ -369,7 +388,9 @@ router.get('/twitter/initiate', requireAuth, async (req, res) => {
       code_challenge_method: 'plain',
     });
 
-    res.redirect(`https://twitter.com/i/oauth2/authorize?${params}`);
+    const authUrl = `https://twitter.com/i/oauth2/authorize?${params}`;
+    if (req.path.endsWith('/initiate-url')) return res.json({ authUrl });
+    res.redirect(authUrl);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -380,7 +401,7 @@ router.get('/twitter/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Twitter/X', oauthError));
 
-    const { companyId } = JSON.parse(Buffer.from(state, 'base64url').toString());
+    const { companyId, codeVerifier, integrationType = 'twitter' } = JSON.parse(Buffer.from(state, 'base64url').toString());
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientId = apiKeys.twitter_client_id || process.env.TWITTER_CLIENT_ID;
@@ -398,14 +419,14 @@ router.get('/twitter/callback', async (req, res) => {
         grant_type: 'authorization_code',
         code,
         redirect_uri: redirectUri,
-        code_verifier: Buffer.from(companyId).toString('base64url'),
+        code_verifier: codeVerifier,
       }),
     });
     const tokens = await tokenResp.json();
     if (tokens.error) return res.send(popupHtml('error', 'Twitter/X', tokens.error_description));
 
-    await saveOAuthTokens(companyId, { twitter_access_token: tokens.access_token }, 'twitter');
-    res.send(popupHtml('success', 'Twitter/X'));
+    await saveOAuthTokens(companyId, { twitter_access_token: tokens.access_token }, integrationType);
+    res.send(popupHtml('success', 'Twitter/X', null, integrationType));
   } catch (err) {
     res.send(popupHtml('error', 'Twitter/X', err.message));
   }
@@ -413,14 +434,19 @@ router.get('/twitter/callback', async (req, res) => {
 
 // ─── TikTok OAuth ─────────────────────────────────────────────────────────────
 
-router.get('/tiktok/initiate', requireAuth, async (req, res) => {
+router.get(['/tiktok/initiate', '/tiktok/initiate-url'], requireAuth, async (req, res) => {
   try {
+    const { type = 'tiktok', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
 
     const clientKey = apiKeys.tiktok_client_key || process.env.TIKTOK_CLIENT_KEY;
     if (!clientKey) return res.status(400).json({ error: 'TikTok Client Key not configured' });
 
-    const state = Buffer.from(JSON.stringify({ companyId: req.companyId })).toString('base64url');
+    const state = Buffer.from(JSON.stringify({
+      companyId: req.companyId,
+      integrationType: type,
+      origin: origin || FRONTEND_URL,
+    })).toString('base64url');
     const redirectUri = `${API_URL}/api/oauth/tiktok/callback`;
     const params = new URLSearchParams({
       client_key: clientKey,
@@ -430,7 +456,9 @@ router.get('/tiktok/initiate', requireAuth, async (req, res) => {
       state,
     });
 
-    res.redirect(`https://www.tiktok.com/v2/auth/authorize/?${params}`);
+    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?${params}`;
+    if (req.path.endsWith('/initiate-url')) return res.json({ authUrl });
+    res.redirect(authUrl);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -441,7 +469,7 @@ router.get('/tiktok/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'TikTok', oauthError));
 
-    const { companyId } = JSON.parse(Buffer.from(state, 'base64url').toString());
+    const { companyId, integrationType = 'tiktok' } = JSON.parse(Buffer.from(state, 'base64url').toString());
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientKey = apiKeys.tiktok_client_key || process.env.TIKTOK_CLIENT_KEY;
@@ -461,8 +489,8 @@ router.get('/tiktok/callback', async (req, res) => {
       tiktok_token_expires_at: new Date(Date.now() + (tokens.expires_in || 86400) * 1000).toISOString(),
     };
 
-    await saveOAuthTokens(companyId, newKeys, 'tiktok');
-    res.send(popupHtml('success', 'TikTok'));
+    await saveOAuthTokens(companyId, newKeys, integrationType);
+    res.send(popupHtml('success', 'TikTok', null, integrationType));
   } catch (err) {
     res.send(popupHtml('error', 'TikTok', err.message));
   }

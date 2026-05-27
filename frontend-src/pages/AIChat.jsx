@@ -173,7 +173,6 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
       const res = await api.post('/api/ai/chat', {
         messages: historyMsgs,
         system: systemPrompt,
-        model: 'gpt-4o-mini',
       });
 
       const assistantMsg = { role: 'assistant', content: res.content, created_at: new Date().toISOString() };

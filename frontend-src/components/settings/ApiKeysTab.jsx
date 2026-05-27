@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -136,45 +136,110 @@ export default function ApiKeysTab({ company, onSave }) {
   const [testing, setTesting] = useState({});
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!company) return;
+    setKeys({
+      ai_provider: company.ai_provider || 'openai',
+      openai_api_key: company.openai_api_key || '',
+      openai_model: company.openai_model || 'gpt-4o-mini',
+      anthropic_api_key: company.anthropic_api_key || '',
+      anthropic_model: company.anthropic_model || 'claude-sonnet-4-5',
+      ai_image_provider: company.ai_image_provider || 'openai',
+      ai_image_model: company.ai_image_model || 'dall-e-3',
+      stability_api_key: company.stability_api_key || '',
+      google_ads_developer_token: company.google_ads_developer_token || '',
+      google_ads_client_id: company.google_ads_client_id || '',
+      google_ads_client_secret: company.google_ads_client_secret || '',
+      google_ads_refresh_token: company.google_ads_refresh_token || '',
+      google_ads_customer_id: company.google_ads_customer_id || '',
+      tiktok_access_token: company.tiktok_access_token || '',
+      tiktok_advertiser_id: company.tiktok_advertiser_id || '',
+      linkedin_ads_access_token: company.linkedin_ads_access_token || '',
+      linkedin_ads_account_id: company.linkedin_ads_account_id || '',
+      whatsapp_api_token: company.whatsapp_api_token || '',
+      whatsapp_phone_id: company.whatsapp_phone_id || '',
+      whatsapp_verify_token: company.whatsapp_verify_token || '',
+      gmail_sender_email: company.gmail_sender_email || '',
+      gmail_client_id: company.gmail_client_id || '',
+      gmail_client_secret: company.gmail_client_secret || '',
+      gmail_refresh_token: company.gmail_refresh_token || '',
+      wordpress_url: company.wordpress_url || '',
+      wordpress_user: company.wordpress_user || '',
+      wordpress_app_password: company.wordpress_app_password || '',
+      zapier_webhook_url: company.zapier_webhook_url || '',
+      make_webhook_url: company.make_webhook_url || '',
+      n8n_webhook_url: company.n8n_webhook_url || '',
+      custom_api_url: company.custom_api_url || '',
+      custom_api_key: company.custom_api_key || '',
+      custom_api_headers: company.custom_api_headers || '',
+      apollo_api_key: company.apollo_api_key || '',
+      hunter_api_key: company.hunter_api_key || '',
+    });
+    setStatuses(company.integration_status || {});
+  }, [company]);
+
   const set = (field, val) => setKeys(prev => ({ ...prev, [field]: val }));
 
-  const connectMetaOAuth = (integrationType) => {
+  const connectMetaOAuth = async (integrationType) => {
     setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: true }));
 
-    // Open the backend OAuth initiate URL directly — it returns a 302 redirect to Meta
-    window.open(
-      `${import.meta.env.VITE_API_URL}/api/oauth/meta/initiate?type=${integrationType}&origin=${encodeURIComponent(window.location.origin)}`,
-      'oauth_popup',
-      'width=620,height=720,left=200,top=80'
-    );
+    let popup;
+    let handledByMessage = false;
 
     const onMessage = (event) => {
       if (event.data?.type === 'oauth_success') {
+        handledByMessage = true;
         window.removeEventListener('message', onMessage);
         setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
         setStatuses(prev => ({ ...prev, [integrationType]: true }));
         queryClient.invalidateQueries({ queryKey: ['companies'] });
         toast.success('Meta connected!');
       } else if (event.data?.type === 'oauth_error') {
+        handledByMessage = true;
         window.removeEventListener('message', onMessage);
         setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
         toast.error(`OAuth failed: ${event.data.error || 'Unknown error'}`);
       }
     };
-    window.addEventListener('message', onMessage);
-
-    // Fallback: stop spinner if popup is closed without postMessage
-    const pollTimer = setInterval(() => {
-      setTesting(prev => {
-        if (!prev[`oauth_${integrationType}`]) { clearInterval(pollTimer); return prev; }
-        return prev;
+    try {
+      const { authUrl } = await api.get('/api/oauth/meta/initiate-url', {
+        type: integrationType,
+        origin: window.location.origin,
       });
-    }, 1000);
-    setTimeout(() => {
-      clearInterval(pollTimer);
+
+      popup = window.open(authUrl, 'oauth_popup', 'width=620,height=720,left=200,top=80');
+
+      if (!popup) {
+        setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
+        toast.error('Popup blocked. Please allow popups for Bmapz AI and try again.');
+        return;
+      }
+
+      window.addEventListener('message', onMessage);
+
+      const pollTimer = setInterval(() => {
+        if (!popup || popup.closed) {
+          clearInterval(pollTimer);
+          window.removeEventListener('message', onMessage);
+          if (!handledByMessage) {
+            setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
+            toast.error('Meta connection was not completed. Please finish the login popup and approve access.');
+          }
+        }
+      }, 1000);
+
+      setTimeout(() => {
+        clearInterval(pollTimer);
+        window.removeEventListener('message', onMessage);
+        if (!handledByMessage) {
+          setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
+        }
+      }, 120000);
+    } catch (e) {
       window.removeEventListener('message', onMessage);
       setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
-    }, 120000); // 2 min timeout
+      toast.error(`OAuth failed: ${e?.message || 'Could not start Meta login'}`);
+    }
   };
 
   const testIntegration = async (type) => {
