@@ -61,6 +61,18 @@ function isAnthropicBillingOrQuotaError(err) {
   );
 }
 
+function isOpenAIQuotaOrRateLimitError(err) {
+  const status = err?.status || err?.statusCode;
+  const message = `${err?.message || ''}`.toLowerCase();
+  return (
+    status === 429 ||
+    message.includes('exceeded your current quota') ||
+    message.includes('rate limit') ||
+    message.includes('billing details') ||
+    message.includes('insufficient_quota')
+  );
+}
+
 async function runOpenAIChat({ companyId, settings, messages, model, temperature, max_tokens, response_format, system }) {
   const client = await getOpenAIClient(companyId);
   const requestedModel = model && !model.startsWith('claude') ? model : null;
@@ -73,11 +85,18 @@ async function runOpenAIChat({ companyId, settings, messages, model, temperature
   if (max_tokens) params.max_tokens = max_tokens;
   if (response_format) params.response_format = response_format;
 
-  const completion = await client.chat.completions.create(params);
-  return {
-    content: completion.choices[0].message.content,
-    usage: completion.usage,
-  };
+  try {
+    const completion = await client.chat.completions.create(params);
+    return {
+      content: completion.choices[0].message.content,
+      usage: completion.usage,
+    };
+  } catch (err) {
+    if (isOpenAIQuotaOrRateLimitError(err)) {
+      err.publicMessage = 'OpenAI is not available right now — your OpenAI account may have exceeded its usage quota or billing is not active. Check your OpenAI plan at platform.openai.com, or add an Anthropic key in Settings > API Keys and switch to Anthropic as your AI provider.';
+    }
+    throw err;
+  }
 }
 
 /**

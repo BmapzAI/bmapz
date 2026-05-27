@@ -114,11 +114,56 @@ const CREDENTIAL_FIELDS = {
   ],
 };
 
+// Fallback manual credential fields for OAuth integrations when platform credentials aren't configured
+Object.assign(CREDENTIAL_FIELDS, {
+  meta_ads: [
+    { key: 'meta_access_token', label: 'Meta User Access Token', placeholder: 'Get from Meta for Developers → Tools → Graph API Explorer', secret: true },
+    { key: 'meta_ad_account_id', label: 'Ad Account ID', placeholder: 'act_1234567890 (from Meta Ads Manager)', secret: false },
+    { key: 'meta_page_id', label: 'Page ID (optional)', placeholder: 'Your Facebook Page ID', secret: false },
+  ],
+  instagram: [
+    { key: 'meta_access_token', label: 'Meta User Access Token', placeholder: 'Get from Meta for Developers — includes Instagram permissions', secret: true },
+    { key: 'instagram_account_id', label: 'Instagram Business Account ID', placeholder: 'Your Instagram Business Account ID', secret: false },
+  ],
+  facebook: [
+    { key: 'meta_access_token', label: 'Meta User Access Token', placeholder: 'Get from Meta for Developers → Tools → Graph API Explorer', secret: true },
+    { key: 'meta_page_id', label: 'Page ID', placeholder: 'Your Facebook Page ID', secret: false },
+  ],
+  google_ads: [
+    { key: 'google_access_token', label: 'Google Ads Access Token', placeholder: 'OAuth access token from Google Cloud Console', secret: true },
+    { key: 'google_ads_customer_id', label: 'Customer ID', placeholder: '123-456-7890 (from Google Ads dashboard)', secret: false },
+    { key: 'google_developer_token', label: 'Developer Token', placeholder: 'From Google Ads API Center', secret: true },
+  ],
+  gmail: [
+    { key: 'google_access_token', label: 'Gmail OAuth Access Token', placeholder: 'OAuth access token with gmail.send scope', secret: true },
+    { key: 'google_refresh_token', label: 'Refresh Token', placeholder: 'OAuth refresh token for auto-renewal', secret: true },
+    { key: 'google_connected_email', label: 'Gmail Address', placeholder: 'your@gmail.com', secret: false },
+  ],
+  linkedin_ads: [
+    { key: 'linkedin_ads_access_token', label: 'LinkedIn Access Token', placeholder: 'OAuth token with r_ads scope', secret: true },
+    { key: 'linkedin_ads_account_id', label: 'Ad Account ID (urn:li:sponsoredAccount:...)', placeholder: 'urn:li:sponsoredAccount:123456789', secret: false },
+  ],
+  linkedin_social: [
+    { key: 'linkedin_access_token', label: 'LinkedIn Access Token', placeholder: 'OAuth token with w_member_social scope', secret: true },
+  ],
+  tiktok_ads: [
+    { key: 'tiktok_access_token', label: 'TikTok Access Token', placeholder: 'From TikTok for Business → My Apps', secret: true },
+    { key: 'tiktok_advertiser_id', label: 'Advertiser ID', placeholder: 'Your TikTok Ads advertiser ID', secret: false },
+  ],
+  tiktok_social: [
+    { key: 'tiktok_access_token', label: 'TikTok Access Token', placeholder: 'From TikTok for Business → My Apps', secret: true },
+  ],
+});
+
 const STATUS_KEY_MAP = {
   whatsapp: 'whatsapp', wordpress: 'wordpress', calendly: 'google_calendar',
   zapier: 'zapier', make: 'zapier', n8n: 'zapier', twilio: 'twilio',
   openai: 'openai', hunter: 'hunter', lusha: 'lusha', clay: 'clay',
   cal_com: 'google_calendar', chilipiper: 'google_calendar', custom: 'custom',
+  meta_ads: 'meta_ads', instagram: 'meta', facebook: 'meta',
+  google_ads: 'google_ads', gmail: 'gmail',
+  linkedin_ads: 'linkedin_ads', linkedin_social: 'linkedin',
+  tiktok_ads: 'tiktok_ads', tiktok_social: 'tiktok_social',
 };
 
 // Step indicators
@@ -138,14 +183,16 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
   const [credValues, setCredValues] = useState({});
   const [showSecret, setShowSecret] = useState({});
   const [saving, setSaving] = useState(false);
+  // When platform OAuth credentials aren't configured, fall back to manual token entry
+  const [oauthFallbackMode, setOauthFallbackMode] = useState(false);
 
   if (!integration) return null;
 
-  const isInternalizedOAuth = !!INTERNALIZED_OAUTH_MAP[integration.type];
+  const isInternalizedOAuth = !!INTERNALIZED_OAUTH_MAP[integration.type] && !oauthFallbackMode;
   const externalOAuth = !isInternalizedOAuth ? EXTERNAL_OAUTH_MAP[integration.type] : null;
   const credFields = CREDENTIAL_FIELDS[integration.type] || [];
-  const isExternalOAuth = !isInternalizedOAuth && !!externalOAuth;
-  const isManualCreds = !isInternalizedOAuth && !isExternalOAuth && credFields.length > 0;
+  const isExternalOAuth = !isInternalizedOAuth && !!externalOAuth && credFields.length === 0;
+  const isManualCreds = !isInternalizedOAuth && (!isExternalOAuth || credFields.length > 0) && credFields.length > 0;
 
   const handleInternalizedOAuth = async () => {
     setConnecting(true);
@@ -213,7 +260,19 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
       window.addEventListener('message', onMessage);
     } catch (e) {
       setConnecting(false);
-      toast.error(`Connection failed: ${e?.message || 'Could not start OAuth login'}`);
+      const msg = e?.message || '';
+      // If platform OAuth credentials aren't configured, fall back to manual token entry
+      if (msg.toLowerCase().includes('not configured') || msg.toLowerCase().includes('client id') || msg.toLowerCase().includes('app id')) {
+        const hasFallbackFields = CREDENTIAL_FIELDS[integration.type]?.length > 0;
+        if (hasFallbackFields) {
+          setOauthFallbackMode(true);
+          toast.info('Platform OAuth is not set up yet. Enter your access token directly below.');
+        } else {
+          toast.error(`OAuth is not available for this integration: ${msg}. Contact your administrator to configure platform credentials.`);
+        }
+      } else {
+        toast.error(`Connection failed: ${msg || 'Could not start OAuth login'}`);
+      }
     }
   };
 
@@ -422,6 +481,11 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
               {/* Manual credentials */}
               {isManualCreds && (
                 <div className="space-y-4">
+                  {oauthFallbackMode && (
+                    <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-300">
+                      Platform OAuth isn't configured yet. Enter your access token directly — or ask your admin to add OAuth credentials in Railway settings.
+                    </div>
+                  )}
                   <p className="text-gray-300 text-sm">Enter your {integration.name} credentials below:</p>
                   {credFields.map(field => (
                     <div key={field.key}>
