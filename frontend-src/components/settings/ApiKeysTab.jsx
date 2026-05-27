@@ -93,6 +93,59 @@ const IMAGE_MODELS_OPENAI = [
   { value: 'dall-e-2', label: 'DALL-E 2 — Faster, cheaper' },
 ];
 
+function DiagnoseAI() {
+  const [diag, setDiag] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const run = async () => {
+    setLoading(true);
+    try {
+      const result = await api.get('/api/ai/diagnose');
+      setDiag(result);
+    } catch (e) {
+      setDiag({ error: e?.message || 'Diagnose failed' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  const renderTest = (t) => {
+    if (!t) return <span className="text-gray-500">not tested (no key)</span>;
+    if (t.ok) return <span className="text-green-400">✓ working ({t.model_used})</span>;
+    return <span className="text-red-400">✗ {t.kind}: {t.msg}</span>;
+  };
+  return (
+    <div className="border-t border-white/10 pt-4 mt-2">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-white text-sm font-medium">AI Diagnose</p>
+          <p className="text-gray-500 text-xs">Live-test both providers — shows the real backend status (not just "key shape is OK").</p>
+        </div>
+        <Button onClick={run} disabled={loading} variant="outline" className="border-white/10 text-white hover:bg-white/5 shrink-0">
+          {loading ? 'Testing…' : 'Run diagnose'}
+        </Button>
+      </div>
+      {diag && !diag.error && (
+        <div className="mt-3 p-3 rounded-xl bg-black/30 border border-white/10 text-xs space-y-2 font-mono">
+          <div><span className="text-gray-400">Active provider:</span> <span className="text-white">{diag.active_provider}</span></div>
+          <div className="space-y-1">
+            <div className="text-[#38b6ff]">OpenAI</div>
+            <div className="pl-3"><span className="text-gray-400">key:</span> {diag.openai.has_key ? `${diag.openai.key_prefix || '(platform)'} (${diag.openai.key_source})` : <span className="text-gray-500">none</span>}</div>
+            <div className="pl-3"><span className="text-gray-400">model:</span> {diag.openai.model}</div>
+            <div className="pl-3"><span className="text-gray-400">test:</span> {renderTest(diag.openai.test_result)}</div>
+          </div>
+          <div className="space-y-1">
+            <div className="text-[#cb6ce6]">Anthropic</div>
+            <div className="pl-3"><span className="text-gray-400">key:</span> {diag.anthropic.has_key ? `${diag.anthropic.key_prefix || '(platform)'} (${diag.anthropic.key_source})` : <span className="text-gray-500">none</span>}</div>
+            <div className="pl-3"><span className="text-gray-400">model requested:</span> {diag.anthropic.model_requested || <span className="text-gray-500">(default)</span>}</div>
+            <div className="pl-3"><span className="text-gray-400">model resolved:</span> {diag.anthropic.model_resolved}</div>
+            <div className="pl-3"><span className="text-gray-400">test:</span> {renderTest(diag.anthropic.test_result)}</div>
+          </div>
+        </div>
+      )}
+      {diag?.error && <div className="mt-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400">{diag.error}</div>}
+    </div>
+  );
+}
+
 export default function ApiKeysTab({ company, onSave }) {
   const queryClient = useQueryClient();
   const [keys, setKeys] = useState(() => ({
@@ -331,6 +384,7 @@ export default function ApiKeysTab({ company, onSave }) {
               : 'All AI features will use OpenAI. Add your OpenAI API key below.'}
           </p>
         </div>
+        <DiagnoseAI />
       </div>
 
       <IntegrationSection title="OpenAI" color="#10A37F" icon="🤖"
