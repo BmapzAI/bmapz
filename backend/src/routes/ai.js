@@ -50,33 +50,60 @@ async function getAnthropicClient(companyId) {
   return new Anthropic({ apiKey });
 }
 
-function isAnthropicBillingOrQuotaError(err) {
-  const message = `${err?.message || ''} ${err?.error?.message || ''}`.toLowerCase();
-  return (
-    message.includes('credit balance') ||
-    message.includes('billing') ||
-    message.includes('purchase credits') ||
-    message.includes('quota') ||
-    message.includes('insufficient')
-  );
+// ─── Error categorization ────────────────────────────────────────────────────
+
+function categorizeProviderError(err, providerLabel) {
+  const status = err?.status || err?.statusCode || 0;
+  const rawMsg = `${err?.message || ''} ${err?.error?.message || ''} ${JSON.stringify(err?.error || {})}`.toLowerCase();
+  const errorType = err?.error?.type || err?.type || '';
+
+  // 401 — invalid/expired API key
+  if (status === 401 || rawMsg.includes('invalid api key') || rawMsg.includes('incorrect api key') || rawMsg.includes('authentication') || errorType === 'authentication_error') {
+    return { kind: 'AUTH', msg: `${providerLabel} API key is invalid or expired. Update it in Settings > API Keys.` };
+  }
+  // 404 / invalid model
+  if (status === 404 || rawMsg.includes('model_not_found') || rawMsg.includes('does not exist') || rawMsg.includes('invalid model') || errorType === 'invalid_request_error' && rawMsg.includes('model')) {
+    return { kind: 'INVALID_MODEL', msg: `${providerLabel} model not available. Pick a different model in Settings > API Keys.` };
+  }
+  // 429 with insufficient_quota / billing / credit balance — true quota/billing issue
+  if (rawMsg.includes('insufficient_quota') || rawMsg.includes('exceeded your current quota') || rawMsg.includes('credit balance') || rawMsg.includes('purchase credits') || rawMsg.includes('billing details') || errorType === 'insufficient_quota') {
+    return { kind: 'QUOTA', msg: `${providerLabel} account has no available credits/quota. Check billing on the ${providerLabel} dashboard.` };
+  }
+  // 429 plain — temporary rate limit, retry possible
+  if (status === 429 || rawMsg.includes('rate limit') || errorType === 'rate_limit_error') {
+    return { kind: 'RATE_LIMIT', msg: `${providerLabel} is rate-limiting requests. Try again in a moment.` };
+  }
+  // 5xx — provider outage
+  if (status >= 500) {
+    return { kind: 'PROVIDER_DOWN', msg: `${providerLabel} is having issues right now (HTTP ${status}). Try again shortly.` };
+  }
+  return { kind: 'OTHER', msg: `${providerLabel} error: ${err?.message || 'unknown'}` };
 }
 
-function isOpenAIQuotaOrRateLimitError(err) {
-  const status = err?.status || err?.statusCode;
-  const message = `${err?.message || ''}`.toLowerCase();
-  return (
-    status === 429 ||
-    message.includes('exceeded your current quota') ||
-    message.includes('rate limit') ||
-    message.includes('billing details') ||
-    message.includes('insufficient_quota')
-  );
+// ─── Model normalization ─────────────────────────────────────────────────────
+
+// Maps Bmapz UI model IDs (which may use non-Anthropic-API names) to Anthropic API IDs.
+// If the user has e.g. 'claude-sonnet-4-5' selected (UI label), we try it as-is first; if Anthropic
+// rejects it as invalid, we retry with the known-good fallback.
+const ANTHROPIC_FALLBACK_MODEL = 'claude-3-5-sonnet-20241022';
+const ANTHROPIC_MODEL_ALIASES = {
+  'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
+  'claude-opus-4-5': 'claude-opus-4-5-20250101',
+  'claude-haiku-4-5': 'claude-haiku-4-5-20250101',
+};
+function resolveAnthropicModel(requested) {
+  if (!requested) return ANTHROPIC_FALLBACK_MODEL;
+  return ANTHROPIC_MODEL_ALIASES[requested] || requested;
 }
 
-async function runOpenAIChat({ companyId, settings, messages, model, temperature, max_tokens, response_format, system }) {
+const OPENAI_FALLBACK_MODEL = 'gpt-4o-mini';
+
+// ─── Provider calls ──────────────────────────────────────────────────────────
+
+async function callOpenAI({ companyId, settings, messages, model, temperature, max_tokens, response_format, system }) {
   const client = await getOpenAIClient(companyId);
   const requestedModel = model && !model.startsWith('claude') ? model : null;
-  const openaiModel = requestedModel || settings.openai_model || 'gpt-4o-mini';
+  const openaiModel = requestedModel || settings.openai_model || OPENAI_FALLBACK_MODEL;
   const msgs = [];
   if (system) msgs.push({ role: 'system', content: system });
   msgs.push(...(messages || []));
@@ -90,43 +117,62 @@ async function runOpenAIChat({ companyId, settings, messages, model, temperature
     return {
       content: completion.choices[0].message.content,
       usage: completion.usage,
+      provider_used: 'openai',
+      model_used: openaiModel,
     };
   } catch (err) {
-    if (isOpenAIQuotaOrRateLimitError(err)) {
-      err.publicMessage = 'OpenAI is not available right now — your OpenAI account may have exceeded its usage quota or billing is not active. Check your OpenAI plan at platform.openai.com, or add an Anthropic key in Settings > API Keys and switch to Anthropic as your AI provider.';
-      err.code = 'QUOTA_EXCEEDED';
+    // Retry once with safe fallback model if invalid model
+    const cat = categorizeProviderError(err, 'OpenAI');
+    if (cat.kind === 'INVALID_MODEL' && openaiModel !== OPENAI_FALLBACK_MODEL) {
+      console.warn(`[ai] OpenAI model ${openaiModel} invalid; retrying with ${OPENAI_FALLBACK_MODEL}`);
+      const retryParams = { ...params, model: OPENAI_FALLBACK_MODEL };
+      const completion = await client.chat.completions.create(retryParams);
+      return {
+        content: completion.choices[0].message.content,
+        usage: completion.usage,
+        provider_used: 'openai',
+        model_used: OPENAI_FALLBACK_MODEL,
+      };
     }
+    err._category = cat;
     throw err;
   }
 }
 
-/**
- * Unified AI chat completion — supports OpenAI and Anthropic based on company setting.
- * Returns: { content: string, usage: object }
- */
-async function runAIChat({ companyId, messages, model, temperature = 0.7, max_tokens, response_format, system }) {
-  const settings = await getCompanyAISettings(companyId);
-  const provider = settings.ai_provider || 'openai';
+async function callAnthropic({ companyId, settings, messages, model, temperature, max_tokens, system }) {
+  const client = await getAnthropicClient(companyId);
+  const requested = model && model.startsWith('claude') ? model : (settings.anthropic_model || null);
+  const anthropicModel = resolveAnthropicModel(requested);
 
-  if (provider === 'anthropic') {
-    try {
-      const client = await getAnthropicClient(companyId);
-      const requestedModel = model && model.startsWith('claude') ? model : null;
-      const anthropicModel = requestedModel || settings.anthropic_model || 'claude-3-5-sonnet-20241022';
+  const anthropicMessages = (messages || []).filter(m => m.role !== 'system');
+  const systemPrompt = system || (messages || []).find(m => m.role === 'system')?.content;
 
-      // Anthropic messages format: system is separate, no 'system' role in messages
-      const anthropicMessages = (messages || []).filter(m => m.role !== 'system');
-      const systemPrompt = system || (messages || []).find(m => m.role === 'system')?.content;
+  const params = {
+    model: anthropicModel,
+    messages: anthropicMessages,
+    max_tokens: max_tokens || 4096,
+    temperature,
+  };
+  if (systemPrompt) params.system = systemPrompt;
 
-      const params = {
-        model: anthropicModel,
-        messages: anthropicMessages,
-        max_tokens: max_tokens || 4096,
-        temperature,
-      };
-      if (systemPrompt) params.system = systemPrompt;
-
-      const response = await client.messages.create(params);
+  try {
+    const response = await client.messages.create(params);
+    return {
+      content: response.content[0]?.text || '',
+      usage: {
+        prompt_tokens: response.usage?.input_tokens,
+        completion_tokens: response.usage?.output_tokens,
+        total_tokens: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
+      },
+      provider_used: 'anthropic',
+      model_used: anthropicModel,
+    };
+  } catch (err) {
+    const cat = categorizeProviderError(err, 'Anthropic');
+    // Retry with known-good fallback model if invalid model
+    if (cat.kind === 'INVALID_MODEL' && anthropicModel !== ANTHROPIC_FALLBACK_MODEL) {
+      console.warn(`[ai] Anthropic model ${anthropicModel} invalid; retrying with ${ANTHROPIC_FALLBACK_MODEL}`);
+      const response = await client.messages.create({ ...params, model: ANTHROPIC_FALLBACK_MODEL });
       return {
         content: response.content[0]?.text || '',
         usage: {
@@ -134,32 +180,124 @@ async function runAIChat({ companyId, messages, model, temperature = 0.7, max_to
           completion_tokens: response.usage?.output_tokens,
           total_tokens: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
         },
+        provider_used: 'anthropic',
+        model_used: ANTHROPIC_FALLBACK_MODEL,
       };
-    } catch (err) {
-      const hasOpenAIFallback = settings.openai_api_key || process.env.OPENAI_API_KEY;
-      if (hasOpenAIFallback && (err.code === 'MISSING_API_KEY' || isAnthropicBillingOrQuotaError(err))) {
-        return runOpenAIChat({
-          companyId,
-          settings: { ...settings, ai_provider: 'openai' },
-          messages,
-          model: null,
-          temperature,
-          max_tokens,
-          response_format,
-          system,
-        });
-      }
+    }
+    err._category = cat;
+    throw err;
+  }
+}
 
-      if (isAnthropicBillingOrQuotaError(err)) {
-        err.publicMessage = 'Anthropic is selected as the AI provider, but the Anthropic account cannot process requests because billing/credits are not available. Add Anthropic credits or switch Settings > API Keys > Active AI Provider to OpenAI.';
+/**
+ * Unified AI chat completion — supports OpenAI and Anthropic with BIDIRECTIONAL fallback.
+ * If the selected provider fails for ANY reason and the other provider has a key,
+ * automatically try the other provider. Only fails if BOTH providers fail.
+ */
+async function runAIChat({ companyId, messages, model, temperature = 0.7, max_tokens, response_format, system }) {
+  const settings = await getCompanyAISettings(companyId);
+  const provider = settings.ai_provider || 'openai';
+
+  const hasOpenAIKey = !!(settings.openai_api_key || process.env.OPENAI_API_KEY);
+  const hasAnthropicKey = !!(settings.anthropic_api_key || process.env.ANTHROPIC_API_KEY);
+
+  if (!hasOpenAIKey && !hasAnthropicKey) {
+    const err = new Error('No AI provider configured. Add OpenAI or Anthropic API key in Settings > API Keys.');
+    err.code = 'MISSING_API_KEY';
+    err.publicMessage = err.message;
+    throw err;
+  }
+
+  // Decide order — preferred provider first, then fallback
+  const order = provider === 'anthropic' && hasAnthropicKey
+    ? ['anthropic', 'openai']
+    : provider === 'openai' && hasOpenAIKey
+      ? ['openai', 'anthropic']
+      : hasOpenAIKey ? ['openai', 'anthropic'] : ['anthropic', 'openai'];
+
+  const errors = [];
+  for (const tryProvider of order) {
+    if (tryProvider === 'openai' && !hasOpenAIKey) continue;
+    if (tryProvider === 'anthropic' && !hasAnthropicKey) continue;
+    try {
+      if (tryProvider === 'openai') {
+        const result = await callOpenAI({ companyId, settings, messages, model, temperature, max_tokens, response_format, system });
+        if (errors.length > 0) console.log(`[ai] succeeded with ${tryProvider} after ${errors.length} failure(s)`);
+        return result;
+      } else {
+        const result = await callAnthropic({ companyId, settings, messages, model, temperature, max_tokens, system });
+        if (errors.length > 0) console.log(`[ai] succeeded with ${tryProvider} after ${errors.length} failure(s)`);
+        return result;
       }
-      throw err;
+    } catch (err) {
+      const cat = err._category || categorizeProviderError(err, tryProvider === 'openai' ? 'OpenAI' : 'Anthropic');
+      console.warn(`[ai] ${tryProvider} failed: ${cat.kind} — ${cat.msg}`);
+      errors.push({ provider: tryProvider, ...cat, raw: err?.message });
+      // Don't retry the SAME provider; loop will try the other one if available
+      continue;
     }
   }
 
-  // Default: OpenAI
-  return runOpenAIChat({ companyId, settings, messages, model, temperature, max_tokens, response_format, system });
+  // Both providers failed. Surface the most actionable error.
+  // Prefer AUTH > QUOTA > INVALID_MODEL > RATE_LIMIT > PROVIDER_DOWN > OTHER
+  const priority = { AUTH: 5, QUOTA: 4, INVALID_MODEL: 3, RATE_LIMIT: 2, PROVIDER_DOWN: 1, OTHER: 0 };
+  errors.sort((a, b) => (priority[b.kind] || 0) - (priority[a.kind] || 0));
+  const top = errors[0] || { kind: 'OTHER', msg: 'AI request failed', provider: 'unknown' };
+
+  const finalErr = new Error(top.msg);
+  finalErr.code = top.kind;
+  finalErr.publicMessage = errors.length > 1
+    ? `All AI providers failed. ${errors.map(e => `${e.provider}: ${e.msg}`).join(' | ')}`
+    : top.msg;
+  finalErr._errors = errors;
+  throw finalErr;
 }
+
+// GET /api/ai/diagnose — health check for AI providers (no PII returned)
+router.get('/diagnose', requireAuth, async (req, res) => {
+  const settings = await getCompanyAISettings(req.companyId);
+  const diag = {
+    company_id: req.companyId,
+    active_provider: settings.ai_provider || 'openai',
+    openai: {
+      has_key: !!(settings.openai_api_key || process.env.OPENAI_API_KEY),
+      key_source: settings.openai_api_key ? 'company' : (process.env.OPENAI_API_KEY ? 'platform' : 'none'),
+      key_prefix: settings.openai_api_key ? `${settings.openai_api_key.slice(0, 7)}...` : null,
+      model: settings.openai_model || OPENAI_FALLBACK_MODEL,
+      test_result: null,
+    },
+    anthropic: {
+      has_key: !!(settings.anthropic_api_key || process.env.ANTHROPIC_API_KEY),
+      key_source: settings.anthropic_api_key ? 'company' : (process.env.ANTHROPIC_API_KEY ? 'platform' : 'none'),
+      key_prefix: settings.anthropic_api_key ? `${settings.anthropic_api_key.slice(0, 7)}...` : null,
+      model_requested: settings.anthropic_model || null,
+      model_resolved: resolveAnthropicModel(settings.anthropic_model),
+      test_result: null,
+    },
+  };
+
+  // Live test: send a minimal "ping" to each configured provider
+  if (diag.openai.has_key) {
+    try {
+      const result = await callOpenAI({ companyId: req.companyId, settings, messages: [{ role: 'user', content: 'ping' }], model: null, temperature: 0, max_tokens: 5, system: null });
+      diag.openai.test_result = { ok: true, model_used: result.model_used };
+    } catch (err) {
+      const cat = err._category || categorizeProviderError(err, 'OpenAI');
+      diag.openai.test_result = { ok: false, kind: cat.kind, msg: cat.msg, raw_status: err?.status, raw_error: err?.message };
+    }
+  }
+  if (diag.anthropic.has_key) {
+    try {
+      const result = await callAnthropic({ companyId: req.companyId, settings, messages: [{ role: 'user', content: 'ping' }], model: null, temperature: 0, max_tokens: 5, system: null });
+      diag.anthropic.test_result = { ok: true, model_used: result.model_used };
+    } catch (err) {
+      const cat = err._category || categorizeProviderError(err, 'Anthropic');
+      diag.anthropic.test_result = { ok: false, kind: cat.kind, msg: cat.msg, raw_status: err?.status, raw_error: err?.message };
+    }
+  }
+
+  res.json(diag);
+});
 
 // POST /api/ai/chat
 router.post('/chat', requireAuth, async (req, res) => {
@@ -168,9 +306,18 @@ router.post('/chat', requireAuth, async (req, res) => {
     const result = await runAIChat({ companyId: req.companyId, messages, model, temperature, max_tokens, response_format, system });
     res.json(result);
   } catch (err) {
-    console.error('[ai/chat]', err.message);
-    const status = err.code === 'MISSING_API_KEY' ? 402 : 500;
-    res.status(status).json({ error: err.publicMessage || err.message, code: err.code });
+    console.error('[ai/chat]', err.code || 'ERR', err.publicMessage || err.message, err._errors || '');
+    const status =
+      err.code === 'MISSING_API_KEY' || err.code === 'AUTH' ? 402 :
+      err.code === 'QUOTA' ? 402 :
+      err.code === 'RATE_LIMIT' ? 429 :
+      err.code === 'PROVIDER_DOWN' ? 503 :
+      500;
+    res.status(status).json({
+      error: err.publicMessage || err.message,
+      code: err.code,
+      details: err._errors || undefined,
+    });
   }
 });
 
@@ -192,8 +339,12 @@ router.post('/transcribe', requireAuth, async (req, res) => {
     res.json({ text: transcription.text });
   } catch (err) {
     console.error('[ai/transcribe]', err.message);
-    const status = err.code === 'MISSING_API_KEY' ? 402 : 500;
-    res.status(status).json({ error: err.message, code: err.code });
+    if (err.code === 'MISSING_API_KEY') {
+      return res.status(402).json({ error: err.message, code: 'MISSING_API_KEY' });
+    }
+    const cat = categorizeProviderError(err, 'OpenAI');
+    const status = cat.kind === 'AUTH' || cat.kind === 'QUOTA' ? 402 : cat.kind === 'RATE_LIMIT' ? 429 : 500;
+    res.status(status).json({ error: cat.msg, code: cat.kind });
   }
 });
 
@@ -225,8 +376,12 @@ router.post('/generate-image', requireAuth, async (req, res) => {
     res.json({ urls: result.data.map(img => img.url) });
   } catch (err) {
     console.error('[ai/generate-image]', err.message);
-    const status = err.code === 'MISSING_API_KEY' ? 402 : 500;
-    res.status(status).json({ error: err.message, code: err.code });
+    if (err.code === 'MISSING_API_KEY') {
+      return res.status(402).json({ error: err.message, code: 'MISSING_API_KEY' });
+    }
+    const cat = categorizeProviderError(err, 'OpenAI');
+    const status = cat.kind === 'AUTH' || cat.kind === 'QUOTA' ? 402 : cat.kind === 'RATE_LIMIT' ? 429 : 500;
+    res.status(status).json({ error: cat.msg, code: cat.kind });
   }
 });
 

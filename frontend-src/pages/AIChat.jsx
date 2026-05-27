@@ -199,6 +199,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
       }).catch(() => {});
     } catch (e) {
       const msg = e?.message || '';
+      // Only show the banner when there's literally no API key configured
       if (e?.code === 'MISSING_API_KEY') {
         setNoApiKey(true);
       } else {
