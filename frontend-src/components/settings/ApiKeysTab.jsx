@@ -245,8 +245,16 @@ export default function ApiKeysTab({ company, onSave }) {
   const testIntegration = async (type) => {
     setTesting(prev => ({ ...prev, [type]: true }));
     try {
-      // Save keys first so the backend has the latest values
-      await Company.update(company.id, { ...keys });
+      // Clean keys before saving — strip whitespace, quotes, newlines that
+      // can sneak in from copy-paste and cause "invalid key" errors.
+      const cleanedKeys = Object.fromEntries(
+        Object.entries(keys).map(([k, v]) => [
+          k,
+          typeof v === 'string' && k.includes('_key') ? v.trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '') : v,
+        ])
+      );
+      await Company.update(company.id, cleanedKeys);
+      setKeys(cleanedKeys);
       // Call the dedicated test endpoint for this integration type
       const result = await api.post(`/api/integrations/test/${type}`);
       const success = result?.success === true;
@@ -269,7 +277,16 @@ export default function ApiKeysTab({ company, onSave }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave({ ...keys, integration_status: statuses });
+      // Clean keys before saving — strip whitespace, surrounding quotes, newlines
+      // that can sneak in from copy-paste and cause "invalid key" errors at runtime.
+      const cleanedKeys = Object.fromEntries(
+        Object.entries(keys).map(([k, v]) => [
+          k,
+          typeof v === 'string' && k.includes('_key') ? v.trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '') : v,
+        ])
+      );
+      setKeys(cleanedKeys);
+      await onSave({ ...cleanedKeys, integration_status: statuses });
       toast.success('API keys saved');
     } catch (e) {
       toast.error('Failed to save: ' + (e?.response?.data?.error || e.message));

@@ -19,33 +19,50 @@ async function getCompanyAISettings(companyId) {
 }
 
 /**
- * Helper: get OpenAI client using company key or platform key.
+ * Helper: normalize an API key — trim whitespace, strip stray quotes/newlines
+ * that can happen if the user pastes a key with a trailing newline or wraps it.
  */
-async function getOpenAIClient(companyId) {
-  const settings = await getCompanyAISettings(companyId);
-  const apiKey = settings.openai_api_key || process.env.OPENAI_API_KEY;
+function cleanKey(rawKey) {
+  if (!rawKey) return null;
+  return String(rawKey)
+    .trim()
+    .replace(/^["']|["']$/g, '') // strip surrounding quotes
+    .replace(/\s+/g, '');          // strip any internal whitespace (keys never contain spaces)
+}
+
+/**
+ * Helper: get OpenAI client. If keyOverride passed, use it. Otherwise resolve
+ * from company settings, falling back to platform env var.
+ */
+async function getOpenAIClient(companyId, keyOverride) {
+  let apiKey = cleanKey(keyOverride);
+  if (!apiKey) {
+    const settings = await getCompanyAISettings(companyId);
+    apiKey = cleanKey(settings.openai_api_key) || cleanKey(process.env.OPENAI_API_KEY);
+  }
   if (!apiKey) {
     const err = new Error('OpenAI API key not configured. Add your key in Settings > API Keys.');
     err.code = 'MISSING_API_KEY';
     throw err;
   }
-
   const OpenAI = (await import('openai')).default;
   return new OpenAI({ apiKey });
 }
 
 /**
- * Helper: get Anthropic client using company key or platform key.
+ * Helper: get Anthropic client with optional key override.
  */
-async function getAnthropicClient(companyId) {
-  const settings = await getCompanyAISettings(companyId);
-  const apiKey = settings.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
+async function getAnthropicClient(companyId, keyOverride) {
+  let apiKey = cleanKey(keyOverride);
+  if (!apiKey) {
+    const settings = await getCompanyAISettings(companyId);
+    apiKey = cleanKey(settings.anthropic_api_key) || cleanKey(process.env.ANTHROPIC_API_KEY);
+  }
   if (!apiKey) {
     const err = new Error('Anthropic API key not configured. Add your key in Settings > API Keys.');
     err.code = 'MISSING_API_KEY';
     throw err;
   }
-
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
   return new Anthropic({ apiKey });
 }
@@ -96,8 +113,8 @@ const OPENAI_FALLBACK_MODEL = 'gpt-4o-mini';
 
 // ─── Provider calls ──────────────────────────────────────────────────────────
 
-async function callOpenAI({ companyId, settings, messages, model, temperature, max_tokens, response_format, system }) {
-  const client = await getOpenAIClient(companyId);
+async function callOpenAI({ companyId, settings, messages, model, temperature, max_tokens, response_format, system, keyOverride }) {
+  const client = await getOpenAIClient(companyId, keyOverride);
   const requestedModel = model && !model.startsWith('claude') ? model : null;
   const openaiModel = requestedModel || settings.openai_model || OPENAI_FALLBACK_MODEL;
   const msgs = [];
@@ -115,6 +132,7 @@ async function callOpenAI({ companyId, settings, messages, model, temperature, m
       usage: completion.usage,
       provider_used: 'openai',
       model_used: openaiModel,
+      key_source: keyOverride ? 'override' : (settings.openai_api_key ? 'company' : 'platform'),
     };
   } catch (err) {
     // Retry once with safe fallback model if invalid model
@@ -128,6 +146,7 @@ async function callOpenAI({ companyId, settings, messages, model, temperature, m
         usage: completion.usage,
         provider_used: 'openai',
         model_used: OPENAI_FALLBACK_MODEL,
+        key_source: keyOverride ? 'override' : (settings.openai_api_key ? 'company' : 'platform'),
       };
     }
     err._category = cat;
@@ -135,8 +154,8 @@ async function callOpenAI({ companyId, settings, messages, model, temperature, m
   }
 }
 
-async function callAnthropic({ companyId, settings, messages, model, temperature, max_tokens, system, response_format }) {
-  const client = await getAnthropicClient(companyId);
+async function callAnthropic({ companyId, settings, messages, model, temperature, max_tokens, system, response_format, keyOverride }) {
+  const client = await getAnthropicClient(companyId, keyOverride);
   const requested = model && model.startsWith('claude') ? model : (settings.anthropic_model || null);
   const anthropicModel = resolveAnthropicModel(requested);
 
@@ -194,65 +213,88 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
 }
 
 /**
- * Unified AI chat completion — supports OpenAI and Anthropic with BIDIRECTIONAL fallback.
- * If the selected provider fails for ANY reason and the other provider has a key,
- * automatically try the other provider. Only fails if BOTH providers fail.
+ * Unified AI chat completion — tries every available key in this order:
+ *   1. Preferred provider with company key
+ *   2. Preferred provider with platform env-var key (if different)
+ *   3. Other provider with company key
+ *   4. Other provider with platform env-var key (if different)
+ * Only fails when ALL attempts have been exhausted.
  */
 async function runAIChat({ companyId, messages, model, temperature = 0.7, max_tokens, response_format, system }) {
   const settings = await getCompanyAISettings(companyId);
   const provider = settings.ai_provider || 'openai';
 
-  const hasOpenAIKey = !!(settings.openai_api_key || process.env.OPENAI_API_KEY);
-  const hasAnthropicKey = !!(settings.anthropic_api_key || process.env.ANTHROPIC_API_KEY);
+  const companyOpenAI = cleanKey(settings.openai_api_key);
+  const platformOpenAI = cleanKey(process.env.OPENAI_API_KEY);
+  const companyAnthropic = cleanKey(settings.anthropic_api_key);
+  const platformAnthropic = cleanKey(process.env.ANTHROPIC_API_KEY);
 
-  if (!hasOpenAIKey && !hasAnthropicKey) {
+  if (!companyOpenAI && !platformOpenAI && !companyAnthropic && !platformAnthropic) {
     const err = new Error('No AI provider configured. Add OpenAI or Anthropic API key in Settings > API Keys.');
     err.code = 'MISSING_API_KEY';
     err.publicMessage = err.message;
     throw err;
   }
 
-  // Decide order — preferred provider first, then fallback
-  const order = provider === 'anthropic' && hasAnthropicKey
-    ? ['anthropic', 'openai']
-    : provider === 'openai' && hasOpenAIKey
-      ? ['openai', 'anthropic']
-      : hasOpenAIKey ? ['openai', 'anthropic'] : ['anthropic', 'openai'];
+  // Build attempt list: each entry is { provider, key, source }
+  // For each provider, try company key first, then platform key (only if different)
+  const buildAttempts = (p) => {
+    const list = [];
+    if (p === 'openai') {
+      if (companyOpenAI) list.push({ provider: 'openai', key: companyOpenAI, source: 'company' });
+      if (platformOpenAI && platformOpenAI !== companyOpenAI) list.push({ provider: 'openai', key: platformOpenAI, source: 'platform' });
+    } else {
+      if (companyAnthropic) list.push({ provider: 'anthropic', key: companyAnthropic, source: 'company' });
+      if (platformAnthropic && platformAnthropic !== companyAnthropic) list.push({ provider: 'anthropic', key: platformAnthropic, source: 'platform' });
+    }
+    return list;
+  };
+
+  const primaryAttempts = buildAttempts(provider);
+  const secondaryAttempts = buildAttempts(provider === 'openai' ? 'anthropic' : 'openai');
+  const attempts = [...primaryAttempts, ...secondaryAttempts];
 
   const errors = [];
-  for (const tryProvider of order) {
-    if (tryProvider === 'openai' && !hasOpenAIKey) continue;
-    if (tryProvider === 'anthropic' && !hasAnthropicKey) continue;
+  for (const attempt of attempts) {
     try {
-      if (tryProvider === 'openai') {
-        const result = await callOpenAI({ companyId, settings, messages, model, temperature, max_tokens, response_format, system });
-        if (errors.length > 0) console.log(`[ai] succeeded with ${tryProvider} after ${errors.length} failure(s)`);
-        return result;
-      } else {
-        const result = await callAnthropic({ companyId, settings, messages, model, temperature, max_tokens, system, response_format });
-        if (errors.length > 0) console.log(`[ai] succeeded with ${tryProvider} after ${errors.length} failure(s)`);
-        return result;
-      }
+      const fn = attempt.provider === 'openai' ? callOpenAI : callAnthropic;
+      const result = await fn({
+        companyId, settings, messages, model, temperature, max_tokens, response_format, system,
+        keyOverride: attempt.key,
+      });
+      if (errors.length > 0) console.log(`[ai] succeeded with ${attempt.provider}/${attempt.source} after ${errors.length} failure(s)`);
+      return { ...result, key_source: attempt.source };
     } catch (err) {
-      const cat = err._category || categorizeProviderError(err, tryProvider === 'openai' ? 'OpenAI' : 'Anthropic');
-      console.warn(`[ai] ${tryProvider} failed: ${cat.kind} — ${cat.msg}`);
-      errors.push({ provider: tryProvider, ...cat, raw: err?.message });
-      // Don't retry the SAME provider; loop will try the other one if available
+      const cat = err._category || categorizeProviderError(err, attempt.provider === 'openai' ? 'OpenAI' : 'Anthropic');
+      console.warn(`[ai] ${attempt.provider}/${attempt.source} failed: ${cat.kind} — ${cat.msg}`);
+      errors.push({ provider: attempt.provider, source: attempt.source, ...cat, raw: err?.message });
       continue;
     }
   }
 
-  // Both providers failed. Surface the most actionable error.
+  // All attempts failed. Surface the most actionable error.
   // Prefer AUTH > QUOTA > INVALID_MODEL > RATE_LIMIT > PROVIDER_DOWN > OTHER
   const priority = { AUTH: 5, QUOTA: 4, INVALID_MODEL: 3, RATE_LIMIT: 2, PROVIDER_DOWN: 1, OTHER: 0 };
-  errors.sort((a, b) => (priority[b.kind] || 0) - (priority[a.kind] || 0));
-  const top = errors[0] || { kind: 'OTHER', msg: 'AI request failed', provider: 'unknown' };
+  const sortedErrors = [...errors].sort((a, b) => (priority[b.kind] || 0) - (priority[a.kind] || 0));
+  const top = sortedErrors[0] || { kind: 'OTHER', msg: 'AI request failed', provider: 'unknown' };
+
+  // Build an actionable message based on what failed
+  const allQuota = errors.every(e => e.kind === 'QUOTA');
+  const allAuth = errors.every(e => e.kind === 'AUTH');
+  let publicMessage;
+  if (allQuota) {
+    publicMessage = 'Both AI providers have no available credits. Either add credits/billing to your OpenAI account (platform.openai.com/settings/organization/billing) OR to your Anthropic workspace (console.anthropic.com/settings/billing). New free-tier accounts often have no credits until billing is set up.';
+  } else if (allAuth) {
+    publicMessage = 'Both AI API keys were rejected as invalid. Re-paste fresh keys in Settings > API Keys — make sure there are no extra spaces or quotes.';
+  } else {
+    publicMessage = errors.length > 1
+      ? `All AI attempts failed: ${errors.map(e => `${e.provider}(${e.source}) → ${e.kind}: ${e.msg}`).join(' | ')}`
+      : top.msg;
+  }
 
   const finalErr = new Error(top.msg);
   finalErr.code = top.kind;
-  finalErr.publicMessage = errors.length > 1
-    ? `All AI providers failed. ${errors.map(e => `${e.provider}: ${e.msg}`).join(' | ')}`
-    : top.msg;
+  finalErr.publicMessage = publicMessage;
   finalErr._errors = errors;
   throw finalErr;
 }

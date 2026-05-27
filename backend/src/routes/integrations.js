@@ -92,24 +92,56 @@ router.post('/test/:type', requireAuth, async (req, res) => {
 
     switch (type) {
       case 'openai': {
-        const apiKey = k.openai_api_key || process.env.OPENAI_API_KEY;
-        if (!apiKey) return res.json({ success: false, message: 'OpenAI API key not set' });
-        const r = await fetch('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${apiKey}` } });
-        if (r.ok) return res.json({ success: true, message: 'OpenAI connected' });
-        const d = await r.json();
-        return res.json({ success: false, message: d.error?.message || 'OpenAI key invalid' });
+        const rawKey = k.openai_api_key || process.env.OPENAI_API_KEY;
+        if (!rawKey) return res.json({ success: false, message: 'OpenAI API key not set' });
+        const apiKey = String(rawKey).trim();
+        // STEP 1: Verify key is valid (lists models). Catches 401 (bad key).
+        const modelsResp = await fetch('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${apiKey}` } });
+        if (!modelsResp.ok) {
+          const d = await modelsResp.json().catch(() => ({}));
+          return res.json({ success: false, message: `OpenAI key rejected (${modelsResp.status}): ${d.error?.message || 'invalid key'}` });
+        }
+        // STEP 2: Verify key can actually make completions (catches insufficient_quota / billing missing).
+        const completionResp = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
+        });
+        if (completionResp.ok) return res.json({ success: true, message: 'OpenAI fully working (key + billing)' });
+        const compErr = await completionResp.json().catch(() => ({}));
+        const errMsg = compErr.error?.message || `HTTP ${completionResp.status}`;
+        const errType = compErr.error?.type || '';
+        if (errType === 'insufficient_quota' || errMsg.toLowerCase().includes('quota')) {
+          return res.json({ success: false, message: `OpenAI key is valid but account has no billing/credits: ${errMsg}. Add credits at platform.openai.com/settings/organization/billing.` });
+        }
+        return res.json({ success: false, message: `OpenAI completion failed: ${errMsg}` });
       }
 
       case 'anthropic': {
-        const apiKey = k.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
-        if (!apiKey) return res.json({ success: false, message: 'Anthropic API key not set' });
-        // Minimal test: list models endpoint
-        const r = await fetch('https://api.anthropic.com/v1/models', {
+        const rawKey = k.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
+        if (!rawKey) return res.json({ success: false, message: 'Anthropic API key not set' });
+        const apiKey = String(rawKey).trim();
+        // STEP 1: Verify key is valid (lists models). Catches 401 (bad key).
+        const modelsResp = await fetch('https://api.anthropic.com/v1/models', {
           headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         });
-        if (r.ok) return res.json({ success: true, message: 'Anthropic connected' });
-        const d = await r.json();
-        return res.json({ success: false, message: d.error?.message || 'Anthropic key invalid' });
+        if (!modelsResp.ok) {
+          const d = await modelsResp.json().catch(() => ({}));
+          return res.json({ success: false, message: `Anthropic key rejected (${modelsResp.status}): ${d.error?.message || 'invalid key'}` });
+        }
+        // STEP 2: Verify key can actually make completions (catches credit balance issues).
+        const completionResp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'claude-3-5-sonnet-20241022', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
+        });
+        if (completionResp.ok) return res.json({ success: true, message: 'Anthropic fully working (key + credits)' });
+        const compErr = await completionResp.json().catch(() => ({}));
+        const errMsg = compErr.error?.message || `HTTP ${completionResp.status}`;
+        if (errMsg.toLowerCase().includes('credit') || errMsg.toLowerCase().includes('billing')) {
+          return res.json({ success: false, message: `Anthropic key is valid but workspace has no credits: ${errMsg}. Add credits at console.anthropic.com/settings/billing.` });
+        }
+        return res.json({ success: false, message: `Anthropic completion failed: ${errMsg}` });
       }
 
       case 'stability': {
