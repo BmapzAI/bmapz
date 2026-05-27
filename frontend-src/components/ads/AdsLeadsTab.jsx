@@ -22,8 +22,8 @@ export default function AdsLeadsTab() {
     try {
       const result = await api.get('/api/ads/platform-leads');
 
-      if (result.data?.success) {
-        toast.success(`Synced ${result.data.total_added} new leads from ad campaigns`);
+      if (result?.success) {
+        toast.success(`Synced ${result.total_added} new leads from ad campaigns`);
         setLastSync(new Date());
         localStorage.setItem('adLeadsLastSync', new Date().toISOString());
 
@@ -36,7 +36,7 @@ export default function AdsLeadsTab() {
         const adLeads = [...(meta || []), ...(tiktok || []), ...(linkedin || [])];
         setLeads(adLeads);
       } else {
-        toast.error(result.data?.message || 'Failed to sync leads');
+        toast.error(result?.message || 'Failed to sync leads');
       }
     } catch (error) {
       console.error('Error syncing leads:', error);

@@ -273,7 +273,7 @@ export default function Inbox() {
       const payload = { sync_to_crm: true, limit: 30 };
       if (channel && channel !== 'all') payload.channel = channel;
       const res = await api.get('/api/messaging', payload);
-      const d = res?.data || {};
+      const d = res || {};
 
       // Surface per-channel errors
       if (d.email_error) toast.warning(`Email: ${d.email_error}`);

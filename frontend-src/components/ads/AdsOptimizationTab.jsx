@@ -22,11 +22,11 @@ export default function AdsOptimizationTab({ realAdData }) {
         auto_apply: false,
       });
 
-      if (!result.data?.success) {
-        throw new Error(result.data?.error || 'Failed to generate recommendations');
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to generate recommendations');
       }
 
-      const recs = result.data.recommendations || [];
+      const recs = result.recommendations || [];
       // Map to the display format expected by the UI
       const displayRecs = recs.map(r => ({
         campaign_name: r.campaign_name,
@@ -53,12 +53,12 @@ export default function AdsOptimizationTab({ realAdData }) {
         auto_apply: true,
       });
 
-      if (result.data?.success) {
-        const applied = result.data.changes_applied || 0;
+      if (result?.success) {
+        const applied = result.changes_applied || 0;
         toast.success(`Applied ${applied} optimization${applied !== 1 ? 's' : ''} to ${platform}`);
         setRecommendations([]);
       } else {
-        toast.error(result.data?.error || 'Failed to apply optimizations');
+        toast.error(result?.error || 'Failed to apply optimizations');
       }
     } catch (error) {
       toast.error('Failed to apply optimizations: ' + error.message);
