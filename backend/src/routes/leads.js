@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { runAIChat } from './ai.js';
 
 const router = Router();
 
@@ -200,14 +201,8 @@ router.post('/:id/score', requireAuth, async (req, res) => {
       .eq('id', req.companyId)
       .single();
 
-    const openaiApiKey = company?.api_keys?.openai_api_key;
     const icp_description = company?.settings?.icp_description;
     const target_audience = company?.settings?.target_audience;
-
-    const OpenAI = (await import('openai')).default;
-    const client = new OpenAI({
-      apiKey: openaiApiKey || process.env.OPENAI_API_KEY,
-    });
 
     const prompt = `You are a B2B sales expert. Score this lead against the company's ICP.
 Company ICP: ${icp_description || 'Not defined'}
@@ -224,13 +219,15 @@ Lead:
 
 Return JSON: { "score": 0-100, "fit": "high|medium|low", "reasoning": "...", "next_actions": ["..."] }`;
 
-    const completion = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
+    // Use unified AI helper — supports bidirectional fallback between OpenAI and Anthropic
+    const aiResult = await runAIChat({
+      companyId: req.companyId,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
+      temperature: 0.3,
     });
 
-    const result = JSON.parse(completion.choices[0].message.content);
+    const result = JSON.parse(aiResult.content);
 
     // Save score to lead
     await supabaseAdmin
@@ -240,7 +237,9 @@ Return JSON: { "score": 0-100, "fit": "high|medium|low", "reasoning": "...", "ne
 
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[leads/:id/score]', err.message);
+    const status = err.code === 'MISSING_API_KEY' || err.code === 'AUTH' || err.code === 'QUOTA' ? 402 : 500;
+    res.status(status).json({ error: err.publicMessage || err.message, code: err.code });
   }
 });
 

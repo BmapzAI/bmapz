@@ -518,4 +518,7 @@ router.delete('/outputs/:id', requireAuth, async (req, res) => {
   }
 });
 
+// Export runAIChat so other routes (leads scoring, workflows, etc.) can use the
+// unified bidirectional-fallback AI helper instead of calling OpenAI directly.
+export { runAIChat };
 export default router;
