@@ -135,13 +135,21 @@ async function callOpenAI({ companyId, settings, messages, model, temperature, m
   }
 }
 
-async function callAnthropic({ companyId, settings, messages, model, temperature, max_tokens, system }) {
+async function callAnthropic({ companyId, settings, messages, model, temperature, max_tokens, system, response_format }) {
   const client = await getAnthropicClient(companyId);
   const requested = model && model.startsWith('claude') ? model : (settings.anthropic_model || null);
   const anthropicModel = resolveAnthropicModel(requested);
 
   const anthropicMessages = (messages || []).filter(m => m.role !== 'system');
-  const systemPrompt = system || (messages || []).find(m => m.role === 'system')?.content;
+  let systemPrompt = system || (messages || []).find(m => m.role === 'system')?.content;
+
+  // Anthropic doesn't have OpenAI-style response_format: json_object.
+  // When JSON is requested, prepend a strict JSON-only instruction to the system prompt.
+  const wantsJson = response_format && (response_format.type === 'json_object' || response_format === 'json');
+  if (wantsJson) {
+    const jsonInstr = 'You MUST respond with valid JSON only. No prose, no markdown fences, no explanation outside the JSON object. The response must be parseable by JSON.parse().';
+    systemPrompt = systemPrompt ? `${systemPrompt}\n\n${jsonInstr}` : jsonInstr;
+  }
 
   const params = {
     model: anthropicModel,
@@ -221,7 +229,7 @@ async function runAIChat({ companyId, messages, model, temperature = 0.7, max_to
         if (errors.length > 0) console.log(`[ai] succeeded with ${tryProvider} after ${errors.length} failure(s)`);
         return result;
       } else {
-        const result = await callAnthropic({ companyId, settings, messages, model, temperature, max_tokens, system });
+        const result = await callAnthropic({ companyId, settings, messages, model, temperature, max_tokens, system, response_format });
         if (errors.length > 0) console.log(`[ai] succeeded with ${tryProvider} after ${errors.length} failure(s)`);
         return result;
       }
