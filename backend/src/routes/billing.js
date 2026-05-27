@@ -26,11 +26,20 @@ router.get('/subscription', requireAuth, async (req, res) => {
   }
 });
 
+// Map plan_id + billing_cycle to Stripe price_id from environment
+function resolvePriceId(planId, billingCycle) {
+  const cycle = billingCycle === 'annual' ? 'ANNUAL' : 'MONTHLY';
+  const key = `STRIPE_PRICE_ID_${String(planId).toUpperCase()}_${cycle}`;
+  const fallbackKey = `STRIPE_PRICE_ID_${String(planId).toUpperCase()}`;
+  return process.env[key] || process.env[fallbackKey] || null;
+}
+
 // POST /api/billing/checkout — create Stripe Checkout Session
 router.post('/checkout', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
-    const { plan, price_id, success_url, cancel_url } = req.body;
-    if (!price_id) return res.status(400).json({ error: 'price_id is required' });
+    const { plan, plan_id, price_id: directPriceId, billing_cycle, success_url, cancel_url } = req.body;
+    const price_id = directPriceId || resolvePriceId(plan_id || plan, billing_cycle);
+    if (!price_id) return res.status(400).json({ error: 'price_id is required. Provide price_id or a known plan_id.' });
 
     const stripe = await getStripe();
     const session = await stripe.checkout.sessions.create({
