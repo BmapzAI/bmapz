@@ -159,7 +159,7 @@ performance_prediction (object with: expected_reach, engagement_rate_estimate, b
         toast.success('Content generated with AI!');
       }
     } catch (e) {
-      toast.error('Generation failed');
+      toast.error('Generation failed: ' + (e?.message || 'unknown error'));
     } finally {
       setIsGenerating(false);
     }
@@ -211,7 +211,7 @@ Return JSON with:
       setOptimizationInsights(response);
       toast.success('AI optimization analysis complete!');
     } catch (e) {
-      toast.error('Optimization failed');
+      toast.error('Optimization failed: ' + (e?.message || 'unknown error'));
     } finally {
       setIsOptimizing(false);
     }

@@ -180,7 +180,7 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
       });
       setStrategy(response);
       toast.success('Strategy generated!');
-    } catch (e) { toast.error('Generation failed'); }
+    } catch (e) { toast.error('Generation failed: ' + (e?.message || 'unknown error')); }
     finally { setIsGenerating(false); }
   };
 
@@ -198,7 +198,7 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
       });
       setCopies(response?.ads || []);
       toast.success('Ad copies generated!');
-    } catch (e) { toast.error('Generation failed'); }
+    } catch (e) { toast.error('Generation failed: ' + (e?.message || 'unknown error')); }
     finally { setIsGenerating(false); }
   };
 

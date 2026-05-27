@@ -132,7 +132,7 @@ Return JSON with: content (full article in markdown), meta_description (155 char
         toast.success('Blog post generated!');
       }
     } catch (e) {
-      toast.error('Generation failed');
+      toast.error('Generation failed: ' + (e?.message || 'unknown error'));
     } finally {
       setIsGenerating(false);
     }
