@@ -243,3 +243,51 @@ Remaining important work:
 1. Deploy these changes, then smoke-test production `https://ai.bmapz.com`.
 2. In Supabase Dashboard, fix Google Auth branding/custom OAuth credentials so Google consent no longer displays the Supabase project host. Code cannot rename Supabase's hosted OAuth app by itself.
 3. Continue feature smoke-testing by page and integration. Lint warnings still reveal likely dead/incomplete UI code in older modules, including `AdsCampaignsTab.jsx` references to `AdRecord` reported as warnings by current ESLint config.
+
+### 2026-05-27 - Claude (Session 3: Comprehensive res.data sweep + billing fix)
+
+Continued smoke-test by doing a full `res.data` sweep across all frontend files (the apiClient returns JSON directly — not Axios-style `{data}`).
+
+**Commits pushed (3 total):**
+
+1. `1dbed9d` — Fixed `res.data` in 11 files:
+   - `AIChat.jsx`: `res.data` → `Array.isArray(res)` guard for conversation list
+   - `Billing.jsx`: `res.data?.url` → `res?.url`
+   - `Pricing.jsx`: `res.data?.url` / `res.data?.error` → `res?.url` / `res?.error`
+   - `SEO.jsx`: `res.data` → `res` (response is already parsed JSON from `.then(r => JSON.parse(r.content))`)
+   - `AdsPublishModal.jsx`: `res.data.success` / `res.data.error` → `res.success` / `res.error`
+   - `AdsRealDataPanel.jsx`: `res.data.error` / `res.data` → `res.error` / `res`
+   - `LeadListManagerFull.jsx`: `res.data?.synced` → `res?.synced`
+   - `SocialPerformanceTab.jsx`: `res.data?.success` / `res.data.metrics` / `res.data?.error` → `res?.success` / `res.metrics` / `res?.error`
+   - `AdsCampaignsTab.jsx`: added missing `import { AdRecord } from '@/api/entities'` (ReferenceError)
+   - `SendMessageModal.jsx`: added `LeadList` to existing entity import
+   - `LeadDetails.jsx`: `res.data.score` → `res.score`
+
+2. `d10b1b1` — Fixed `res?.data` in 3 more files found on second sweep:
+   - `Inbox.jsx`: `res?.data` → `res` in syncInbox
+   - `AdsOptimizationTab.jsx`: `result.data.*` → `result.*` (generate + apply recommendations)
+   - `AdsLeadsTab.jsx`: `result.data.*` → `result.*` (syncLeads)
+
+3. `41572a9` — Fixed billing checkout `price_id` mismatch:
+   - `Pricing.jsx` sends `plan_id + billing_cycle`; backend required `price_id` directly → 400 error
+   - Added `resolvePriceId(planId, billingCycle)` helper to `billing.js` mapping `plan_id` → env var `STRIPE_PRICE_ID_{PLAN}_{MONTHLY|ANNUAL}`
+   - `price_id` passed directly still supported as override
+
+**Production status after these commits:**
+- All `res.data` misuse eliminated (confirmed by `grep` returning no matches)
+- 0 ESLint errors (1513 warnings — unchanged, all unused-vars in existing code)
+- Billing checkout should now work if `STRIPE_PRICE_ID_*` env vars are configured in Railway
+
+**Remaining known gaps:**
+- Inbox sync: `GET /api/messaging?sync_to_crm=true` doesn't actually sync external mail — the sync endpoint doesn't exist yet. Inbox shows "Synced 0 new messages" which is confusing but not a crash. A real email sync endpoint is a future task.
+- Workflow execution: `POST /api/workflows/:id/run` creates a run record but doesn't execute nodes. Needs a task queue / scheduler.
+- OAuth token refresh: when Google/Meta/LinkedIn/Twitter/TikTok tokens expire, user needs to reconnect. No auto-refresh.
+- Supabase Google Auth branding: consent screen still shows `jmtnubzgnfjmtcwbegow.supabase.co`. Fix requires Supabase Dashboard → Authentication → Providers → Google → set custom client ID/secret + update branding in Google Cloud Console OAuth consent screen.
+
+**Next recommended smoke-test steps for Derek:**
+1. Load Settings → API Keys, enter OpenAI key, save, reload — confirm key pre-filled
+2. Open AI Chat, send a message — confirm response (no raw billing JSON)
+3. Visit Integrations page — confirm integration statuses load
+4. Visit Billing page — confirm it loads without errors
+5. Visit Ads page → Campaigns tab — confirm no ReferenceError
+6. Meta OAuth: click Connect in Integrations — should open Meta login popup
