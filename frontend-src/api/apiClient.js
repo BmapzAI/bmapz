@@ -34,13 +34,16 @@ export async function apiFetch(path, options = {}) {
   if (!response.ok) {
     let errorMsg = `API error ${response.status}`;
     let errorCode = null;
+    let errorDetails = null;
     try {
       const body = await response.json();
       errorMsg = body.error || body.message || errorMsg;
       errorCode = body.code || null;
+      errorDetails = body.details || null;
     } catch (_e) { /* use the default errorMsg */ }
     const err = new Error(errorMsg);
     if (errorCode) err.code = errorCode;
+    if (errorDetails) err.details = errorDetails;
     err.status = response.status;
     throw err;
   }

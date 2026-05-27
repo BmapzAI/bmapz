@@ -62,7 +62,7 @@ function categorizeProviderError(err, providerLabel) {
     return { kind: 'AUTH', msg: `${providerLabel} API key is invalid or expired. Update it in Settings > API Keys.` };
   }
   // 404 / invalid model
-  if (status === 404 || rawMsg.includes('model_not_found') || rawMsg.includes('does not exist') || rawMsg.includes('invalid model') || errorType === 'invalid_request_error' && rawMsg.includes('model')) {
+  if (status === 404 || rawMsg.includes('model_not_found') || rawMsg.includes('does not exist') || rawMsg.includes('invalid model') || (errorType === 'invalid_request_error' && rawMsg.includes('model'))) {
     return { kind: 'INVALID_MODEL', msg: `${providerLabel} model not available. Pick a different model in Settings > API Keys.` };
   }
   // 429 with insufficient_quota / billing / credit balance — true quota/billing issue
@@ -82,18 +82,14 @@ function categorizeProviderError(err, providerLabel) {
 
 // ─── Model normalization ─────────────────────────────────────────────────────
 
-// Maps Bmapz UI model IDs (which may use non-Anthropic-API names) to Anthropic API IDs.
-// If the user has e.g. 'claude-sonnet-4-5' selected (UI label), we try it as-is first; if Anthropic
-// rejects it as invalid, we retry with the known-good fallback.
+// Anthropic models change over time and use dated suffixes.
+// Strategy: pass the user's requested model AS-IS to Anthropic. If they reject
+// it as invalid (e.g. typo or deprecated), auto-retry with a known-good fallback
+// that has been stable for a long time.
 const ANTHROPIC_FALLBACK_MODEL = 'claude-3-5-sonnet-20241022';
-const ANTHROPIC_MODEL_ALIASES = {
-  'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
-  'claude-opus-4-5': 'claude-opus-4-5-20250101',
-  'claude-haiku-4-5': 'claude-haiku-4-5-20250101',
-};
 function resolveAnthropicModel(requested) {
   if (!requested) return ANTHROPIC_FALLBACK_MODEL;
-  return ANTHROPIC_MODEL_ALIASES[requested] || requested;
+  return requested;
 }
 
 const OPENAI_FALLBACK_MODEL = 'gpt-4o-mini';
