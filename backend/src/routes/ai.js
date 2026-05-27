@@ -1,13 +1,19 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import {
+  computeCreditCost,
+  resolveActionModel,
+  canUseBYOK,
+  DEFAULT_MODEL_PER_PROVIDER,
+  MODEL_TIER,
+} from '../lib/aiCredits.js';
 
 const router = Router();
 
 /**
- * Helper: get company AI settings (provider, model, keys).
- * Keys are stored in the api_keys JSONB column — must select that column,
- * NOT individual field names (those are not direct columns on the table).
+ * Helper: get company AI settings (provider, model, keys) AND active plan.
+ * Keys are stored in the api_keys JSONB column — must select that column.
  */
 async function getCompanyAISettings(companyId) {
   const { data: company } = await supabaseAdmin
@@ -16,6 +22,76 @@ async function getCompanyAISettings(companyId) {
     .eq('id', companyId)
     .single();
   return company?.api_keys || {};
+}
+
+/**
+ * Get the active plan_id for a company. Falls back to 'trial' if no sub.
+ */
+async function getCompanyPlan(companyId) {
+  const { data: sub } = await supabaseAdmin
+    .from('subscriptions')
+    .select('plan_id, ai_credits_total, ai_credits_used, topup_credits_purchased, status')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return {
+    planId: sub?.plan_id || 'trial',
+    creditsTotal: (sub?.ai_credits_total || 0) + (sub?.topup_credits_purchased || 0),
+    creditsUsed: sub?.ai_credits_used || 0,
+    subscriptionId: sub?.id || null,
+    status: sub?.status || 'inactive',
+  };
+}
+
+/**
+ * Deduct credits from the active subscription and log the transaction.
+ * Returns { remaining } or throws if insufficient credits.
+ */
+async function deductCredits({ companyId, userId, userEmail, credits, feature, model, tokens }) {
+  const { data: sub } = await supabaseAdmin
+    .from('subscriptions')
+    .select('id, ai_credits_total, ai_credits_used, topup_credits_purchased')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!sub) {
+    const err = new Error('No active subscription found. Start your 14-day trial or pick a plan.');
+    err.code = 'NO_SUBSCRIPTION';
+    throw err;
+  }
+
+  const total = (sub.ai_credits_total || 0) + (sub.topup_credits_purchased || 0);
+  const used = sub.ai_credits_used || 0;
+  const remaining = total - used;
+  if (remaining < credits) {
+    const err = new Error(`Insufficient AI credits: ${remaining} remaining, ${credits} needed. Upgrade your plan or buy a credit pack.`);
+    err.code = 'CREDITS_EXHAUSTED';
+    err.publicMessage = err.message;
+    throw err;
+  }
+
+  const newUsed = used + credits;
+  await supabaseAdmin.from('subscriptions').update({ ai_credits_used: newUsed }).eq('id', sub.id);
+  await supabaseAdmin.from('credit_transactions').insert({
+    company_id: companyId,
+    subscription_id: sub.id,
+    type: 'usage',
+    feature: feature || 'ai_chat',
+    credits_delta: -credits,
+    credits_after: total - newUsed,
+    description: `${feature || 'ai_chat'} — ${model} (${tokens} tokens)`,
+    metadata: {
+      user_id: userId || null,
+      user_email: userEmail || null,
+      model,
+      tokens,
+      tier: MODEL_TIER[model] || 'smart',
+    },
+  });
+  return { remaining: total - newUsed, charged: credits };
 }
 
 /**
@@ -176,7 +252,18 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
     max_tokens: max_tokens || 4096,
     temperature,
   };
-  if (systemPrompt) params.system = systemPrompt;
+  // Prompt caching: if system prompt is substantial (>1KB), mark it as cacheable.
+  // Anthropic charges 10% of normal input cost on cache hits — huge savings on
+  // repeated calls with the same system prompt (e.g. AI Sales Agent context).
+  if (systemPrompt) {
+    if (systemPrompt.length >= 1024) {
+      params.system = [
+        { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
+      ];
+    } else {
+      params.system = systemPrompt;
+    }
+  }
 
   try {
     const response = await client.messages.create(params);
@@ -213,31 +300,58 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
 }
 
 /**
- * Unified AI chat completion — tries every available key in this order:
- *   1. Preferred provider with company key
- *   2. Preferred provider with platform env-var key (if different)
- *   3. Other provider with company key
- *   4. Other provider with platform env-var key (if different)
- * Only fails when ALL attempts have been exhausted.
+ * Unified AI chat completion with full credit enforcement, plan-based model
+ * gating, BYOK restriction, and bidirectional provider fallback.
+ *
+ * Flow:
+ *   1. Look up the company's active plan (trial / starter / growth / scale / enterprise).
+ *   2. Check user role — only owner/system_admin can use BYOK keys.
+ *      All other users use ONLY platform keys (Railway env vars).
+ *   3. Resolve the model based on plan tier and action type. Heavy actions
+ *      (brand_scan, marketing_plan) are forced to the cheapest model.
+ *   4. Pre-flight credit check — make sure the company has at least 1 credit
+ *      before calling the provider (avoids billing for failed calls).
+ *   5. Call providers in order, with fallback. Track tokens.
+ *   6. On success: deduct credits based on model multiplier × tokens used.
  */
-async function runAIChat({ companyId, messages, model, temperature = 0.7, max_tokens, response_format, system }) {
+async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action }) {
   const settings = await getCompanyAISettings(companyId);
+  const { planId, creditsTotal, creditsUsed } = await getCompanyPlan(companyId);
+  const remainingCredits = Math.max(0, creditsTotal - creditsUsed);
+
+  // BYOK is only allowed for owner + system_admin. Everyone else uses platform keys.
+  const allowBYOK = canUseBYOK(userRole);
+
   const provider = settings.ai_provider || 'openai';
 
-  const companyOpenAI = cleanKey(settings.openai_api_key);
+  const companyOpenAI = allowBYOK ? cleanKey(settings.openai_api_key) : null;
   const platformOpenAI = cleanKey(process.env.OPENAI_API_KEY);
-  const companyAnthropic = cleanKey(settings.anthropic_api_key);
+  const companyAnthropic = allowBYOK ? cleanKey(settings.anthropic_api_key) : null;
   const platformAnthropic = cleanKey(process.env.ANTHROPIC_API_KEY);
 
   if (!companyOpenAI && !platformOpenAI && !companyAnthropic && !platformAnthropic) {
-    const err = new Error('No AI provider configured. Add OpenAI or Anthropic API key in Settings > API Keys.');
+    const err = new Error('No AI provider configured on the platform. Contact your administrator.');
     err.code = 'MISSING_API_KEY';
     err.publicMessage = err.message;
     throw err;
   }
 
+  // Pre-flight credit check (only when using PLATFORM keys — BYOK doesn't deduct)
+  const willUsePlatformKey = !companyOpenAI && !companyAnthropic;
+  if (willUsePlatformKey && remainingCredits < 1) {
+    const err = new Error(`Out of AI credits (${remainingCredits} remaining). Upgrade your plan or buy a credit pack.`);
+    err.code = 'CREDITS_EXHAUSTED';
+    err.publicMessage = err.message;
+    throw err;
+  }
+
+  // Resolve which model to actually use given plan tier + action type
+  const requestedModel = model
+    || (provider === 'anthropic' ? settings.anthropic_model : settings.openai_model)
+    || DEFAULT_MODEL_PER_PROVIDER[provider];
+  const resolvedModel = resolveActionModel(action, requestedModel, planId, provider);
+
   // Build attempt list: each entry is { provider, key, source }
-  // For each provider, try company key first, then platform key (only if different)
   const buildAttempts = (p) => {
     const list = [];
     if (p === 'openai') {
@@ -258,12 +372,53 @@ async function runAIChat({ companyId, messages, model, temperature = 0.7, max_to
   for (const attempt of attempts) {
     try {
       const fn = attempt.provider === 'openai' ? callOpenAI : callAnthropic;
+      // For Anthropic, swap in resolvedModel if it's an OpenAI model (cross-provider fallback)
+      const modelForAttempt = attempt.provider === 'anthropic'
+        ? (resolvedModel.startsWith('claude') ? resolvedModel : DEFAULT_MODEL_PER_PROVIDER.anthropic)
+        : (resolvedModel.startsWith('claude') ? DEFAULT_MODEL_PER_PROVIDER.openai : resolvedModel);
+
       const result = await fn({
-        companyId, settings, messages, model, temperature, max_tokens, response_format, system,
+        companyId, settings, messages,
+        model: modelForAttempt,
+        temperature, max_tokens, response_format, system,
         keyOverride: attempt.key,
       });
       if (errors.length > 0) console.log(`[ai] succeeded with ${attempt.provider}/${attempt.source} after ${errors.length} failure(s)`);
-      return { ...result, key_source: attempt.source };
+
+      // Deduct credits ONLY when using platform key (BYOK doesn't deduct — admin's cost).
+      let creditsCharged = 0;
+      let remainingAfter = remainingCredits;
+      if (attempt.source === 'platform') {
+        try {
+          const tokens = (result.usage?.prompt_tokens || 0) + (result.usage?.completion_tokens || 0);
+          creditsCharged = computeCreditCost({
+            model: result.model_used,
+            promptTokens: result.usage?.prompt_tokens || 0,
+            completionTokens: result.usage?.completion_tokens || 0,
+          });
+          const deduction = await deductCredits({
+            companyId, userId, userEmail,
+            credits: creditsCharged,
+            feature: action || 'ai_chat',
+            model: result.model_used,
+            tokens,
+          });
+          remainingAfter = deduction.remaining;
+        } catch (deductErr) {
+          // Log but don't fail the request — user already got the response
+          console.error('[ai] credit deduction failed:', deductErr.message);
+        }
+      }
+
+      return {
+        ...result,
+        key_source: attempt.source,
+        credits_charged: creditsCharged,
+        credits_remaining: remainingAfter,
+        plan_id: planId,
+        model_requested: requestedModel,
+        model_resolved: resolvedModel,
+      };
     } catch (err) {
       const cat = err._category || categorizeProviderError(err, attempt.provider === 'openai' ? 'OpenAI' : 'Anthropic');
       console.warn(`[ai] ${attempt.provider}/${attempt.source} failed: ${cat.kind} — ${cat.msg}`);
@@ -348,14 +503,22 @@ router.get('/diagnose', requireAuth, async (req, res) => {
 // POST /api/ai/chat
 router.post('/chat', requireAuth, async (req, res) => {
   try {
-    const { messages, model, temperature = 0.7, max_tokens, response_format, system } = req.body;
-    const result = await runAIChat({ companyId: req.companyId, messages, model, temperature, max_tokens, response_format, system });
+    const { messages, model, temperature = 0.7, max_tokens, response_format, system, action } = req.body;
+    const result = await runAIChat({
+      companyId: req.companyId,
+      userId: req.dbUser?.id,
+      userRole: req.dbUser?.role,
+      userEmail: req.dbUser?.email,
+      messages, model, temperature, max_tokens, response_format, system, action,
+    });
     res.json(result);
   } catch (err) {
     console.error('[ai/chat]', err.code || 'ERR', err.publicMessage || err.message, err._errors || '');
     const status =
       err.code === 'MISSING_API_KEY' || err.code === 'AUTH' ? 402 :
       err.code === 'QUOTA' ? 402 :
+      err.code === 'CREDITS_EXHAUSTED' ? 402 :
+      err.code === 'NO_SUBSCRIPTION' ? 402 :
       err.code === 'RATE_LIMIT' ? 429 :
       err.code === 'PROVIDER_DOWN' ? 503 :
       500;
@@ -364,6 +527,52 @@ router.post('/chat', requireAuth, async (req, res) => {
       code: err.code,
       details: err._errors || undefined,
     });
+  }
+});
+
+// GET /api/ai/usage — current user's company AI usage summary
+router.get('/usage', requireAuth, async (req, res) => {
+  try {
+    const { planId, creditsTotal, creditsUsed } = await getCompanyPlan(req.companyId);
+    const remaining = Math.max(0, creditsTotal - creditsUsed);
+    const percentUsed = creditsTotal > 0 ? Math.round((creditsUsed / creditsTotal) * 100) : 0;
+
+    // Recent usage transactions
+    const { data: recent } = await supabaseAdmin
+      .from('credit_transactions')
+      .select('*')
+      .eq('company_id', req.companyId)
+      .eq('type', 'usage')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    // Aggregate by feature
+    const byFeature = {};
+    const byUser = {};
+    const byModel = {};
+    for (const tx of recent || []) {
+      const f = tx.feature || 'unknown';
+      const credits = Math.abs(tx.credits_delta);
+      byFeature[f] = (byFeature[f] || 0) + credits;
+      const ue = tx.metadata?.user_email || 'unknown';
+      byUser[ue] = (byUser[ue] || 0) + credits;
+      const m = tx.metadata?.model || 'unknown';
+      byModel[m] = (byModel[m] || 0) + credits;
+    }
+
+    res.json({
+      plan_id: planId,
+      credits_total: creditsTotal,
+      credits_used: creditsUsed,
+      credits_remaining: remaining,
+      percent_used: percentUsed,
+      recent_transactions: recent || [],
+      by_feature: byFeature,
+      by_user: byUser,
+      by_model: byModel,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

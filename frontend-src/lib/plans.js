@@ -30,9 +30,10 @@ export const PLANS = {
     gradient: 'from-[#3572b9] to-[#38b6ff]',
     extra_user_price: 79,
     extra_credit_pack_price: 79,
-    extra_credit_pack_size: 10000,
+    extra_credit_pack_size: 15000,
     full_scan_price: 1500,
     expected_usage: 2700,
+    allowed_model_tiers: ['smart'],
     target_en: 'Solo founders & micro businesses',
     target_pt: 'Empreendedores solo e micro negócios',
     features_en: [
@@ -76,10 +77,11 @@ export const PLANS = {
     gradient: 'from-[#cb6ce6] to-[#38b6ff]',
     extra_user_price: 79,
     extra_credit_pack_price: 69,
-    extra_credit_pack_size: 25000,
+    extra_credit_pack_size: 15000,
     full_scan_price: 1200,
     expected_usage: 11600,
     recommended: true,
+    allowed_model_tiers: ['smart', 'smarter'],
     target_en: 'SMBs & growing SaaS teams',
     target_pt: 'PMEs e times SaaS em crescimento',
     features_en: [
@@ -122,10 +124,11 @@ export const PLANS = {
     gradient: 'from-[#00e7ff] to-[#cb6ce6]',
     extra_user_price: 69,
     extra_credit_pack_price: 59,
-    extra_credit_pack_size: 50000,
+    extra_credit_pack_size: 15000,
     full_scan_price: 1000,
     extra_full_scan_price: 1000,
     expected_usage: 57000,
+    allowed_model_tiers: ['smart', 'smarter', 'smartest'],
     target_en: 'High-growth companies & agencies',
     target_pt: 'Empresas em hypergrowth e agências',
     features_en: [
@@ -168,11 +171,12 @@ export const PLANS = {
     gradient: 'from-[#f59e0b] to-[#cb6ce6]',
     extra_user_price: 59,
     extra_credit_pack_price: 49,
-    extra_credit_pack_size: 100000,
+    extra_credit_pack_size: 15000,
     full_scan_price: 800,
     extra_full_scan_price: 800,
     extra_company_profile_price: 750,
     expected_usage: 142000,
+    allowed_model_tiers: ['smart', 'smarter', 'smartest'],
     target_en: 'Agencies, enterprise teams & multi-brand operations',
     target_pt: 'Agências, times enterprise e operações multi-marca',
     features_en: [
@@ -242,4 +246,31 @@ export function getCreditsPercent(subscription) {
   const total = (subscription.ai_credits_total || 0) + (subscription.topup_credits_purchased || 0);
   if (total === 0) return 0;
   return Math.min(100, Math.round(((subscription.ai_credits_used || 0) / total) * 100));
+}
+
+// Model tier mapping — must match backend MODEL_TIER in backend/src/lib/aiCredits.js
+export const MODEL_TIER = {
+  'gpt-4o-mini': 'smart',
+  'gpt-3.5-turbo': 'smart',
+  'claude-3-5-haiku-20241022': 'smart',
+  'claude-haiku-3-5': 'smart',
+  'gpt-4o': 'smarter',
+  'gpt-4-turbo': 'smarter',
+  'claude-3-5-sonnet-20241022': 'smarter',
+  'claude-sonnet-3-5': 'smarter',
+  'claude-sonnet-4-5': 'smartest',
+  'claude-3-opus-20240229': 'smartest',
+  'claude-opus-4-5': 'smartest',
+};
+
+export const MODEL_TIER_LABELS = {
+  smart: 'Smart (fast & affordable)',
+  smarter: 'Smarter (more reasoning)',
+  smartest: 'Smartest (max capability)',
+};
+
+export function isModelAllowedForPlan(model, planId) {
+  const plan = PLANS[planId] || PLANS.trial;
+  const tier = MODEL_TIER[model] || 'smart';
+  return (plan.allowed_model_tiers || ['smart']).includes(tier);
 }

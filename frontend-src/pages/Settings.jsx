@@ -16,7 +16,9 @@ import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, P
 // KeyRound used in TabsTrigger
 import { toast } from 'sonner';
 import ApiKeysTab from '@/components/settings/ApiKeysTab';
+import UsageTab from '@/components/settings/UsageTab';
 import { Company } from '@/api/entities';
+import { useAuth } from '@/lib/AuthContext';
 
 function TagInput({ label, values = [], onChange, placeholder }) {
   const [input, setInput] = useState('');
@@ -78,6 +80,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const isDark = true; // dark mode only
   const queryClient = useQueryClient();
+  const { dbUser } = useAuth();
   const [user, setUser] = useState(null);
   const [agentName, setAgentName] = useState('');
 
@@ -133,6 +136,7 @@ export default function Settings() {
           <TabsTrigger value="icp" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Target size={14} className="mr-1.5" />ICP Settings</TabsTrigger>
           <TabsTrigger value="api-keys" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><KeyRound size={14} className="mr-1.5" />API Keys</TabsTrigger>
           <TabsTrigger value="ai-settings" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Sparkles size={14} className="mr-1.5" />AI Settings</TabsTrigger>
+          <TabsTrigger value="usage" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Zap size={14} className="mr-1.5" />Usage</TabsTrigger>
           <TabsTrigger value="subscription" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><CreditCard size={14} className="mr-1.5" />Subscription</TabsTrigger>
         </TabsList>
 
@@ -380,8 +384,14 @@ export default function Settings() {
         <TabsContent value="api-keys" className="space-y-6">
           <ApiKeysTab
             company={company}
+            user={dbUser}
             onSave={(data) => updateMutation.mutateAsync(data)}
           />
+        </TabsContent>
+
+        {/* Usage */}
+        <TabsContent value="usage" className="space-y-6">
+          <UsageTab />
         </TabsContent>
 
 

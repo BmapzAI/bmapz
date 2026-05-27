@@ -146,7 +146,9 @@ function DiagnoseAI() {
   );
 }
 
-export default function ApiKeysTab({ company, onSave }) {
+export default function ApiKeysTab({ company, user, onSave }) {
+  // BYOK is restricted to owner + system_admin. Everyone else uses platform keys.
+  const canUseBYOK = user?.role === 'owner' || user?.role === 'system_admin';
   const queryClient = useQueryClient();
   const [keys, setKeys] = useState(() => ({
     ai_provider: company?.ai_provider || 'openai',
@@ -387,33 +389,56 @@ export default function ApiKeysTab({ company, onSave }) {
         <DiagnoseAI />
       </div>
 
-      <IntegrationSection title="OpenAI" color="#10A37F" icon="🤖"
-        status={statuses.openai} onTest={() => testIntegration('openai')} isTesting={testing.openai} testLabel="Test Key">
-        <SecretInput label="OpenAI API Key" value={keys.openai_api_key} onChange={(v) => set('openai_api_key', v)}
-          placeholder="sk-..." hint="Get yours at platform.openai.com/api-keys" />
-        <div>
-          <Label className="text-gray-400 text-xs">Default Model</Label>
-          <select value={keys.openai_model || 'gpt-4o-mini'} onChange={(e) => set('openai_model', e.target.value)}
-            className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm">
-            {OPENAI_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-          <p className="text-gray-600 text-xs mt-1">Used when OpenAI is the active provider. If no key is set, platform credits are used.</p>
-        </div>
-      </IntegrationSection>
+      {/* BYOK fields — only visible to owner + system_admin. Other users
+          consume platform credits and don't need to see/manage keys. */}
+      {canUseBYOK ? (
+        <>
+          <IntegrationSection title="OpenAI" color="#10A37F" icon="🤖"
+            status={statuses.openai} onTest={() => testIntegration('openai')} isTesting={testing.openai} testLabel="Test Key">
+            <div className="text-xs text-amber-400/80 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2 mb-2">
+              BYOK (Bring Your Own Key) is restricted to Owner and System Admin. Any key you set here BYPASSES Bmapz credit deduction — usage is billed directly to your OpenAI account.
+            </div>
+            <SecretInput label="OpenAI API Key" value={keys.openai_api_key} onChange={(v) => set('openai_api_key', v)}
+              placeholder="sk-..." hint="Get yours at platform.openai.com/api-keys" />
+            <div>
+              <Label className="text-gray-400 text-xs">Default Model</Label>
+              <select value={keys.openai_model || 'gpt-4o-mini'} onChange={(e) => set('openai_model', e.target.value)}
+                className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm">
+                {OPENAI_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+              <p className="text-gray-600 text-xs mt-1">Used when OpenAI is the active provider. If no key is set, platform credits are used.</p>
+            </div>
+          </IntegrationSection>
 
-      <IntegrationSection title="Anthropic Claude" color="#7C3AED" icon="🟣"
-        status={statuses.anthropic} onTest={() => testIntegration('anthropic')} isTesting={testing.anthropic} testLabel="Test Key">
-        <SecretInput label="Anthropic API Key" value={keys.anthropic_api_key} onChange={(v) => set('anthropic_api_key', v)}
-          placeholder="sk-ant-..." hint="Get yours at console.anthropic.com/settings/keys" />
-        <div>
-          <Label className="text-gray-400 text-xs">Default Model</Label>
-          <select value={keys.anthropic_model || 'claude-sonnet-4-5'} onChange={(e) => set('anthropic_model', e.target.value)}
-            className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm">
-            {ANTHROPIC_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-          <p className="text-gray-600 text-xs mt-1">Used when Anthropic is the active provider.</p>
+          <IntegrationSection title="Anthropic Claude" color="#7C3AED" icon="🟣"
+            status={statuses.anthropic} onTest={() => testIntegration('anthropic')} isTesting={testing.anthropic} testLabel="Test Key">
+            <div className="text-xs text-amber-400/80 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2 mb-2">
+              BYOK key — usage is billed directly to your Anthropic workspace. No Bmapz credit deduction.
+            </div>
+            <SecretInput label="Anthropic API Key" value={keys.anthropic_api_key} onChange={(v) => set('anthropic_api_key', v)}
+              placeholder="sk-ant-..." hint="Get yours at console.anthropic.com/settings/keys" />
+            <div>
+              <Label className="text-gray-400 text-xs">Default Model</Label>
+              <select value={keys.anthropic_model || 'claude-sonnet-4-5'} onChange={(e) => set('anthropic_model', e.target.value)}
+                className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm">
+                {ANTHROPIC_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+              <p className="text-gray-600 text-xs mt-1">Used when Anthropic is the active provider.</p>
+            </div>
+          </IntegrationSection>
+        </>
+      ) : (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+          <h4 className="text-white font-medium mb-1.5">🔒 AI Keys managed by Bmapz</h4>
+          <p className="text-gray-400 text-sm">
+            AI requests on this account use platform-provided OpenAI and Anthropic keys, billed in Bmapz credits per your subscription plan.
+            See your usage in the <span className="text-[#38b6ff]">Usage</span> tab.
+          </p>
+          <p className="text-gray-600 text-xs mt-2">
+            BYOK (Bring Your Own Key) is restricted to Owners and System Admins.
+          </p>
         </div>
-      </IntegrationSection>
+      )}
 
       <div className="pt-2 pb-0">
         <h3 className="text-white font-semibold text-base flex items-center gap-2">🎨 Image Generation</h3>

@@ -11,8 +11,9 @@ import { toast } from 'sonner';
 import {
   Shield, Users, CreditCard, Building2, Zap, Search,
   Edit3, Check, X, Plus, Trash2, AlertTriangle, Crown, UserPlus, Settings,
-  History, Lock
+  History, Lock, TrendingUp
 } from 'lucide-react';
+import AdminUsageTab from '@/components/admin/AdminUsageTab';
 import { PLANS, formatBRL } from '@/lib/plans';
 // AdminPanel uses /api/admin/* endpoints directly for cross-company access
 import { useAuth } from '@/lib/AuthContext';
@@ -690,6 +691,9 @@ export default function AdminPanel() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="usage" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
+            <TrendingUp size={14} className="mr-1.5" /> AI Usage
+          </TabsTrigger>
           <TabsTrigger value="changelog" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
             <History size={14} className="mr-1.5" /> Change Log
           </TabsTrigger>
@@ -986,6 +990,11 @@ export default function AdminPanel() {
               })}
             </div>
           )}
+        </TabsContent>
+
+        {/* ── AI USAGE ── */}
+        <TabsContent value="usage" className="mt-4">
+          <AdminUsageTab />
         </TabsContent>
 
         {/* ── CHANGE LOG ── */}

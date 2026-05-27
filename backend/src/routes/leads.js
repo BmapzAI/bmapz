@@ -222,9 +222,13 @@ Return JSON: { "score": 0-100, "fit": "high|medium|low", "reasoning": "...", "ne
     // Use unified AI helper — supports bidirectional fallback between OpenAI and Anthropic
     const aiResult = await runAIChat({
       companyId: req.companyId,
+      userId: req.dbUser?.id,
+      userRole: req.dbUser?.role,
+      userEmail: req.dbUser?.email,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.3,
+      action: 'lead_scoring',
     });
 
     const result = JSON.parse(aiResult.content);

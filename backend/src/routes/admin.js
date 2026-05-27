@@ -284,4 +284,121 @@ router.get('/data-deletion-requests', async (req, res) => {
   }
 });
 
+// GET /api/admin/usage-stats — system-wide AI credit consumption breakdown
+// Returns: totals + per-company + per-user + per-model
+router.get('/usage-stats', async (req, res) => {
+  try {
+    const { days = 30 } = req.query;
+    const since = new Date(Date.now() - Number(days) * 86400_000).toISOString();
+
+    // All usage transactions in window
+    const { data: txs } = await supabaseAdmin
+      .from('credit_transactions')
+      .select('*')
+      .eq('type', 'usage')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false });
+
+    const transactions = txs || [];
+
+    // Aggregate
+    const byCompany = {};
+    const byUser = {};
+    const byModel = {};
+    const byFeature = {};
+    let totalCredits = 0;
+    let totalTokens = 0;
+
+    for (const tx of transactions) {
+      const credits = Math.abs(tx.credits_delta || 0);
+      const tokens = tx.metadata?.tokens || 0;
+      totalCredits += credits;
+      totalTokens += tokens;
+
+      byCompany[tx.company_id] = (byCompany[tx.company_id] || 0) + credits;
+      const ue = tx.metadata?.user_email || 'unknown';
+      byUser[ue] = (byUser[ue] || 0) + credits;
+      const m = tx.metadata?.model || 'unknown';
+      byModel[m] = (byModel[m] || 0) + credits;
+      const f = tx.feature || 'unknown';
+      byFeature[f] = (byFeature[f] || 0) + credits;
+    }
+
+    // Join company names for the byCompany breakdown
+    const companyIds = Object.keys(byCompany);
+    const { data: companies } = companyIds.length > 0
+      ? await supabaseAdmin.from('companies').select('id, name').in('id', companyIds)
+      : { data: [] };
+    const nameById = Object.fromEntries((companies || []).map(c => [c.id, c.name]));
+
+    const byCompanyList = Object.entries(byCompany)
+      .map(([id, credits]) => ({ company_id: id, company_name: nameById[id] || '(deleted)', credits }))
+      .sort((a, b) => b.credits - a.credits);
+    const byUserList = Object.entries(byUser).map(([email, credits]) => ({ user_email: email, credits })).sort((a, b) => b.credits - a.credits);
+    const byModelList = Object.entries(byModel).map(([model, credits]) => ({ model, credits })).sort((a, b) => b.credits - a.credits);
+    const byFeatureList = Object.entries(byFeature).map(([feature, credits]) => ({ feature, credits })).sort((a, b) => b.credits - a.credits);
+
+    res.json({
+      window_days: Number(days),
+      total_credits_consumed: totalCredits,
+      total_tokens: totalTokens,
+      total_transactions: transactions.length,
+      by_company: byCompanyList,
+      by_user: byUserList,
+      by_model: byModelList,
+      by_feature: byFeatureList,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/usage-stats/company/:companyId — detail for one company
+router.get('/usage-stats/company/:companyId', async (req, res) => {
+  try {
+    const { days = 30 } = req.query;
+    const since = new Date(Date.now() - Number(days) * 86400_000).toISOString();
+
+    const { data: txs } = await supabaseAdmin
+      .from('credit_transactions')
+      .select('*')
+      .eq('company_id', req.params.companyId)
+      .eq('type', 'usage')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false });
+
+    const transactions = txs || [];
+    const byUser = {};
+    const byModel = {};
+    const byFeature = {};
+    let totalCredits = 0;
+    let totalTokens = 0;
+    for (const tx of transactions) {
+      const credits = Math.abs(tx.credits_delta || 0);
+      totalCredits += credits;
+      totalTokens += tx.metadata?.tokens || 0;
+      const ue = tx.metadata?.user_email || 'unknown';
+      byUser[ue] = (byUser[ue] || 0) + credits;
+      const m = tx.metadata?.model || 'unknown';
+      byModel[m] = (byModel[m] || 0) + credits;
+      const f = tx.feature || 'unknown';
+      byFeature[f] = (byFeature[f] || 0) + credits;
+    }
+
+    res.json({
+      company_id: req.params.companyId,
+      window_days: Number(days),
+      total_credits_consumed: totalCredits,
+      total_tokens: totalTokens,
+      total_transactions: transactions.length,
+      transactions,
+      by_user: Object.entries(byUser).map(([email, credits]) => ({ user_email: email, credits })).sort((a, b) => b.credits - a.credits),
+      by_model: Object.entries(byModel).map(([model, credits]) => ({ model, credits })).sort((a, b) => b.credits - a.credits),
+      by_feature: Object.entries(byFeature).map(([feature, credits]) => ({ feature, credits })).sort((a, b) => b.credits - a.credits),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
