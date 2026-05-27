@@ -94,6 +94,7 @@ async function runOpenAIChat({ companyId, settings, messages, model, temperature
   } catch (err) {
     if (isOpenAIQuotaOrRateLimitError(err)) {
       err.publicMessage = 'OpenAI is not available right now — your OpenAI account may have exceeded its usage quota or billing is not active. Check your OpenAI plan at platform.openai.com, or add an Anthropic key in Settings > API Keys and switch to Anthropic as your AI provider.';
+      err.code = 'QUOTA_EXCEEDED';
     }
     throw err;
   }
