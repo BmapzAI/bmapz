@@ -374,3 +374,87 @@ Or more simply: try sending a message in AI Chat. The flow now:
 - Workflow AI builder
 - Brand scan AI insights
 - Help chat assistant
+
+### 2026-05-27 - Claude (Session 6: AI credit system + margin protection)
+
+**Built the full AI credit economy from spec.** Implements Derek's 8 requirements:
+BYOK restricted to owner/system_admin, all others use platform keys; credit
+deduction proportional to model cost; model tier gating per plan; usage
+tracking visible to users and admins; 15k credit add-on packs; no free tier
+beyond 14-day trial; prompt caching for margin protection.
+
+**New files:**
+- `backend/src/lib/aiCredits.js` — canonical credit math, model tiers, plan
+  rules, BYOK gate. Single source of truth for `runAIChat` to consult.
+- `frontend-src/components/settings/UsageTab.jsx` — user-facing AI usage
+  breakdown (total/used/remaining + by feature/model/user, recent activity)
+- `frontend-src/components/admin/AdminUsageTab.jsx` — system-admin AI Usage
+  console tab with time-window filter, company drill-down
+
+**Rewritten:**
+- `backend/src/routes/ai.js::runAIChat` — full BYOK restriction, pre-flight
+  credit check, model resolution by plan + action, prompt caching for
+  Anthropic (≥1KB system prompts cached → 90% input cost reduction),
+  bidirectional 4-tier provider fallback, post-success credit deduction
+  with full audit trail in `credit_transactions`.
+- `backend/src/routes/ai.js` exposes `GET /api/ai/usage`
+- `backend/src/routes/admin.js` exposes `GET /api/admin/usage-stats`
+  and `GET /api/admin/usage-stats/company/:id`
+- `backend/src/routes/leads.js::POST /:id/score` passes user context and
+  `action: 'lead_scoring'` to `runAIChat`
+
+**Updated:**
+- `frontend-src/lib/plans.js`: all four plans now have `allowed_model_tiers`
+  whitelist. Add-on credit packs standardized to 15,000 credits (per Derek's
+  decision). New helpers `MODEL_TIER`, `MODEL_TIER_LABELS`,
+  `isModelAllowedForPlan`.
+- `frontend-src/components/settings/ApiKeysTab.jsx`: BYOK inputs gated by
+  `user.role ∈ {owner, system_admin}`. Non-admins see a "Keys managed by
+  Bmapz" notice with link to Usage tab. Admin BYOK shows a warning that
+  it bypasses Bmapz credit deduction.
+- `frontend-src/pages/Settings.jsx`: new "Usage" tab; passes dbUser to
+  ApiKeysTab.
+- `frontend-src/pages/AdminPanel.jsx`: new "AI Usage" tab routed to
+  `AdminUsageTab`.
+
+**Credit math (in `aiCredits.js`):**
+- 1 Bmapz credit ≈ 12 tokens of gpt-4o-mini (baseline)
+- `gpt-4o-mini`: 1× | `claude-haiku`: 6× | `gpt-4o`: 17× |
+  `claude-sonnet`: 23× | `claude-opus`: 117×
+- Heavy actions (brand_scan / marketing_plan / sales_marketing_plan /
+  campaign_plan) ALWAYS use the cheapest model, ignoring user pick —
+  prevents margin blowouts on 30k–200k-token one-shots.
+
+**Plan model access:**
+- Trial / Starter → `smart` tier only (gpt-4o-mini, haiku)
+- Growth → `smart` + `smarter` (gpt-4o, sonnet)
+- Scale / Enterprise → all tiers (incl. opus)
+
+**Plan margins after this work (worst-case 100% credit usage):**
+- Starter R$ 69.90 → net $12.83 USD, max cost $0.03 (smart-only) → 99.8% margin
+- Growth R$ 298 → net $54.95, max cost $3.36 (sonnet ceiling) → 94% margin
+- Scale R$ 765 → net $141.17, max cost $13.02 → 91% margin
+- Enterprise R$ 2,350 → net $433.90, max cost $34.02 → 92% margin
+
+**Action items for Derek:**
+1. Add `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` env vars in Railway.
+2. Fund those accounts (~$40 + $30 to start, with $50/$30 monthly caps in
+   their respective dashboards).
+3. Optional: set `STABILITY_API_KEY` for Stability AI image generation.
+
+**Verification:**
+- `npm run build`: 3554 modules, passes
+- `npm run lint`: 0 errors
+- `node --check` on all backend files: OK
+
+**What this means for users:**
+- Regular users + company_admins: cannot enter their own AI key. All AI
+  consumption charges Bmapz credits. They see real-time usage in Settings
+  → Usage tab.
+- Owners + System Admins: can optionally add their own keys (BYOK).
+  When BYOK is active, NO credits are deducted (their account, their cost).
+- Starter users cannot select smarter/smartest models. The dropdown still
+  shows them today but the backend silently downgrades to gpt-4o-mini.
+  (Optional follow-up: filter the dropdown by plan in ApiKeysTab.)
+- Brand scans + marketing plans ALWAYS run on gpt-4o-mini regardless of
+  user choice — protects margins on expensive one-shots.
