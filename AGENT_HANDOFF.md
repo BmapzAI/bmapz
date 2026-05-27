@@ -290,4 +290,39 @@ Continued smoke-test by doing a full `res.data` sweep across all frontend files 
 3. Visit Integrations page — confirm integration statuses load
 4. Visit Billing page — confirm it loads without errors
 5. Visit Ads page → Campaigns tab — confirm no ReferenceError
-6. Meta OAuth: click Connect in Integrations — should open Meta login popup
+6. Meta OAuth: click Connect in Integrations — should now show manual token fallback fields (until META_APP_ID + META_APP_SECRET env vars set in Railway)
+
+### 2026-05-27 - Claude (Session 4: Production smoke-test fixes)
+
+Observed from Derek's screenshots:
+1. ❌ Meta Ads + Google Ads OAuth → "Connection failed: Meta App ID not configured"
+2. ❌ AI Chat → "429 You exceeded your current quota" raw error
+3. ❌ AI Chat → false "OpenAI API Key Required" banner even with key saved
+
+**Commits pushed (4 total):**
+
+1. `21599ce` — OAuth fallback UX + OpenAI 429 sanitization:
+   - ConnectIntegrationModal: when OAuth initiate-url returns 400 "not configured", switches to `oauthFallbackMode` — shows manual token entry fields instead of dead error toast
+   - Added `CREDENTIAL_FIELDS` entries for meta_ads, instagram, facebook, google_ads, gmail, linkedin_ads, linkedin_social, tiktok_ads, tiktok_social (fallback manual token entry)
+   - Added `STATUS_KEY_MAP` entries for all OAuth types
+   - Added yellow info banner in fallback mode explaining the situation
+   - companies.js API_KEY_FIELDS: added meta_ad_account_id, meta_page_id, instagram_account_id, google_developer_token
+   - ai.js: added `isOpenAIQuotaOrRateLimitError()` + friendly `publicMessage` for OpenAI 429s
+
+2. `eba266e` — Fix false "AI API Key Required" banner:
+   - Root cause: apiClient.js dropped backend error `code` field; AIChat checked `e.message.includes('api key')` which matched the quota error's friendly message
+   - apiClient.js: preserve backend `code` and `status` on thrown errors
+   - AIChat.jsx: check `e.code === 'MISSING_API_KEY'` (exact) instead of substring match
+   - Banner text: "OpenAI API Key Required" → "AI API Key Required"
+
+3. `894d75e` — Set `err.code = 'QUOTA_EXCEEDED'` for OpenAI 429 errors so frontend can distinguish quota vs missing key
+
+**Production deployment action needed:**
+To enable Meta and Google OAuth (instead of falling back to manual tokens), add these to Railway environment variables:
+- `META_APP_ID` — Meta for Developers app ID
+- `META_APP_SECRET` — Meta for Developers app secret
+- `GOOGLE_CLIENT_ID` — Google Cloud Console OAuth 2.0 client ID
+- `GOOGLE_CLIENT_SECRET` — Google Cloud Console OAuth 2.0 client secret
+- `GOOGLE_ADS_DEVELOPER_TOKEN` — Google Ads API developer token (for Google Ads campaigns)
+
+**Settings → API Keys smoke test result:** ✅ Keys persist on reload (both OpenAI + Anthropic show "Connected" with dots), provider toggle works
