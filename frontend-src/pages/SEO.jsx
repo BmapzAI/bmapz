@@ -207,8 +207,8 @@ export default function SEO() {
       // Try to fetch Google Search Console data if connected
       try {
         const searchConsoleRes = await api.get('/api/seo/search-console', { url: normalizedUrl });
-        if (searchConsoleRes.data && !searchConsoleRes.data.error) {
-          analysisResult.searchConsoleData = searchConsoleRes.data;
+        if (searchConsoleRes && !searchConsoleRes.error) {
+          analysisResult.searchConsoleData = searchConsoleRes;
         }
       } catch (e) {
         // Silently fail if Google Search Console is not connected
