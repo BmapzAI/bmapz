@@ -326,3 +326,51 @@ To enable Meta and Google OAuth (instead of falling back to manual tokens), add 
 - `GOOGLE_ADS_DEVELOPER_TOKEN` — Google Ads API developer token (for Google Ads campaigns)
 
 **Settings → API Keys smoke test result:** ✅ Keys persist on reload (both OpenAI + Anthropic show "Connected" with dots), provider toggle works
+
+### 2026-05-27 - Claude (Session 5: AI fallback root-cause fix)
+
+**Critical bug discovered:** Even though my Session 4 detection of OpenAI quota errors set a friendly publicMessage, the fallback to Anthropic was ONE-WAY ONLY (only fired when Anthropic was primary and Anthropic failed). When OpenAI was the active provider and returned 429, the system never tried Anthropic — it just threw the error.
+
+This is why the user kept seeing "OpenAI is not available... quota or billing" even though Anthropic key was saved and working: the system never attempted Anthropic.
+
+**Commits pushed (4 total):**
+
+1. `824796e` — Complete AI route rewrite with bidirectional fallback:
+   - `categorizeProviderError()` — distinguishes AUTH (401) / QUOTA (insufficient_quota, credit balance) / INVALID_MODEL (404, model_not_found) / RATE_LIMIT (429 transient) / PROVIDER_DOWN (5xx)
+   - `runAIChat()` rewritten as a provider loop that tries primary first, then secondary; only fails when BOTH exhausted
+   - New `callOpenAI()` and `callAnthropic()` with auto-retry on INVALID_MODEL using known-good fallback models
+   - New `GET /api/ai/diagnose` — live-tests both providers with a 'ping' and returns full status breakdown per provider (key source, model resolved, ok/fail with error kind). Use this in production to debug what's actually failing for any company.
+   - Status codes mapped: AUTH/QUOTA → 402, RATE_LIMIT → 429, PROVIDER_DOWN → 503
+
+2. `2e9997c` — Surface real error messages in all AI flows (SocialMedia/Blog/Ads generation)
+
+3. `c5d5761` — Safer model handling: pass user's selected model AS-IS to Anthropic (no risky aliases that could break newer model names), only auto-retry with `claude-3-5-sonnet-20241022` if invalid
+
+4. `cf89a21` — Anthropic JSON-mode support: when frontend requests `response_format: { type: 'json_object' }` and we route to Anthropic, inject 'JSON only' instruction into the system prompt (Anthropic doesn't have OpenAI's structured response_format)
+
+5. `f6211f5` — Lead scoring uses `runAIChat()`: previously `POST /api/leads/:id/score` called OpenAI directly with hardcoded gpt-4o-mini and no fallback. Now uses the unified helper with bidirectional fallback.
+
+**Verification path for Derek:**
+
+After Railway deploy completes (1-2 min), call this in browser console while logged in:
+```js
+fetch('/api/ai/diagnose', { headers: { Authorization: 'Bearer ' + (await window.supabaseClient?.auth?.getSession()).data.session.access_token } }).then(r => r.json()).then(console.log)
+```
+
+Or more simply: try sending a message in AI Chat. The flow now:
+1. Active provider (OpenAI) is tried → if 429/auth fails, **automatically falls back to Anthropic**
+2. Anthropic tries the user's selected model → if invalid, **automatically retries with claude-3-5-sonnet-20241022**
+3. Only if BOTH providers fail does the user see an error
+
+**All AI features that should now work via fallback:**
+- AI Chat
+- Social Media post generation
+- Social Media AI optimization
+- Blog post generation
+- Ads strategy + ad copies generation
+- SEO analysis
+- Lead AI scoring (Sales page)
+- Inbox AI reply suggestions
+- Workflow AI builder
+- Brand scan AI insights
+- Help chat assistant
