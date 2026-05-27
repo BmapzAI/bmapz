@@ -60,10 +60,10 @@ export default function AdsRealDataPanel({ company, onDataLoaded }) {
     setCampaignData(null);
     try {
       const res = await api.get('/api/ads/campaigns', { platform: platformKey });
-      if (res.data.error) throw new Error(res.data.error);
+      if (res.error) throw new Error(res.error);
       // Ensure data belongs to the requested platform
-      setCampaignData({ ...res.data, platform: platformKey });
-      onDataLoaded?.({ ...res.data, platform: platformKey });
+      setCampaignData({ ...res, platform: platformKey });
+      onDataLoaded?.({ ...res, platform: platformKey });
       toast.success(`${PLATFORMS.find(p => p.key === platformKey)?.label} data loaded`);
     } catch (e) {
       setError(e.message);

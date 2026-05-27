@@ -90,7 +90,7 @@ export default function Billing() {
     setCheckoutLoading(key);
     try {
       const res = await api.post('/api/billing/checkout', { plan: type, ...opts });
-      const url = res.data?.url;
+      const url = res?.url;
       if (!url) throw new Error('Could not create checkout session');
       window.location.href = url;
     } catch (e) {

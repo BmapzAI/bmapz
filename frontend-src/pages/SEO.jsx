@@ -200,7 +200,7 @@ export default function SEO() {
     try {
       // Fetch SEO analysis
       const res = await api.post('/api/ai/chat', { messages: [{ role: 'user', content: `Analyze SEO for URL: ${normalizedUrl}. Type: ${scanType}. Return a JSON with score, issues, and recommendations.` }], response_format: { type: 'json_object' } }).then(r => JSON.parse(r.content));
-      const response = res.data;
+      const response = res;
       if (response.error) throw new Error(response.error);
       const analysisResult = { ...response, url: normalizedUrl, scanType, analyzed_at: new Date().toISOString() };
 

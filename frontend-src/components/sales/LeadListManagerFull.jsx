@@ -76,7 +76,7 @@ export default function LeadListManagerFull({ companyId, leads = [] }) {
     try {
       const res = await Promise.resolve({ success: true });
       queryClient.invalidateQueries({ queryKey: ['leadLists'] });
-      toast.success(`Synced ${res.data?.synced ?? 0} dynamic list(s)`);
+      toast.success(`Synced ${res?.synced ?? 0} dynamic list(s)`);
     } catch (e) {
       toast.error('Sync failed');
     } finally {

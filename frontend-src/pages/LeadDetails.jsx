@@ -148,7 +148,7 @@ export default function LeadDetails() {
     try {
       const res = await api.post('/api/leads/' + leadId + '/score');
       queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
-      toast.success(`ICP Score: ${res.data.score}/100`);
+      toast.success(`ICP Score: ${res.score}/100`);
     } catch (e) {
       toast.error('Scoring failed: ' + (e?.response?.data?.error || e.message));
     } finally {

@@ -85,7 +85,7 @@ export default function AIChat() {
   const loadConversations = async () => {
     try {
       const res = await api.get('/api/ai/outputs', { type: 'conversation' });
-      const convos = (res.data || []).map(r => ({
+      const convos = (Array.isArray(res) ? res : []).map(r => ({
         id: r.id,
         messages: r.content?.messages || [],
         metadata: r.metadata || { name: r.title || 'Conversation', pinned: false },

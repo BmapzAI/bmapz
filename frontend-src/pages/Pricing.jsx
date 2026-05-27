@@ -120,8 +120,8 @@ export default function Pricing() {
         plan_id: planId,
         billing_cycle: billing,
       });
-      const url = res.data?.url;
-      if (!url) throw new Error(res.data?.error || 'Could not create checkout');
+      const url = res?.url;
+      if (!url) throw new Error(res?.error || 'Could not create checkout');
       window.location.href = url;
     } catch (e) {
       toast.error('Checkout failed: ' + e.message);

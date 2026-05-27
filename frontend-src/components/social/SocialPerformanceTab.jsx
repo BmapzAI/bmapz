@@ -42,13 +42,13 @@ export default function SocialPerformanceTab({ company, selectedPlatforms, setSe
         platform,
         company_id: company?.id,
       });
-      if (res.data?.success) {
-        await SocialPost.update(post.id, { performance: res.data.metrics });
+      if (res?.success) {
+        await SocialPost.update(post.id, { performance: res.metrics });
         toast.success('Metrics synced!');
         // Trigger parent re-fetch via window event
         window.dispatchEvent(new Event('refetchSocialPosts'));
       } else {
-        toast.error(res.data?.error || 'Metrics fetch failed');
+        toast.error(res?.error || 'Metrics fetch failed');
       }
     } catch { toast.error('Failed to refresh metrics'); }
     finally { setRefreshingId(null); }
@@ -65,10 +65,10 @@ export default function SocialPerformanceTab({ company, selectedPlatforms, setSe
         daily_budget: 10,
         duration_days: 7,
       });
-      if (res.data?.success) {
+      if (res?.success) {
         toast.success(`Boost campaign created (PAUSED). Activate in Meta Ads Manager.`);
       } else {
-        toast.error(res.data?.error || 'Boost failed');
+        toast.error(res?.error || 'Boost failed');
       }
     } catch { toast.error('Boost failed'); }
     finally { setBoostingId(null); }

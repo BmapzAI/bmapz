@@ -34,8 +34,8 @@ export default function AdsPublishModal({ isOpen, onClose, onConfirm, platform, 
         isUpdate,
       });
 
-      if (!res.data.success && res.data.error) {
-        throw new Error(res.data.error);
+      if (!res.success && res.error) {
+        throw new Error(res.error);
       }
 
       setConfirmed(true);
