@@ -28,6 +28,7 @@ import nodeTemplatesRoutes from './routes/nodeTemplates.js';
 import dataDeletionRoutes from './routes/dataDeletion.js';
 import stripeWebhookRoutes from './routes/stripeWebhook.js';
 import whatsappWebhookRoutes from './routes/whatsappWebhook.js';
+import uploadsRoutes from './routes/uploads.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -101,6 +102,7 @@ app.use('/api/dashboard-configs', dashboardConfigsRoutes);
 app.use('/api/node-templates', nodeTemplatesRoutes);
 app.use('/api/data-deletion', dataDeletionRoutes);
 app.use('/api/whatsapp', whatsappWebhookRoutes);
+app.use('/api/uploads', uploadsRoutes);
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {

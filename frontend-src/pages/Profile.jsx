@@ -84,12 +84,12 @@ export default function Profile() {
 
     setIsUploadingPhoto(true);
     try {
-      const { url: file_url } = await UploadFile({ file });
+      const { url: file_url } = await UploadFile({ file, folder: 'profile-pictures' });
       setFormData(prev => ({ ...prev, profile_picture: file_url }));
       await api.patch('/api/users/me', { profile_picture: file_url });
       toast.success('Profile picture updated');
     } catch (error) {
-      toast.error('Failed to upload image');
+      toast.error('Failed to upload image: ' + (error?.message || 'unknown error'));
     } finally {
       setIsUploadingPhoto(false);
     }

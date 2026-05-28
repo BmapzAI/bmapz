@@ -66,14 +66,38 @@ export const SendSMS = async ({ to, body }) => {
 
 // ─── File upload ──────────────────────────────────────────────────────────────
 
-export const UploadFile = async ({ file, fileName }) => {
-  // Upload directly to Supabase Storage
+export const UploadFile = async ({ file, fileName, folder }) => {
+  // Upload via backend endpoint (uses service-role key, auto-creates bucket,
+  // bypasses Supabase Storage RLS issues that broke direct browser uploads).
   const { supabase } = await import('@/lib/supabase');
-  const path = `uploads/${Date.now()}-${fileName || file.name}`;
-  const { data, error } = await supabase.storage.from('assets').upload(path, file);
-  if (error) throw new Error(error.message);
-  const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(path);
-  return { url: publicUrl, path };
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Not authenticated. Please sign in again.');
+
+  const formData = new FormData();
+  formData.append('file', file, fileName || file.name);
+  if (folder) formData.append('folder', folder);
+
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  const response = await fetch(`${API_URL}/api/uploads`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData, // browser sets multipart/form-data with boundary
+  });
+
+  if (!response.ok) {
+    let msg = `Upload failed (${response.status})`;
+    try {
+      const body = await response.json();
+      msg = body.error || msg;
+    } catch (_e) { /* keep default */ }
+    const err = new Error(msg);
+    err.status = response.status;
+    throw err;
+  }
+
+  const result = await response.json();
+  return { url: result.url, path: result.path };
 };
 
 // ─── Extract data from uploaded file ─────────────────────────────────────────
