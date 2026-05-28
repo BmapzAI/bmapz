@@ -49,6 +49,41 @@ const STATIC_NAV_SECTIONS = [
   },
 ];
 
+/**
+ * User avatar: shows profile_picture if available, otherwise initials on a
+ * gradient circle. Used in the sidebar footer.
+ */
+function UserAvatar({ user, size = 36 }) {
+  const initials = (user?.full_name || user?.email || '?')
+    .split(/\s+/)
+    .map(s => s[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+  const dim = { width: size, height: size, minWidth: size };
+
+  if (user?.profile_picture) {
+    return (
+      <img
+        src={user.profile_picture}
+        alt={user.full_name || user.email}
+        className="rounded-full object-cover border border-white/10 flex-shrink-0"
+        style={dim}
+        onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+      />
+    );
+  }
+  return (
+    <div
+      className="rounded-full bg-gradient-to-br from-[#3572b9] to-[#cb6ce6] flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+      style={dim}
+    >
+      {initials}
+    </div>
+  );
+}
+
 function SectionLabel({ label, collapsed }) {
   if (!label || collapsed) return null;
   return (
@@ -95,15 +130,32 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         collapsed ? 'w-[72px]' : 'w-[240px]'
       )}
     >
-      {/* Logo - always Bmapz AI */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10 flex-shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#38b6ff] to-[#cb6ce6] flex-shrink-0" />
+      {/* Logo - always Bmapz AI brand. Clicking navigates home. */}
+      <Link
+        to="/"
+        className="flex items-center gap-3 px-4 py-5 border-b border-white/10 flex-shrink-0 hover:bg-white/5 transition-colors"
+        title="Home"
+      >
+        <img
+          src="/bmapz-logo.png"
+          alt="Bmapz AI"
+          className="w-8 h-8 rounded-lg object-contain flex-shrink-0"
+          onError={(e) => {
+            // Fallback gradient square if the logo file isn't deployed yet
+            e.target.style.display = 'none';
+            e.target.nextSibling.style.display = 'block';
+          }}
+        />
+        <div
+          className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#38b6ff] to-[#cb6ce6] flex-shrink-0"
+          style={{ display: 'none' }}
+        />
         {!collapsed && (
           <span className="font-bold text-white text-lg tracking-tight truncate">
             Bmapz AI
           </span>
         )}
-      </div>
+      </Link>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
@@ -138,13 +190,22 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         )}
       </nav>
 
-      {/* User + Sign Out */}
+      {/* User profile + Sign Out */}
       <div className="border-t border-white/10 px-2 py-3 flex-shrink-0">
-        {!collapsed && dbUser && (
-          <div className="px-3 py-2 mb-1">
-            <p className="text-white text-sm font-medium truncate">{dbUser.full_name || dbUser.email}</p>
-            <p className="text-white/40 text-xs truncate">{dbUser.email}</p>
-          </div>
+        {dbUser && (
+          collapsed ? (
+            <Link to="/Profile" className="flex justify-center mb-2 hover:opacity-80 transition-opacity" title={dbUser.full_name || dbUser.email}>
+              <UserAvatar user={dbUser} size={32} />
+            </Link>
+          ) : (
+            <Link to="/Profile" className="flex items-center gap-3 px-2 py-2 mb-1 rounded-lg hover:bg-white/5 transition-colors">
+              <UserAvatar user={dbUser} size={36} />
+              <div className="min-w-0 flex-1">
+                <p className="text-white text-sm font-medium truncate">{dbUser.full_name || dbUser.email}</p>
+                <p className="text-white/40 text-xs truncate">{dbUser.email}</p>
+              </div>
+            </Link>
+          )
         )}
         <button
           onClick={() => logout(true)}

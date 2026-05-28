@@ -6,6 +6,7 @@ import MobileBottomNav from '@/components/layout/MobileBottomNav';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import { useAuth } from '@/lib/AuthContext';
 import { Toaster } from 'sonner';
+import { Link } from 'react-router-dom';
 
 function LayoutContent({ children }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -67,12 +68,23 @@ function LayoutContent({ children }) {
       <div data-theme="dark">
         <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
 
-        {/* Mobile top header */}
+        {/* Mobile top header — logo + name navigate home */}
         <header className="fixed top-0 left-0 right-0 z-30 md:hidden h-14 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/10 flex items-center px-4 gap-3">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#38b6ff] to-[#cb6ce6] flex-shrink-0" />
-          <span className="font-bold text-white text-base tracking-tight truncate">
-            {company?.personal_agent_name || 'Bmapz AI'}
-          </span>
+          <Link to="/" className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition-opacity">
+            <img
+              src="/bmapz-logo.png"
+              alt="Bmapz AI"
+              className="w-7 h-7 rounded-lg object-contain flex-shrink-0"
+              onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
+            />
+            <div
+              className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#38b6ff] to-[#cb6ce6] flex-shrink-0"
+              style={{ display: 'none' }}
+            />
+            <span className="font-bold text-white text-base tracking-tight truncate">
+              {company?.personal_agent_name || 'Bmapz AI'}
+            </span>
+          </Link>
         </header>
 
         <main className={`transition-all duration-300 ml-0 min-h-screen ${collapsed ? 'md:ml-[72px]' : 'md:ml-[240px]'}`}>
