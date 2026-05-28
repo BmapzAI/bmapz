@@ -576,16 +576,19 @@ router.get('/usage', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/ai/transcribe
+// POST /api/ai/transcribe — Whisper STT via OpenAI
+// Uses OpenAI SDK's toFile() helper which handles Node.js Buffer → multipart
+// upload correctly across Node 18/20/22. The previous direct `new File()`
+// approach failed in some Node runtimes with "File is not defined".
 router.post('/transcribe', requireAuth, async (req, res) => {
   try {
     const { audio_base64, filename = 'audio.webm', language } = req.body;
     if (!audio_base64) return res.status(400).json({ error: 'audio_base64 is required' });
 
     const client = await getOpenAIClient(req.companyId);
+    const { toFile } = await import('openai');
     const buffer = Buffer.from(audio_base64, 'base64');
-    const blob = new Blob([buffer], { type: 'audio/webm' });
-    const file = new File([blob], filename, { type: 'audio/webm' });
+    const file = await toFile(buffer, filename, { type: 'audio/webm' });
 
     const params = { file, model: 'whisper-1' };
     if (language) params.language = language;

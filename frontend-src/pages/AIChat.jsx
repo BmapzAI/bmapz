@@ -372,7 +372,11 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)]">
+    // Layout wraps content in `p-4 sm:p-6 pt-16 md:pt-4 pb-28 md:pb-6`.
+    // Desktop: header invisible (0) + pt-4 (16px) + pb-6 (24px) = ~40px overhead → vh - 2.5rem
+    // Mobile:  header h-14 (56px) + pt-16 (64px) + pb-28 (112px) + bottom nav = ~14rem → vh - 14rem
+    // 100dvh handles mobile browser URL-bar collapse correctly.
+    <div className="flex flex-col h-[calc(100dvh-14rem)] md:h-[calc(100dvh-2.5rem)]">
       {noApiKey && (
         <div className="flex items-center justify-between gap-3 px-4 py-3 bg-amber-500/15 border border-amber-500/30 rounded-xl mb-3 flex-shrink-0">
           <div className="flex items-center gap-3">
