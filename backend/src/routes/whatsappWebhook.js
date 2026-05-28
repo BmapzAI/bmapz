@@ -1,0 +1,183 @@
+/**
+ * WhatsApp Business API webhook for the Bmapz AI Agent.
+ *
+ * Flow:
+ *   1. User clicks "WhatsApp Agent" on the Bmapz homepage → opens wa.me link
+ *      with personalized intro message that includes their email.
+ *   2. They send the message to Bmapz's WhatsApp Business number.
+ *   3. Meta forwards the message to this webhook.
+ *   4. We look up the user by email (from intro message OR a phone-mapping
+ *      table), pull their company context, run runAIChat with the user's
+ *      role and credit budget, and reply via the WhatsApp Send Messages API.
+ *
+ * Setup required at Meta Business:
+ *   - WhatsApp Business account + phone number
+ *   - System User with `whatsapp_business_messaging` permission
+ *   - Webhook URL: https://<your-railway-host>/api/whatsapp/webhook
+ *   - Verify Token: matches WHATSAPP_VERIFY_TOKEN env var
+ *   - Required env vars:
+ *       WHATSAPP_VERIFY_TOKEN       (any random string you set in Meta)
+ *       WHATSAPP_ACCESS_TOKEN       (long-lived from Meta Business)
+ *       WHATSAPP_PHONE_NUMBER_ID    (from WhatsApp → API Setup)
+ */
+import { Router } from 'express';
+import { supabaseAdmin } from '../lib/supabase.js';
+import { runAIChat } from './ai.js';
+
+const router = Router();
+
+const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || '';
+const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';
+const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+
+// GET /api/whatsapp/webhook — Meta verification handshake on first setup
+router.get('/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === VERIFY_TOKEN && VERIFY_TOKEN) {
+    console.log('[whatsapp] webhook verified');
+    return res.status(200).send(challenge);
+  }
+  return res.status(403).send('verify_token mismatch');
+});
+
+/**
+ * Send a WhatsApp text message via Meta Cloud API.
+ */
+async function sendWhatsAppMessage(toPhone, text) {
+  if (!ACCESS_TOKEN || !PHONE_NUMBER_ID) {
+    console.warn('[whatsapp] cannot send — WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID not set');
+    return false;
+  }
+  const url = `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`;
+  const body = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: toPhone,
+    type: 'text',
+    text: { preview_url: false, body: text.slice(0, 4096) }, // WhatsApp 4096 char limit
+  };
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      console.error('[whatsapp] send failed:', r.status, err);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('[whatsapp] send error:', e.message);
+    return false;
+  }
+}
+
+/**
+ * Look up a Bmapz user by phone OR by email parsed from intro message.
+ * Returns { userId, companyId, userRole, email } or null.
+ */
+async function identifyUser(fromPhone, messageText) {
+  // 1. Try phone match first (if we ever store user phone numbers)
+  // For now, look up by email extracted from message
+  const emailMatch = messageText.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+  if (!emailMatch) return null;
+
+  const { data: user } = await supabaseAdmin
+    .from('users')
+    .select('id, email, role, company_id')
+    .ilike('email', emailMatch[1])
+    .maybeSingle();
+  if (!user) return null;
+
+  return { userId: user.id, companyId: user.company_id, userRole: user.role, email: user.email };
+}
+
+// POST /api/whatsapp/webhook — incoming messages from Meta
+router.post('/webhook', async (req, res) => {
+  // Respond 200 immediately — Meta retries if we don't ack fast
+  res.status(200).send('OK');
+
+  try {
+    const entry = req.body?.entry?.[0];
+    const change = entry?.changes?.[0];
+    const value = change?.value;
+    const message = value?.messages?.[0];
+
+    if (!message || message.type !== 'text') return; // ignore status updates, media, etc. for now
+
+    const fromPhone = message.from;
+    const text = message.text?.body || '';
+    if (!text) return;
+
+    console.log(`[whatsapp] incoming from ${fromPhone}: ${text.slice(0, 100)}`);
+
+    // Identify user
+    const user = await identifyUser(fromPhone, text);
+    if (!user) {
+      await sendWhatsAppMessage(
+        fromPhone,
+        "Hi! I couldn't find your Bmapz account from this message. Please include your Bmapz account email in your message so I can connect to your AI agent. Or open https://ai.bmapz.com and click 'WhatsApp Agent' to get a personalized link."
+      );
+      return;
+    }
+
+    // Run through the unified AI agent — full credit deduction, plan gating, etc.
+    let reply;
+    try {
+      const systemPrompt = `You are the Bmapz AI Sales & Marketing Agent talking to ${user.email} via WhatsApp. Be concise (WhatsApp users prefer short messages — keep replies under 1500 characters when possible). You have full read access to their CRM. They're chatting from their phone, so optimize for quick actionable answers.`;
+
+      const result = await runAIChat({
+        companyId: user.companyId,
+        userId: user.userId,
+        userRole: user.userRole,
+        userEmail: user.email,
+        messages: [{ role: 'user', content: text }],
+        system: systemPrompt,
+        action: 'whatsapp_chat',
+        temperature: 0.7,
+        max_tokens: 1024,
+      });
+      reply = result.content;
+    } catch (aiErr) {
+      console.error('[whatsapp] AI error:', aiErr.code, aiErr.message);
+      if (aiErr.code === 'CREDITS_EXHAUSTED') {
+        reply = '⚠️ Your Bmapz account is out of AI credits. Visit ai.bmapz.com to upgrade your plan or buy a credit pack.';
+      } else {
+        reply = "Sorry, I couldn't process that right now. Please try again in a moment, or use the app at ai.bmapz.com.";
+      }
+    }
+
+    await sendWhatsAppMessage(fromPhone, reply);
+
+    // Optionally log to messages table for the inbox view
+    try {
+      await supabaseAdmin.from('messages').insert([
+        {
+          company_id: user.companyId,
+          direction: 'inbound',
+          channel: 'whatsapp',
+          content: text,
+          metadata: { from: fromPhone, source: 'whatsapp_agent' },
+        },
+        {
+          company_id: user.companyId,
+          direction: 'outbound',
+          channel: 'whatsapp',
+          content: reply,
+          metadata: { to: fromPhone, source: 'whatsapp_agent', ai_generated: true },
+        },
+      ]);
+    } catch (logErr) {
+      console.warn('[whatsapp] message log skipped:', logErr.message);
+    }
+  } catch (err) {
+    console.error('[whatsapp] webhook handler error:', err.message);
+  }
+});
+
+export default router;

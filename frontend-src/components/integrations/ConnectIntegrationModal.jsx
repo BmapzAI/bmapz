@@ -114,46 +114,10 @@ const CREDENTIAL_FIELDS = {
   ],
 };
 
-// Fallback manual credential fields for OAuth integrations when platform credentials aren't configured
-Object.assign(CREDENTIAL_FIELDS, {
-  meta_ads: [
-    { key: 'meta_access_token', label: 'Meta User Access Token', placeholder: 'Get from Meta for Developers → Tools → Graph API Explorer', secret: true },
-    { key: 'meta_ad_account_id', label: 'Ad Account ID', placeholder: 'act_1234567890 (from Meta Ads Manager)', secret: false },
-    { key: 'meta_page_id', label: 'Page ID (optional)', placeholder: 'Your Facebook Page ID', secret: false },
-  ],
-  instagram: [
-    { key: 'meta_access_token', label: 'Meta User Access Token', placeholder: 'Get from Meta for Developers — includes Instagram permissions', secret: true },
-    { key: 'instagram_account_id', label: 'Instagram Business Account ID', placeholder: 'Your Instagram Business Account ID', secret: false },
-  ],
-  facebook: [
-    { key: 'meta_access_token', label: 'Meta User Access Token', placeholder: 'Get from Meta for Developers → Tools → Graph API Explorer', secret: true },
-    { key: 'meta_page_id', label: 'Page ID', placeholder: 'Your Facebook Page ID', secret: false },
-  ],
-  google_ads: [
-    { key: 'google_access_token', label: 'Google Ads Access Token', placeholder: 'OAuth access token from Google Cloud Console', secret: true },
-    { key: 'google_ads_customer_id', label: 'Customer ID', placeholder: '123-456-7890 (from Google Ads dashboard)', secret: false },
-    { key: 'google_developer_token', label: 'Developer Token', placeholder: 'From Google Ads API Center', secret: true },
-  ],
-  gmail: [
-    { key: 'google_access_token', label: 'Gmail OAuth Access Token', placeholder: 'OAuth access token with gmail.send scope', secret: true },
-    { key: 'google_refresh_token', label: 'Refresh Token', placeholder: 'OAuth refresh token for auto-renewal', secret: true },
-    { key: 'google_connected_email', label: 'Gmail Address', placeholder: 'your@gmail.com', secret: false },
-  ],
-  linkedin_ads: [
-    { key: 'linkedin_ads_access_token', label: 'LinkedIn Access Token', placeholder: 'OAuth token with r_ads scope', secret: true },
-    { key: 'linkedin_ads_account_id', label: 'Ad Account ID (urn:li:sponsoredAccount:...)', placeholder: 'urn:li:sponsoredAccount:123456789', secret: false },
-  ],
-  linkedin_social: [
-    { key: 'linkedin_access_token', label: 'LinkedIn Access Token', placeholder: 'OAuth token with w_member_social scope', secret: true },
-  ],
-  tiktok_ads: [
-    { key: 'tiktok_access_token', label: 'TikTok Access Token', placeholder: 'From TikTok for Business → My Apps', secret: true },
-    { key: 'tiktok_advertiser_id', label: 'Advertiser ID', placeholder: 'Your TikTok Ads advertiser ID', secret: false },
-  ],
-  tiktok_social: [
-    { key: 'tiktok_access_token', label: 'TikTok Access Token', placeholder: 'From TikTok for Business → My Apps', secret: true },
-  ],
-});
+// REMOVED: manual OAuth credential fallback. Per Bmapz UX rules, users
+// only ever provide email/password through the provider's own OAuth login
+// flow. If platform OAuth isn't configured, we show a clear admin notice
+// instead of falling back to manual access-token entry.
 
 const STATUS_KEY_MAP = {
   whatsapp: 'whatsapp', wordpress: 'wordpress', calendly: 'google_calendar',
@@ -176,23 +140,28 @@ function StepDot({ active, done, number }) {
   );
 }
 
-export default function ConnectIntegrationModal({ integration, company, isConnected, onSuccess, onClose }) {
+export default function ConnectIntegrationModal({ integration, company, user, isConnected, onSuccess, onClose }) {
   const queryClient = useQueryClient();
   const [step, setStep] = useState(1); // 1=info, 2=connect, 3=success
   const [connecting, setConnecting] = useState(false);
   const [credValues, setCredValues] = useState({});
   const [showSecret, setShowSecret] = useState({});
   const [saving, setSaving] = useState(false);
-  // When platform OAuth credentials aren't configured, fall back to manual token entry
-  const [oauthFallbackMode, setOauthFallbackMode] = useState(false);
+  // True when backend reports platform OAuth credentials aren't configured (admin must fix)
+  const [oauthNotConfigured, setOauthNotConfigured] = useState(false);
 
   if (!integration) return null;
 
-  const isInternalizedOAuth = !!INTERNALIZED_OAUTH_MAP[integration.type] && !oauthFallbackMode;
-  const externalOAuth = !isInternalizedOAuth ? EXTERNAL_OAUTH_MAP[integration.type] : null;
+  // BYOK / manual key entry is ONLY allowed for owner + system_admin.
+  // Regular users + company admins must use OAuth (or wait for platform setup).
+  const isAdminUser = user?.role === 'owner' || user?.role === 'system_admin';
+
+  const isInternalizedOAuth = !!INTERNALIZED_OAUTH_MAP[integration.type];
   const credFields = CREDENTIAL_FIELDS[integration.type] || [];
-  const isExternalOAuth = !isInternalizedOAuth && !!externalOAuth && credFields.length === 0;
-  const isManualCreds = !isInternalizedOAuth && (!isExternalOAuth || credFields.length > 0) && credFields.length > 0;
+  // Manual creds only shown to admins AND only for platforms that genuinely don't have OAuth
+  // (Twilio, Zapier, Hunter, Lusha, custom webhooks, etc.). NEVER for Google/Meta/LinkedIn/Twitter/TikTok.
+  const isManualCreds = !isInternalizedOAuth && credFields.length > 0 && isAdminUser;
+  const needsAdminSetup = !isInternalizedOAuth && credFields.length > 0 && !isAdminUser;
 
   const handleInternalizedOAuth = async () => {
     setConnecting(true);
@@ -261,50 +230,52 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
     } catch (e) {
       setConnecting(false);
       const msg = e?.message || '';
-      // If platform OAuth credentials aren't configured, fall back to manual token entry
+      // Platform OAuth not configured: show a clear admin-action message. No more
+      // manual-token-fallback (that was leaking tokens through the chat UI).
       if (msg.toLowerCase().includes('not configured') || msg.toLowerCase().includes('client id') || msg.toLowerCase().includes('app id')) {
-        const hasFallbackFields = CREDENTIAL_FIELDS[integration.type]?.length > 0;
-        if (hasFallbackFields) {
-          setOauthFallbackMode(true);
-          toast.info('Platform OAuth is not set up yet. Enter your access token directly below.');
-        } else {
-          toast.error(`OAuth is not available for this integration: ${msg}. Contact your administrator to configure platform credentials.`);
-        }
+        setOauthNotConfigured(true);
+        toast.error(`${integration.name} OAuth isn't set up on this platform yet. Your administrator needs to add the OAuth credentials in Railway settings.`);
       } else {
         toast.error(`Connection failed: ${msg || 'Could not start OAuth login'}`);
       }
     }
   };
 
-  const handleExternalOAuthConnect = () => {
-    setConnecting(true);
-    const popup = window.open(externalOAuth.authUrl, 'connect_popup', 'width=600,height=700,left=200,top=100');
-    const timer = setInterval(async () => {
-      if (!popup || popup.closed) {
-        clearInterval(timer);
-        setConnecting(false);
-        setStep(3);
-        if (company && integration.statusKey) {
-          await Company.update(company.id, {
-            integration_status: { ...(company.integration_status || {}), [integration.statusKey]: true }
-          });
-          queryClient.invalidateQueries({ queryKey: ['companies'] });
-        }
-      }
-    }, 500);
-  };
-
+  // Save manual credentials AND verify them. Only marks integration_status as
+  // 'connected' if a real API test passes. Admins only.
   const handleSaveCreds = async () => {
     if (!company) return;
     setSaving(true);
     try {
+      // Step 1: save the credentials
+      await Company.update(company.id, { ...credValues });
+
+      // Step 2: actively test the connection
+      let testResult;
+      try {
+        testResult = await api.post(`/api/integrations/test/${integration.type}`);
+      } catch (testErr) {
+        toast.error(`Saved but test failed: ${testErr?.message || 'Could not verify connection'}`);
+        // Don't mark as connected — user must fix and retry
+        setSaving(false);
+        return;
+      }
+
+      if (testResult?.success !== true) {
+        toast.error(`Connection test failed: ${testResult?.message || 'Provider rejected the credentials'}`);
+        setSaving(false);
+        return;
+      }
+
+      // Step 3: only NOW set integration_status to true
       const statusKey = STATUS_KEY_MAP[integration.type];
-      // Send flat credential fields — backend PATCH routes them to api_keys JSONB automatically
-      await Company.update(company.id, {
-        ...credValues,
-        ...(statusKey ? { integration_status: { ...(company.integration_status || {}), [statusKey]: true } } : {}),
-      });
+      if (statusKey) {
+        await Company.update(company.id, {
+          integration_status: { ...(company.integration_status || {}), [statusKey]: true },
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['companies'] });
+      toast.success(`${integration.name} connected & verified`);
       setStep(3);
     } catch (e) {
       toast.error('Failed to save: ' + e.message);
@@ -328,11 +299,7 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
     onClose();
   };
 
-  const providerName = isInternalizedOAuth
-    ? externalOAuth?.name || integration.name
-    : isExternalOAuth
-    ? externalOAuth.name
-    : integration.name;
+  const providerName = integration.name;
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
@@ -423,10 +390,10 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
           {step === 2 && (
             <>
               {/* Internalized OAuth — BMAPZ's own real OAuth flow */}
-              {isInternalizedOAuth && (
+              {isInternalizedOAuth && !oauthNotConfigured && (
                 <div className="space-y-4">
                   <p className="text-gray-300 text-sm text-center">
-                    Click below to securely connect your {integration.name} account. A popup will open where you log in and grant BMAPZ the required permissions.
+                    Click below to sign in to your {integration.name} account with your usual email and password. A popup will open where you authorize BMAPZ to read your data.
                   </p>
                   <Button onClick={handleInternalizedOAuth} disabled={connecting}
                     className="w-full h-12 gap-3 font-semibold text-base"
@@ -455,38 +422,30 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
                 </div>
               )}
 
-              {/* External OAuth — open login page in popup */}
-              {isExternalOAuth && (
-                <div className="space-y-4">
-                  <p className="text-gray-300 text-sm text-center">
-                    Click below to open {externalOAuth.name}'s login page. Sign in with your usual email and password.
-                  </p>
-                  <Button onClick={handleExternalOAuthConnect} disabled={connecting}
-                    className="w-full h-12 gap-3 text-white font-semibold text-base"
-                    style={{ backgroundColor: externalOAuth.color, color: externalOAuth.color === '#FFFC00' ? '#000' : '#fff' }}>
-                    {connecting
-                      ? <Loader2 size={18} className="animate-spin" />
-                      : <img src={externalOAuth.logo} alt="" className="w-5 h-5 object-contain bg-white rounded p-0.5" onError={(e) => { e.target.style.display = 'none'; }} />
-                    }
-                    {connecting ? 'Waiting for login...' : `Sign in with ${externalOAuth.name}`}
+              {/* Platform OAuth not configured — admin action required */}
+              {isInternalizedOAuth && oauthNotConfigured && (
+                <div className="space-y-4 text-center">
+                  <div className="w-16 h-16 rounded-full bg-amber-500/15 border-2 border-amber-500/40 flex items-center justify-center mx-auto">
+                    <Lock size={28} className="text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-white text-base font-semibold mb-1">Awaiting platform setup</h3>
+                    <p className="text-gray-400 text-sm">
+                      {integration.name} sign-in isn't enabled on Bmapz yet. Your administrator needs to add OAuth credentials in Railway env vars.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={() => setStep(1)} className="border-white/10 text-white hover:bg-white/5">
+                    ← Back
                   </Button>
-                  {connecting && (
-                    <div className="p-3 rounded-xl bg-[#38b6ff]/10 border border-[#38b6ff]/20 text-center">
-                      <p className="text-[#38b6ff] text-xs">Waiting for you to complete login in the popup window...</p>
-                    </div>
-                  )}
                 </div>
               )}
 
-              {/* Manual credentials */}
+              {/* Manual credentials — ADMIN ONLY, only for non-OAuth platforms */}
               {isManualCreds && (
                 <div className="space-y-4">
-                  {oauthFallbackMode && (
-                    <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-300">
-                      Platform OAuth isn't configured yet. Enter your access token directly — or ask your admin to add OAuth credentials in Railway settings.
-                    </div>
-                  )}
-                  <p className="text-gray-300 text-sm">Enter your {integration.name} credentials below:</p>
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
+                    <strong>Admin-only setup.</strong> This integration uses API keys (not OAuth). After saving, Bmapz will run a real connection test before marking it as connected.
+                  </div>
                   {credFields.map(field => (
                     <div key={field.key}>
                       <label className="text-gray-400 text-xs mb-1 block">{field.label}</label>
@@ -511,13 +470,24 @@ export default function ConnectIntegrationModal({ integration, company, isConnec
                   <Button onClick={handleSaveCreds} disabled={saving}
                     className="w-full h-11 gap-2 bg-gradient-to-r from-[#3572b9] to-[#38b6ff] font-semibold">
                     {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-                    {saving ? 'Connecting...' : 'Connect Account'}
+                    {saving ? 'Saving & testing...' : 'Save & Test Connection'}
                   </Button>
                 </div>
               )}
 
-              {/* Unsupported */}
-              {!isInternalizedOAuth && !isExternalOAuth && !isManualCreds && (
+              {/* Non-admin user trying to set up a non-OAuth integration */}
+              {needsAdminSetup && (
+                <div className="text-center space-y-3 py-4">
+                  <Lock size={28} className="text-amber-400 mx-auto" />
+                  <p className="text-white text-sm font-medium">Admin setup required</p>
+                  <p className="text-gray-400 text-xs">
+                    {integration.name} uses an API key (not OAuth login). Only Owners and System Admins can configure this integration. Ask your admin to set it up in Settings → Integrations.
+                  </p>
+                </div>
+              )}
+
+              {/* Truly unsupported (no OAuth, no creds) */}
+              {!isInternalizedOAuth && !isManualCreds && !needsAdminSetup && (
                 <div className="text-center space-y-3 py-4">
                   <p className="text-gray-400 text-sm">
                     This integration requires setup through the {integration.name} platform.

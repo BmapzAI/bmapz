@@ -13,11 +13,33 @@ import QuickStartGuide from '@/components/ui/QuickStartGuide';
 import { Activity, Lead, Message, Workflow, Company } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
 
-function WhatsAppAgentButton() {
-  const agentNumber = '+5511921353202';
-  const message = encodeURIComponent('Ola! Gostaria de conversar com o agente BMAPZ.');
+function WhatsAppAgentButton({ user }) {
+  // Read configured WhatsApp agent number from env (set by Derek in Cloudflare Pages).
+  // Falls back to a placeholder. The number must match the WhatsApp Business
+  // phone tied to the Meta WhatsApp Business API webhook.
+  const agentNumber = (import.meta.env.VITE_WHATSAPP_AGENT_NUMBER || '').replace(/\D/g, '');
+
+  // Personalize the intro message so the backend webhook can link this
+  // WhatsApp conversation back to the user's Bmapz account via email.
+  const intro = user?.email
+    ? `Hi! I'm ${user?.full_name || user?.email} from Bmapz (${user.email}). Ready to chat with my AI agent.`
+    : 'Hi! I want to chat with my Bmapz AI agent.';
+
+  if (!agentNumber) {
+    return (
+      <Button
+        title="WhatsApp Agent not configured yet — admin needs to set VITE_WHATSAPP_AGENT_NUMBER"
+        disabled
+        className="bg-green-500/50 text-white font-semibold transition-all gap-2 cursor-not-allowed"
+      >
+        <span>💬</span>
+        <span className="hidden sm:inline">WhatsApp Agent (setup pending)</span>
+      </Button>
+    );
+  }
+
   return (
-    <a href={`https://wa.me/${agentNumber.replace(/\D/g,'')}?text=${message}`} target="_blank" rel="noopener noreferrer">
+    <a href={`https://wa.me/${agentNumber}?text=${encodeURIComponent(intro)}`} target="_blank" rel="noopener noreferrer">
       <Button className="bg-green-500 hover:bg-green-400 text-white font-semibold transition-all gap-2">
         <span>💬</span>
         <span className="hidden sm:inline">WhatsApp Agent</span>
@@ -73,7 +95,7 @@ export default function Home() {
               <span className="hidden sm:inline">{t('buildWorkflow')}</span>
             </Button>
           </Link>
-          <WhatsAppAgentButton />
+          <WhatsAppAgentButton user={user} />
         </div>
       </div>
 

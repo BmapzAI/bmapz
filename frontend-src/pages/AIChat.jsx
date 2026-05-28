@@ -385,9 +385,13 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
           <a href="/Settings" className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 text-xs font-medium hover:bg-amber-500/30 transition-colors whitespace-nowrap">Add Key &rarr;</a>
         </div>
       )}
-      <div className="flex flex-1 min-h-0">
-      {/* Sidebar */}
-      <div className={`${showSidebar ? 'w-72' : 'w-0'} transition-all duration-300 overflow-hidden border-r border-white/10 flex flex-col`}>
+      <div className="flex flex-1 min-h-0 relative">
+      {/* Sidebar — overlay on mobile, fixed-width column on desktop */}
+      <div className={`
+        ${showSidebar ? 'w-72 translate-x-0' : 'w-0 -translate-x-full md:w-0 md:translate-x-0'}
+        transition-all duration-300 overflow-hidden border-r border-white/10 flex flex-col
+        absolute md:relative top-0 bottom-0 left-0 z-20 bg-[#0d0d0d] md:bg-transparent
+      `}>
         <div className="p-4 border-b border-white/10">
           <Button onClick={() => createNewConversation()} className="w-full bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
             <Plus size={18} /> New Conversation
@@ -417,25 +421,30 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
         </div>
       </div>
 
+      {/* Sidebar backdrop on mobile when open */}
+      {showSidebar && (
+        <div className="md:hidden fixed inset-0 bg-black/50 z-10" onClick={() => setShowSidebar(false)} />
+      )}
+
       {/* Main Chat */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="p-4 border-b border-white/10 flex items-center gap-4">
-          <button onClick={() => setShowSidebar(!showSidebar)} className="p-2 rounded-lg hover:bg-white/10 text-gray-400">
+        <div className="p-3 md:p-4 border-b border-white/10 flex items-center gap-2 md:gap-4">
+          <button onClick={() => setShowSidebar(!showSidebar)} className="p-2 rounded-lg hover:bg-white/10 text-gray-400 shrink-0">
             <ChevronLeft size={20} className={`transform transition-transform ${!showSidebar ? 'rotate-180' : ''}`} />
           </button>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3572b9] to-[#cb6ce6] flex items-center justify-center">
-              <Bot size={22} className="text-white" />
+          <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+            <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-[#3572b9] to-[#cb6ce6] flex items-center justify-center shrink-0">
+              <Bot size={20} className="text-white" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold text-white">AI Sales & Marketing Agent</h1>
-              <p className="text-sm text-gray-400">Full platform access · {t('intelligentProspecting')}</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-base md:text-lg font-bold text-white truncate">AI Sales & Marketing Agent</h1>
+              <p className="text-xs md:text-sm text-gray-400 truncate hidden sm:block">Full platform access · {t('intelligentProspecting')}</p>
             </div>
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <div className="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> Online
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            <div className="px-2 md:px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> <span className="hidden sm:inline">Online</span>
             </div>
           </div>
         </div>
@@ -514,10 +523,10 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
               })}
             </div>
           )}
-          <div className="flex items-end gap-3">
+          <div className="flex items-end gap-2 md:gap-3">
             <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*,video/*,.pdf,.csv,.xlsx,.xls,.doc,.docx,.vtt,.txt,.srt" multiple className="hidden" />
             <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadingFiles}
-              className="h-[52px] px-4 border-white/10 text-gray-400 hover:text-white hover:bg-white/5">
+              className="h-[52px] px-3 md:px-4 border-white/10 text-gray-400 hover:text-white hover:bg-white/5 shrink-0">
               {uploadingFiles ? <Loader2 size={20} className="animate-spin" /> : <Paperclip size={20} />}
             </Button>
             <Button
@@ -526,20 +535,20 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
               onClick={isRecording ? stopRecording : startRecording}
               disabled={isTranscribing}
               title={isRecording ? 'Stop recording' : 'Record audio'}
-              className={`h-[52px] px-4 border-white/10 hover:bg-white/5 transition-colors ${isRecording ? 'text-red-400 border-red-400/40 animate-pulse' : 'text-gray-400 hover:text-white'}`}
+              className={`h-[52px] px-3 md:px-4 border-white/10 hover:bg-white/5 transition-colors shrink-0 ${isRecording ? 'text-red-400 border-red-400/40 animate-pulse' : 'text-gray-400 hover:text-white'}`}
             >
               {isTranscribing ? <Loader2 size={20} className="animate-spin" /> : isRecording ? <MicOff size={20} /> : <Mic size={20} />}
             </Button>
-            <div className="flex-1 relative">
+            <div className="flex-1 relative min-w-0">
               <Textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                placeholder="Ask me anything — leads, workflows, social media, ads, blog, SEO, settings..."
-                className="min-h-[52px] max-h-[200px] resize-none bg-white/5 border-white/10 text-white placeholder:text-gray-500 pr-12 focus:border-[#38b6ff]/50"
+                placeholder="Ask me anything…"
+                className="min-h-[52px] max-h-[200px] resize-none bg-white/5 border-white/10 text-white placeholder:text-gray-500 pr-12 focus:border-[#38b6ff]/50 text-sm md:text-base"
                 rows={1} />
             </div>
             <Button onClick={sendMessage} disabled={(!input.trim() && attachedFiles.length === 0) || isLoading}
-              className="h-[52px] px-6 bg-gradient-to-r from-[#3572b9] to-[#38b6ff] hover:opacity-90 disabled:opacity-50 gap-2">
+              className="h-[52px] px-3 md:px-6 bg-gradient-to-r from-[#3572b9] to-[#38b6ff] hover:opacity-90 disabled:opacity-50 gap-2 shrink-0">
               {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-              {t('send')}
+              <span className="hidden md:inline">{t('send')}</span>
             </Button>
           </div>
         </div>

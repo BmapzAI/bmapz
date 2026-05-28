@@ -7,6 +7,7 @@ import { Search, CheckCircle, AlertCircle, Zap, Upload, Download } from 'lucide-
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from 'sonner';
 import ConnectIntegrationModal from '@/components/integrations/ConnectIntegrationModal';
+import { useAuth } from '@/lib/AuthContext';
 import { Company, Lead, Message, Activity } from '@/api/entities';
 import { UploadFile } from '@/api/integrations';
 
@@ -170,6 +171,7 @@ const INTEGRATIONS = [
 
 export default function Integrations() {
   const queryClient = useQueryClient();
+  const { dbUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -315,6 +317,7 @@ export default function Integrations() {
         <ConnectIntegrationModal
           integration={showSetupDialog}
           company={company}
+          user={dbUser}
           isConnected={getStatus(showSetupDialog) === 'connected'}
           onSuccess={() => queryClient.invalidateQueries({ queryKey: ['companies'] })}
           onClose={() => setShowSetupDialog(null)}
