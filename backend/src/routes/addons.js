@@ -133,14 +133,18 @@ router.post('/cancel-annual', requireAuth, requireAdmin, async (req, res) => {
     const now = new Date();
     const monthsUsed = Math.max(0, Math.floor((now - start) / (30 * 86400_000)));
 
-    let fee = 0, refund = 0;
+    // Revenue-safe policy: refund only REFUND_PERCENTAGE of unused months,
+    // minus the discount-recovery fee. Keep in sync with
+    // frontend-src/lib/plans.js → ANNUAL_CANCELLATION_POLICY.
+    const REFUND_PERCENTAGE = 0.30;
+    let fee = 0, refund = 0, prepaidRemaining = 0, refundable = 0;
     if (monthsUsed < 12) {
-      // Recover discount on months used
       const monthlyDiscount = Math.max(0, prices.monthly - prices.annual);
       fee = +(monthlyDiscount * monthsUsed).toFixed(2);
       const remainingMonths = 12 - monthsUsed;
-      const prepaidRefund = +(prices.annual * remainingMonths).toFixed(2);
-      refund = Math.max(0, +(prepaidRefund - fee).toFixed(2));
+      prepaidRemaining = +(prices.annual * remainingMonths).toFixed(2);
+      refundable = +(prepaidRemaining * REFUND_PERCENTAGE).toFixed(2);
+      refund = Math.max(0, +(refundable - fee).toFixed(2));
     }
 
     // Mark sub cancelled + log the fee transaction
@@ -165,10 +169,13 @@ router.post('/cancel-annual', requireAuth, requireAdmin, async (req, res) => {
       plan_id: sub.plan_id,
       months_used: monthsUsed,
       cancellation_fee_brl: fee,
+      prepaid_remaining_brl: prepaidRemaining,
+      refundable_at_30pct_brl: refundable,
       refund_brl: refund,
+      refund_percentage: REFUND_PERCENTAGE,
       message: monthsUsed >= 12
         ? 'Annual subscription cancelled — no fee (completed 12+ months).'
-        : `Annual subscription cancelled after ${monthsUsed} months. Cancellation fee R$ ${fee.toFixed(2)} (recovers the 15% annual discount applied to months consumed). Net refund R$ ${refund.toFixed(2)}.`,
+        : `Annual subscription cancelled after ${monthsUsed} months. Cancellation fee R$ ${fee.toFixed(2)} (recovers the 15% annual discount on months consumed). 30% of unused prepaid is refundable: R$ ${refundable.toFixed(2)}. Net refund R$ ${refund.toFixed(2)}.`,
     });
   } catch (err) {
     console.error('[addons/cancel-annual]', err.message);

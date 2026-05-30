@@ -481,7 +481,7 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
             <div className="flex items-center justify-between p-4 rounded-2xl bg-[#38b6ff]/10 border border-[#38b6ff]/30">
               <div>
                 <p className="text-[#38b6ff] font-medium text-sm">Editing: {activeDashboard.name}</p>
-                <p className="text-gray-400 text-xs">Drag to reorder widgets. Resize with size selector. Remove with �.</p>
+                <p className="text-gray-400 text-xs">Drag to reorder widgets. Resize with size selector. Remove with •.</p>
               </div>
               <Button onClick={() => setShowAddWidget(true)} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2" size="sm">
                 <Plus size={16} /> Add Widget

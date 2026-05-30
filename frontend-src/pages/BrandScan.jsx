@@ -234,7 +234,7 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
           </h2>
           <p className="text-gray-400 mt-2 max-w-md">
             {language === 'pt'
-              ? 'A IA est� analisando sua empresa e preparando o relat�rio completo. Isso pode levar alguns instantes.'
+              ? 'A IA está analisando sua empresa e preparando o relatório completo. Isso pode levar alguns instantes.'
               : 'The AI is analyzing your company and preparing the full report. This may take a moment.'}
           </p>
         </div>
@@ -247,14 +247,14 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
     return (
       <div>
         <button onClick={() => setShowSetup(false)} className="flex items-center gap-1 text-gray-400 hover:text-white text-sm mb-6 transition-colors">
-          � {language === 'pt' ? 'Voltar' : 'Back'}
+          → {language === 'pt' ? 'Voltar' : 'Back'}
         </button>
         <BrandScanSetup company={company} onGenerate={handleGenerate} />
       </div>
     );
   }
 
-  // No scans yet � show setup directly
+  // No scans yet → show setup directly
   if (scans.length === 0) {
     return <BrandScanSetup company={company} onGenerate={handleGenerate} />;
   }
@@ -267,7 +267,7 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
         <div className="flex items-center gap-2 text-gray-400 text-sm">
           <FileSearch className="w-4 h-4 text-[#38b6ff]" />
           <span className="text-white font-medium">
-            {language === 'pt' ? 'Vers�es' : 'Versions'}
+            {language === 'pt' ? 'Versões' : 'Versions'}
           </span>
           <Badge className="bg-white/10 text-gray-400 border-0 text-xs">{completedScans.length}/{MAX_VERSIONS}</Badge>
         </div>
@@ -313,7 +313,7 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
       ) : (
         <div className="text-center py-16 text-gray-400">
           <FileSearch className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>{language === 'pt' ? 'Selecione uma vers�o acima' : 'Select a version above'}</p>
+          <p>{language === 'pt' ? 'Selecione uma versão acima' : 'Select a version above'}</p>
         </div>
       )}
     </div>

@@ -220,48 +220,68 @@ export const ADDON_PRICES = {
   extra_company:     { price: 750,                   label_en: 'Extra Company Profile', label_pt: 'Perfil de Empresa Adicional' },
 };
 
-// ─── ANNUAL CANCELLATION FEE ─────────────────────────────────────────────────
-// Cancelling an annual plan before 12 months charges the prorated savings
-// (you got annual prices = 15% off; if you leave early we recover that discount
-// applied to the months you actually used). Computed dynamically per cancellation.
+// ─── ANNUAL CANCELLATION POLICY (revenue-safe) ───────────────────────────────
+// Cancelling an annual plan before 12 months:
+//   1) Charges a cancellation FEE = the 15% discount applied to months used
+//      (we never gave up that money — we just deferred it to a 12-month commit)
+//   2) Refunds only REFUND_PERCENTAGE of the remaining unused months, minus
+//      the fee. Default 30% — protects revenue while leaving SOMETHING on the
+//      table to avoid disputes. The rest is retained as a non-refundable
+//      service charge (industry standard for annual SaaS).
+//
+// Example — Starter annual (R$ 67.90/mo × 12 = R$ 814.80 prepaid), cancelled at month 3:
+//   • Fee (recovering discount): (79.90 - 67.90) × 3 = R$ 36.00
+//   • Unused prepaid: 67.90 × 9 = R$ 611.10
+//   • Refundable @ 30%: 611.10 × 0.30 = R$ 183.33
+//   • Net refund: 183.33 - 36.00 = R$ 147.33
+//   • Bmapz retains: R$ 667.47 of R$ 814.80 (~82%)
 export const ANNUAL_CANCELLATION_POLICY = {
   enabled: true,
-  reason: 'Recover the annual discount applied to the months used.',
+  refund_percentage: 0.30, // 30% of unused prepaid months is refundable
+  fee_recovers_discount: true,
+  no_fee_after_months: 12,
 };
 
 /**
- * Compute the cancellation fee for cancelling an annual subscription early.
- * Fee = (monthly_price - annual_monthly_equivalent) × months_used
- * i.e. claw back the 15% discount on the months consumed.
+ * Compute the cancellation fee + refund for cancelling an annual sub early.
  *
- * @param {string} planId           — 'starter' | 'growth' | 'scale' | 'enterprise'
- * @param {Date} subscriptionStart  — when the annual sub began
- * @param {Date} cancellationDate   — when the customer is cancelling (default now)
- * @returns { fee: number, monthsUsed: number, refund: number }
+ * @returns {
+ *   fee: number,             // cancellation fee in BRL
+ *   monthsUsed: number,
+ *   prepaidRemaining: number,// what they paid for the months they won't use
+ *   refundable: number,      // percentage of remaining that's refundable
+ *   refund: number,          // net refund after fee
+ *   retained: number,        // what Bmapz keeps
+ * }
  */
 export function computeAnnualCancellationFee(planId, subscriptionStart, cancellationDate = new Date()) {
   const plan = PLANS[planId];
-  if (!plan || !subscriptionStart) return { fee: 0, monthsUsed: 0, refund: 0 };
+  if (!plan || !subscriptionStart) {
+    return { fee: 0, monthsUsed: 0, prepaidRemaining: 0, refundable: 0, refund: 0, retained: 0 };
+  }
 
   const start = new Date(subscriptionStart);
   const end = new Date(cancellationDate);
   const monthsUsed = Math.max(0, Math.floor((end - start) / (30 * 86400_000)));
 
-  // If they've been a customer for 12+ months, no fee
-  if (monthsUsed >= 12) return { fee: 0, monthsUsed, refund: 0 };
+  // Past 12 months: just cancel, no fee, nothing left to refund.
+  if (monthsUsed >= ANNUAL_CANCELLATION_POLICY.no_fee_after_months) {
+    return { fee: 0, monthsUsed, prepaidRemaining: 0, refundable: 0, refund: 0, retained: 0 };
+  }
 
   const monthlyPrice = plan.price_monthly || 0;
   const annualMonthly = plan.price_annual || 0;
   const monthlyDiscount = Math.max(0, monthlyPrice - annualMonthly);
+
   const fee = +(monthlyDiscount * monthsUsed).toFixed(2);
-
-  // Customer prepaid 12 months at annual rate; refund = remaining months × annual rate
   const remainingMonths = 12 - monthsUsed;
-  const prepaidRefund = +(annualMonthly * remainingMonths).toFixed(2);
+  const prepaidRemaining = +(annualMonthly * remainingMonths).toFixed(2);
+  const refundable = +(prepaidRemaining * ANNUAL_CANCELLATION_POLICY.refund_percentage).toFixed(2);
+  const refund = Math.max(0, +(refundable - fee).toFixed(2));
+  const totalPrepaid = +(annualMonthly * 12).toFixed(2);
+  const retained = +(totalPrepaid - refund).toFixed(2);
 
-  // Net refund = prepaid refund minus cancellation fee (don't go negative)
-  const refund = Math.max(0, +(prepaidRefund - fee).toFixed(2));
-  return { fee, monthsUsed, refund };
+  return { fee, monthsUsed, prepaidRemaining, refundable, refund, retained };
 }
 
 // Reference credit costs for documentation only. Actual billing is per-token

@@ -45,7 +45,7 @@ function PlanCard({ plan, billing, language, onSelect, current, loading }) {
         <div className="flex items-end gap-1">
           <span className="text-gray-400 text-lg">R$</span>
           <span className="text-white font-black text-4xl">{price.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
-          <span className="text-gray-400 text-sm mb-1">/{isPt ? 'm�s' : 'mo'}</span>
+          <span className="text-gray-400 text-sm mb-1">/{isPt ? 'mês' : 'mo'}</span>
         </div>
         {billing === 'annual' && (
           <p className="text-green-400 text-xs mt-1">
@@ -70,7 +70,7 @@ function PlanCard({ plan, billing, language, onSelect, current, loading }) {
         </div>
         <div className="text-center">
           <p className="text-white font-bold text-sm">{plan.users}</p>
-          <p className="text-gray-500 text-xs">{isPt ? 'Usu�rios' : 'Users'}</p>
+          <p className="text-gray-500 text-xs">{isPt ? 'Usuários' : 'Users'}</p>
         </div>
         <div className="text-center">
           <p className="text-white font-bold text-sm">{plan.scan_tokens > 0 ? plan.scan_tokens : plan.lite_scans_monthly ? '1 Lite' : ''}</p>
@@ -98,7 +98,7 @@ function PlanCard({ plan, billing, language, onSelect, current, loading }) {
         style={!current ? { background: `linear-gradient(135deg, ${plan.color || '#3572b9'}, #38b6ff)` } : {}}
         disabled={current || loading}
       >
-        {loading ? <Loader2 size={16} className="animate-spin" /> : current ? (isPt ? 'Plano atual' : 'Current plan') : (isPt ? 'Come�ar agora' : 'Get started')}
+        {loading ? <Loader2 size={16} className="animate-spin" /> : current ? (isPt ? 'Plano atual' : 'Current plan') : (isPt ? 'Começar agora' : 'Get started')}
         {!current && !loading && <ArrowRight size={16} />}
       </Button>
     </div>
@@ -134,14 +134,14 @@ export default function Pricing() {
       {/* Header */}
       <div className="text-center space-y-4">
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#38b6ff]/10 border border-[#38b6ff]/20 text-[#38b6ff] text-sm font-medium">
-          <Zap size={14} /> {isPt ? 'Planos & Pre�os' : 'Plans & Pricing'}
+          <Zap size={14} /> {isPt ? 'Planos & Preços' : 'Plans & Pricing'}
         </div>
         <h1 className="text-4xl md:text-5xl font-black text-white" style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
           {isPt ? 'ESCOLHA SEU PLANO' : 'CHOOSE YOUR PLAN'}
         </h1>
         <p className="text-gray-400 max-w-2xl mx-auto">
           {isPt
-            ? 'Comece com 14 dias gr�tis com acesso completo. Sem cart�o de cr�dito. Cancele quando quiser.'
+            ? 'Comece com 14 dias grátis com acesso completo. Sem cartão de crédito. Cancele quando quiser.'
             : 'Start with a 14-day full-access free trial. No credit card required. Cancel anytime.'}
         </p>
 
@@ -149,7 +149,7 @@ export default function Pricing() {
         <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl bg-gradient-to-r from-[#3572b9]/20 to-[#cb6ce6]/20 border border-[#38b6ff]/30">
           <Star size={18} className="text-[#38b6ff]" />
           <span className="text-white font-semibold">
-            {isPt ? '14 dias de trial gr�tis com acesso completo  sem cart�o de cr�dito' : '14-day free trial with full access  no credit card required'}
+            {isPt ? '14 dias de trial grátis com acesso completo  sem cartão de crédito' : '14-day free trial with full access  no credit card required'}
           </span>
         </div>
 
@@ -190,13 +190,13 @@ export default function Pricing() {
 
       {/* Add-ons */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <h2 className="text-white font-bold text-lg mb-4">{isPt ? 'Add-ons dispon�veis' : 'Available Add-ons'}</h2>
+        <h2 className="text-white font-bold text-lg mb-4">{isPt ? 'Add-ons disponíveis' : 'Available Add-ons'}</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { icon: Zap, label: isPt ? 'Pacote de Cr�ditos Extra' : 'Extra Credit Pack', desc: isPt ? 'A partir de R$ 49/pacote' : 'From R$ 49/pack' },
+            { icon: Zap, label: isPt ? 'Pacote de Créditos Extra' : 'Extra Credit Pack', desc: isPt ? 'A partir de R$ 49/pacote' : 'From R$ 49/pack' },
             { icon: ScanLine, label: 'Full Scan', desc: isPt ? 'A partir de R$ 800/scan' : 'From R$ 800/scan' },
-            { icon: Users, label: isPt ? 'Usu�rio Adicional' : 'Extra User', desc: isPt ? 'A partir de R$ 59/m�s' : 'From R$ 59/mo' },
-            { icon: Building2, label: isPt ? 'Perfil de Empresa' : 'Company Profile', desc: isPt ? 'R$ 750/m�s (Enterprise)' : 'R$ 750/mo (Enterprise)' },
+            { icon: Users, label: isPt ? 'Usuário Adicional' : 'Extra User', desc: isPt ? 'A partir de R$ 59/mês' : 'From R$ 59/mo' },
+            { icon: Building2, label: isPt ? 'Perfil de Empresa' : 'Company Profile', desc: isPt ? 'R$ 750/mês (Enterprise)' : 'R$ 750/mo (Enterprise)' },
           ].map((addon) => (
             <div key={addon.label} className="flex items-start gap-3 p-3 rounded-xl bg-black/20 border border-white/5">
               <addon.icon size={18} className="text-[#38b6ff] flex-shrink-0 mt-0.5" />
@@ -211,11 +211,11 @@ export default function Pricing() {
 
       {/* Credit Consumption */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <h2 className="text-white font-bold text-lg mb-4">{isPt ? 'Consumo de Cr�ditos de IA' : 'AI Credit Consumption'}</h2>
+        <h2 className="text-white font-bold text-lg mb-4">{isPt ? 'Consumo de Créditos de IA' : 'AI Credit Consumption'}</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {[
             { label: isPt ? '1 Email' : '1 Email', credits: 50 },
-            { label: isPt ? 'Sequ�ncia 5 Emails' : '5-Email Sequence', credits: 300 },
+            { label: isPt ? 'Sequência 5 Emails' : '5-Email Sequence', credits: 300 },
             { label: isPt ? 'Workflow Outbound' : 'Full Outbound Workflow', credits: 800 },
             { label: isPt ? 'Enrichment 100 Leads' : 'CRM Enrichment / 100', credits: 400 },
             { label: isPt ? 'Scoring 100 Leads' : 'Lead Scoring / 100', credits: 500 },
@@ -223,9 +223,9 @@ export default function Pricing() {
             { label: isPt ? 'Plano de Campanha' : 'Campaign Plan', credits: 600 },
             { label: isPt ? 'Plano de Marketing' : 'Full Marketing Plan', credits: 2500 },
             { label: 'Lite Scan', credits: 5000 },
-            { label: isPt ? 'Relat�rio AI' : 'AI Report', credits: 200 },
+            { label: isPt ? 'Relatório AI' : 'AI Report', credits: 200 },
             { label: isPt ? '1 Semana Social (3 posts)' : '1 Week Social (3 posts)', credits: 120 },
-            { label: isPt ? '1 M�s Social (12 posts)' : '1 Month Social (12 posts)', credits: 480 },
+            { label: isPt ? '1 Mês Social (12 posts)' : '1 Month Social (12 posts)', credits: 480 },
           ].map((item) => (
             <div key={item.label} className="p-3 rounded-xl bg-black/20 border border-white/5 text-center">
               <p className="text-[#38b6ff] font-bold text-lg">{item.credits.toLocaleString('pt-BR')}</p>
@@ -239,17 +239,23 @@ export default function Pricing() {
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
         <h2 className="text-white font-bold text-lg">{isPt ? 'Perguntas Frequentes' : 'Frequently Asked Questions'}</h2>
         {(isPt ? [
-          ['O que s�o cr�ditos de IA?', 'Cr�ditos s�o a moeda interna para todas as opera��es com IA: gera��o de emails, scoring de leads, cria��o de conte�do, planejamento de campanhas, scans e muito mais.'],
-          ['O que � um Scan Token?', 'Um Scan Token permite gerar um Full Scan  nosso relat�rio estrat�gico premium de intelig�ncia de mercado, posicionamento e an�lise competitiva.'],
-          ['Posso cancelar a qualquer momento?', 'Sim. Voc� pode cancelar quando quiser. Seu acesso continua at� o fim do per�odo pago.'],
-          ['Existe desconto anual?', 'Sim. No plano anual voc� economiza 15% em rela��o ao mensal.'],
-          ['O trial � realmente gr�tis?', 'Sim. 14 dias com acesso completo, sem cart�o de cr�dito necess�rio.'],
+          ['O que são créditos de IA?', 'Créditos são a moeda interna para operações com IA: geração de emails, scoring de leads, criação de conteúdo, planejamento de campanhas e mais. O consumo é proporcional ao modelo escolhido — modelos mais avançados consomem mais créditos por requisição.'],
+          ['O que é um Scan Token?', 'Um Scan Token é uma moeda separada (não é crédito de IA) usada exclusivamente para gerar Brand Scans completos — nosso relatório estratégico premium com inteligência de mercado, análise competitiva e recomendações de posicionamento. Cada plano inclui scan tokens mensais; você pode comprar tokens avulsos por R$ 800 cada.'],
+          ['Os créditos e scan tokens são renovados todo mês?', 'Sim. No primeiro dia de cada ciclo mensal de cobrança, seus créditos de IA e scan tokens são restaurados conforme o plano. Add-ons (pacotes de créditos extras ou tokens de Full Scan avulsos) NÃO acumulam — use no ciclo em que foram comprados.'],
+          ['Posso cancelar a qualquer momento?', 'Sim. Planos mensais podem ser cancelados a qualquer momento sem taxa — o acesso continua até o fim do mês pago.'],
+          ['E se eu cancelar o plano anual antes de 12 meses?', 'Aplicamos uma Taxa de Cancelamento Anual que recupera o desconto de 15% concedido sobre os meses utilizados, e reembolsamos 30% do valor dos meses não usados (descontada a taxa). Exemplo: cancelar o plano Starter Anual no 3º mês resulta em taxa de R$ 36,00 e reembolso líquido de aproximadamente R$ 147,33. Os outros 70% dos meses não usados ficam retidos como taxa de serviço — padrão da indústria para planos anuais.'],
+          ['Por que existe taxa de cancelamento no plano anual?', 'O desconto de 15% no plano anual é concedido em troca de um compromisso de 12 meses. Se o cliente cancela antes, recuperamos a parte do desconto aplicada aos meses já utilizados — você essencialmente paga o preço mensal pelos meses que usou, em vez do preço anual com desconto.'],
+          ['Existe desconto anual?', 'Sim. Pagamento anual oferece 15% de desconto em relação ao mensal — pago integralmente no início do ciclo.'],
+          ['O trial é realmente grátis?', 'Sim. 14 dias com acesso completo a todas as funcionalidades de IA, sem cartão de crédito. Brand Scans não estão incluídos no trial — exigem upgrade para Growth ou superior.'],
         ] : [
-          ['What are AI credits?', 'Credits are the internal currency for all AI-powered operations: email generation, lead scoring, content creation, campaign planning, scans and more.'],
-          ['What is a Scan Token?', 'A Scan Token unlocks a Full Scan  our premium strategic market intelligence report with competitive analysis, positioning, and GTM recommendations.'],
-          ['Can I cancel anytime?', 'Yes. Cancel at any time. Your access continues until the end of the paid period.'],
-          ['Is there an annual discount?', 'Yes. Annual billing saves you 15% compared to monthly.'],
-          ['Is the trial really free?', 'Yes. 14 days with full access, no credit card required.'],
+          ['What are AI credits?', 'Credits are the internal currency for AI operations: email generation, lead scoring, content creation, campaign planning and more. Consumption is proportional to the model used — more advanced models cost more credits per request.'],
+          ['What is a Scan Token?', 'A Scan Token is a separate currency (not an AI credit) used exclusively to generate full Brand Scans — our premium strategic market intelligence report with competitive analysis and positioning recommendations. Each plan includes monthly scan tokens; you can buy additional Full Scan tokens for R$ 800 each.'],
+          ['Are credits and scan tokens reset every month?', 'Yes. On the first day of each monthly billing cycle, your AI credits and scan tokens are restored according to your plan. Add-ons (extra credit packs or one-off Full Scan tokens) do NOT carry over — use them in the cycle you bought them.'],
+          ['Can I cancel anytime?', 'Yes. Monthly plans can be cancelled at any time with no fee — access continues until the end of the paid month.'],
+          ['What if I cancel an annual plan before 12 months?', 'An Annual Cancellation Fee applies: we recover the 15% discount given on the months you used, and refund 30% of the unused prepaid months minus that fee. Example: cancelling Starter Annual in month 3 produces a R$ 36.00 fee and a net refund of approximately R$ 147.33. The other 70% of unused months is retained as a service charge — industry standard for annual plans.'],
+          ['Why is there a cancellation fee on annual plans?', 'The 15% annual discount is granted in exchange for a 12-month commitment. If a customer cancels early, we recover the portion of the discount applied to the months already consumed — you essentially pay the monthly price for the months you used, instead of the discounted annual price.'],
+          ['Is there an annual discount?', 'Yes. Annual billing saves you 15% compared to monthly — paid upfront at the start of the cycle.'],
+          ['Is the trial really free?', 'Yes. 14 days with full access to every AI feature, no credit card required. Brand Scans are not included in the trial — they require an upgrade to Growth or higher.'],
         ]).map(([q, a]) => (
           <div key={q} className="border-b border-white/5 pb-4">
             <p className="text-white font-medium">{q}</p>

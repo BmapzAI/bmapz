@@ -25,7 +25,7 @@ const PLATFORMS = [
   { value: 'linkedin', label: 'LinkedIn', color: '#0077b5', icon: '=' },
   { value: 'tiktok', label: 'TikTok', color: '#000000', icon: '<' },
   { value: 'twitter', label: 'X (Twitter)', color: '#1DA1F2', icon: '5' },
-  { value: 'youtube', label: 'YouTube', color: '#FF0000', icon: '�' },
+  { value: 'youtube', label: 'YouTube', color: '#FF0000', icon: '•' },
   { value: 'facebook', label: 'Facebook', color: '#1877F2', icon: '=' },
 ];
 
@@ -280,12 +280,12 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
   };
 
   const PLATFORM_FORMATS = {
-    instagram: { image: '1:1 (1080�1080)', story: '9:16 (1080�1920)', carousel: '1:1 or 4:5', video: 'MP4, max 60s' },
-    linkedin: { image: '1.91:1 (1200�628)', article: '1:1 (1200�1200)', video: 'MP4, max 10min' },
-    tiktok: { video: '9:16 (1080�1920), MP4, max 10min' },
-    twitter: { image: '16:9 (1200�675)', video: 'MP4, max 2min 20s' },
-    youtube: { thumbnail: '16:9 (1280�720)', shorts: '9:16 (1080�1920)' },
-    facebook: { image: '1.91:1 (1200�630)', story: '9:16 (1080�1920)', video: 'MP4, max 240min' },
+    instagram: { image: '1:1 (1080×1080)', story: '9:16 (1080×1920)', carousel: '1:1 or 4:5', video: 'MP4, max 60s' },
+    linkedin: { image: '1.91:1 (1200×628)', article: '1:1 (1200×1200)', video: 'MP4, max 10min' },
+    tiktok: { video: '9:16 (1080×1920), MP4, max 10min' },
+    twitter: { image: '16:9 (1200×675)', video: 'MP4, max 2min 20s' },
+    youtube: { thumbnail: '16:9 (1280×720)', shorts: '9:16 (1080×1920)' },
+    facebook: { image: '1.91:1 (1200×630)', story: '9:16 (1080×1920)', video: 'MP4, max 240min' },
   };
 
   const savePost = () => {
@@ -372,7 +372,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
       </div>
       {!canPublish && post.status === 'draft' && (
         <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-          <span className="text-yellow-400">�</span>
+          <span className="text-yellow-400">•</span>
           Connect accounts in <a href="/Settings" className="text-[#38b6ff] underline ml-1">Settings</a> to publish
         </p>
       )}
@@ -399,8 +399,8 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
         {/* Meta/LinkedIn connection status hints */}
         {!integrationStatus.meta && !integrationStatus.linkedin && (
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-xs text-gray-400">
-            <span className="text-yellow-400">�</span>
-            <span>Connect social accounts in <a href="/Settings" className="text-[#38b6ff] underline">Settings � API Keys</a> to auto-publish</span>
+            <span className="text-yellow-400">•</span>
+            <span>Connect social accounts in <a href="/Settings" className="text-[#38b6ff] underline">Settings → API Keys</a> to auto-publish</span>
           </div>
         )}
       </div>
@@ -447,7 +447,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                   <div key={i} className="p-3 rounded-xl bg-black/30 border border-white/10 flex items-start gap-3">
                     <div className="flex-1">
                       <p className="text-white text-sm font-medium">{opt.post_title}</p>
-                      <p className="text-gray-400 text-xs">Move from <span className="text-red-400">{opt.current_time}</span> � <span className="text-green-400">{opt.suggested_time}</span></p>
+                      <p className="text-gray-400 text-xs">Move from <span className="text-red-400">{opt.current_time}</span> → <span className="text-green-400">{opt.suggested_time}</span></p>
                       <p className="text-gray-500 text-xs mt-1">{opt.reason}</p>
                       {opt.content_tip && <p className="text-[#38b6ff] text-xs mt-1 italic">= {opt.content_tip}</p>}
                     </div>
@@ -639,7 +639,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                     {(newPost.platforms || []).map(p => {
                       const formats = PLATFORM_FORMATS[p];
                       if (!formats) return null;
-                      return <div key={p}><span className="font-medium" style={{color: PLATFORMS.find(pl=>pl.value===p)?.color}}>{PLATFORMS.find(pl=>pl.value===p)?.label}:</span> {Object.entries(formats).map(([k,v])=>`${k}: ${v}`).join(' � ')}</div>;
+                      return <div key={p}><span className="font-medium" style={{color: PLATFORMS.find(pl=>pl.value===p)?.color}}>{PLATFORMS.find(pl=>pl.value===p)?.label}:</span> {Object.entries(formats).map(([k,v])=>`${k}: ${v}`).join(' → ')}</div>;
                     })}
                   </div>
                 )}
@@ -701,7 +701,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                           <div className="w-16 h-16 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-xs text-gray-400"></div>
                         )}
                         <button onClick={() => setUploadedMedia(prev => prev.filter((_, idx) => idx !== i))}
-                          className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100">�</button>
+                          className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100">•</button>
                       </div>
                     ))}
                   </div>
@@ -718,8 +718,8 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                         {designBrief.color_palette.map((c, i) => <div key={i} className="w-5 h-5 rounded-full border border-white/20" style={{backgroundColor: c}} title={c} />)}
                       </div>
                     )}
-                    {designBrief.do_list?.length > 0 && <div className="text-xs text-green-400"> {designBrief.do_list.slice(0,2).join(' � ')}</div>}
-                    {designBrief.dont_list?.length > 0 && <div className="text-xs text-red-400">L {designBrief.dont_list.slice(0,2).join(' � ')}</div>}
+                    {designBrief.do_list?.length > 0 && <div className="text-xs text-green-400"> {designBrief.do_list.slice(0,2).join(' → ')}</div>}
+                    {designBrief.dont_list?.length > 0 && <div className="text-xs text-red-400">L {designBrief.dont_list.slice(0,2).join(' → ')}</div>}
                   </div>
                 )}
               </div>

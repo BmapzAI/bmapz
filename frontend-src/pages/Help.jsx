@@ -22,41 +22,41 @@ const faqCategories = [
     title: 'Getting Started / Primeiros Passos',
     icon: Zap,
     faqs: [
-      { question: 'How do I set up my first sales workflow? / Como configuro meu primeiro fluxo de vendas?', answer: 'Navigate to the Workflows section from the sidebar, click "New Workflow", and follow the step-by-step builder. You can add email, WhatsApp, LinkedIn steps, and set delays.\n\nAcesse Fluxos no menu lateral, clique em "Novo Fluxo" e siga o construtor. Voc� pode adicionar etapas de e-mail, WhatsApp, LinkedIn e definir intervalos.' },
-      { question: 'How do I import leads? / Como importo leads?', answer: 'Go to Sales � Add New Lead � choose manual entry or CSV/XLS import from the Integrations page.\n\nV� em Vendas � Novo Lead � escolha entrada manual ou importe CSV/XLS pela p�gina de Integra��es.' },
-      { question: 'What is ICP? / O que � ICP?', answer: 'The Ideal Customer Profile defines your perfect customer characteristics: industries, company sizes, locations, job titles. This helps the AI qualify and prioritize leads.\n\nO Perfil de Cliente Ideal define as caracter�sticas do seu cliente perfeito: setores, tamanho da empresa, localiza��es, cargos. Isso ajuda a IA a qualificar leads.' }
+      { question: 'How do I set up my first sales workflow? / Como configuro meu primeiro fluxo de vendas?', answer: 'Navigate to the Workflows section from the sidebar, click "New Workflow", and follow the step-by-step builder. You can add email, WhatsApp, LinkedIn steps, and set delays.\n\nAcesse Fluxos no menu lateral, clique em "Novo Fluxo" e siga o construtor. Você pode adicionar etapas de e-mail, WhatsApp, LinkedIn e definir intervalos.' },
+      { question: 'How do I import leads? / Como importo leads?', answer: 'Go to Sales → Add New Lead → choose manual entry or CSV/XLS import from the Integrations page.\n\nVê em Vendas → Novo Lead → escolha entrada manual ou importe CSV/XLS pela página de Integrações.' },
+      { question: 'What is ICP? / O que → ICP?', answer: 'The Ideal Customer Profile defines your perfect customer characteristics: industries, company sizes, locations, job titles. This helps the AI qualify and prioritize leads.\n\nO Perfil de Cliente Ideal define as características do seu cliente perfeito: setores, tamanho da empresa, localiza••es, cargos. Isso ajuda a IA a qualificar leads.' }
     ]
   },
   {
     title: 'AI Sales Agent / Agente de Vendas IA',
     icon: MessageCircle,
     faqs: [
-      { question: 'How does the AI analyze leads? / Como a IA analisa os leads?', answer: 'The BMAPZ AI analyzes websites, social media profiles, and ad libraries to identify opportunities and create personalized outreach messages.\n\nA IA do BMAPZ analisa sites, perfis em redes sociais e bibliotecas de an�ncios para identificar oportunidades e criar mensagens personalizadas.' },
-      { question: 'Can I customize the message tone? / Posso personalizar o tom das mensagens?', answer: 'Yes! Choose from: Professional, Friendly, Consultative, Direct, Strategic, or Performance. The AI adapts accordingly.\n\nSim! Escolha entre: Profissional, Amig�vel, Consultivo, Direto, Estrat�gico ou Performance. A IA se adapta.' },
-      { question: 'How do I use voice input? / Como usar entrada de voz?', answer: 'Click the microphone button in AI Chat. The platform requests microphone access, then transcribes your speech in real time into the text input.\n\nClique no bot�o de microfone no Chat IA. A plataforma solicita acesso ao microfone e transcreve sua fala em tempo real no campo de texto.' }
+      { question: 'How does the AI analyze leads? / Como a IA analisa os leads?', answer: 'The BMAPZ AI analyzes websites, social media profiles, and ad libraries to identify opportunities and create personalized outreach messages.\n\nA IA do BMAPZ analisa sites, perfis em redes sociais e bibliotecas de anúncios para identificar oportunidades e criar mensagens personalizadas.' },
+      { question: 'Can I customize the message tone? / Posso personalizar o tom das mensagens?', answer: 'Yes! Choose from: Professional, Friendly, Consultative, Direct, Strategic, or Performance. The AI adapts accordingly.\n\nSim! Escolha entre: Profissional, Amigável, Consultivo, Direto, Estratégico ou Performance. A IA se adapta.' },
+      { question: 'How do I use voice input? / Como usar entrada de voz?', answer: 'Click the microphone button in AI Chat. The platform requests microphone access, then transcribes your speech in real time into the text input.\n\nClique no botão de microfone no Chat IA. A plataforma solicita acesso ao microfone e transcreve sua fala em tempo real no campo de texto.' }
     ]
   },
   {
-    title: 'Lead Management / Gest�o de Leads',
+    title: 'Lead Management / Gestão de Leads',
     icon: Users,
     faqs: [
-      { question: 'What is Qualification Review? / O que � a Revis�o de Qualifica��o?', answer: 'Shows leads as cards with AI analysis. Double-click a Kanban card to open the full lead details page.\n\nExibe leads como cards com an�lise de IA. Clique duas vezes em um card Kanban para abrir a p�gina de detalhes completos do lead.' },
-      { question: 'What are Dynamic Lead Lists? / O que s�o Listas Din�micas de Leads?', answer: 'Dynamic lists automatically include leads matching your criteria (funnel stage, ICP score, source, status) and update in real time.\n\nListas din�micas incluem automaticamente leads que correspondem aos seus crit�rios (etapa do funil, score ICP, origem, status) e se atualizam em tempo real.' }
+      { question: 'What is Qualification Review? / O que → a Revisão de Qualificação?', answer: 'Shows leads as cards with AI analysis. Double-click a Kanban card to open the full lead details page.\n\nExibe leads como cards com análise de IA. Clique duas vezes em um card Kanban para abrir a página de detalhes completos do lead.' },
+      { question: 'What are Dynamic Lead Lists? / O que são Listas Dinâmicas de Leads?', answer: 'Dynamic lists automatically include leads matching your criteria (funnel stage, ICP score, source, status) and update in real time.\n\nListas dinâmicas incluem automaticamente leads que correspondem aos seus critérios (etapa do funil, score ICP, origem, status) e se atualizam em tempo real.' }
     ]
   },
   {
     title: 'Workflows',
     icon: GitBranch,
     faqs: [
-      { question: 'What workflow steps are available? / Quais etapas est�o dispon�veis?', answer: 'Available steps: Send Email, Send WhatsApp, Send LinkedIn, Wait Period, Condition branches. Use Shift+Click to select multiple nodes, scroll to zoom, right-click drag to pan.\n\nEtapas dispon�veis: Enviar E-mail, WhatsApp, LinkedIn, Aguardar, Condi��o. Use Shift+Clique para selecionar m�ltiplos n�s, scroll para zoom, arrastar com bot�o direito para mover o canvas.' },
-      { question: 'Can workflows send messages automatically? / Os fluxos enviam mensagens automaticamente?', answer: 'Yes! Enable "Auto-send" on any message step. Messages will be sent at the scheduled time without manual approval.\n\nSim! Ative "Auto-envio" em qualquer etapa de mensagem. As mensagens ser�o enviadas no hor�rio agendado sem aprova��o manual.' }
+      { question: 'What workflow steps are available? / Quais etapas estão disponíveis?', answer: 'Available steps: Send Email, Send WhatsApp, Send LinkedIn, Wait Period, Condition branches. Use Shift+Click to select multiple nodes, scroll to zoom, right-click drag to pan.\n\nEtapas disponíveis: Enviar E-mail, WhatsApp, LinkedIn, Aguardar, Condição. Use Shift+Clique para selecionar múltiplos nós, scroll para zoom, arrastar com botão direito para mover o canvas.' },
+      { question: 'Can workflows send messages automatically? / Os fluxos enviam mensagens automaticamente?', answer: 'Yes! Enable "Auto-send" on any message step. Messages will be sent at the scheduled time without manual approval.\n\nSim! Ative "Auto-envio" em qualquer etapa de mensagem. As mensagens serão enviadas no horário agendado sem aprovação manual.' }
     ]
   }
 ];
 
 const resources = [
-  { title: 'Video Tutorials / Tutoriais', icon: Play, description: 'Watch step-by-step guides / Guias em v�deo', link: '/VideoTutorials' },
-  { title: 'Documentation / Documenta��o', icon: Book, description: 'Detailed feature guides / Guia completo de funcionalidades', link: '/Documentation' },
+  { title: 'Video Tutorials / Tutoriais', icon: Play, description: 'Watch step-by-step guides / Guias em vídeo', link: '/VideoTutorials' },
+  { title: 'Documentation / Documentação', icon: Book, description: 'Detailed feature guides / Guia completo de funcionalidades', link: '/Documentation' },
   { title: 'API Reference', icon: FileText, description: 'For developers', link: '#' },
 ];
 
