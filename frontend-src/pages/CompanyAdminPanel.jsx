@@ -1,5 +1,6 @@
 import { api } from '@/api/apiClient';
 import React, { useState, useEffect } from 'react';
+import { useLanguage } from '@/components/ui/LanguageContext';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -34,26 +35,27 @@ function Badge({ color, children }) {
 }
 
 function InviteUserModal({ onClose, onSave }) {
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <UserPlus size={18} className="text-[#38b6ff]" /> Invite Team Member
+            <UserPlus size={18} className="text-[#38b6ff]" /> {t('inviteTeamMember')}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">Email address *</label>
+            <label className="text-xs text-gray-400 mb-1 block">{t('emailAddressLabel')}</label>
             <Input value={email} onChange={e => setEmail(e.target.value)}
               placeholder="colleague@yourcompany.com" className="bg-black/30 border-white/10 text-white" />
           </div>
-          <p className="text-xs text-gray-500">They'll receive an invitation email and be added to your company as a regular user.</p>
+          <p className="text-xs text-gray-500">{t('inviteDesc')}</p>
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
+            <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">{t('cancel')}</Button>
             <Button disabled={!email.trim()} onClick={() => onSave(email)} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-              <UserPlus size={14} /> Send Invite
+              <UserPlus size={14} /> {t('sendInvite')}
             </Button>
           </div>
         </div>
@@ -63,6 +65,7 @@ function InviteUserModal({ onClose, onSave }) {
 }
 
 function EditCompanyInfoModal({ company, onClose, onSave }) {
+  const { t } = useLanguage();
   const [form, setForm] = useState({
     name: company?.name || '',
     industry: company?.industry || '',
@@ -74,34 +77,34 @@ function EditCompanyInfoModal({ company, onClose, onSave }) {
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Building2 size={18} className="text-[#38b6ff]" /> Edit Company Profile
+            <Building2 size={18} className="text-[#38b6ff]" /> {t('editCompanyProfile')}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">Company Name</label>
+            <label className="text-xs text-gray-400 mb-1 block">{t('companyNameLabel')}</label>
             <Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
               className="bg-black/30 border-white/10 text-white" />
           </div>
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">Industry</label>
+            <label className="text-xs text-gray-400 mb-1 block">{t('industryLabel')}</label>
             <Input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))}
               className="bg-black/30 border-white/10 text-white" />
           </div>
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">Website</label>
+            <label className="text-xs text-gray-400 mb-1 block">{t('website')}</label>
             <Input value={form.website} onChange={e => setForm(p => ({ ...p, website: e.target.value }))}
               className="bg-black/30 border-white/10 text-white" />
           </div>
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">Services Description</label>
+            <label className="text-xs text-gray-400 mb-1 block">{t('servicesDescription')}</label>
             <Input value={form.services_description} onChange={e => setForm(p => ({ ...p, services_description: e.target.value }))}
               className="bg-black/30 border-white/10 text-white" />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
+            <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">{t('cancel')}</Button>
             <Button onClick={() => onSave(form)} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-              <Check size={14} /> Save
+              <Check size={14} /> {t('save')}
             </Button>
           </div>
         </div>
@@ -111,6 +114,7 @@ function EditCompanyInfoModal({ company, onClose, onSave }) {
 }
 
 function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
+  const { t, isPt } = useLanguage();
   const navigate = useNavigate();
   const limit = subscription?.company_profiles_limit || 1;
   const extraSlots = subscription?.extra_company_profiles || 0;
@@ -133,40 +137,42 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Building2 size={18} className="text-[#38b6ff]" />
-            {canAdd ? 'Add Company Profile' : 'Upgrade to Add More Companies'}
+            {canAdd ? t('addCompanyProfile') : t('upgradeToAddMore')}
           </DialogTitle>
         </DialogHeader>
 
         {canAdd ? (
           <div className="space-y-3 py-2">
             <p className="text-gray-400 text-xs">
-              You're using <strong className="text-white">{currentCount}</strong> of <strong className="text-white">{totalAllowed}</strong> company profile{totalAllowed !== 1 ? 's' : ''} in your plan.
+              {isPt
+                ? <>Você está usando <strong className="text-white">{currentCount}</strong> de <strong className="text-white">{totalAllowed}</strong> perfil{totalAllowed !== 1 ? 's' : ''} de empresa do seu plano.</>
+                : <>You're using <strong className="text-white">{currentCount}</strong> of <strong className="text-white">{totalAllowed}</strong> company profile{totalAllowed !== 1 ? 's' : ''} in your plan.</>}
             </p>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">Company Name *</label>
+              <label className="text-xs text-gray-400 mb-1 block">{t('companyNameRequired')}</label>
               <Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                placeholder="My New Company" className="bg-black/30 border-white/10 text-white" />
+                placeholder={isPt ? 'Minha Nova Empresa' : 'My New Company'} className="bg-black/30 border-white/10 text-white" />
             </div>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">Industry</label>
+              <label className="text-xs text-gray-400 mb-1 block">{t('industryLabel')}</label>
               <Input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))}
                 className="bg-black/30 border-white/10 text-white" />
             </div>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">Website</label>
+              <label className="text-xs text-gray-400 mb-1 block">{t('website')}</label>
               <Input value={form.website} onChange={e => setForm(p => ({ ...p, website: e.target.value }))}
                 className="bg-black/30 border-white/10 text-white" />
             </div>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">Services Description</label>
+              <label className="text-xs text-gray-400 mb-1 block">{t('servicesDescription')}</label>
               <Input value={form.services_description} onChange={e => setForm(p => ({ ...p, services_description: e.target.value }))}
                 className="bg-black/30 border-white/10 text-white" />
             </div>
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
+              <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">{t('cancel')}</Button>
               <Button disabled={!form.name.trim() || saving} onClick={handleCreate}
                 className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-                <Check size={14} /> {saving ? 'Creating...' : 'Create Company'}
+                <Check size={14} /> {saving ? t('creating') : t('createCompanyBtn')}
               </Button>
             </div>
           </div>
@@ -175,10 +181,12 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
             <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 flex items-start gap-3">
               <AlertTriangle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
               <p className="text-red-300 text-sm">
-                You've reached your limit of <strong>{totalAllowed}</strong> company profile{totalAllowed !== 1 ? 's' : ''} on your current <strong className="capitalize">{subscription?.plan}</strong> plan.
+                {isPt
+                  ? <>Você atingiu o limite de <strong>{totalAllowed}</strong> perfil{totalAllowed !== 1 ? 's' : ''} de empresa no seu plano <strong className="capitalize">{subscription?.plan}</strong>.</>
+                  : <>You've reached your limit of <strong>{totalAllowed}</strong> company profile{totalAllowed !== 1 ? 's' : ''} on your current <strong className="capitalize">{subscription?.plan}</strong> plan.</>}
               </p>
             </div>
-            <p className="text-gray-400 text-sm">Choose an option to add more company profiles:</p>
+            <p className="text-gray-400 text-sm">{isPt ? 'Escolha uma opção para adicionar mais perfis de empresa:' : 'Choose an option to add more company profiles:'}</p>
             <div className="space-y-3">
               <button onClick={() => { onClose(); navigate(createPageUrl('Billing')); }}
                 className="w-full flex items-center justify-between p-4 rounded-xl border border-[#38b6ff]/30 bg-[#38b6ff]/5 hover:bg-[#38b6ff]/10 transition-all group">
@@ -187,8 +195,8 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
                     <Sparkles size={16} className="text-[#38b6ff]" />
                   </div>
                   <div className="text-left">
-                    <p className="text-white text-sm font-semibold">Upgrade Your Plan</p>
-                    <p className="text-gray-400 text-xs">Get more company profiles with a higher tier</p>
+                    <p className="text-white text-sm font-semibold">{t('upgradeYourPlan')}</p>
+                    <p className="text-gray-400 text-xs">{t('upgradeDesc')}</p>
                   </div>
                 </div>
                 <ArrowRight size={16} className="text-[#38b6ff] group-hover:translate-x-1 transition-transform" />
@@ -201,15 +209,15 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
                     <Plus size={16} className="text-[#cb6ce6]" />
                   </div>
                   <div className="text-left">
-                    <p className="text-white text-sm font-semibold">Add Extra Company Profile</p>
-                    <p className="text-gray-400 text-xs">Purchase an additional company slot as an add-on</p>
+                    <p className="text-white text-sm font-semibold">{t('addExtraSlot')}</p>
+                    <p className="text-gray-400 text-xs">{t('addExtraSlotDesc')}</p>
                   </div>
                 </div>
                 <ArrowRight size={16} className="text-[#cb6ce6] group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
             <div className="flex justify-end pt-1">
-              <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">Close</Button>
+              <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">{t('close')}</Button>
             </div>
           </div>
         )}
@@ -219,6 +227,7 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
 }
 
 export default function CompanyAdminPanel() {
+  const { t, isPt } = useLanguage();
   const queryClient = useQueryClient();
   const { dbUser: user, isLoadingAuth: loading } = useAuth();
   const [showInvite, setShowInvite] = useState(false);
@@ -272,26 +281,25 @@ export default function CompanyAdminPanel() {
 
   const updateCompanyMutation = useMutation({
     mutationFn: (data) => Company.update(company.id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['my_companies'] }); toast.success('Company profile updated'); setEditingCompany(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['my_companies'] }); toast.success(isPt ? 'Perfil da empresa atualizado' : 'Company profile updated'); setEditingCompany(null); },
   });
 
   const updateUserMutation = useMutation({
     mutationFn: ({ id, data }) => User.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['company_users'] }); toast.success('User role updated'); setEditingUserRole(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['company_users'] }); toast.success(isPt ? 'Função do usuário atualizada' : 'User role updated'); setEditingUserRole(null); },
   });
 
   const handleInvite = async (email) => {
     await api.post('/api/users/invite', { email, role: 'user' });
-    toast.success(`Invitation sent to ${email}`);
+    toast.success(isPt ? `Convite enviado para ${email}` : `Invitation sent to ${email}`);
     setShowInvite(false);
   };
 
   const handleCreateCompany = async (formData) => {
     const newCompany = await Company.create(formData);
-    // New company created — no account linking needed
     queryClient.invalidateQueries({ queryKey: ['my_companies'] });
     queryClient.invalidateQueries({ queryKey: ['account_companies'] });
-    toast.success(`Company "${formData.name}" created!`);
+    toast.success(isPt ? `Empresa "${formData.name}" criada!` : `Company "${formData.name}" created!`);
     setShowAddCompany(false);
     window.location.reload();
   };
@@ -313,8 +321,8 @@ export default function CompanyAdminPanel() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Lock size={48} className="text-red-400" />
-        <h2 className="text-white text-xl font-bold">Company Admin Access Only</h2>
-        <p className="text-gray-400 text-center max-w-sm">Only users with <strong>Company Admin</strong>, <strong>Owner</strong>, or <strong>System Admin</strong> role can access this panel.</p>
+        <h2 className="text-white text-xl font-bold">{t('companyAdminOnly')}</h2>
+        <p className="text-gray-400 text-center max-w-sm">{t('companyAdminOnlyDesc')}</p>
       </div>
     );
   }
@@ -323,8 +331,8 @@ export default function CompanyAdminPanel() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Building2 size={48} className="text-gray-600" />
-        <h2 className="text-white text-xl font-bold">No Company Found</h2>
-        <p className="text-gray-400">You don't appear to be associated with a company yet.</p>
+        <h2 className="text-white text-xl font-bold">{t('noCompanyFound')}</h2>
+        <p className="text-gray-400">{t('noCompanyDesc')}</p>
       </div>
     );
   }
@@ -336,21 +344,21 @@ export default function CompanyAdminPanel() {
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-3"
             style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
-            <Settings size={24} className="text-[#38b6ff]" /> COMPANY ADMIN
+            <Settings size={24} className="text-[#38b6ff]" /> {t('companyAdmin').toUpperCase()}
           </h1>
-          <p className="text-gray-400 mt-1">Manage your company profile, team members and subscription</p>
+          <p className="text-gray-400 mt-1">{t('manageCompany')}</p>
         </div>
         <div className="flex gap-3">
           {(subscription?.company_profiles_limit || 1) > 1 || (subscription?.extra_company_profiles || 0) > 0 || isOwnerOrSysAdmin ? (
             <Button onClick={() => setShowAddCompany(true)}
               variant="outline"
               className="border-[#cb6ce6]/40 text-[#cb6ce6] hover:bg-[#cb6ce6]/10 gap-2 text-sm">
-              <Plus size={15} /> Add Company
+              <Plus size={15} /> {t('addCompanyBtn')}
             </Button>
           ) : null}
           <Button onClick={() => setShowInvite(true)}
             className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2 text-sm">
-            <UserPlus size={15} /> Invite Member
+            <UserPlus size={15} /> {t('inviteMember')}
           </Button>
         </div>
       </div>
@@ -358,13 +366,13 @@ export default function CompanyAdminPanel() {
       <Tabs defaultValue="overview">
         <TabsList className="bg-white/5 border border-white/10">
           <TabsTrigger value="overview" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <Building2 size={14} className="mr-1.5" /> Company
+            <Building2 size={14} className="mr-1.5" /> {t('company')}
           </TabsTrigger>
           <TabsTrigger value="team" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <Users size={14} className="mr-1.5" /> Team ({companyUsers.length})
+            <Users size={14} className="mr-1.5" /> {isPt ? 'Equipe' : 'Team'} ({companyUsers.length})
           </TabsTrigger>
           <TabsTrigger value="subscription" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <CreditCard size={14} className="mr-1.5" /> Subscription
+            <CreditCard size={14} className="mr-1.5" /> {isPt ? 'Assinatura' : 'Subscription'}
           </TabsTrigger>
         </TabsList>
 
@@ -374,24 +382,24 @@ export default function CompanyAdminPanel() {
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h2 className="text-white text-xl font-bold">{company.name}</h2>
-                <p className="text-gray-400 text-sm">{company.industry || 'Industry not set'}</p>
+                <p className="text-gray-400 text-sm">{company.industry || (isPt ? 'Setor não definido' : 'Industry not set')}</p>
               </div>
               <Button size="sm" variant="outline" onClick={() => setEditingCompany(company)}
                 className="border-white/10 text-white hover:bg-white/5 gap-1">
-                <Edit3 size={14} /> Edit Profile
+                <Edit3 size={14} /> {t('editProfileBtn')}
               </Button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-gray-500 text-xs mb-1">Website</p>
+                <p className="text-gray-500 text-xs mb-1">{t('website')}</p>
                 <p className="text-white">{company.website || '—'}</p>
               </div>
               <div>
-                <p className="text-gray-500 text-xs mb-1">Created</p>
+                <p className="text-gray-500 text-xs mb-1">{t('createdLabel')}</p>
                 <p className="text-white">{new Date(company.created_date).toLocaleDateString()}</p>
               </div>
               <div className="sm:col-span-2">
-                <p className="text-gray-500 text-xs mb-1">Services Description</p>
+                <p className="text-gray-500 text-xs mb-1">{t('servicesDescription')}</p>
                 <p className="text-white">{company.services_description || '—'}</p>
               </div>
             </div>
@@ -400,10 +408,10 @@ export default function CompanyAdminPanel() {
           {/* Quick Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: 'Team Members', value: companyUsers.length, max: subscription?.users_limit || '—', color: '#38b6ff' },
-              { label: 'AI Credits Left', value: creditsLeft.toLocaleString(), color: creditsPct > 80 ? '#ef4444' : '#22c55e' },
-              { label: 'Scan Tokens', value: scanLeft, color: '#cb6ce6' },
-              { label: 'Plan', value: subscription?.plan || 'trial', color: '#f59e0b' },
+              { label: t('teamMembersTab'), value: companyUsers.length, max: subscription?.users_limit || '—', color: '#38b6ff' },
+              { label: t('aiCreditsLeft'), value: creditsLeft.toLocaleString(), color: creditsPct > 80 ? '#ef4444' : '#22c55e' },
+              { label: t('scanTokensLeft'), value: scanLeft, color: '#cb6ce6' },
+              { label: t('planLabel'), value: subscription?.plan || 'trial', color: '#f59e0b' },
             ].map(s => (
               <div key={s.label} className="rounded-xl border border-white/10 bg-white/5 p-4 text-center">
                 <p className="font-bold text-lg" style={{ color: s.color }}>{s.value}</p>
@@ -418,23 +426,23 @@ export default function CompanyAdminPanel() {
         <TabsContent value="team" className="mt-4">
           <div className="rounded-2xl border border-white/10 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/5">
-              <p className="text-white font-medium text-sm">Team Members</p>
+              <p className="text-white font-medium text-sm">{t('teamMembersTab')}</p>
               <p className="text-gray-500 text-xs">
-                {companyUsers.length} / {subscription?.users_limit || '—'} seats
+                {companyUsers.length} / {subscription?.users_limit || '—'} {t('seatsLabel')}
               </p>
             </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/10 bg-white/3">
-                  <th className="text-left text-gray-400 font-medium px-4 py-3">Member</th>
-                  <th className="text-left text-gray-400 font-medium px-4 py-3">Email</th>
-                  <th className="text-left text-gray-400 font-medium px-4 py-3">Role</th>
-                  <th className="text-left text-gray-400 font-medium px-4 py-3">Joined</th>
+                  <th className="text-left text-gray-400 font-medium px-4 py-3">{t('memberCol')}</th>
+                  <th className="text-left text-gray-400 font-medium px-4 py-3">{t('email')}</th>
+                  <th className="text-left text-gray-400 font-medium px-4 py-3">{t('role')}</th>
+                  <th className="text-left text-gray-400 font-medium px-4 py-3">{t('joinedCol')}</th>
                 </tr>
               </thead>
               <tbody>
                 {companyUsers.length === 0 && (
-                  <tr><td colSpan={4} className="text-center text-gray-500 py-8">No team members yet — invite someone!</td></tr>
+                  <tr><td colSpan={4} className="text-center text-gray-500 py-8">{t('noTeamMembers')}</td></tr>
                 )}
                 {companyUsers.map(u => (
                   <tr key={u.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
@@ -490,14 +498,14 @@ export default function CompanyAdminPanel() {
           {!subscription ? (
             <div className="text-center py-12 text-gray-500 rounded-2xl border border-dashed border-white/10">
               <CreditCard size={32} className="mx-auto mb-2 opacity-30" />
-              <p>No subscription found. Contact BMAPZ support.</p>
+              <p>{t('noSubscription')}</p>
             </div>
           ) : (
             <>
               <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-gray-400 text-xs mb-1">Current Plan</p>
+                    <p className="text-gray-400 text-xs mb-1">{t('currentPlan')}</p>
                     <p className="text-white text-2xl font-bold capitalize">{subscription.plan}</p>
                   </div>
                   <Badge color={{ active: 'green', trialing: 'blue', past_due: 'yellow', canceled: 'red' }[subscription.status] || 'gray'}>
@@ -506,24 +514,24 @@ export default function CompanyAdminPanel() {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                   <div>
-                    <p className="text-gray-500 text-xs mb-1">Billing Cycle</p>
+                    <p className="text-gray-500 text-xs mb-1">{t('billingCycle')}</p>
                     <p className="text-white capitalize">{subscription.billing_cycle || 'monthly'}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500 text-xs mb-1">Price</p>
+                    <p className="text-gray-500 text-xs mb-1">{t('priceLabel')}</p>
                     <p className="text-white">R$ {subscription.price_brl || 0}/mo</p>
                   </div>
                   <div>
-                    <p className="text-gray-500 text-xs mb-1">Users Limit</p>
-                    <p className="text-white">{subscription.users_limit || 1} seats</p>
+                    <p className="text-gray-500 text-xs mb-1">{t('usersLimitLabel')}</p>
+                    <p className="text-white">{subscription.users_limit || 1} {t('seatsLabel')}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500 text-xs mb-1">Contacts Limit</p>
+                    <p className="text-gray-500 text-xs mb-1">{t('contactsLimitLabel')}</p>
                     <p className="text-white">{(subscription.contacts_limit || 0).toLocaleString()}</p>
                   </div>
                   {subscription.founder_pricing && (
                     <div>
-                      <p className="text-[#f59e0b] text-xs font-medium">★ Founder Pricing</p>
+                      <p className="text-[#f59e0b] text-xs font-medium">★ {t('founderPricing')}</p>
                     </div>
                   )}
                 </div>
@@ -534,23 +542,23 @@ export default function CompanyAdminPanel() {
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <div className="flex items-center gap-2 mb-3">
                     <Zap size={16} className="text-[#38b6ff]" />
-                    <p className="text-white font-medium text-sm">AI Credits</p>
+                    <p className="text-white font-medium text-sm">{t('aiCredits')}</p>
                   </div>
                   <p className="text-2xl font-bold text-white">{creditsLeft.toLocaleString()}</p>
-                  <p className="text-gray-500 text-xs mb-2">of {(subscription.ai_credits_total || 0).toLocaleString()} total</p>
+                  <p className="text-gray-500 text-xs mb-2">{isPt ? 'de' : 'of'} {(subscription.ai_credits_total || 0).toLocaleString()} total</p>
                   <div className="w-full h-2 rounded-full bg-white/10">
                     <div className="h-2 rounded-full transition-all"
                       style={{ width: `${creditsPct}%`, background: creditsPct > 80 ? '#ef4444' : '#38b6ff' }} />
                   </div>
-                  <p className="text-gray-500 text-xs mt-1">{creditsPct}% used</p>
+                  <p className="text-gray-500 text-xs mt-1">{creditsPct}{t('pctUsed')}</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <div className="flex items-center gap-2 mb-3">
                     <Building2 size={16} className="text-[#cb6ce6]" />
-                    <p className="text-white font-medium text-sm">Brand Scan Tokens</p>
+                    <p className="text-white font-medium text-sm">{t('brandScanTokens')}</p>
                   </div>
                   <p className="text-2xl font-bold text-white">{scanLeft}</p>
-                  <p className="text-gray-500 text-xs mb-2">of {subscription.scan_tokens_total || 0} total</p>
+                  <p className="text-gray-500 text-xs mb-2">{isPt ? 'de' : 'of'} {subscription.scan_tokens_total || 0} total</p>
                   <div className="w-full h-2 rounded-full bg-white/10">
                     <div className="h-2 rounded-full bg-[#cb6ce6] transition-all"
                       style={{ width: subscription.scan_tokens_total > 0 ? `${Math.round((subscription.scan_tokens_used / subscription.scan_tokens_total) * 100)}%` : '0%' }} />
@@ -560,9 +568,7 @@ export default function CompanyAdminPanel() {
 
               <div className="rounded-xl border border-[#38b6ff]/20 bg-[#38b6ff]/5 p-4 flex items-start gap-3">
                 <AlertTriangle size={16} className="text-[#38b6ff] flex-shrink-0 mt-0.5" />
-                <p className="text-[#38b6ff] text-sm">
-                  To upgrade your plan, change billing cycle, or purchase extra credits/seats, please visit the <strong>Billing</strong> page or contact BMAPZ support.
-                </p>
+                <p className="text-[#38b6ff] text-sm">{t('billingInfo')}</p>
               </div>
             </>
           )}
