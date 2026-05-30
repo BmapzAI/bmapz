@@ -102,7 +102,7 @@ export default function BrandScanReport({ scan, onReset, language = 'en' }) {
   const reportRef = useRef(null);
   const r = scan.report || {};
   const cd = scan.company_data || {};
-  const isPt = language === 'pt';
+  const isPt = language === 'pt-BR' || language === 'pt';
 
   // Bilingual section label helper
   const L = (ptText, enText) => isPt ? ptText : enText;

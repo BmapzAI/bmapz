@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Zap, ListChecks, Plus, TrendingUp, Users, BookOpen, Send, Image } from 'lucide-react';
@@ -24,6 +25,7 @@ import { InvokeLLM } from '@/api/integrations';
 
 export default function Ads() {
   const queryClient = useQueryClient();
+  const { t, isPt } = useLanguage();
   const [activeTab, setActiveTab] = useState('campaigns');
   const [isGenerating, setIsGenerating] = useState(false);
   const [strategy, setStrategy] = useState(null);
@@ -86,12 +88,12 @@ export default function Ads() {
 
   const saveMutation = useMutation({
     mutationFn: (data) => AdRecord.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['adRecords'] }); toast.success('Saved!'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['adRecords'] }); toast.success(isPt ? 'Salvo!' : 'Saved!'); },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => AdRecord.delete(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['adRecords'] }); toast.success('Deleted'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['adRecords'] }); toast.success(t('deleted')); },
   });
 
   const buildStrategyPrompt = () => {
@@ -161,7 +163,7 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
   };
 
   const generateStrategy = async () => {
-    if (!strategyForm.objective) { toast.error('Select a campaign objective'); return; }
+    if (!strategyForm.objective) { toast.error(t('selectObjective')); return; }
     setIsGenerating(true);
     try {
       const response = await InvokeLLM({
@@ -179,8 +181,8 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
         }
       });
       setStrategy(response);
-      toast.success('Strategy generated!');
-    } catch (e) { toast.error('Generation failed: ' + (e?.message || 'unknown error')); }
+      toast.success(t('strategyGenerated'));
+    } catch (e) { toast.error(t('generationFailed') + ': ' + (e?.message || 'unknown error')); }
     finally { setIsGenerating(false); }
   };
 
@@ -197,8 +199,8 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
         }
       });
       setCopies(response?.ads || []);
-      toast.success('Ad copies generated!');
-    } catch (e) { toast.error('Generation failed: ' + (e?.message || 'unknown error')); }
+      toast.success(t('copiesGenerated'));
+    } catch (e) { toast.error(t('generationFailed') + ': ' + (e?.message || 'unknown error')); }
     finally { setIsGenerating(false); }
   };
 
@@ -238,24 +240,19 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight"
-            style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>Ads</h1>
-          <p className="text-gray-400 mt-1">AI-powered ad strategy and copy creation • Pre-filled from your Settings</p>
+            style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>{t('ads')}</h1>
+          <p className="text-gray-400 mt-1">{t('adsPowered')}</p>
         </div>
         <Button variant="outline" onClick={() => setShowSaved(!showSaved)}
           className="border-white/10 text-white hover:bg-white/5 gap-2">
-          <BookOpen size={16} /> Saved ({adRecords.length})
+          <BookOpen size={16} /> {t('saved')} ({adRecords.length})
         </Button>
       </div>
 
       <QuickStartGuide
         id="ads"
-        title="Ads Quick Start"
-        steps={[
-          "Fill in your campaign objective and platform in the Strategy tab, then click 'Generate Strategy' to get a full AI-powered campaign plan.",
-          "Switch to the Copy tab to generate ad copy for each funnel stage (TOF, MOF, BOF) aligned to your strategy.",
-          "Use the Creatives tab to generate design briefs and test A/B variations for your ad visuals.",
-          "Connect your Meta or Google Ads account in Settings → API Keys to import real performance data and get data-driven recommendations.",
-        ]}
+        title={isPt ? 'Início Rápido: Anúncios' : 'Ads Quick Start'}
+        steps={[t('adsQs1'), t('adsQs2'), t('adsQs3'), t('adsQs4')]}
       />
 
       {showSaved && (
@@ -276,19 +273,19 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-white/5 border border-white/10">
           <TabsTrigger value="campaigns" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <ListChecks size={16} className="mr-2" /> Campaigns
+            <ListChecks size={16} className="mr-2" /> {t('campaigns')}
           </TabsTrigger>
           <TabsTrigger value="create" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <Plus size={16} className="mr-2" /> Create Ad
+            <Plus size={16} className="mr-2" /> {t('createAd')}
           </TabsTrigger>
           <TabsTrigger value="performance" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <TrendingUp size={16} className="mr-2" /> Performance
+            <TrendingUp size={16} className="mr-2" /> {t('performance')}
           </TabsTrigger>
           <TabsTrigger value="optimize" className="data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
-            <Zap size={16} className="mr-2" /> Optimize
+            <Zap size={16} className="mr-2" /> {t('optimize')}
           </TabsTrigger>
           <TabsTrigger value="leads" className="data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
-            <Users size={16} className="mr-2" /> Leads
+            <Users size={16} className="mr-2" /> {t('leads')}
           </TabsTrigger>
         </TabsList>
 
@@ -310,11 +307,11 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
                 <div className="mt-4 flex gap-3">
                   <Button onClick={() => handlePublish(`${strategyForm.platform || 'Multi-platform'} Strategy`, strategyForm.platform || 'ads')}
                     className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-                    <Send size={16} /> Publish Campaign Strategy
+                    <Send size={16} /> {t('publishCampaignStrategy')}
                   </Button>
                   <Button onClick={() => handlePublish(`${strategyForm.platform || 'Multi-platform'} Strategy`, strategyForm.platform || 'ads', true)}
                     variant="outline" className="border-white/10 text-white hover:bg-white/5 gap-2">
-                    <Send size={16} /> Update Existing Campaign
+                    <Send size={16} /> {t('updateExistingCampaign')}
                   </Button>
                 </div>
               )}
@@ -336,11 +333,11 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
                 <div className="mt-4 flex gap-3">
                   <Button onClick={() => handlePublish(`${copyForm.platform || 'Multi-platform'} Ad Copies`, copyForm.platform || 'ads')}
                     className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-                    <Send size={16} /> Publish Ad Copies
+                    <Send size={16} /> {t('publishAdCopies')}
                   </Button>
                   <Button onClick={() => handlePublish(`${copyForm.platform || 'Multi-platform'} Ad Copies`, copyForm.platform || 'ads', true)}
                     variant="outline" className="border-white/10 text-white hover:bg-white/5 gap-2">
-                    <Send size={16} /> Update Existing Ad
+                    <Send size={16} /> {t('updateAdCopies')}
                   </Button>
                 </div>
               )}

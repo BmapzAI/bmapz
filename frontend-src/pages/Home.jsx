@@ -49,7 +49,7 @@ function WhatsAppAgentButton({ user }) {
 }
 
 export default function Home() {
-  const { t } = useLanguage();
+  const { t, isPt } = useLanguage();
   const { dbUser: user } = useAuth();
 
   const { data: leads = [] }      = useQuery({ queryKey: ['leads'],      queryFn: () => Lead.list() });
@@ -101,13 +101,8 @@ export default function Home() {
 
       <QuickStartGuide
         id="home_dashboard"
-        title="Your Command Center"
-        steps={[
-          "This dashboard shows your key metrics, sales funnel progression, and recent activity at a glance.",
-          "Complete the 'Getting Started' steps below to unlock the full power of BMAPZ.",
-          "Use the quick-action buttons above to jump right in.",
-          "The AI Agent in the sidebar can help you write messages, build strategies, and analyze leads.",
-        ]}
+        title={isPt ? 'Seu Centro de Comando' : 'Your Command Center'}
+        steps={[t('homeQs1'), t('homeQs2'), t('homeQs3'), t('homeQs4')]}
       />
 
       {/* Stats */}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -42,6 +43,7 @@ const HEATMAP_DATA = Array.from({ length: 7 }, (_, day) =>
 
 export default function SocialMedia() {
   const queryClient = useQueryClient();
+  const { t, isPt } = useLanguage();
   const [activeTab, setActiveTab] = useState('planning');
   const [selectedPlatforms, setSelectedPlatforms] = useState(['instagram', 'linkedin']);
   const [editingPost, setEditingPost] = useState(null);
@@ -77,17 +79,17 @@ export default function SocialMedia() {
 
   const createMutation = useMutation({
     mutationFn: (data) => SocialPost.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['socialPosts'] }); toast.success('Post saved!'); setEditingPost(null); setNewPost({ title: '', content: '', platforms: [], type: 'text', scheduled_for: '' }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['socialPosts'] }); toast.success(isPt ? 'Post salvo!' : 'Post saved!'); setEditingPost(null); setNewPost({ title: '', content: '', platforms: [], type: 'text', scheduled_for: '' }); },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => SocialPost.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['socialPosts'] }); toast.success('Post updated!'); setEditingPost(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['socialPosts'] }); toast.success(isPt ? 'Post atualizado!' : 'Post updated!'); setEditingPost(null); },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => SocialPost.delete(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['socialPosts'] }); toast.success('Post deleted'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['socialPosts'] }); toast.success(isPt ? 'Post excluído' : 'Post deleted'); },
   });
 
   const buildCompanyContext = () => {
@@ -156,7 +158,7 @@ performance_prediction (object with: expected_reach, engagement_rate_estimate, b
         setNewPost(aiPost);
         setEditingPost(aiPost);
         setAiPrompt('');
-        toast.success('Content generated with AI!');
+        toast.success(isPt ? 'Conteúdo gerado com IA!' : 'Content generated with AI!');
       }
     } catch (e) {
       toast.error('Generation failed: ' + (e?.message || 'unknown error'));
@@ -209,7 +211,7 @@ Return JSON with:
         }
       });
       setOptimizationInsights(response);
-      toast.success('AI optimization analysis complete!');
+      toast.success(isPt ? 'Análise de otimização com IA concluída!' : 'AI optimization analysis complete!');
     } catch (e) {
       toast.error('Optimization failed: ' + (e?.message || 'unknown error'));
     } finally {
@@ -363,7 +365,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
       <div className="flex gap-2 mt-3">
         <Button size="sm" variant="outline" className="flex-1 border-white/10 text-white hover:bg-white/5 text-xs"
           onClick={() => { setEditingPost(post); setNewPost(post); }}>
-          Edit
+          {t('edit')}
         </Button>
         <Button size="sm" variant="outline" className="border-red-500/20 text-red-400 hover:bg-red-500/10"
           onClick={() => deleteMutation.mutate(post.id)}>
@@ -386,14 +388,14 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight"
             style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
-            Social Media
+            {t('socialMediaTitle')}
           </h1>
-          <p className="text-gray-400 mt-1">Plan, create and schedule content " AI-powered performance optimization</p>
+          <p className="text-gray-400 mt-1">{t('socialMediaSubtitle')}</p>
         </div>
         <Button onClick={analyzeAndOptimize} disabled={isOptimizing}
           className="bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-2">
           {isOptimizing ? <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : <Zap size={16} />}
-          AI Optimize
+          {t('aiOptimize')}
         </Button>
 
         {/* Meta/LinkedIn connection status hints */}
@@ -407,13 +409,8 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
 
       <QuickStartGuide
         id="social_media"
-        title="Social Media Quick Start"
-        steps={[
-          "Use the Planning tab to view your content calendar. Click any day to schedule a new post.",
-          "In the Content tab, describe your post idea and click 'Generate' to let AI create platform-optimized versions for LinkedIn and Instagram.",
-          "Double-click any unscheduled post card or calendar item to jump directly into editing it.",
-          "Use 'AI Optimize' to analyze your published posts' performance and get scheduling recommendations.",
-        ]}
+        title={isPt ? 'Início Rápido: Redes Sociais' : 'Social Media Quick Start'}
+        steps={[t('smQs1'), t('smQs2'), t('smQs3'), t('smQs4')]}
       />
 
       {/* AI Optimization Insights */}
@@ -468,19 +465,19 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-white/5 border border-white/10">
           <TabsTrigger value="planning" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <Calendar size={16} className="mr-2" /> Planning
+            <Calendar size={16} className="mr-2" /> {t('planning')}
           </TabsTrigger>
           <TabsTrigger value="content" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <Edit3 size={16} className="mr-2" /> Content
+            <Edit3 size={16} className="mr-2" /> {t('contentTab')}
           </TabsTrigger>
           <TabsTrigger value="analytics" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <BarChart3 size={16} className="mr-2" /> Analytics
+            <BarChart3 size={16} className="mr-2" /> {t('analytics')}
           </TabsTrigger>
           <TabsTrigger value="posts" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <TrendingUp size={16} className="mr-2" /> Posts
+            <TrendingUp size={16} className="mr-2" /> {t('posts')}
           </TabsTrigger>
           <TabsTrigger value="performance" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <BarChart3 size={16} className="mr-2" /> Performance
+            <BarChart3 size={16} className="mr-2" /> {t('performance')}
           </TabsTrigger>
         </TabsList>
 
@@ -489,7 +486,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
           {/* Interactive Calendar */}
           <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
             <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-              <Calendar size={18} className="text-[#38b6ff]" /> Content Calendar
+              <Calendar size={18} className="text-[#38b6ff]" /> {isPt ? 'Calendário de Conteúdo' : 'Content Calendar'}
             </h3>
             <SocialCalendar
               posts={posts}
@@ -513,9 +510,9 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
           {/* Scheduled Posts */}
           <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold">Scheduled Posts ({scheduledPosts.length})</h3>
+              <h3 className="text-white font-semibold">{isPt ? 'Posts Agendados' : 'Scheduled Posts'} ({scheduledPosts.length})</h3>
               <Button onClick={() => openNewPost()} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2" size="sm">
-                <Plus size={16} /> Schedule Post
+                <Plus size={16} /> {t('schedulePost')}
               </Button>
             </div>
             <div className="space-y-3">
@@ -534,7 +531,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                   <span className="text-gray-600 text-[10px]">dbl-click</span>
                 </div>
               ))}
-              {scheduledPosts.length === 0 && <p className="text-gray-500 text-sm text-center py-4">No posts scheduled yet</p>}
+              {scheduledPosts.length === 0 && <p className="text-gray-500 text-sm text-center py-4">{t('noPostsScheduled')}</p>}
             </div>
           </div>
         </TabsContent>
@@ -544,7 +541,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
           {/* AI Generation */}
           <div className="rounded-2xl bg-gradient-to-r from-[#3572b9]/10 to-[#cb6ce6]/10 border border-[#38b6ff]/20 p-6">
             <h3 className="text-white font-semibold mb-2 flex items-center gap-2">
-              <Sparkles size={18} className="text-[#38b6ff]" /> Generate with AI
+              <Sparkles size={18} className="text-[#38b6ff]" /> {t('generateWithAI')}
               {company && <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 flex items-center gap-1 ml-2"><Check size={10} />Using {company.name} data</span>}
             </h3>
             <p className="text-gray-400 text-sm mb-3">Describe what you want to post  AI creates platform-optimized versions using your company briefing and ICP</p>
@@ -734,26 +731,26 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               <div className="flex gap-3">
                 <Button onClick={() => { if (!editingPost._isNew) { updateMutation.mutate({ id: editingPost.id, data: newPost }); } else { savePost(); } }}
                   className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-                  <Check size={16} /> {editingPost._isNew ? 'Save Post' : 'Update Post'}
+                  <Check size={16} /> {editingPost._isNew ? (isPt ? 'Salvar Post' : 'Save Post') : t('updatePost')}
                 </Button>
                 <Button variant="outline" onClick={() => { setEditingPost(null); setGeneratedContent(null); }}
-                  className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
+                  className="border-white/10 text-white hover:bg-white/5">{t('cancel')}</Button>
               </div>
             </div>
           )}
 
           {/* Posts Grid */}
           <div className="flex items-center justify-between">
-            <h3 className="text-white font-semibold">All Posts ({posts.length})</h3>
+            <h3 className="text-white font-semibold">{isPt ? 'Todos os Posts' : 'All Posts'} ({posts.length})</h3>
             <Button onClick={() => openNewPost()} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2" size="sm">
-              <Plus size={16} /> New Post
+              <Plus size={16} /> {t('newPostBtn')}
             </Button>
           </div>
           {posts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl bg-white/5 border border-white/10">
               <Calendar size={48} className="text-gray-600 mb-4" />
-              <p className="text-white font-semibold">No posts yet</p>
-              <p className="text-gray-400 text-sm mt-1">Generate with AI or create manually</p>
+              <p className="text-white font-semibold">{t('noPostsYet')}</p>
+              <p className="text-gray-400 text-sm mt-1">{isPt ? 'Gere com IA ou crie manualmente' : 'Generate with AI or create manually'}</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -765,7 +762,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
         {/* Posts Tab  Published history + Boosting suggestions */}
         <TabsContent value="posts" className="space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <h3 className="text-white font-semibold">Published Posts ({publishedPosts.length})</h3>
+            <h3 className="text-white font-semibold">{t('postedPosts')} ({publishedPosts.length})</h3>
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex gap-2">
                 {PLATFORMS.map(p => (

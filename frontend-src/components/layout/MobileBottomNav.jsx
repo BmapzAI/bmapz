@@ -1,55 +1,13 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
+import { useLanguage } from '@/components/ui/LanguageContext';
 import {
   Home, TrendingUp, GitBranch, Bot, Inbox,
   Megaphone, Search, Share2, BookOpen, ScanLine,
   Sparkles, FileText, BarChart3, Plug, HelpCircle,
   User, Settings, Building2, Shield, X, MoreHorizontal,
 } from 'lucide-react';
-
-const PRIMARY_ITEMS = [
-  { icon: Home,       label: 'Home',    path: '/'       },
-  { icon: Bot,        label: 'AI Chat', path: '/AIChat' },
-  { icon: TrendingUp, label: 'Sales',   path: '/Sales'  },
-  { icon: Inbox,      label: 'Inbox',   path: '/Inbox'  },
-];
-
-const MORE_SECTIONS = [
-  {
-    label: 'Core',
-    items: [
-      { icon: GitBranch, label: 'Workflows', path: '/Workflows' },
-    ],
-  },
-  {
-    label: 'Marketing',
-    items: [
-      { icon: Megaphone, label: 'Ads',        path: '/Ads'         },
-      { icon: Search,    label: 'SEO',        path: '/SEO'         },
-      { icon: Share2,    label: 'Social',     path: '/SocialMedia' },
-      { icon: BookOpen,  label: 'Blog',       path: '/Blog'        },
-      { icon: ScanLine,  label: 'Brand Scan', path: '/BrandScan'   },
-    ],
-  },
-  {
-    label: 'Content & AI',
-    items: [
-      { icon: Sparkles,  label: 'AI Outputs', path: '/AIOutputs'     },
-      { icon: FileText,  label: 'Templates',  path: '/TextTemplates' },
-      { icon: BarChart3, label: 'Dashboards', path: '/Dashboards'    },
-    ],
-  },
-  {
-    label: 'Tools & Account',
-    items: [
-      { icon: Plug,     label: 'Integrations', path: '/Integrations' },
-      { icon: HelpCircle, label: 'Help',       path: '/Help'         },
-      { icon: User,     label: 'Profile',      path: '/Profile'      },
-      { icon: Settings, label: 'Settings',     path: '/Settings'     },
-    ],
-  },
-];
 
 function NavBtn({ icon: Icon, label, path, active, onClick }) {
   return (
@@ -69,7 +27,51 @@ function NavBtn({ icon: Icon, label, path, active, onClick }) {
 export default function MobileBottomNav() {
   const location = useLocation();
   const { isAdmin, isCompanyAdmin } = useAuth();
+  const { t, isPt } = useLanguage();
   const [showMore, setShowMore] = useState(false);
+
+  const PRIMARY_ITEMS = [
+    { icon: Home,       label: t('home'),   path: '/'       },
+    { icon: Bot,        label: t('aiChat'), path: '/AIChat' },
+    { icon: TrendingUp, label: t('sales'),  path: '/Sales'  },
+    { icon: Inbox,      label: t('inbox'),  path: '/Inbox'  },
+  ];
+
+  const MORE_SECTIONS = [
+    {
+      label: isPt ? 'Núcleo' : 'Core',
+      items: [
+        { icon: GitBranch, label: t('workflows'), path: '/Workflows' },
+      ],
+    },
+    {
+      label: t('marketing'),
+      items: [
+        { icon: Megaphone, label: t('ads'),        path: '/Ads'         },
+        { icon: Search,    label: 'SEO',           path: '/SEO'         },
+        { icon: Share2,    label: isPt ? 'Social' : 'Social', path: '/SocialMedia' },
+        { icon: BookOpen,  label: t('blog'),       path: '/Blog'        },
+        { icon: ScanLine,  label: t('brandScan'),  path: '/BrandScan'   },
+      ],
+    },
+    {
+      label: t('contentAndAI'),
+      items: [
+        { icon: Sparkles,  label: t('aiOutputs'),     path: '/AIOutputs'     },
+        { icon: FileText,  label: t('templates'),     path: '/TextTemplates' },
+        { icon: BarChart3, label: t('dashboardsTitle'), path: '/Dashboards'  },
+      ],
+    },
+    {
+      label: isPt ? 'Ferramentas & Conta' : 'Tools & Account',
+      items: [
+        { icon: Plug,       label: t('integrations'), path: '/Integrations' },
+        { icon: HelpCircle, label: t('help'),         path: '/Help'         },
+        { icon: User,       label: t('profile'),      path: '/Profile'      },
+        { icon: Settings,   label: t('settings'),     path: '/Settings'     },
+      ],
+    },
+  ];
 
   const isActive = (path) => {
     if (path === '/') return location.pathname === '/';
@@ -77,8 +79,8 @@ export default function MobileBottomNav() {
   };
 
   const adminItems = [];
-  if (isCompanyAdmin) adminItems.push({ icon: Building2, label: 'Co. Admin', path: '/CompanyAdmin' });
-  if (isAdmin) adminItems.push({ icon: Shield, label: 'Admin', path: '/Admin' });
+  if (isCompanyAdmin) adminItems.push({ icon: Building2, label: t('companyAdmin'), path: '/CompanyAdmin' });
+  if (isAdmin) adminItems.push({ icon: Shield, label: t('systemAdmin'), path: '/Admin' });
 
   const allSections = adminItems.length > 0
     ? [...MORE_SECTIONS, { label: 'Admin', items: adminItems }]
@@ -106,7 +108,7 @@ export default function MobileBottomNav() {
           }`}
         >
           {showMore ? <X className="w-5 h-5" /> : <MoreHorizontal className="w-5 h-5" />}
-          <span className="text-[10px] font-medium">More</span>
+          <span className="text-[10px] font-medium">{t('more')}</span>
         </button>
       </nav>
 

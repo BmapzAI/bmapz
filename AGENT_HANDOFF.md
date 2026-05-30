@@ -458,3 +458,136 @@ beyond 14-day trial; prompt caching for margin protection.
   (Optional follow-up: filter the dropdown by plan in ApiKeysTab.)
 - Brand scans + marketing plans ALWAYS run on gpt-4o-mini regardless of
   user choice — protects margins on expensive one-shots.
+
+### 2026-05-30 - Claude (Session 7: OAuth-only integrations + AI Chat layout + WhatsApp Agent)
+
+**Problem:** Integrations modal still had a "manual token fallback" path that set `integration_status=true` without actually verifying the connection, causing false "Connected" badges. OAuth popup close was also treated as success.
+
+**Commits pushed:**
+
+1. `ConnectIntegrationModal.jsx` rewrite:
+   - Removed `handleExternalOAuthConnect` entirely (was setting connected=true on popup close).
+   - `handleSaveCreds` now calls `POST /api/integrations/test/:type` before marking connected. Only sets `integration_status=true` if `success===true`.
+   - Added `PLATFORM_KEY_URLS` map: deep-links to the exact API-key-generation page for 25+ platforms (Apollo, HubSpot, Mailchimp, Klaviyo, ActiveCampaign, etc.).
+   - Added `PLATFORM_STEPS` map: 3–4 step walkthroughs shown before credential fields per platform.
+   - Added `CREDENTIAL_FIELDS` for: apollo, lemlist, mailchimp, klaviyo, activecampaign, brevo, convertkit, mailerlite, intercom, mixpanel, segment, hotjar, perplexity, jasper, loom, demio, shopify, webflow, zoom.
+   - OAuth platforms (Meta/Google/LinkedIn/Twitter/TikTok) show "Connect with X" button; if env vars not set, shows "Awaiting platform setup" — NO manual fallback.
+
+2. `AIChat.jsx` responsive layout:
+   - `h-[calc(100dvh-14rem)] md:h-[calc(100dvh-2.5rem)]` — fills layout correctly on mobile and desktop without bottom empty space.
+   - Mobile chat sidebar: overlay with backdrop instead of inline collapse.
+   - Send button: text "Send" hidden on mobile.
+
+3. WhatsApp AI Agent:
+   - `backend/src/routes/whatsappWebhook.js`: GET (verify) + POST (handle messages). Identifies user by email in intro message, routes through `runAIChat`, replies via WhatsApp Cloud API.
+   - Requires env vars: `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`.
+   - `VITE_WHATSAPP_AGENT_NUMBER` → Cloudflare Pages env for frontend "Send message to Agent" button.
+
+**Action items for Derek:**
+- Register a WhatsApp Business account in Meta Business Manager.
+- Set webhook URL = `https://bmapz-production.up.railway.app/api/whatsapp/webhook` with the verify token.
+- Add `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` to Railway.
+- Add `VITE_WHATSAPP_AGENT_NUMBER` to Cloudflare Pages environment.
+
+### 2026-05-30 - Claude (Session 8: Logo, favicon, profile picture upload fix, deep-link integrations)
+
+**Changes:**
+
+1. **Bmapz AI logo + favicon**: Derek added `public/bmapz-logo.png` (170KB) and `public/favicon.ico` (4.3KB) directly. `index.html` updated with favicon.ico link, apple-touch-icon, and title "Bmapz AI". Committed and pushed both files.
+
+2. **Sidebar logo + user avatar**:
+   - `Sidebar.jsx`: Logo section now renders `<img src="/bmapz-logo.png">` with fallback text. Added `UserAvatar` component (profile picture or initials). Footer avatar + name links to `/Profile`.
+
+3. **Profile picture upload fix** (`backend/src/routes/uploads.js` — new file):
+   - Root cause: frontend was uploading directly to Supabase Storage. The `assets` bucket didn't exist, and RLS blocked user-level uploads.
+   - Fix: `POST /api/uploads` route using `supabaseAdmin` (service role, bypasses RLS). Auto-creates the `assets` bucket on first use. Returns `{ url, path }`.
+   - `frontend-src/api/integrations.js` `UploadFile()` updated: now POSTs multipart to `/api/uploads` with JWT instead of going directly to Supabase.
+
+4. **Deep-link integration UX** (ConnectIntegrationModal.jsx):
+   - `PLATFORM_KEY_URLS`: direct links to exact key-generation pages for Apollo, Lusha, Clay, HubSpot, Salesforce, and 20+ others.
+   - `PLATFORM_STEPS`: 3–4 step walkthroughs per platform rendered above the credential input fields.
+   - `isManualCreds` open to ALL users (removed the prior admin-only gate).
+
+5. **`backend/src/routes/companies.js`**: `API_KEY_FIELDS` expanded with 20+ new field names for email marketing, analytics, eCommerce, etc.
+
+**Verification:**
+- Build passes: 3554 modules, 0 errors.
+- Profile picture upload tested: saves to Supabase Storage via backend, returns CDN URL.
+
+### 2026-05-30 - Claude (Session 9: Trial credit bypass + scan token gate)
+
+**Context:** Trial users were hitting "Out of AI credits (0 remaining)" even though the 14-day trial is supposed to have unconditional AI access. Also, brand/full/lite scans were never supposed to be part of the trial.
+
+**Root cause of "Out of AI credits" for trial users:**
+- `getCompanyPlan()` auto-seeded 8000 trial credits. But some companies had a subscription row with `ai_credits_used > 0` and `ai_credits_total = 0` — the Case B backfill check (`all three = 0`) didn't fire.
+- The credit gate then saw `remaining = 0 - used = negative` and blocked the request.
+
+**Fix — two-part:**
+
+1. **Trial unconditional pass** (`backend/src/routes/ai.js`):
+   ```js
+   const isOnTrial = planId === 'trial' || planStatus === 'trialing' || planStatus === 'inactive';
+   if (willUsePlatformKey && !isOnTrial && remainingCredits < 1) { throw CREDITS_EXHAUSTED; }
+   ```
+   Trial users ALWAYS pass the credit gate. Usage is still logged for analytics.
+
+2. **Scan token gate** (`backend/src/lib/aiCredits.js` + `backend/src/routes/ai.js`):
+   ```js
+   export const SCAN_ACTIONS = new Set(['brand_scan', 'full_scan', 'lite_scan']);
+   export const PLAN_SCAN_TOKENS = { trial:0, starter:0, growth:1, scale:2, enterprise:5 };
+   export function canRunScanAction(action, planId) {
+     if (!SCAN_ACTIONS.has(action)) return true;
+     return (PLAN_SCAN_TOKENS[planId] || 0) > 0;
+   }
+   ```
+   Gate in `runAIChat` (fires AFTER credit check):
+   ```js
+   if (SCAN_ACTIONS.has(action) && !canRunScanAction(action, planId)) {
+     // 402 error with user-facing message explaining upgrade path
+   }
+   ```
+   Trial AND Starter users cannot run any scans. Growth = 1 scan/cycle, Scale = 2, Enterprise = 5.
+
+3. **`BrandScan.jsx`** passes `action: 'brand_scan'` to `InvokeLLM()` so the gate fires.
+
+4. **`integrations.js` `InvokeLLM()`** updated to forward `action` param to `/api/ai/chat`.
+
+**Commits:** `e5b5d5e` (trial bypass), `a0f3c8b` (scan gate + BrandScan wiring).
+
+**Active build:** `889c4572` — deployed 2026-05-30 03:47 AM GMT-3.
+
+---
+
+## Current Status (as of 2026-05-30)
+
+### What's Working
+- ✅ AI Chat with bidirectional fallback (OpenAI ↔ Anthropic)
+- ✅ AI credit system: trial = unconditional access, paid = enforced credits
+- ✅ Scan token gate: trial/starter blocked, growth/scale/enterprise tiered
+- ✅ BYOK restricted to owner/system_admin only
+- ✅ Model tier gating by plan (trial/starter = smart only)
+- ✅ Credit deduction proportional to model cost multiplier
+- ✅ Usage tracking in Settings → Usage tab and AdminPanel → AI Usage tab
+- ✅ Profile picture upload via backend (bypasses Supabase Storage RLS)
+- ✅ Logo + favicon deployed
+- ✅ Integration modal: real connection test before marking Connected
+- ✅ Integration modal: step-by-step walkthroughs + deep-links for 25+ platforms
+- ✅ Audio transcription Node.js compatibility fix (`toFile` from openai SDK)
+- ✅ WhatsApp Agent webhook code ready (pending env vars)
+
+### Pending — Requires Derek Action (Outside Code)
+| Item | What Derek must do |
+|------|--------------------|
+| Platform OAuth (Meta/Google/LinkedIn/Twitter/TikTok) | Register Bmapz as an OAuth app on each platform's developer portal. Add `META_APP_ID`, `META_APP_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, etc. to Railway. Redirect URI = `https://bmapz-production.up.railway.app/api/oauth/<provider>/callback` |
+| Google consent screen | Create Google Cloud project → OAuth consent screen → set app name "Bmapz AI" + logo → create OAuth 2.0 client ID → add client ID/secret in Supabase Dashboard → Authentication → Providers → Google |
+| WhatsApp Business | Create WhatsApp Business account in Meta Business Manager → configure webhook → add `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` to Railway → add `VITE_WHATSAPP_AGENT_NUMBER` to Cloudflare Pages |
+| Stripe billing | Set `STRIPE_PRICE_ID_STARTER_MONTHLY`, `STRIPE_PRICE_ID_GROWTH_MONTHLY`, etc. in Railway for checkout to work |
+
+### Pending — Code Work
+| Item | Notes |
+|------|-------|
+| Monthly scan counter | Growth users can run unlimited scans today (PLAN_SCAN_TOKENS check is a static boolean, not a monthly counter). Need `scan_tokens_used_this_cycle` tracked on subscriptions table with monthly reset. |
+| Model dropdown gating | Backend silently downgrades to cheapest model for trial/starter users. Frontend model selector should filter options by plan tier to avoid confusion. |
+| Inbox email sync | `/api/messaging?sync_to_crm=true` returns 0 — real external email sync endpoint doesn't exist yet. |
+| Workflow execution | `POST /api/workflows/:id/run` creates a run record but doesn't execute nodes. Needs a task queue. |
+| Phase 2 integrations | One-time platform OAuth app setup for social/ad platforms (admin-only UI not built yet). |

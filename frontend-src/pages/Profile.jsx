@@ -14,7 +14,7 @@ import { Company } from '@/api/entities';
 import { UploadFile } from '@/api/integrations';
 
 export default function Profile() {
-  const { t } = useLanguage();
+  const { t, isPt } = useLanguage();
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -58,9 +58,9 @@ export default function Profile() {
     setIsSaving(true);
     try {
       await api.patch('/api/users/me', formData);
-      toast.success('Profile updated successfully');
+      toast.success(t('profileUpdated'));
     } catch (error) {
-      toast.error('Failed to update profile');
+      toast.error(t('failedToUpdate'));
     } finally {
       setIsSaving(false);
     }
@@ -72,13 +72,13 @@ export default function Profile() {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      toast.error('Please select an image file');
+      toast.error(t('selectImageFile'));
       return;
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image must be less than 5MB');
+      toast.error(t('imageTooLarge'));
       return;
     }
 
@@ -87,9 +87,9 @@ export default function Profile() {
       const { url: file_url } = await UploadFile({ file, folder: 'profile-pictures' });
       setFormData(prev => ({ ...prev, profile_picture: file_url }));
       await api.patch('/api/users/me', { profile_picture: file_url });
-      toast.success('Profile picture updated');
+      toast.success(t('profilePictureUpdated'));
     } catch (error) {
-      toast.error('Failed to upload image: ' + (error?.message || 'unknown error'));
+      toast.error(t('failedToUpload') + ': ' + (error?.message || 'unknown error'));
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -121,9 +121,9 @@ export default function Profile() {
       <div>
         <h1 className="text-3xl font-bold text-white tracking-tight"
           style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
-          My Profile
+          {t('myProfile')}
         </h1>
-        <p className="text-gray-400 mt-1">Manage your personal information</p>
+        <p className="text-gray-400 mt-1">{t('managePersonalInfo')}</p>
       </div>
 
       {/* Profile Card */}
@@ -199,20 +199,20 @@ export default function Profile() {
           {/* Form */}
           <div className="space-y-4">
             <div>
-              <Label className="text-gray-400">Full Name</Label>
+              <Label className="text-gray-400">{t('fullName')}</Label>
               <div className="relative mt-1.5">
                 <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <Input
                   value={formData.full_name}
                   onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
                   className="pl-10 bg-black/30 border-white/10 text-white"
-                  placeholder="Your full name"
+                  placeholder={isPt ? 'Seu nome completo' : 'Your full name'}
                 />
               </div>
             </div>
 
             <div>
-              <Label className="text-gray-400">Email</Label>
+              <Label className="text-gray-400">{t('email')}</Label>
               <div className="relative mt-1.5">
                 <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <Input
@@ -221,11 +221,11 @@ export default function Profile() {
                   className="pl-10 bg-black/30 border-white/10 text-gray-500"
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+              <p className="text-xs text-gray-500 mt-1">{t('emailCannotChange')}</p>
             </div>
 
             <div>
-              <Label className="text-gray-400">Phone Number</Label>
+              <Label className="text-gray-400">{t('phoneNumber')}</Label>
               <div className="relative mt-1.5">
                 <Phone size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <Input
@@ -238,7 +238,7 @@ export default function Profile() {
             </div>
 
             <div>
-              <Label className="text-gray-400">Timezone</Label>
+              <Label className="text-gray-400">{t('timezone')}</Label>
               <div className="relative mt-1.5">
                 <Clock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <Input
@@ -251,29 +251,29 @@ export default function Profile() {
             </div>
           </div>
 
-          <Button 
+          <Button
             onClick={handleSave}
             disabled={isSaving}
             className="mt-6 bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2"
           >
             <Save size={18} />
-            {isSaving ? 'Saving...' : 'Save Changes'}
+            {isSaving ? t('saving') : t('save')}
           </Button>
         </div>
       </div>
 
       {/* Account Info */}
       <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Account Information</h3>
+        <h3 className="text-lg font-semibold text-white mb-4">{t('accountInfo')}</h3>
         <div className="grid grid-cols-2 gap-4">
           <div className="p-4 rounded-xl bg-white/5">
-            <p className="text-gray-400 text-sm">Member Since</p>
+            <p className="text-gray-400 text-sm">{t('memberSince')}</p>
             <p className="text-white font-medium mt-1">
-              {user?.created_date ? new Date(user.created_date).toLocaleDateString() : 'N/A'}
+              {user?.created_date ? new Date(user.created_date).toLocaleDateString() : t('na')}
             </p>
           </div>
           <div className="p-4 rounded-xl bg-white/5">
-            <p className="text-gray-400 text-sm">Account Type</p>
+            <p className="text-gray-400 text-sm">{t('accountType')}</p>
             <p className="text-white font-medium mt-1 capitalize">{user?.role || 'User'}</p>
           </div>
         </div>

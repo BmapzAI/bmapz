@@ -1,5 +1,6 @@
 import { api } from '@/api/apiClient';
 import React, { useState, useEffect } from 'react';
+import { useLanguage } from '@/components/ui/LanguageContext';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -452,6 +453,7 @@ function AssignUserToCompanyModal({ users, companies, onClose, onSave }) {
 
 export default function AdminPanel() {
   const queryClient = useQueryClient();
+  const { t, isPt } = useLanguage();
   const { dbUser: user, isAdmin } = useAuth();
   const [search, setSearch] = useState('');
 
@@ -624,16 +626,16 @@ export default function AdminPanel() {
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3"
             style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
-            <Shield size={28} className="text-[#38b6ff]" /> ADMIN PANEL
+            <Shield size={28} className="text-[#38b6ff]" /> {t('adminPanel').toUpperCase()}
           </h1>
-          <p className="text-gray-400 mt-1">Full platform control — users, companies, subscriptions & billing</p>
+          <p className="text-gray-400 mt-1">{t('adminDesc')}</p>
         </div>
         <div className="hidden md:flex gap-3">
           {[
-            { label: 'Companies', value: allCompanies.length, color: '#38b6ff' },
-            { label: 'Users', value: allUsers.length, color: '#cb6ce6' },
-            { label: 'Active Subs', value: allSubscriptions.filter(s => s.status === 'active').length, color: '#22c55e' },
-            { label: 'Pending', value: pendingPurchases.length, color: '#f59e0b' },
+            { label: t('companies'), value: allCompanies.length, color: '#38b6ff' },
+            { label: t('users'), value: allUsers.length, color: '#cb6ce6' },
+            { label: t('activeSubs'), value: allSubscriptions.filter(s => s.status === 'active').length, color: '#22c55e' },
+            { label: t('pending'), value: pendingPurchases.length, color: '#f59e0b' },
           ].map(s => (
             <div key={s.label} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-center">
               <p className="font-bold text-lg" style={{ color: s.color }}>{s.value}</p>
@@ -646,7 +648,7 @@ export default function AdminPanel() {
       {pendingPurchases.length > 0 && (
         <div className="rounded-2xl border border-[#f59e0b]/30 bg-[#f59e0b]/10 p-4 flex items-center gap-3">
           <AlertTriangle size={20} className="text-[#f59e0b]" />
-          <p className="text-[#f59e0b] font-medium">{pendingPurchases.length} purchase(s) pending manual approval</p>
+          <p className="text-[#f59e0b] font-medium">{pendingPurchases.length} {t('pendingApproval')}</p>
         </div>
       )}
 
@@ -675,16 +677,16 @@ export default function AdminPanel() {
       <Tabs defaultValue="companies">
         <TabsList className="bg-white/5 border border-white/10 flex-wrap h-auto gap-1">
           <TabsTrigger value="companies" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <Building2 size={14} className="mr-1.5" /> Companies
+            <Building2 size={14} className="mr-1.5" /> {t('companies')}
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <CreditCard size={14} className="mr-1.5" /> Subscriptions
+            <CreditCard size={14} className="mr-1.5" /> {isPt ? 'Assinaturas' : 'Subscriptions'}
           </TabsTrigger>
           <TabsTrigger value="users" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <Users size={14} className="mr-1.5" /> Users & Roles
+            <Users size={14} className="mr-1.5" /> {isPt ? 'Usuários & Funções' : 'Users & Roles'}
           </TabsTrigger>
           <TabsTrigger value="billing" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <Zap size={14} className="mr-1.5" /> Billing Approvals
+            <Zap size={14} className="mr-1.5" /> {isPt ? 'Aprovações de Cobrança' : 'Billing Approvals'}
             {pendingPurchases.length > 0 && (
               <span className="ml-1.5 w-5 h-5 rounded-full bg-[#f59e0b] text-black text-[10px] font-bold flex items-center justify-center">
                 {pendingPurchases.length}
@@ -692,10 +694,10 @@ export default function AdminPanel() {
             )}
           </TabsTrigger>
           <TabsTrigger value="usage" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <TrendingUp size={14} className="mr-1.5" /> AI Usage
+            <TrendingUp size={14} className="mr-1.5" /> {isPt ? 'Uso de IA' : 'AI Usage'}
           </TabsTrigger>
           <TabsTrigger value="changelog" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <History size={14} className="mr-1.5" /> Change Log
+            <History size={14} className="mr-1.5" /> {isPt ? 'Log de Mudanças' : 'Change Log'}
           </TabsTrigger>
         </TabsList>
 

@@ -48,7 +48,7 @@ const FUNNEL_STAGES_ORDERED = [
 ];
 
 export default function Sales() {
-  const { t } = useLanguage();
+  const { t, isPt } = useLanguage();
   const tc = useThemeClasses();
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState('kanban');
@@ -191,13 +191,8 @@ export default function Sales() {
 
       <QuickStartGuide
         id="sales_leads"
-        title="Lead Management"
-        steps={[
-          "Add leads manually with the '+ Add New Lead' button, or import them in bulk from the Sales menu.",
-          "Use Kanban view to drag leads between funnel stages, or switch to List view for a spreadsheet-style overview.",
-          "Click any lead card to open its full profile — add notes, send messages, run AI analysis, and enroll in workflows.",
-          "Use the Filters panel to narrow down leads by ICP score, value, source, or list membership.",
-        ]}
+        title={isPt ? 'Gestão de Leads' : 'Lead Management'}
+        steps={[t('salesQs1'), t('salesQs2'), t('salesQs3'), t('salesQs4')]}
       />
 
       {/* Controls */}

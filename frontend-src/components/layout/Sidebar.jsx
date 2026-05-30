@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
+import { useLanguage } from '@/components/ui/LanguageContext';
 import { cn } from '@/lib/utils';
 import {
   ChevronLeft, ChevronRight, LogOut,
@@ -10,44 +11,6 @@ import {
   Plug, HelpCircle, User, Settings as SettingsIcon,
   Building2, Shield,
 } from 'lucide-react';
-
-const STATIC_NAV_SECTIONS = [
-  {
-    label: null,
-    items: [
-      { name: 'Home',      path: '/',          icon: LayoutDashboard },
-      { name: 'Sales',     path: '/Sales',     icon: Users           },
-      { name: 'Inbox',     path: '/Inbox',     icon: MessageSquare   },
-      { name: 'AI Chat',   path: '/AIChat',    icon: Bot, dynamicName: 'agentName' },
-      { name: 'Workflows', path: '/Workflows', icon: GitBranch       },
-    ],
-  },
-  {
-    label: 'Marketing',
-    items: [
-      { name: 'Ads',          path: '/Ads',         icon: Megaphone },
-      { name: 'SEO',          path: '/SEO',         icon: Search    },
-      { name: 'Social Media', path: '/SocialMedia', icon: Share2    },
-      { name: 'Blog',         path: '/Blog',        icon: BookOpen  },
-      { name: 'Brand Scan',   path: '/BrandScan',   icon: ScanLine  },
-    ],
-  },
-  {
-    label: 'Content & AI',
-    items: [
-      { name: 'AI Outputs',     path: '/AIOutputs',     icon: Sparkles  },
-      { name: 'Text Templates', path: '/TextTemplates', icon: FileText  },
-      { name: 'Dashboards',     path: '/Dashboards',    icon: BarChart3 },
-    ],
-  },
-  {
-    label: 'Tools',
-    items: [
-      { name: 'Integrations', path: '/Integrations', icon: Plug       },
-      { name: 'Help',         path: '/Help',         icon: HelpCircle },
-    ],
-  },
-];
 
 /**
  * User avatar: shows profile_picture if available, otherwise initials on a
@@ -114,8 +77,47 @@ function NavItem({ path, icon: Icon, name, collapsed, isActive }) {
 export default function Sidebar({ collapsed, setCollapsed }) {
   const location = useLocation();
   const { dbUser, company, logout, isAdmin, isCompanyAdmin } = useAuth();
+  const { t, isPt } = useLanguage();
 
-  const agentName = company?.personal_agent_name || 'AI Chat';
+  const agentName = company?.personal_agent_name || t('aiChat');
+
+  const NAV_SECTIONS = [
+    {
+      label: null,
+      items: [
+        { name: t('home'),      path: '/',          icon: LayoutDashboard },
+        { name: t('sales'),     path: '/Sales',     icon: Users           },
+        { name: t('inbox'),     path: '/Inbox',     icon: MessageSquare   },
+        { name: agentName,      path: '/AIChat',    icon: Bot             },
+        { name: t('workflows'), path: '/Workflows', icon: GitBranch       },
+      ],
+    },
+    {
+      label: t('marketing'),
+      items: [
+        { name: t('ads'),           path: '/Ads',         icon: Megaphone },
+        { name: 'SEO',              path: '/SEO',         icon: Search    },
+        { name: t('socialMedia'),   path: '/SocialMedia', icon: Share2    },
+        { name: t('blog'),          path: '/Blog',        icon: BookOpen  },
+        { name: t('brandScan'),     path: '/BrandScan',   icon: ScanLine  },
+      ],
+    },
+    {
+      label: t('contentAndAI'),
+      items: [
+        { name: t('aiOutputs'),      path: '/AIOutputs',     icon: Sparkles  },
+        { name: t('textTemplates'),  path: '/TextTemplates', icon: FileText  },
+        { name: t('dashboardsTitle'),path: '/Dashboards',    icon: BarChart3 },
+      ],
+    },
+    {
+      label: t('tools'),
+      items: [
+        { name: t('integrations'), path: '/Integrations', icon: Plug       },
+        { name: t('help'),         path: '/Help',         icon: HelpCircle },
+      ],
+    },
+  ];
 
   const isActive = (path) => {
     if (path === '/') return location.pathname === '/';
@@ -159,7 +161,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
-        {STATIC_NAV_SECTIONS.map((section, si) => (
+        {NAV_SECTIONS.map((section, si) => (
           <div key={si}>
             <SectionLabel label={section.label} collapsed={collapsed} />
             {section.items.map((item) => (
@@ -167,7 +169,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                 key={item.path}
                 path={item.path}
                 icon={item.icon}
-                name={item.dynamicName === 'agentName' ? agentName : item.name}
+                name={item.name}
                 collapsed={collapsed}
                 isActive={isActive(item.path)}
               />
@@ -175,18 +177,18 @@ export default function Sidebar({ collapsed, setCollapsed }) {
           </div>
         ))}
 
-        <SectionLabel label="Account" collapsed={collapsed} />
-        <NavItem path="/Profile"  icon={User}         name="Profile"  collapsed={collapsed} isActive={isActive('/Profile')}  />
-        <NavItem path="/Settings" icon={SettingsIcon} name="Settings" collapsed={collapsed} isActive={isActive('/Settings')} />
+        <SectionLabel label={t('account')} collapsed={collapsed} />
+        <NavItem path="/Profile"  icon={User}         name={t('profile')}   collapsed={collapsed} isActive={isActive('/Profile')}  />
+        <NavItem path="/Settings" icon={SettingsIcon} name={t('settings')}  collapsed={collapsed} isActive={isActive('/Settings')} />
 
         {isCompanyAdmin && (
           <>
-            <SectionLabel label="Admin" collapsed={collapsed} />
-            <NavItem path="/CompanyAdminPanel" icon={Building2} name="Company Admin" collapsed={collapsed} isActive={isActive('/CompanyAdminPanel')} />
+            <SectionLabel label={t('admin')} collapsed={collapsed} />
+            <NavItem path="/CompanyAdminPanel" icon={Building2} name={t('companyAdmin')} collapsed={collapsed} isActive={isActive('/CompanyAdminPanel')} />
           </>
         )}
         {isAdmin && (
-          <NavItem path="/AdminPanel" icon={Shield} name="System Admin" collapsed={collapsed} isActive={isActive('/AdminPanel')} />
+          <NavItem path="/AdminPanel" icon={Shield} name={t('systemAdmin')} collapsed={collapsed} isActive={isActive('/AdminPanel')} />
         )}
       </nav>
 
@@ -213,10 +215,10 @@ export default function Sidebar({ collapsed, setCollapsed }) {
             'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-white/50 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200',
             collapsed ? 'justify-center' : ''
           )}
-          title={collapsed ? 'Sign Out' : undefined}
+          title={collapsed ? t('signOut') : undefined}
         >
           <LogOut className="w-5 h-5 flex-shrink-0" />
-          {!collapsed && <span className="text-sm font-medium">Sign Out</span>}
+          {!collapsed && <span className="text-sm font-medium">{t('signOut')}</span>}
         </button>
       </div>
 

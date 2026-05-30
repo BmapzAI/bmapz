@@ -318,9 +318,9 @@ const LEVEL_COLORS = {
 };
 
 function VideoCard({ video, language, onClick }) {
-  const title = language === 'pt' ? video.titlePt : video.title;
-  const description = language === 'pt' ? video.descriptionPt : video.description;
-  const level = language === 'pt' ? video.levelPt : video.level;
+  const title = isPt ? video.titlePt : video.title;
+  const description = isPt ? video.descriptionPt : video.description;
+  const level = isPt ? video.levelPt : video.level;
   const levelKey = video.level;
 
   return (
@@ -353,10 +353,10 @@ function VideoCard({ video, language, onClick }) {
 
 function VideoModal({ video, language, onClose }) {
   if (!video) return null;
-  const title = language === 'pt' ? video.titlePt : video.title;
-  const description = language === 'pt' ? video.descriptionPt : video.description;
-  const steps = language === 'pt' ? video.stepsPt : video.steps;
-  const level = language === 'pt' ? video.levelPt : video.level;
+  const title = isPt ? video.titlePt : video.title;
+  const description = isPt ? video.descriptionPt : video.description;
+  const steps = isPt ? video.stepsPt : video.steps;
+  const level = isPt ? video.levelPt : video.level;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
@@ -369,7 +369,7 @@ function VideoModal({ video, language, onClose }) {
               <Play className="w-8 h-8 text-[#38b6ff] ml-1" />
             </div>
             <p className="text-white/70 text-sm bg-black/50 px-3 py-1 rounded-full">
-              {language === 'pt' ? 'Vídeo em breve' : 'Video coming soon'}
+              {isPt ? 'Vídeo em breve' : 'Video coming soon'}
             </p>
           </div>
           <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80"></button>
@@ -388,7 +388,7 @@ function VideoModal({ video, language, onClose }) {
             <div>
               <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-[#38b6ff]" />
-                {language === 'pt' ? 'Passos deste tutorial:' : 'Tutorial steps:'}
+                {isPt ? 'Passos deste tutorial:' : 'Tutorial steps:'}
               </h3>
               <ol className="space-y-2">
                 {steps.map((step, i) => (
@@ -403,7 +403,7 @@ function VideoModal({ video, language, onClose }) {
 
           <div className="mt-6 pt-4 border-t border-white/10 flex items-center gap-2 text-gray-500 text-xs">
             <Star className="w-3 h-3" />
-            {language === 'pt' ? 'Vídeos completos estarão disponíveis em breve.' : 'Full videos will be available soon.'}
+            {isPt ? 'Vídeos completos estarão disponíveis em breve.' : 'Full videos will be available soon.'}
           </div>
         </div>
       </div>
@@ -412,19 +412,19 @@ function VideoModal({ video, language, onClose }) {
 }
 
 export default function VideoTutorials() {
-  const { language } = useLanguage();
+  const { language, isPt } = useLanguage();
   const [search, setSearch] = useState('');
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('all');
 
-  const allCategories = TUTORIALS.map(t => ({ key: t.category, label: language === 'pt' ? t.categoryPt : t.category }));
+  const allCategories = TUTORIALS.map(t => ({ key: t.category, label: isPt ? t.categoryPt : t.category }));
 
   const filtered = TUTORIALS.map(cat => ({
     ...cat,
     videos: cat.videos.filter(v => {
       const matchCat = selectedCategory === 'all' || selectedCategory === cat.category;
-      const title = language === 'pt' ? v.titlePt : v.title;
-      const desc = language === 'pt' ? v.descriptionPt : v.description;
+      const title = isPt ? v.titlePt : v.title;
+      const desc = isPt ? v.descriptionPt : v.description;
       const matchSearch = !search || title.toLowerCase().includes(search.toLowerCase()) || desc.toLowerCase().includes(search.toLowerCase());
       return matchCat && matchSearch;
     }),
@@ -440,13 +440,13 @@ export default function VideoTutorials() {
           <Link to="/Help" className="text-gray-500 hover:text-white text-sm flex items-center gap-1 transition-colors">
             Help <ChevronRight className="w-3 h-3" />
           </Link>
-          <span className="text-gray-400 text-sm">{language === 'pt' ? 'Tutoriais em Vídeo' : 'Video Tutorials'}</span>
+          <span className="text-gray-400 text-sm">{isPt ? 'Tutoriais em Vídeo' : 'Video Tutorials'}</span>
         </div>
         <h1 className="text-3xl font-bold text-white tracking-tight" style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
-          {language === 'pt' ? 'Tutoriais em Vídeo' : 'Video Tutorials'}
+          {isPt ? 'Tutoriais em Vídeo' : 'Video Tutorials'}
         </h1>
         <p className="text-gray-400 mt-1">
-          {language === 'pt'
+          {isPt
             ? `${totalVideos} tutoriais para aprender do zero, sem conhecimento técnico necessário.`
             : `${totalVideos} tutorials to learn from scratch  no technical knowledge required.`}
         </p>
@@ -459,7 +459,7 @@ export default function VideoTutorials() {
           <Input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder={language === 'pt' ? 'Buscar tutoriais...' : 'Search tutorials...'}
+            placeholder={isPt ? 'Buscar tutoriais...' : 'Search tutorials...'}
             className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-gray-500"
           />
         </div>
@@ -468,7 +468,7 @@ export default function VideoTutorials() {
             onClick={() => setSelectedCategory('all')}
             className={`px-3 py-1.5 rounded-xl text-sm border transition-all ${selectedCategory === 'all' ? 'bg-[#38b6ff]/20 border-[#38b6ff]/40 text-[#38b6ff]' : 'border-white/10 text-gray-400 hover:border-white/20'}`}
           >
-            {language === 'pt' ? 'Todos' : 'All'}
+            {isPt ? 'Todos' : 'All'}
           </button>
           {allCategories.map(cat => (
             <button
@@ -490,10 +490,10 @@ export default function VideoTutorials() {
           </div>
           <div>
             <p className="text-white font-semibold">
-              {language === 'pt' ? '= Novo por aqui? Comece aqui!' : '= New here? Start here!'}
+              {isPt ? '= Novo por aqui? Comece aqui!' : '= New here? Start here!'}
             </p>
             <p className="text-gray-400 text-sm">
-              {language === 'pt'
+              {isPt
                 ? 'Assista os tutoriais de "Primeiros Passos" primeiro para ter uma visão geral da plataforma.'
                 : 'Watch the "Getting Started" tutorials first to get a full overview of the platform.'}
             </p>
@@ -506,7 +506,7 @@ export default function VideoTutorials() {
         <div key={cat.category} className="space-y-4">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{cat.icon}</span>
-            <h2 className="text-white font-bold text-xl">{language === 'pt' ? cat.categoryPt : cat.category}</h2>
+            <h2 className="text-white font-bold text-xl">{isPt ? cat.categoryPt : cat.category}</h2>
             <Badge className="bg-white/10 text-gray-400 border-0">{cat.videos.length}</Badge>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -520,7 +520,7 @@ export default function VideoTutorials() {
       {filtered.length === 0 && (
         <div className="text-center py-16 text-gray-500">
           <Play className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>{language === 'pt' ? 'Nenhum tutorial encontrado' : 'No tutorials found'}</p>
+          <p>{isPt ? 'Nenhum tutorial encontrado' : 'No tutorials found'}</p>
         </div>
       )}
 

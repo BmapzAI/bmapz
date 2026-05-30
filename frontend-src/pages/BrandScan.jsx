@@ -16,7 +16,7 @@ const MAX_VERSIONS = 6;
 
 export default function BrandScan() {
   const queryClient = useQueryClient();
-  const { language } = useLanguage();
+  const { language, isPt } = useLanguage();
   const [activeScanId, setActiveScanId] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
@@ -56,7 +56,7 @@ export default function BrandScan() {
     await BrandScanData.delete(id);
     if (activeScanId === id) setActiveScanId(null);
     queryClient.invalidateQueries({ queryKey: ['brandscans'] });
-    toast.success(language === 'pt' ? 'Scan removido' : 'Scan deleted');
+    toast.success(isPt ? 'Scan removido' : 'Scan deleted');
   };
 
   const handleGenerate = async (formData) => {
@@ -80,7 +80,7 @@ export default function BrandScan() {
 
       setActiveScanId(scan.id);
 
-      const prompt = `You are an expert in digital marketing and branding. Generate a complete and professional Brand Scan for the following company/personal brand. Respond in ${language === 'pt' ? 'Brazilian Portuguese' : 'English'}.
+      const prompt = `You are an expert in digital marketing and branding. Generate a complete and professional Brand Scan for the following company/personal brand. Respond in ${isPt ? 'Brazilian Portuguese' : 'English'}.
 
 COMPANY DATA:
 - Name: ${formData.name}
@@ -213,9 +213,9 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
       });
 
       queryClient.invalidateQueries({ queryKey: ['brandscans'] });
-      toast.success(language === 'pt' ? 'Brand Scan gerado com sucesso!' : 'Brand Scan generated successfully!');
+      toast.success(isPt ? 'Brand Scan gerado com sucesso!' : 'Brand Scan generated successfully!');
     } catch (err) {
-      toast.error(language === 'pt' ? 'Erro ao gerar Brand Scan' : 'Failed to generate Brand Scan');
+      toast.error(isPt ? 'Erro ao gerar Brand Scan' : 'Failed to generate Brand Scan');
     } finally {
       setGenerating(false);
     }
@@ -230,10 +230,10 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
         </div>
         <div className="text-center">
           <h2 className="text-white text-xl font-bold">
-            {language === 'pt' ? 'Gerando Brand Scan...' : 'Generating Brand Scan...'}
+            {isPt ? 'Gerando Brand Scan...' : 'Generating Brand Scan...'}
           </h2>
           <p className="text-gray-400 mt-2 max-w-md">
-            {language === 'pt'
+            {isPt
               ? 'A IA está analisando sua empresa e preparando o relatório completo. Isso pode levar alguns instantes.'
               : 'The AI is analyzing your company and preparing the full report. This may take a moment.'}
           </p>
@@ -247,7 +247,7 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
     return (
       <div>
         <button onClick={() => setShowSetup(false)} className="flex items-center gap-1 text-gray-400 hover:text-white text-sm mb-6 transition-colors">
-          → {language === 'pt' ? 'Voltar' : 'Back'}
+          → {isPt ? 'Voltar' : 'Back'}
         </button>
         <BrandScanSetup company={company} onGenerate={handleGenerate} />
       </div>
@@ -267,7 +267,7 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
         <div className="flex items-center gap-2 text-gray-400 text-sm">
           <FileSearch className="w-4 h-4 text-[#38b6ff]" />
           <span className="text-white font-medium">
-            {language === 'pt' ? 'Versões' : 'Versions'}
+            {isPt ? 'Versões' : 'Versions'}
           </span>
           <Badge className="bg-white/10 text-gray-400 border-0 text-xs">{completedScans.length}/{MAX_VERSIONS}</Badge>
         </div>
@@ -285,12 +285,12 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
               >
                 <Clock className="w-3 h-3" />
                 <span className="hidden sm:inline">{s.title?.replace('Brand Scan  ', '')}</span>
-                <span className="text-xs opacity-70">{new Date(s.created_date).toLocaleDateString(language === 'pt' ? 'pt-BR' : 'en-US')}</span>
+                <span className="text-xs opacity-70">{new Date(s.created_date).toLocaleDateString(isPt ? 'pt-BR' : 'en-US')}</span>
               </button>
               <button
                 onClick={(e) => deleteScan(s.id, e)}
                 className="ml-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all"
-                title={language === 'pt' ? 'Excluir' : 'Delete'}
+                title={isPt ? 'Excluir' : 'Delete'}
               >
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -304,7 +304,7 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
           className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-1.5 flex-shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
-          {language === 'pt' ? 'Novo Scan' : 'New Scan'}
+          {isPt ? 'Novo Scan' : 'New Scan'}
         </Button>
       </div>
 
@@ -313,7 +313,7 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
       ) : (
         <div className="text-center py-16 text-gray-400">
           <FileSearch className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>{language === 'pt' ? 'Selecione uma versão acima' : 'Select a version above'}</p>
+          <p>{isPt ? 'Selecione uma versão acima' : 'Select a version above'}</p>
         </div>
       )}
     </div>
