@@ -668,6 +668,27 @@ const translations = {
     beginner: 'Beginner',
     levelLabel: 'Level',
 
+    // SendMessageModal
+    selectLeadList: 'Select Lead List',
+    chooseList: 'Choose a list...',
+    leadsWillReceive: 'leads will receive this message',
+    messageContent: 'Message Content',
+    subjectLabel: 'Subject:',
+    msgContentPlaceholder: 'Message content...',
+    variablesHint: 'Variables like [First Name], [Company Name] will be personalized per lead',
+    sendingProgress: 'Sending...',
+    sendTo: 'Send to',
+    leadsLabel: 'leads',
+    selectListError: 'Select a lead list',
+    msgRequiredError: 'Message content is required',
+    noLeadsInList: 'No leads in selected list',
+    sentToLeads: 'Sent to',
+
+    // LeadKanban menu
+    viewDetails: 'View Details',
+    sendMessage: 'Send Message',
+    disqualify: 'Disqualify',
+
     // DisqualifyDialog
     disqualifyLead: 'Disqualify Lead',
     whyDisqualifying: 'Why are you disqualifying',
@@ -1409,6 +1430,27 @@ const translations = {
     prospector: 'Prospector',
     beginner: 'Iniciante',
     levelLabel: 'Nível',
+
+    // SendMessageModal
+    selectLeadList: 'Selecionar Lista de Leads',
+    chooseList: 'Escolha uma lista...',
+    leadsWillReceive: 'leads receberão esta mensagem',
+    messageContent: 'Conteúdo da Mensagem',
+    subjectLabel: 'Assunto:',
+    msgContentPlaceholder: 'Conteúdo da mensagem...',
+    variablesHint: 'Variáveis como [First Name], [Company Name] serão personalizadas por lead',
+    sendingProgress: 'Enviando...',
+    sendTo: 'Enviar para',
+    leadsLabel: 'leads',
+    selectListError: 'Selecione uma lista de leads',
+    msgRequiredError: 'O conteúdo da mensagem é obrigatório',
+    noLeadsInList: 'Nenhum lead na lista selecionada',
+    sentToLeads: 'Enviado para',
+
+    // LeadKanban menu
+    viewDetails: 'Ver Detalhes',
+    sendMessage: 'Enviar Mensagem',
+    disqualify: 'Desqualificar',
 
     // DisqualifyDialog
     disqualifyLead: 'Desqualificar Lead',

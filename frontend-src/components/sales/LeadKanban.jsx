@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '@/components/ui/LanguageContext';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Building2, User, Mail, Globe, MoreVertical, Crown } from 'lucide-react';
 import {
@@ -11,6 +12,7 @@ import {
 import { createPageUrl } from '@/utils';
 
 export default function LeadKanban({ leads, stages, onStageChange, onDisqualify }) {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const handleDragEnd = (result) => {
     if (!result.destination) return;
@@ -98,20 +100,20 @@ export default function LeadKanban({ leads, stages, onStageChange, onDisqualify 
                                   <MoreVertical size={16} />
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent className="bg-[#1a1a1a] border-white/10">
-                                  <DropdownMenuItem 
+                                  <DropdownMenuItem
                                     className="text-white hover:bg-white/10"
                                     onClick={() => navigate(`/LeadDetails?id=${lead.id}`)}
                                     >
-                                      View Details
+                                      {t('viewDetails')}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem className="text-white hover:bg-white/10">
-                                    Send Message
+                                    {t('sendMessage')}
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem 
+                                  <DropdownMenuItem
                                     className="text-red-400 hover:bg-red-500/10"
                                     onClick={() => onDisqualify && onDisqualify(lead.id)}
                                   >
-                                    Disqualify
+                                    {t('disqualify')}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -135,7 +137,7 @@ export default function LeadKanban({ leads, stages, onStageChange, onDisqualify 
                             {lead.icp_score && (
                               <div className="mt-3 pt-3 border-t border-white/5">
                                 <div className="flex items-center justify-between text-xs">
-                                  <span className="text-gray-400">ICP Score</span>
+                                  <span className="text-gray-400">{t('icpScore')}</span>
                                   <span className={`font-medium ${
                                     lead.icp_score >= 70 ? 'text-green-400' :
                                     lead.icp_score >= 40 ? 'text-yellow-400' : 'text-red-400'

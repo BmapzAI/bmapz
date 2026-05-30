@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Send, Users, MessageSquare, Mail, Linkedin, X } from 'lucide-react';
 import { Company, Lead, LeadList, Message } from '@/api/entities';
+import { useLanguage } from '@/components/ui/LanguageContext';
 
 const CHANNEL_ICONS = {
   email: { icon: Mail, color: '#38b6ff', label: 'Email' },
@@ -16,6 +17,7 @@ const CHANNEL_ICONS = {
 };
 
 export default function SendMessageModal({ template, onClose }) {
+  const { t } = useLanguage();
   const [selectedListId, setSelectedListId] = useState('');
   const [customContent, setCustomContent] = useState(template?.content || '');
   const [sending, setSending] = useState(false);
@@ -54,9 +56,9 @@ export default function SendMessageModal({ template, onClose }) {
   };
 
   const handleSend = async () => {
-    if (!selectedListId) { toast.error('Select a lead list'); return; }
-    if (!customContent.trim()) { toast.error('Message content is required'); return; }
-    if (leadsInList.length === 0) { toast.error('No leads in selected list'); return; }
+    if (!selectedListId) { toast.error(t('selectListError')); return; }
+    if (!customContent.trim()) { toast.error(t('msgRequiredError')); return; }
+    if (leadsInList.length === 0) { toast.error(t('noLeadsInList')); return; }
 
     setSending(true);
     setTotal(leadsInList.length);
@@ -87,7 +89,7 @@ export default function SendMessageModal({ template, onClose }) {
     }
 
     setSending(false);
-    toast.success(`Sent to ${successCount}/${leadsInList.length} leads`);
+    toast.success(`${t('sentToLeads')} ${successCount}/${leadsInList.length} ${t('leadsLabel')}`);
     onClose();
   };
 
@@ -109,11 +111,11 @@ export default function SendMessageModal({ template, onClose }) {
           {/* Lead List Selector */}
           <div>
             <label className="text-gray-400 text-sm mb-1.5 block flex items-center gap-1">
-              <Users size={14} /> Select Lead List
+              <Users size={14} /> {t('selectLeadList')}
             </label>
             <Select value={selectedListId} onValueChange={setSelectedListId}>
               <SelectTrigger className="bg-black/30 border-white/10 text-white">
-                <SelectValue placeholder="Choose a list..." />
+                <SelectValue placeholder={t('chooseList')} />
               </SelectTrigger>
               <SelectContent className="bg-[#1a1a1a] border-white/10">
                 {leadLists.map(list => (
@@ -125,17 +127,17 @@ export default function SendMessageModal({ template, onClose }) {
             </Select>
             {selectedListId && (
               <p className="text-gray-500 text-xs mt-1">
-                {leadsInList.length} leads will receive this message
+                {leadsInList.length} {t('leadsWillReceive')}
               </p>
             )}
           </div>
 
           {/* Message Preview + Edit */}
           <div>
-            <label className="text-gray-400 text-sm mb-1.5 block">Message Content</label>
+            <label className="text-gray-400 text-sm mb-1.5 block">{t('messageContent')}</label>
             {template?.subject && (
               <div className="mb-2 p-2 rounded-lg bg-white/5 border border-white/10 text-sm">
-                <span className="text-gray-400 text-xs">Subject: </span>
+                <span className="text-gray-400 text-xs">{t('subjectLabel')} </span>
                 <span className="text-white">{template.subject}</span>
               </div>
             )}
@@ -143,16 +145,16 @@ export default function SendMessageModal({ template, onClose }) {
               value={customContent}
               onChange={(e) => setCustomContent(e.target.value)}
               className="min-h-[150px] bg-black/30 border-white/10 text-white text-sm"
-              placeholder="Message content..."
+              placeholder={t('msgContentPlaceholder')}
             />
-            <p className="text-gray-600 text-xs mt-1">Variables like [First Name], [Company Name] will be personalized per lead</p>
+            <p className="text-gray-600 text-xs mt-1">{t('variablesHint')}</p>
           </div>
 
           {/* Send Progress */}
           {sending && (
             <div className="p-3 rounded-xl bg-[#38b6ff]/10 border border-[#38b6ff]/20">
               <div className="flex items-center justify-between text-sm mb-2">
-                <span className="text-[#38b6ff]">Sending...</span>
+                <span className="text-[#38b6ff]">{t('sendingProgress')}</span>
                 <span className="text-white">{sent}/{total}</span>
               </div>
               <div className="w-full h-2 bg-black/30 rounded-full overflow-hidden">
@@ -165,10 +167,10 @@ export default function SendMessageModal({ template, onClose }) {
             <Button onClick={handleSend} disabled={sending || !selectedListId}
               className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2 flex-1">
               <Send size={16} />
-              {sending ? `Sending... ${sent}/${total}` : `Send to ${leadsInList.length} leads`}
+              {sending ? `${t('sendingProgress')} ${sent}/${total}` : `${t('sendTo')} ${leadsInList.length} ${t('leadsLabel')}`}
             </Button>
             <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">
-              Cancel
+              {t('cancel')}
             </Button>
           </div>
         </div>
