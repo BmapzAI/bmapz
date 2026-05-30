@@ -61,6 +61,77 @@ const EXTERNAL_OAUTH_MAP = {
   jasper: { authUrl: 'https://app.jasper.ai/login', name: 'Jasper', color: '#6C48D5', logo: 'https://www.jasper.ai/favicon.ico' },
 };
 
+// Deep-links to the EXACT page on each platform where the user generates the
+// connection token. Used by the "Open <Platform> →" button in the modal so
+// users get to the right screen in one click instead of hunting through menus.
+// These URLs open in a new tab; the user copies the token, pastes into Bmapz.
+const PLATFORM_KEY_URLS = {
+  whatsapp:        'https://developers.facebook.com/apps',
+  wordpress:       null, // user-hosted, no canonical URL
+  calendly:        'https://calendly.com/integrations/api_webhooks',
+  zapier:          'https://zapier.com/app/zaps',
+  make:            'https://www.make.com/en/help/tools/webhooks',
+  n8n:             null,
+  twilio:          'https://console.twilio.com/',
+  openai:          'https://platform.openai.com/api-keys',
+  hunter:          'https://hunter.io/api-keys',
+  lusha:           'https://www.lusha.com/business/settings/api',
+  clay:            'https://app.clay.com/workspaces/integrations',
+  cal_com:         'https://app.cal.com/settings/developer/api-keys',
+  chilipiper:      'https://app.chilipiper.com/admin/api',
+  apollo:          'https://app.apollo.io/#/settings/integrations/api',
+  lemlist:         'https://app.lemlist.com/settings/integrations',
+  mailchimp:       'https://us1.admin.mailchimp.com/account/api/',
+  klaviyo:         'https://www.klaviyo.com/account#api-keys-tab',
+  activecampaign:  'https://www.activecampaign.com/login/?next=/account/extend/',
+  brevo:           'https://app.brevo.com/settings/keys/api',
+  convertkit:      'https://app.kit.com/account_settings/developer_settings',
+  mailerlite:      'https://dashboard.mailerlite.com/integrations/api',
+  intercom:        'https://app.intercom.com/a/apps/_/developer-hub',
+  mixpanel:        'https://mixpanel.com/settings/project',
+  segment:         'https://app.segment.com/sources',
+  hotjar:          'https://insights.hotjar.com/account/api',
+  perplexity:      'https://www.perplexity.ai/settings/api',
+  jasper:          'https://app.jasper.ai/settings/api',
+  loom:            'https://www.loom.com/looms/settings/personal/api',
+  demio:           'https://my.demio.com/settings/api',
+  shopify:         'https://shopify.dev/docs/apps/auth/admin-app-access-tokens',
+  webflow:         'https://webflow.com/dashboard/account/integrations',
+  zoom:            'https://marketplace.zoom.us/develop/create',
+};
+
+// Step-by-step instructions per platform so non-technical users get to the
+// token in <60 seconds. Each step is short and actionable.
+const PLATFORM_STEPS = {
+  apollo:          ['Sign in to Apollo.io', 'Open Settings → Integrations → API', 'Click "Create New API Key"', 'Copy the key and paste below'],
+  mailchimp:       ['Sign in to Mailchimp', 'Click your avatar → Account → Extras → API Keys', 'Click "Create A Key"', 'Copy the key — note the suffix (e.g. -us19) — that\'s your server prefix'],
+  klaviyo:         ['Sign in to Klaviyo', 'Account → Settings → API Keys', 'Click "Create Private API Key" → name it "Bmapz"', 'Copy and paste below'],
+  activecampaign:  ['Sign in to ActiveCampaign', 'Settings → Developer', 'Copy your URL and API Key', 'Paste both below'],
+  brevo:           ['Sign in to Brevo', 'Profile menu → SMTP & API → API Keys', 'Click "Generate a new API key" → name it "Bmapz"', 'Copy and paste below'],
+  convertkit:      ['Sign in to ConvertKit', 'Settings → Advanced → API', 'Copy both API Key AND API Secret', 'Paste both below'],
+  mailerlite:      ['Sign in to MailerLite', 'Integrations → API → Generate new token', 'Name it "Bmapz" → Generate', 'Copy and paste below'],
+  intercom:        ['Sign in to Intercom', 'Developer Hub → New app → name it "Bmapz"', 'Authentication tab → Access Token', 'Copy and paste below'],
+  calendly:        ['Sign in to Calendly', 'Integrations & apps → API & Webhooks', 'Click "Generate New Token"', 'Copy and paste below'],
+  hunter:          ['Sign in to Hunter.io', 'Account → API → Generate a new key', 'Copy and paste below'],
+  lusha:           ['Sign in to Lusha', 'Settings → API → Generate API Key', 'Copy and paste below'],
+  clay:            ['Sign in to Clay', 'Workspace settings → Integrations → API keys', 'Generate new key', 'Copy and paste below'],
+  cal_com:         ['Sign in to Cal.com', 'Settings → Developer → API Keys', 'Generate new API key', 'Copy and paste below'],
+  apollo:          ['Sign in to Apollo.io', 'Settings → Integrations → API', 'Create New API Key', 'Copy and paste below'],
+  lemlist:         ['Sign in to Lemlist', 'Settings → Integrations → API Keys', 'Create new key', 'Copy and paste below'],
+  twilio:          ['Sign in to Twilio Console', 'Account → API keys & tokens', 'Copy Account SID and Auth Token (visible on dashboard)', 'Paste both + your Twilio number below'],
+  mixpanel:        ['Sign in to Mixpanel', 'Project Settings → Access Keys', 'Copy "Project Token"', 'Paste below'],
+  segment:         ['Sign in to Segment', 'Sources → your source → API Keys', 'Copy Write Key', 'Paste below'],
+  hotjar:          ['Sign in to Hotjar', 'Sites & Organizations → copy Site ID', 'Account → API → Generate API Token', 'Paste both below'],
+  perplexity:      ['Sign in to Perplexity', 'Settings → API → Generate API key', 'Copy and paste below'],
+  jasper:          ['Sign in to Jasper', 'Settings → API Access → Create new', 'Copy and paste below'],
+  loom:            ['Sign in to Loom', 'Settings → Integrations → API → Create key', 'Copy and paste below'],
+  demio:           ['Sign in to Demio', 'Settings → API & Webhooks → Create new', 'Copy and paste below'],
+  shopify:         ['Sign in to Shopify Admin', 'Apps → Develop apps → Create app → install', 'Admin API access tokens → Reveal token once', 'Copy token + your store URL below'],
+  webflow:         ['Sign in to Webflow', 'Site Settings → Integrations → API Access', 'Generate API Token', 'Copy and paste below'],
+  zoom:            ['Sign in to Zoom Marketplace', 'Develop → Build → Server-to-Server OAuth → Create', 'Copy Account ID, Client ID and Client Secret', 'Paste all three below'],
+  wordpress:       ['In WordPress admin → Users → Your profile', 'Scroll to "Application Passwords"', 'Type "Bmapz" → Add new', 'Copy and paste below + your site URL'],
+};
+
 // Simple API key / credential fields for integrations that don't support OAuth
 const CREDENTIAL_FIELDS = {
   whatsapp: [
@@ -524,9 +595,37 @@ export default function ConnectIntegrationModal({ integration, company, user, is
                   the integration as Connected (no more false positives). */}
               {isManualCreds && (
                 <div className="space-y-4">
+                  {/* Step-by-step walkthrough */}
+                  {PLATFORM_STEPS[integration.type] && (
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                      <p className="text-white text-xs font-semibold mb-2">How to get your connection token:</p>
+                      <ol className="space-y-1.5 text-gray-300 text-xs">
+                        {PLATFORM_STEPS[integration.type].map((step, i) => (
+                          <li key={i} className="flex gap-2">
+                            <span className="text-[#38b6ff] font-bold flex-shrink-0">{i + 1}.</span>
+                            <span>{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+
+                  {/* Deep-link to the platform's key-generation page */}
+                  {PLATFORM_KEY_URLS[integration.type] && (
+                    <a
+                      href={PLATFORM_KEY_URLS[integration.type]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#38b6ff]/30 bg-[#38b6ff]/10 hover:bg-[#38b6ff]/20 text-[#38b6ff] text-sm font-medium transition-colors"
+                    >
+                      <ExternalLink size={14} /> Open {integration.name} → generate your token
+                    </a>
+                  )}
+
                   <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
-                    Connect your {integration.name} account. After you Save, Bmapz tests the connection live before marking it as connected.
+                    <strong>Why a token instead of password?</strong> {integration.name} doesn't offer "Sign in with X" — they only authenticate third-party apps via tokens. Bmapz never sees your {integration.name} password.
                   </div>
+
                   {credFields.map(field => (
                     <div key={field.key}>
                       <label className="text-gray-400 text-xs mb-1 block">{field.label}</label>
