@@ -4,17 +4,18 @@ import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { 
-  Send, Plus, Trash2, MessageSquare, Bot, 
+import {
+  Send, Plus, Trash2, MessageSquare, Bot,
   Loader2, Sparkles, ChevronLeft,
   Paperclip, Image, X, File, Video,
-  Pin, PinOff, Edit3, Check, Mic, MicOff
+  Pin, PinOff, Edit3, Check, Mic, MicOff, LayoutDashboard
 } from 'lucide-react';
 import { toast } from 'sonner';
 import MessageBubble from '@/components/chat/MessageBubble';
 import { useAuth } from '@/lib/AuthContext';
 import { api } from '@/api/apiClient';
 import { TranscribeAudio } from '@/api/integrations';
+import { DashboardConfig, Company } from '@/api/entities';
 
 const QUICK_ACTIONS = [
   { label: '🔍 Find ICP leads', prompt: 'Search for 50 contacts that fit my defined ICP profile. Use my company and ICP settings as context. Include name, company, role, LinkedIn URL, and email if available.' },
@@ -29,6 +30,8 @@ const QUICK_ACTIONS = [
   { label: '🏷️ Message templates', prompt: 'Create 5 high-converting message templates (mix of WhatsApp, Email, LinkedIn) for cold outreach to my ICP using my company data and value propositions.' },
   { label: '📈 Funnel analysis', prompt: 'Deep-dive analysis of my sales funnel. What stages are losing the most leads? What is my overall conversion rate? Give me a prioritized action plan.' },
   { label: '📋 Meeting summary', prompt: 'I have a meeting transcript or notes to analyze. Upload the file and I will extract action items, decisions made, lead information, and next steps.' },
+  { label: '🗃️ Sales dashboard', prompt: 'Create a Sales Metrics dashboard for me with widgets for pipeline value, funnel stages, lead sources and weekly activity.' },
+  { label: '📉 Marketing dashboard', prompt: 'Create a Marketing Conversion dashboard for me tracking message volume, channel mix, conversion rates and workflow enrollments.' },
 ];
 
 const CONTEXTUAL_SUGGESTIONS = {
@@ -81,6 +84,57 @@ export default function AIChat() {
   }, [messages]);
 
   const { dbUser: user, company } = useAuth();
+
+  // ─── Dashboard creation from AI Chat ─────────────────────────────────────────
+  const DASHBOARD_TEMPLATES_CHAT = {
+    sales: {
+      name: 'Sales Metrics',
+      widgets: [
+        { id: 'ts1', type: 'area_chart',  title: 'Weekly Lead Acquisition',    dataSource: 'leads',    size: 'large',  width: 3, height: 2, legend: { show: ['chart','tooltip'], position: 'bottom' } },
+        { id: 'ts2', type: 'bar_chart',   title: 'Funnel Stage Breakdown',     dataSource: 'funnel',   size: 'medium', width: 2, height: 2, legend: { show: ['chart','tooltip'], position: 'bottom' } },
+        { id: 'ts3', type: 'pie_chart',   title: 'Lead Source Distribution',   dataSource: 'leads',    size: 'small',  width: 1, height: 2, legend: { show: ['chart','tooltip'], position: 'bottom' } },
+        { id: 'ts4', type: 'stat_card',   title: 'Sales KPIs',                 dataSource: 'messages', size: 'medium', width: 2, height: 1, legend: { show: ['chart','tooltip'], position: 'bottom' } },
+      ],
+    },
+    marketing: {
+      name: 'Marketing Conversion',
+      widgets: [
+        { id: 'tm1', type: 'stat_card',   title: 'Conversion Metrics',         dataSource: 'messages', size: 'large',  width: 3, height: 1, legend: { show: ['chart','tooltip'], position: 'bottom' } },
+        { id: 'tm2', type: 'area_chart',  title: 'Message Volume Over Time',   dataSource: 'messages', size: 'large',  width: 3, height: 2, legend: { show: ['chart','tooltip'], position: 'bottom' } },
+        { id: 'tm3', type: 'pie_chart',   title: 'Channel Mix',                dataSource: 'messages', size: 'small',  width: 1, height: 2, legend: { show: ['chart','tooltip'], position: 'bottom' } },
+        { id: 'tm4', type: 'bar_chart',   title: 'Leads by Status',            dataSource: 'leads',    size: 'medium', width: 2, height: 2, legend: { show: ['chart','tooltip'], position: 'bottom' } },
+      ],
+    },
+  };
+
+  const tryCreateDashboardFromMessage = async (userMessage) => {
+    if (!company?.id) return false;
+    const msg = userMessage.toLowerCase();
+    const isSales = msg.includes('sales') || msg.includes('pipeline') || msg.includes('funnel');
+    const isMarketing = msg.includes('marketing') || msg.includes('conversion') || msg.includes('channel');
+    const wantsDashboard = msg.includes('dashboard') || msg.includes('create') || msg.includes('build');
+    if (!wantsDashboard) return false;
+
+    const tmplKey = isMarketing ? 'marketing' : 'sales';
+    const tmpl = DASHBOARD_TEMPLATES_CHAT[tmplKey];
+    try {
+      const companies = await Company.list();
+      const comp = companies[0];
+      if (!comp?.id) return false;
+      const existing = await DashboardConfig.filter({ company_id: comp.id });
+      await DashboardConfig.create({
+        company_id: comp.id,
+        name: tmpl.name,
+        is_default: !existing || existing.length === 0,
+        widgets: tmpl.widgets,
+      });
+      toast.success(`✅ "${tmpl.name}" dashboard created! Go to Dashboards to view it.`, { duration: 5000 });
+      return true;
+    } catch (e) {
+      console.error('Dashboard creation from AI failed:', e);
+      return false;
+    }
+  };
 
   const loadConversations = async () => {
     try {
@@ -144,7 +198,7 @@ export default function AIChat() {
     setUploadingFiles(true);
     try {
       const uploaded = await Promise.all(files.map(async (file) => {
-        const { file_url } = await UploadFile({ file });
+        const { url: file_url } = await UploadFile({ file });
         return { url: file_url, name: file.name, type: file.type };
       }));
       setAttachedFiles(prev => [...prev, ...uploaded]);
@@ -189,6 +243,9 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
         const title = content.slice(0, 60) + (content.length > 60 ? '...' : '');
         updateConvoTitle(convo.id, title);
       }
+
+      // Auto-create dashboard if the user asked for one
+      if (content) tryCreateDashboardFromMessage(content).catch(() => {});
 
       // Persist conversation to DB
       api.post('/api/ai/outputs', {

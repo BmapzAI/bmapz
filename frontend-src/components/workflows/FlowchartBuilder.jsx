@@ -901,7 +901,7 @@ const endConnection = (nodeId) => {
       const uploadPromises = files.map(file => UploadFile({ file }));
       const results = await Promise.all(uploadPromises);
       const newFiles = results.map((result, index) => ({
-        url: result.file_url,
+        url: result.url || result.file_url,
         name: files[index].name,
         type: files[index].type
       }));

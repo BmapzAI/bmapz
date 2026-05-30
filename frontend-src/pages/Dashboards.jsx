@@ -94,6 +94,43 @@ const DEFAULT_WIDGETS = [
   { id: 'w4', type: 'stat_card', title: 'Response Rates', dataSource: 'messages', size: 'medium', width: 2, height: 1, legend: DEFAULT_WIDGET_LEGEND },
 ];
 
+// ─── Built-in dashboard templates ────────────────────────────────────────────
+const DASHBOARD_TEMPLATES = [
+  {
+    id: 'blank',
+    name: 'Blank Dashboard',
+    description: 'Start from scratch with no widgets',
+    emoji: '⬜',
+    widgets: [],
+  },
+  {
+    id: 'sales',
+    name: 'Sales Metrics',
+    description: 'Pipeline, funnel stages, lead sources & deal values',
+    emoji: '📊',
+    widgets: [
+      { id: 'ts1', type: 'area_chart',  title: 'Weekly Lead Acquisition',    dataSource: 'leads',    size: 'large',  width: 3, height: 2, legend: DEFAULT_WIDGET_LEGEND },
+      { id: 'ts2', type: 'bar_chart',   title: 'Funnel Stage Breakdown',     dataSource: 'funnel',   size: 'medium', width: 2, height: 2, legend: DEFAULT_WIDGET_LEGEND },
+      { id: 'ts3', type: 'pie_chart',   title: 'Lead Source Distribution',   dataSource: 'leads',    size: 'small',  width: 1, height: 2, legend: DEFAULT_WIDGET_LEGEND },
+      { id: 'ts4', type: 'stat_card',   title: 'Sales KPIs',                 dataSource: 'messages', size: 'medium', width: 2, height: 1, legend: DEFAULT_WIDGET_LEGEND },
+      { id: 'ts5', type: 'bar_chart',   title: 'Outbound Messages by Channel', dataSource: 'messages', size: 'medium', width: 2, height: 2, legend: DEFAULT_WIDGET_LEGEND },
+    ],
+  },
+  {
+    id: 'marketing',
+    name: 'Marketing Conversion',
+    description: 'Conversion rates, messaging performance & engagement',
+    emoji: '📈',
+    widgets: [
+      { id: 'tm1', type: 'stat_card',   title: 'Conversion Metrics',         dataSource: 'messages', size: 'large',  width: 3, height: 1, legend: DEFAULT_WIDGET_LEGEND },
+      { id: 'tm2', type: 'area_chart',  title: 'Message Volume Over Time',   dataSource: 'messages', size: 'large',  width: 3, height: 2, legend: DEFAULT_WIDGET_LEGEND },
+      { id: 'tm3', type: 'pie_chart',   title: 'Channel Mix',                dataSource: 'messages', size: 'small',  width: 1, height: 2, legend: DEFAULT_WIDGET_LEGEND },
+      { id: 'tm4', type: 'bar_chart',   title: 'Leads by Status',            dataSource: 'leads',    size: 'medium', width: 2, height: 2, legend: DEFAULT_WIDGET_LEGEND },
+      { id: 'tm5', type: 'area_chart',  title: 'Workflow Enrollments',       dataSource: 'workflows', size: 'medium', width: 2, height: 2, legend: DEFAULT_WIDGET_LEGEND },
+    ],
+  },
+];
+
 export default function Dashboards() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -112,6 +149,7 @@ export default function Dashboards() {
   const [customMetricPrompt, setCustomMetricPrompt] = useState('');
   const [isGeneratingMetric, setIsGeneratingMetric] = useState(false);
   const [generatedMetricDesc, setGeneratedMetricDesc] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState('sales');
 
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
   const company = companies[0];
@@ -140,7 +178,7 @@ export default function Dashboards() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['dashboards'] }); setActiveDashboardId(null); toast.success('Dashboard deleted'); },
   });
 
-  const activeDashboard = dashboards.find(d => d.id === activeDashboardId) || dashboards.find(d => d.is_main) || dashboards[0];
+  const activeDashboard = dashboards.find(d => d.id === activeDashboardId) || dashboards.find(d => d.is_default) || dashboards[0];
 
   // localWidgets is always the source of truth for rendering (optimistic).
   // Sync it when activeDashboard changes (i.e. on load or tab switch).
@@ -159,21 +197,25 @@ export default function Dashboards() {
     }
   };
 
-  const createDashboard = () => {
-    if (!newDashboardName.trim() || !company?.id) return;
+  const createDashboard = (overrideName, overrideTemplate) => {
+    const name = overrideName || newDashboardName;
+    if (!name.trim() || !company?.id) return;
+    const tmplId = overrideTemplate || selectedTemplate;
+    const tmpl = DASHBOARD_TEMPLATES.find(t => t.id === tmplId);
+    const widgets = tmpl ? tmpl.widgets : DEFAULT_WIDGETS;
     createMutation.mutate({
       company_id: company.id,
-      name: newDashboardName,
-      is_main: dashboards.length === 0,
-      widgets: DEFAULT_WIDGETS,
+      name,
+      is_default: dashboards.length === 0,
+      widgets,
     });
   };
 
   const setAsMain = (dashboard) => {
     dashboards.forEach(d => {
-      if (d.id !== dashboard.id && d.is_main) updateMutation.mutate({ id: d.id, data: { is_main: false } });
+      if (d.id !== dashboard.id && d.is_default) updateMutation.mutate({ id: d.id, data: { is_default: false } });
     });
-    updateMutation.mutate({ id: dashboard.id, data: { is_main: true } });
+    updateMutation.mutate({ id: dashboard.id, data: { is_default: true } });
     toast.success(`"${dashboard.name}" is now the main dashboard`);
   };
 
@@ -445,11 +487,11 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
             <div key={dash.id} className={`group flex items-center gap-2 px-4 py-2 rounded-xl border cursor-pointer transition-all flex-shrink-0
               ${activeDashboard?.id === dash.id ? 'bg-[#38b6ff]/20 border-[#38b6ff]/50 text-[#38b6ff]' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white hover:border-white/20'}`}
               onClick={() => setActiveDashboardId(dash.id)}>
-              {dash.is_main && <Star size={12} className="text-yellow-400" />}
+              {dash.is_default && <Star size={12} className="text-yellow-400" />}
               <span className="text-sm font-medium">{dash.name}</span>
               {isEditing && activeDashboard?.id === dash.id && (
                 <div className="flex items-center gap-1 ml-1">
-                  {!dash.is_main && (
+                  {!dash.is_default && (
                     <button onClick={(e) => { e.stopPropagation(); setAsMain(dash); }}
                       className="p-1 rounded hover:bg-white/10" title="Set as main">
                       <Star size={12} className="text-gray-500 hover:text-yellow-400" />
@@ -603,9 +645,9 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
 
       {/* New Dashboard Dialog */}
       <Dialog open={showNewDashboard} onOpenChange={setShowNewDashboard}>
-        <DialogContent className="bg-[#1a1a1a] border-white/10 text-white">
+        <DialogContent className="bg-[#1a1a1a] border-white/10 text-white max-w-lg">
           <DialogHeader><DialogTitle>Create New Dashboard</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 py-2">
             <div>
               <label className="text-gray-400 text-sm mb-1.5 block">Dashboard Name</label>
               <Input value={newDashboardName} onChange={e => setNewDashboardName(e.target.value)}
@@ -613,9 +655,36 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
                 className="bg-black/30 border-white/10 text-white"
                 onKeyDown={e => e.key === 'Enter' && createDashboard()} />
             </div>
+            <div>
+              <label className="text-gray-400 text-sm mb-2 block">Start with a template</label>
+              <div className="grid grid-cols-1 gap-2">
+                {DASHBOARD_TEMPLATES.map(tmpl => (
+                  <button key={tmpl.id} onClick={() => {
+                    setSelectedTemplate(tmpl.id);
+                    if (!newDashboardName.trim()) setNewDashboardName(tmpl.name);
+                  }}
+                    className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all
+                      ${selectedTemplate === tmpl.id
+                        ? 'border-[#38b6ff] bg-[#38b6ff]/10'
+                        : 'border-white/10 hover:border-white/20 bg-white/5'}`}>
+                    <span className="text-2xl flex-shrink-0">{tmpl.emoji}</span>
+                    <div>
+                      <p className="text-white text-sm font-medium">{tmpl.name}</p>
+                      <p className="text-gray-400 text-xs mt-0.5">{tmpl.description}</p>
+                      {tmpl.widgets.length > 0 && (
+                        <p className="text-[#38b6ff] text-xs mt-1">{tmpl.widgets.length} widgets pre-built</p>
+                      )}
+                    </div>
+                    {selectedTemplate === tmpl.id && (
+                      <Check size={16} className="text-[#38b6ff] ml-auto flex-shrink-0 mt-0.5" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowNewDashboard(false)} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
-              <Button onClick={createDashboard} disabled={!newDashboardName.trim()} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">
+              <Button onClick={() => createDashboard()} disabled={!newDashboardName.trim()} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">
                 <Check size={16} className="mr-2" /> Create Dashboard
               </Button>
             </div>

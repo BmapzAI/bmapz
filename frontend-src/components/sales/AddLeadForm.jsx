@@ -83,8 +83,8 @@ export default function AddLeadForm({ onClose, stages }) {
     if (!file) return;
 
     try {
-      const { file_url } = await UploadFile({ file });
-      
+      const { url: file_url } = await UploadFile({ file });
+
       const result = await ExtractDataFromUploadedFile({
         file_url,
         json_schema: {

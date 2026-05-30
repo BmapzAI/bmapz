@@ -199,7 +199,57 @@ export default function SEO() {
     setIsAnalyzing(true);
     try {
       // Fetch SEO analysis
-      const res = await api.post('/api/ai/chat', { messages: [{ role: 'user', content: `Analyze SEO for URL: ${normalizedUrl}. Type: ${scanType}. Return a JSON with score, issues, and recommendations.` }], response_format: { type: 'json_object' } }).then(r => JSON.parse(r.content));
+      const seoPrompt = `You are an expert SEO auditor. Analyze the SEO of this URL: ${normalizedUrl} (scan type: ${scanType === 'site' ? 'entire site' : 'single page'}).
+
+Based on your knowledge of the URL and best practices, return a JSON object with EXACTLY this structure (no extra keys at the top level):
+{
+  "overall_score": <0-100 integer>,
+  "seo_score": <0-100>,
+  "technical_score": <0-100>,
+  "aeo_score": <0-100>,
+  "geo_score": <0-100>,
+  "page_title": "<detected or inferred page title>",
+  "primary_keyword_detected": "<main keyword>",
+  "estimated_traffic_impact": "<e.g. +15-20% with fixes>",
+  "top_issues": [
+    { "issue": "<issue title>", "severity": "high|medium|low", "plain_english": "<simple explanation>", "recommendation": "<specific fix step>" }
+  ],
+  "strengths": ["<strength 1>", "<strength 2>"],
+  "quick_wins": [
+    { "action": "<action>", "plain_english": "<why it matters>", "difficulty": "easy|medium|hard", "expected_impact": "high|medium|low" }
+  ],
+  "checklist_results": {
+    "title_tag": true|false,
+    "meta_desc": true|false,
+    "h1_present": true|false,
+    "subheadings": true|false,
+    "keyword_density": true|false,
+    "internal_links": true|false,
+    "alt_text": true|false,
+    "url_structure": true|false,
+    "page_speed": true|false,
+    "mobile_friendly": true|false,
+    "https": true|false,
+    "sitemap": true|false,
+    "robots_txt": true|false,
+    "structured_data": true|false,
+    "canonical": true|false,
+    "featured_snippet": true|false,
+    "faq_schema": true|false,
+    "question_keywords": true|false,
+    "direct_answers": true|false,
+    "voice_search": true|false,
+    "e_eeat": true|false,
+    "author_bio": true|false,
+    "citations": true|false,
+    "comprehensive": true|false,
+    "entity_mentions": true|false,
+    "ai_friendly": true|false
+  }
+}
+Be realistic and specific based on what you know about the URL. If it's an HTTPS URL, set https: true. If it's a well-known site, use your knowledge about their SEO. Provide at least 3 top_issues and 3 quick_wins.`;
+
+      const res = await api.post('/api/ai/chat', { messages: [{ role: 'user', content: seoPrompt }], response_format: { type: 'json_object' } }).then(r => JSON.parse(r.content));
       const response = res;
       if (response.error) throw new Error(response.error);
       const analysisResult = { ...response, url: normalizedUrl, scanType, analyzed_at: new Date().toISOString() };

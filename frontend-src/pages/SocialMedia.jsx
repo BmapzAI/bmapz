@@ -225,7 +225,7 @@ Return JSON with:
     setIsUploadingMedia(true);
     try {
       const results = await Promise.all(files.map(f => UploadFile({ file: f })));
-      const newMedia = results.map((r, i) => ({ url: r.file_url, name: files[i].name, type: files[i].type }));
+      const newMedia = results.map((r, i) => ({ url: r.url || r.file_url, name: files[i].name, type: files[i].type }));
       setUploadedMedia(prev => [...prev, ...newMedia]);
       toast.success(`${files.length} file(s) uploaded`);
     } catch { toast.error('Upload failed'); }

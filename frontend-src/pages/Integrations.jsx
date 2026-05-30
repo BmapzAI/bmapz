@@ -96,7 +96,7 @@ const INTEGRATIONS = [
   {
     category: 'Lead Generation & Prospecting',
     items: [
-      { type: 'apollo', name: 'Apollo.io', logo: 'https://www.apollo.io/favicon.ico', description: 'B2B lead database with 270M+ contacts and email finder', statusKey: 'apollo', configKey: null, setupUrl: 'https://apollo.io/', loginBased: true, easySetup: 'In Apollo: Settings → Integrations → API → Create API Key.' },
+      { type: 'apollo', name: 'Apollo.io', logo: 'https://www.apollo.io/favicon.ico', description: 'B2B lead database with 270M+ contacts — OAuth integration (API keys being deprecated)', statusKey: 'apollo', configKey: null, setupUrl: 'https://developer.apollo.io/keys#/oauth-registration', loginBased: true, easySetup: 'Apollo now uses OAuth. Go to developer.apollo.io → OAuth Registration to register. Contact BMAPZ admin to configure. Temporary: Settings → Integrations → API → API Key.' },
       { type: 'hunter', name: 'Hunter.io', logo: 'https://hunter.io/favicon.ico', description: 'Find and verify professional email addresses', statusKey: 'hunter', configKey: null, setupUrl: 'https://hunter.io/', loginBased: true, easySetup: 'In Hunter: Settings → API → Copy your API key.' },
       { type: 'lusha', name: 'Lusha', logo: 'https://www.lusha.com/favicon.ico', description: 'B2B contact data enrichment and phone numbers', statusKey: 'lusha', configKey: null, setupUrl: 'https://lusha.com/', loginBased: true, easySetup: 'In Lusha: Settings → API → Generate your API key.' },
       { type: 'clay', name: 'Clay', logo: 'https://www.clay.com/favicon.ico', description: 'AI-powered lead enrichment and outreach automation', statusKey: 'clay', configKey: null, setupUrl: 'https://clay.com/', loginBased: true, easySetup: 'In Clay: Settings → API → Create API key.' },
@@ -358,7 +358,7 @@ export default function Integrations() {
               if (!importFile || !company) return;
               setIsImporting(true);
               try {
-                const { file_url } = await UploadFile({ file: importFile });
+                const { url: file_url } = await UploadFile({ file: importFile });
                 const result = await ExtractDataFromUploadedFile({
                   file_url,
                   json_schema: { type: 'object', properties: { leads: { type: 'array', items: { type: 'object', properties: { lead_company_name: { type: 'string' }, lead_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, role: { type: 'string' } } } } } }

@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Company } from '@/api/entities';
 import { api } from '@/api/apiClient';
+import { useLanguage } from '@/components/ui/LanguageContext';
 
 // All integrations that use BMAPZ's own internalized OAuth flow (server-side)
 // These use the `initiateOAuth` backend function to generate the OAuth URL
@@ -79,7 +80,7 @@ const PLATFORM_KEY_URLS = {
   clay:            'https://app.clay.com/workspaces/integrations',
   cal_com:         'https://app.cal.com/settings/developer/api-keys',
   chilipiper:      'https://app.chilipiper.com/admin/api',
-  apollo:          'https://app.apollo.io/#/settings/integrations/api',
+  apollo:          'https://developer.apollo.io/keys#/oauth-registration', // OAuth preferred; API key being deprecated
   lemlist:         'https://app.lemlist.com/settings/integrations',
   mailchimp:       'https://us1.admin.mailchimp.com/account/api/',
   klaviyo:         'https://www.klaviyo.com/account#api-keys-tab',
@@ -103,7 +104,7 @@ const PLATFORM_KEY_URLS = {
 // Step-by-step instructions per platform so non-technical users get to the
 // token in <60 seconds. Each step is short and actionable.
 const PLATFORM_STEPS = {
-  apollo:          ['Sign in to Apollo.io', 'Open Settings → Integrations → API', 'Click "Create New API Key"', 'Copy the key and paste below'],
+  apollo:          ['Go to developer.apollo.io/keys → OAuth Registration (preferred — API keys are being deprecated)', 'Register your app to get Client ID & Secret, OR use Settings → Integrations → API for a temporary API key', 'For OAuth: contact BMAPZ admin to configure Apollo OAuth credentials in the platform', 'For API key (temporary): copy the key and paste below'],
   mailchimp:       ['Sign in to Mailchimp', 'Click your avatar → Account → Extras → API Keys', 'Click "Create A Key"', 'Copy the key — note the suffix (e.g. -us19) — that\'s your server prefix'],
   klaviyo:         ['Sign in to Klaviyo', 'Account → Settings → API Keys', 'Click "Create Private API Key" → name it "Bmapz"', 'Copy and paste below'],
   activecampaign:  ['Sign in to ActiveCampaign', 'Settings → Developer', 'Copy your URL and API Key', 'Paste both below'],
@@ -116,7 +117,6 @@ const PLATFORM_STEPS = {
   lusha:           ['Sign in to Lusha', 'Settings → API → Generate API Key', 'Copy and paste below'],
   clay:            ['Sign in to Clay', 'Workspace settings → Integrations → API keys', 'Generate new key', 'Copy and paste below'],
   cal_com:         ['Sign in to Cal.com', 'Settings → Developer → API Keys', 'Generate new API key', 'Copy and paste below'],
-  apollo:          ['Sign in to Apollo.io', 'Settings → Integrations → API', 'Create New API Key', 'Copy and paste below'],
   lemlist:         ['Sign in to Lemlist', 'Settings → Integrations → API Keys', 'Create new key', 'Copy and paste below'],
   twilio:          ['Sign in to Twilio Console', 'Account → API keys & tokens', 'Copy Account SID and Auth Token (visible on dashboard)', 'Paste both + your Twilio number below'],
   mixpanel:        ['Sign in to Mixpanel', 'Project Settings → Access Keys', 'Copy "Project Token"', 'Paste below'],
@@ -289,6 +289,7 @@ function StepDot({ active, done, number }) {
 }
 
 export default function ConnectIntegrationModal({ integration, company, user, isConnected, onSuccess, onClose }) {
+  const { t, isPt } = useLanguage();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(1); // 1=info, 2=connect, 3=success
   const [connecting, setConnecting] = useState(false);
@@ -361,7 +362,7 @@ export default function ConnectIntegrationModal({ integration, company, user, is
 
       if (!popup) {
         setConnecting(false);
-        toast.error('Popup blocked. Please allow popups for Bmapz AI and try again.');
+        toast.error(t('popupBlockedMsg'));
         return;
       }
 
@@ -371,7 +372,7 @@ export default function ConnectIntegrationModal({ integration, company, user, is
           window.removeEventListener('message', onMessage);
           if (!handledByMessage) {
             setConnecting(false);
-            toast.error('Connection was not completed. Please finish the provider login and approve access.');
+            toast.error(t('connectionNotCompletedMsg'));
           }
         }
       }, 800);
@@ -405,14 +406,14 @@ export default function ConnectIntegrationModal({ integration, company, user, is
       try {
         testResult = await api.post(`/api/integrations/test/${integration.type}`);
       } catch (testErr) {
-        toast.error(`Saved but test failed: ${testErr?.message || 'Could not verify connection'}`);
+        toast.error(`${t('savedButTestFailedMsg')}: ${testErr?.message || 'Could not verify connection'}`);
         // Don't mark as connected — user must fix and retry
         setSaving(false);
         return;
       }
 
       if (testResult?.success !== true) {
-        toast.error(`Connection test failed: ${testResult?.message || 'Provider rejected the credentials'}`);
+        toast.error(`${t('connectionTestFailedMsg')}: ${testResult?.message || 'Provider rejected the credentials'}`);
         setSaving(false);
         return;
       }
@@ -425,10 +426,10 @@ export default function ConnectIntegrationModal({ integration, company, user, is
         });
       }
       queryClient.invalidateQueries({ queryKey: ['companies'] });
-      toast.success(`${integration.name} connected & verified`);
+      toast.success(`${integration.name} ${t('connectedAndVerifiedMsg')}`);
       setStep(3);
     } catch (e) {
-      toast.error('Failed to save: ' + e.message);
+      toast.error(`${t('failedToSaveMsg')}: ${e.message}`);
     } finally {
       setSaving(false);
     }
@@ -440,7 +441,7 @@ export default function ConnectIntegrationModal({ integration, company, user, is
       integration_status: { ...(company.integration_status || {}), [integration.statusKey]: false }
     });
     queryClient.invalidateQueries({ queryKey: ['companies'] });
-    toast.success('Disconnected');
+    toast.success(t('disconnectedMsg'));
     onClose();
   };
 
@@ -494,13 +495,13 @@ export default function ConnectIntegrationModal({ integration, company, user, is
           {step === 1 && (
             <>
               <div className="space-y-3">
-                <p className="text-white font-medium">What BMAPZ will access:</p>
+                <p className="text-white font-medium">{t('whatBmapzAccesses')}</p>
                 <ul className="space-y-2">
                   {[
-                    'Performance data & analytics',
-                    'Account information & settings',
-                    'Content publishing permissions',
-                    'Campaign & conversion data',
+                    t('integrationAccessPerf'),
+                    t('integrationAccessAccount'),
+                    t('integrationAccessContent'),
+                    t('integrationAccessCampaign'),
                   ].map((item) => (
                     <li key={item} className="flex items-center gap-2 text-gray-300 text-sm">
                       <CheckCircle size={14} className="text-[#38b6ff] flex-shrink-0" />
@@ -512,7 +513,7 @@ export default function ConnectIntegrationModal({ integration, company, user, is
               <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-start gap-2">
                 <Lock size={14} className="text-[#38b6ff] flex-shrink-0 mt-0.5" />
                 <p className="text-gray-400 text-xs leading-relaxed">
-                  Your credentials are encrypted and stored securely. BMAPZ will never share your data with third parties.
+                  {t('integrationSecurityNote')}
                 </p>
               </div>
 
@@ -520,17 +521,17 @@ export default function ConnectIntegrationModal({ integration, company, user, is
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 p-3 rounded-xl bg-green-500/10 border border-green-500/20">
                     <CheckCircle size={16} className="text-green-400" />
-                    <span className="text-green-400 text-sm font-medium">Connected & Active</span>
+                    <span className="text-green-400 text-sm font-medium">{t('connectedActive')}</span>
                   </div>
                   <Button variant="outline" onClick={handleDisconnect}
                     className="w-full border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm">
-                    Disconnect {integration.name}
+                    {t('disconnect')} {integration.name}
                   </Button>
                 </div>
               ) : (
                 <Button onClick={() => setStep(2)}
                   className="w-full gap-2 bg-gradient-to-r from-[#3572b9] to-[#38b6ff] text-white font-semibold h-11">
-                  Connect {integration.name} <ArrowRight size={16} />
+                  {t('connectIntegration')} {integration.name} <ArrowRight size={16} />
                 </Button>
               )}
             </>
@@ -543,7 +544,9 @@ export default function ConnectIntegrationModal({ integration, company, user, is
               {isInternalizedOAuth && !oauthNotConfigured && (
                 <div className="space-y-4">
                   <p className="text-gray-300 text-sm text-center">
-                    Click below to sign in to your {integration.name} account with your usual email and password. A popup will open where you authorize BMAPZ to read your data.
+                    {isPt
+                      ? `Clique abaixo para entrar na sua conta ${integration.name} com seu e-mail e senha habituais. Um popup será aberto para você autorizar o BMAPZ a ler seus dados.`
+                      : `Click below to sign in to your ${integration.name} account with your usual email and password. A popup will open where you authorize BMAPZ to read your data.`}
                   </p>
                   <Button onClick={handleInternalizedOAuth} disabled={connecting}
                     className="w-full h-12 gap-3 font-semibold text-base"
@@ -559,15 +562,15 @@ export default function ConnectIntegrationModal({ integration, company, user, is
                       ? <Loader2 size={18} className="animate-spin" />
                       : integration.logo && <img src={integration.logo} alt="" className="w-5 h-5 object-contain bg-white rounded p-0.5" onError={(e) => { e.target.style.display = 'none'; }} />
                     }
-                    {connecting ? 'Waiting for authorization...' : `Connect ${integration.name}`}
+                    {connecting ? t('waitingForAuth') : `${t('connectIntegration')} ${integration.name}`}
                   </Button>
                   {connecting && (
                     <div className="p-3 rounded-xl bg-[#38b6ff]/10 border border-[#38b6ff]/20 text-center">
-                      <p className="text-[#38b6ff] text-xs">Complete the login in the popup window. This page will update automatically.</p>
+                      <p className="text-[#38b6ff] text-xs">{t('completeLoginInPopup')}</p>
                     </div>
                   )}
                   <p className="text-gray-500 text-xs text-center">
-                    Your access token is securely stored within BMAPZ. We never share your data.
+                    {t('tokenStoredSecurely')}
                   </p>
                 </div>
               )}
@@ -579,13 +582,15 @@ export default function ConnectIntegrationModal({ integration, company, user, is
                     <Lock size={28} className="text-amber-400" />
                   </div>
                   <div>
-                    <h3 className="text-white text-base font-semibold mb-1">Awaiting platform setup</h3>
+                    <h3 className="text-white text-base font-semibold mb-1">{t('awaitingPlatformSetup')}</h3>
                     <p className="text-gray-400 text-sm">
-                      {integration.name} sign-in isn't enabled on Bmapz yet. Your administrator needs to add OAuth credentials in Railway env vars.
+                      {isPt
+                        ? `O login com ${integration.name} ainda não está habilitado no Bmapz. Seu administrador precisa adicionar as credenciais OAuth nas variáveis de ambiente do Railway.`
+                        : `${integration.name} sign-in isn't enabled on Bmapz yet. Your administrator needs to add OAuth credentials in Railway env vars.`}
                     </p>
                   </div>
                   <Button variant="outline" onClick={() => setStep(1)} className="border-white/10 text-white hover:bg-white/5">
-                    ← Back
+                    ← {t('back')}
                   </Button>
                 </div>
               )}
@@ -598,7 +603,7 @@ export default function ConnectIntegrationModal({ integration, company, user, is
                   {/* Step-by-step walkthrough */}
                   {PLATFORM_STEPS[integration.type] && (
                     <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-                      <p className="text-white text-xs font-semibold mb-2">How to get your connection token:</p>
+                      <p className="text-white text-xs font-semibold mb-2">{t('howToGetToken')}</p>
                       <ol className="space-y-1.5 text-gray-300 text-xs">
                         {PLATFORM_STEPS[integration.type].map((step, i) => (
                           <li key={i} className="flex gap-2">
@@ -618,12 +623,15 @@ export default function ConnectIntegrationModal({ integration, company, user, is
                       rel="noopener noreferrer"
                       className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#38b6ff]/30 bg-[#38b6ff]/10 hover:bg-[#38b6ff]/20 text-[#38b6ff] text-sm font-medium transition-colors"
                     >
-                      <ExternalLink size={14} /> Open {integration.name} → generate your token
+                      <ExternalLink size={14} /> {t('openPlatform')} {integration.name} → {t('generateYourToken')}
                     </a>
                   )}
 
                   <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
-                    <strong>Why a token instead of password?</strong> {integration.name} doesn't offer "Sign in with X" — they only authenticate third-party apps via tokens. Bmapz never sees your {integration.name} password.
+                    <strong>{t('whyTokenTitle')}</strong>{' '}
+                    {isPt
+                      ? `O ${integration.name} não oferece "Entrar com X" — ele autentica apps de terceiros apenas via tokens. O Bmapz nunca vê sua senha do ${integration.name}.`
+                      : `${integration.name} doesn't offer "Sign in with X" — they only authenticate third-party apps via tokens. Bmapz never sees your ${integration.name} password.`}
                   </div>
 
                   {credFields.map(field => (
@@ -650,7 +658,7 @@ export default function ConnectIntegrationModal({ integration, company, user, is
                   <Button onClick={handleSaveCreds} disabled={saving}
                     className="w-full h-11 gap-2 bg-gradient-to-r from-[#3572b9] to-[#38b6ff] font-semibold">
                     {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-                    {saving ? 'Saving & testing...' : 'Save & Test Connection'}
+                    {saving ? t('savingAndTesting') : t('saveAndTestConnection')}
                   </Button>
                 </div>
               )}
@@ -659,12 +667,14 @@ export default function ConnectIntegrationModal({ integration, company, user, is
               {!isInternalizedOAuth && !isManualCreds && (
                 <div className="text-center space-y-3 py-4">
                   <p className="text-gray-400 text-sm">
-                    This integration requires setup through the {integration.name} platform.
+                    {isPt
+                      ? `Esta integração requer configuração através da plataforma ${integration.name}.`
+                      : `This integration requires setup through the ${integration.name} platform.`}
                   </p>
                   {integration.setupUrl && (
                     <a href={integration.setupUrl} target="_blank" rel="noopener noreferrer">
                       <Button variant="outline" className="gap-2 border-white/10 text-white hover:bg-white/5">
-                        <ExternalLink size={14} /> Open {integration.name}
+                        <ExternalLink size={14} /> {t('openPlatform')} {integration.name}
                       </Button>
                     </a>
                   )}
@@ -672,7 +682,7 @@ export default function ConnectIntegrationModal({ integration, company, user, is
               )}
 
               <button onClick={() => setStep(1)} className="text-gray-500 text-xs hover:text-gray-300 transition-colors w-full text-center">
-                ← Back
+                ← {t('back')}
               </button>
             </>
           )}
@@ -684,13 +694,13 @@ export default function ConnectIntegrationModal({ integration, company, user, is
                 <CheckCircle size={32} className="text-green-400" />
               </div>
               <div>
-                <h3 className="text-white text-xl font-bold mb-1">Connected!</h3>
+                <h3 className="text-white text-xl font-bold mb-1">{t('integrationConnectedTitle')}</h3>
                 <p className="text-gray-400 text-sm">
-                  {integration.name} is now connected to your BMAPZ account. All data and permissions have been granted.
+                  {integration.name} {t('integrationSuccessDesc')}
                 </p>
               </div>
               <Button onClick={handleDone} className="w-full bg-gradient-to-r from-[#3572b9] to-[#38b6ff] font-semibold h-11">
-                Done
+                {t('integrationDone')}
               </Button>
             </div>
           )}

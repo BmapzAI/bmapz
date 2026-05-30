@@ -67,7 +67,7 @@ export default function AdsCreativesTab({ company }) {
         files.map(f => UploadFile({ file: f }))
       );
       const uploaded = results.map((r, i) => ({
-        url: r.file_url,
+        url: r.url || r.file_url,
         name: files[i].name,
         type: files[i].type,
         size: files[i].size,

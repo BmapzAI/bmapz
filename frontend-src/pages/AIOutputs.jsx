@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLanguage } from '@/components/ui/LanguageContext';
 
 import { Button } from '@/components/ui/button';
 import { 
@@ -35,6 +36,7 @@ const CATEGORIES = [
 
 
 export default function AIOutputs() {
+  const { isPt } = useLanguage();
   const queryClient = useQueryClient();
   const [category, setCategory] = useState('all');
 
@@ -44,11 +46,19 @@ export default function AIOutputs() {
   });
   const companyId = companies[0]?.id;
 
-  const { data: outputs = [], isLoading: isLoadingOutputs } = useQuery({
+  const { data: rawOutputs, isLoading: isLoadingOutputs, isError: isOutputsError, refetch } = useQuery({
     queryKey: ['aiOutputs', companyId],
-    queryFn: () => AIOutput.filter({ company_id: companyId }, '-created_date'),
+    queryFn: () => AIOutput.filter({ company_id: companyId }),
     enabled: !isLoadingCompanies && !!companyId,
+    retry: 1,
   });
+
+  // Backend returns { data: [...], total: N } — extract array safely
+  const outputs = Array.isArray(rawOutputs)
+    ? rawOutputs.filter(o => o?.type !== 'conversation')
+    : Array.isArray(rawOutputs?.data)
+      ? rawOutputs.data.filter(o => o?.type !== 'conversation')
+      : [];
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => AIOutput.update(id, data),
@@ -165,6 +175,18 @@ export default function AIOutputs() {
       {(isLoadingCompanies || isLoadingOutputs) && (
         <div className="flex items-center justify-center py-16">
           <div className="w-8 h-8 rounded-full border-2 border-[#38b6ff] border-t-transparent animate-spin" />
+        </div>
+      )}
+
+      {/* Error state */}
+      {isOutputsError && !isLoadingOutputs && (
+        <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl bg-red-500/5 border border-red-500/20">
+          <AlertTriangle size={36} className="text-red-400 mb-3" />
+          <p className="text-white font-medium mb-1">{isPt ? 'Erro ao carregar saídas' : 'Failed to load outputs'}</p>
+          <p className="text-gray-400 text-sm mb-4">{isPt ? 'Verifique sua conexão e tente novamente.' : 'Check your connection and try again.'}</p>
+          <Button onClick={() => refetch()} variant="outline" className="border-white/10 text-white hover:bg-white/5">
+            {isPt ? 'Tentar novamente' : 'Retry'}
+          </Button>
         </div>
       )}
 

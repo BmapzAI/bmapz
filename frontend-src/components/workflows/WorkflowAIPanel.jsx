@@ -92,7 +92,7 @@ Return JSON array of suggestions with:
         const file = new File([blob], 'audio.webm', { type: 'audio/webm' });
         setUploadingFile(true);
         try {
-          const { file_url } = await UploadFile({ file });
+          const { url: file_url } = await UploadFile({ file });
           // Transcribe via LLM
           const transcription = await InvokeLLM({
             prompt: 'Transcribe this audio recording into a workflow description request. Return only the transcribed text.',
@@ -120,7 +120,7 @@ Return JSON array of suggestions with:
     setUploadingFile(true);
     try {
       const results = await Promise.all(files.map(f => UploadFile({ file: f })));
-      const uploaded = results.map((r, i) => ({ url: r.file_url, name: files[i].name, type: files[i].type }));
+      const uploaded = results.map((r, i) => ({ url: r.url || r.file_url, name: files[i].name, type: files[i].type }));
       setUploadedFiles(prev => [...prev, ...uploaded]);
       toast.success(`${files.length} file(s) uploaded`);
     } catch { toast.error('Upload failed'); }
