@@ -181,6 +181,7 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
 
       const report = await InvokeLLM({
         prompt,
+        action: 'brand_scan', // marks this as a scan-token action (gated per plan; blocked on trial)
         add_context_from_internet: true,
         response_json_schema: {
           type: 'object',

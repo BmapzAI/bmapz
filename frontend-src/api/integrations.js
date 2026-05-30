@@ -6,7 +6,7 @@ import { api } from '@/api/apiClient';
 
 // ─── AI / LLM ────────────────────────────────────────────────────────────────
 
-export const InvokeLLM = async ({ prompt, systemPrompt, response_json_schema, inputFields }) => {
+export const InvokeLLM = async ({ prompt, systemPrompt, response_json_schema, inputFields, action }) => {
   const messages = [];
   if (inputFields) {
     // Build prompt from inputFields (legacy Base44 pattern)
@@ -23,6 +23,11 @@ export const InvokeLLM = async ({ prompt, systemPrompt, response_json_schema, in
 
   if (response_json_schema) {
     params.response_format = { type: 'json_object' };
+  }
+  if (action) {
+    // action drives plan-gated features (e.g. brand_scan blocked on trial)
+    // and triggers the "force cheap model" path for heavy one-shot calls.
+    params.action = action;
   }
 
   const result = await api.post('/api/ai/chat', params);

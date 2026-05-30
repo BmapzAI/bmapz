@@ -5,6 +5,8 @@ import {
   computeCreditCost,
   resolveActionModel,
   canUseBYOK,
+  canRunScanAction,
+  SCAN_ACTIONS,
   DEFAULT_MODEL_PER_PROVIDER,
   MODEL_TIER,
 } from '../lib/aiCredits.js';
@@ -430,7 +432,23 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
     err.publicMessage = err.message;
     throw err;
   }
-  console.log(`[ai/runAIChat] company=${companyId} plan=${planId} trial=${isOnTrial} remaining=${remainingCredits} byok=${!!(companyOpenAI || companyAnthropic)}`);
+
+  // Scan-token gate — separate budget from AI credits, NOT part of the trial.
+  // Trial users cannot run brand_scan / full_scan / lite_scan. Higher plans
+  // include 1-5 scans/month per PLAN_SCAN_TOKENS. BYOK does NOT bypass this —
+  // scans are expensive (30k-200k tokens) and we want clean upsell economics.
+  if (SCAN_ACTIONS.has(action) && !canRunScanAction(action, planId)) {
+    const err = new Error(
+      planId === 'trial'
+        ? 'Brand Scans are not included in the 14-day trial. Upgrade to Growth+ for Lite Scans or Scale+ for Full Scans, or purchase a one-off Full Scan from the pricing page.'
+        : 'Your current plan has no scan tokens included. Upgrade to Growth+ (1 Lite Scan/mo) or Scale+ (2-5 Full Scans/mo), or purchase a one-off Full Scan.'
+    );
+    err.code = 'NO_SCAN_TOKENS';
+    err.publicMessage = err.message;
+    throw err;
+  }
+
+  console.log(`[ai/runAIChat] company=${companyId} plan=${planId} trial=${isOnTrial} action=${action || 'chat'} remaining=${remainingCredits} byok=${!!(companyOpenAI || companyAnthropic)}`);
 
   // Resolve which model to actually use given plan tier + action type
   const requestedModel = model
@@ -647,6 +665,7 @@ router.post('/chat', requireAuth, async (req, res) => {
       err.code === 'QUOTA' ? 402 :
       err.code === 'CREDITS_EXHAUSTED' ? 402 :
       err.code === 'NO_SUBSCRIPTION' ? 402 :
+      err.code === 'NO_SCAN_TOKENS' ? 402 :
       err.code === 'RATE_LIMIT' ? 429 :
       err.code === 'PROVIDER_DOWN' ? 503 :
       500;

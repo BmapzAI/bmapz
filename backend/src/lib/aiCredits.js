@@ -61,6 +61,34 @@ export const FORCE_CHEAP_MODEL_ACTIONS = new Set([
   'campaign_plan',
 ]);
 
+// Scan-class actions consume "scan tokens" — a separate budget from AI credits.
+// These are NOT part of the 14-day trial (trial.scan_tokens = 0).
+// Each plan defines how many scans are included per month; extras are purchased.
+export const SCAN_ACTIONS = new Set([
+  'brand_scan',
+  'full_scan',
+  'lite_scan',
+]);
+
+// How many scan tokens each plan includes per month.
+// Keep in sync with frontend-src/lib/plans.js → PLANS[*].scan_tokens / lite_scans_monthly.
+export const PLAN_SCAN_TOKENS = {
+  trial:      0,
+  starter:    0,
+  growth:     1, // 1 Lite Scan per month
+  scale:      2, // 2 Full Scan tokens per month
+  enterprise: 5, // 5 Full Scan tokens per month
+};
+
+/**
+ * Determine whether a scan action is allowed for a given plan.
+ * Trial gets ZERO scans — they must upgrade or purchase a one-off Full Scan.
+ */
+export function canRunScanAction(action, planId) {
+  if (!SCAN_ACTIONS.has(action)) return true;
+  return (PLAN_SCAN_TOKENS[planId] || 0) > 0;
+}
+
 // Default model per provider when user hasn't chosen
 export const DEFAULT_MODEL_PER_PROVIDER = {
   openai: 'gpt-4o-mini',
