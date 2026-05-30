@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-
+import { useLanguage } from '@/components/ui/LanguageContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,22 +19,7 @@ import { createPageUrl } from '@/utils';
 import { useNavigate } from 'react-router-dom';
 import { Lead, Workflow, LeadList } from '@/api/entities';
 
-const ALL_COLUMNS = [
-  { id: 'lead_company_name', label: 'Company', sortable: true, default: true },
-  { id: 'lead_name', label: 'Contact', sortable: true, default: true },
-  { id: 'role', label: 'Role', sortable: true, default: true },
-  { id: 'funnel_stage', label: 'Stage', sortable: true, default: true },
-  { id: 'icp_score', label: 'ICP Score', sortable: true, default: true },
-  { id: 'estimated_value', label: 'Value', sortable: true, default: true },
-  { id: 'status', label: 'Status', sortable: true, default: true },
-  { id: 'email', label: 'Email', sortable: false, default: false },
-  { id: 'phone', label: 'Phone', sortable: false, default: false },
-  { id: 'source', label: 'Source', sortable: true, default: false },
-  { id: 'source_category', label: 'Source Type', sortable: true, default: false },
-  { id: 'is_decision_maker', label: 'Decision Maker', sortable: false, default: false },
-  { id: 'created_date', label: 'Created', sortable: true, default: false },
-  { id: 'updated_date', label: 'Updated', sortable: true, default: false },
-];
+// ALL_COLUMNS is now built inside the component to support translations
 
 const STAGE_COLORS = {
   prospect: '#9ca3af',
@@ -50,12 +35,31 @@ const STAGE_COLORS = {
 };
 
 export default function LeadListView({ leads, stages, onDisqualify, companyId }) {
+  const { t, isPt } = useLanguage();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  const ALL_COLUMNS = useMemo(() => [
+    { id: 'lead_company_name', label: t('colCompany'), sortable: true, default: true },
+    { id: 'lead_name', label: t('colContact'), sortable: true, default: true },
+    { id: 'role', label: t('role'), sortable: true, default: true },
+    { id: 'funnel_stage', label: t('colStage'), sortable: true, default: true },
+    { id: 'icp_score', label: t('icpScore'), sortable: true, default: true },
+    { id: 'estimated_value', label: t('colValue'), sortable: true, default: true },
+    { id: 'status', label: t('status'), sortable: true, default: true },
+    { id: 'email', label: t('email'), sortable: false, default: false },
+    { id: 'phone', label: t('colPhone'), sortable: false, default: false },
+    { id: 'source', label: t('source'), sortable: true, default: false },
+    { id: 'source_category', label: t('colSourceType'), sortable: true, default: false },
+    { id: 'is_decision_maker', label: t('colDecisionMaker'), sortable: false, default: false },
+    { id: 'created_date', label: t('colCreated'), sortable: true, default: false },
+    { id: 'updated_date', label: t('colUpdated'), sortable: true, default: false },
+  ], [t]);
+
   const [selectedLeads, setSelectedLeads] = useState(new Set());
   const [sortBy, setSortBy] = useState({ field: 'created_date', direction: 'desc' });
-  const [visibleCols, setVisibleCols] = useState(ALL_COLUMNS.filter(c => c.default).map(c => c.id));
-  const [colOrder, setColOrder] = useState(ALL_COLUMNS.filter(c => c.default).map(c => c.id));
+  const [visibleCols, setVisibleCols] = useState(['lead_company_name', 'lead_name', 'role', 'funnel_stage', 'icp_score', 'estimated_value', 'status']);
+  const [colOrder, setColOrder] = useState(['lead_company_name', 'lead_name', 'role', 'funnel_stage', 'icp_score', 'estimated_value', 'status']);
   const [showSaveView, setShowSaveView] = useState(false);
   const [viewName, setViewName] = useState('');
   const [savedViews, setSavedViews] = useState(() => {
@@ -134,7 +138,7 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
     localStorage.setItem('leadListViews', JSON.stringify(updated));
     setViewName('');
     setShowSaveView(false);
-    toast.success('View saved!');
+    toast.success(t('viewSaved'));
   };
 
   const loadView = (view) => {
@@ -142,7 +146,7 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
     setColOrder(view.colOrder);
     setSortBy(view.sortBy);
     setActiveView(view.id);
-    toast.success(`Loaded view: ${view.name}`);
+    toast.success(`${isPt ? 'Visão carregada' : 'Loaded view'}: ${view.name}`);
   };
 
   const deleteView = (id) => {
@@ -159,7 +163,7 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
     const existingIds = list.lead_ids || [];
     const newIds = [...new Set([...existingIds, ...Array.from(selectedLeads)])];
     updateListMutation.mutate({ id: list.id, data: { lead_ids: newIds, lead_count: newIds.length } });
-    toast.success(`Added ${selectedLeads.size} leads to "${list.name}"`);
+    toast.success(isPt ? `${selectedLeads.size} leads adicionados a "${list.name}"` : `Added ${selectedLeads.size} leads to "${list.name}"`);
     setShowBulkList(false);
     setSelectedLeads(new Set());
   };
@@ -206,7 +210,7 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
           {lead.status || 'active'}
         </span>
       );
-      case 'is_decision_maker': return lead.is_decision_maker ? <span className="text-yellow-400 text-xs flex items-center gap-1"><Crown size={10} />Yes</span> : <span className="text-gray-600 text-xs">No</span>;
+      case 'is_decision_maker': return lead.is_decision_maker ? <span className="text-yellow-400 text-xs flex items-center gap-1"><Crown size={10} />{t('yes')}</span> : <span className="text-gray-600 text-xs">{t('no')}</span>;
       case 'created_date': return <span className="text-gray-400 text-xs">{lead.created_date ? new Date(lead.created_date).toLocaleDateString() : '—'}</span>;
       case 'updated_date': return <span className="text-gray-400 text-xs">{lead.updated_date ? new Date(lead.updated_date).toLocaleDateString() : '—'}</span>;
       case 'email': return <span className="text-gray-400 text-xs truncate max-w-[180px]">{lead.email || '—'}</span>;
@@ -231,11 +235,11 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="border-white/10 text-white hover:bg-white/5 gap-2">
-              <Settings2 size={15} /> Columns
+              <Settings2 size={15} /> {t('columns')}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="bg-[#1a1a1a] border-white/10 w-52">
-            <DropdownMenuLabel className="text-gray-400">Visible Columns</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-gray-400">{t('visibleColumns')}</DropdownMenuLabel>
             <DropdownMenuSeparator className="bg-white/10" />
             {ALL_COLUMNS.map(col => (
               <DropdownMenuCheckboxItem key={col.id} checked={visibleCols.includes(col.id)}
@@ -251,7 +255,7 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="border-white/10 text-white hover:bg-white/5 gap-2">
-                <Eye size={15} /> Views ({savedViews.length})
+                <Eye size={15} /> {t('views')} ({savedViews.length})
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="bg-[#1a1a1a] border-white/10 w-56">
@@ -271,24 +275,24 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
 
         <Button variant="outline" size="sm" onClick={() => setShowSaveView(true)}
           className="border-white/10 text-white hover:bg-white/5 gap-2">
-          <Save size={15} /> Save View
+          <Save size={15} /> {t('saveView')}
         </Button>
 
         {/* Bulk actions (shown when leads selected) */}
         {selectedLeads.size > 0 && (
           <div className="flex items-center gap-2 ml-auto">
-            <span className="text-[#38b6ff] text-sm font-medium">{selectedLeads.size} selected</span>
+            <span className="text-[#38b6ff] text-sm font-medium">{selectedLeads.size} {t('selected')}</span>
             <Button size="sm" variant="outline" onClick={() => setShowBulkList(true)}
               className="border-[#38b6ff]/30 text-[#38b6ff] hover:bg-[#38b6ff]/10 gap-1">
-              <UserPlus size={14} /> Add to List
+              <UserPlus size={14} /> {t('addToList')}
             </Button>
             <Button size="sm" variant="outline" onClick={() => setShowBulkWorkflow(true)}
               className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10 gap-1">
-              <GitBranch size={14} /> Apply Workflow
+              <GitBranch size={14} /> {t('applyWorkflow')}
             </Button>
             <Button size="sm" variant="outline" onClick={bulkDisqualify}
               className="border-red-500/30 text-red-400 hover:bg-red-500/10 gap-1">
-              <XCircle size={14} /> Disqualify
+              <XCircle size={14} /> {t('disqualify')}
             </Button>
             <button onClick={() => setSelectedLeads(new Set())} className="text-gray-400 hover:text-white p-1">
               <XCircle size={16} />
@@ -296,7 +300,7 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
           </div>
         )}
         {selectedLeads.size === 0 && (
-          <span className="text-gray-500 text-sm ml-auto">{sortedLeads.length} leads</span>
+          <span className="text-gray-500 text-sm ml-auto">{sortedLeads.length} {t('leadsLabel')}</span>
         )}
       </div>
 
@@ -324,7 +328,7 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
                     </th>
                   );
                 })}
-                <th className="px-3 py-3 text-left text-gray-400 font-medium w-16">Actions</th>
+                <th className="px-3 py-3 text-left text-gray-400 font-medium w-16">{t('actionsCol')}</th>
               </tr>
             </thead>
             <tbody>
@@ -350,10 +354,10 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="bg-[#1a1a1a] border-white/10">
                         <DropdownMenuItem className="text-white hover:bg-white/10" onClick={() => navigate(createPageUrl(`LeadDetails?id=${lead.id}`))}>
-                          View Details
+                          {t('viewDetails')}
                         </DropdownMenuItem>
                         <DropdownMenuItem className="text-red-400 hover:bg-red-500/10" onClick={() => onDisqualify && onDisqualify(lead.id)}>
-                          Disqualify
+                          {t('disqualify')}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -364,21 +368,21 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
           </table>
         </div>
         {sortedLeads.length === 0 && (
-          <div className="text-center py-12 text-gray-400">No leads match current filters</div>
+          <div className="text-center py-12 text-gray-400">{t('noLeadsFilters')}</div>
         )}
       </div>
 
       {/* Save View Dialog */}
       <Dialog open={showSaveView} onOpenChange={setShowSaveView}>
         <DialogContent className="bg-[#1a1a1a] border-white/10 text-white">
-          <DialogHeader><DialogTitle>Save Current View</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('saveCurrentView')}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <Input value={viewName} onChange={e => setViewName(e.target.value)} placeholder="View name (e.g. High ICP Prospects)"
+            <Input value={viewName} onChange={e => setViewName(e.target.value)} placeholder={t('viewNamePlaceholder')}
               className="bg-black/30 border-white/10 text-white" onKeyDown={e => e.key === 'Enter' && saveView()} />
-            <p className="text-gray-400 text-xs">Saves current columns, column order, and sort preferences.</p>
+            <p className="text-gray-400 text-xs">{t('saveViewDesc')}</p>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowSaveView(false)} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
-              <Button onClick={saveView} disabled={!viewName.trim()} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">Save</Button>
+              <Button variant="outline" onClick={() => setShowSaveView(false)} className="border-white/10 text-white hover:bg-white/5">{t('cancel')}</Button>
+              <Button onClick={saveView} disabled={!viewName.trim()} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">{t('save')}</Button>
             </div>
           </div>
         </DialogContent>
@@ -387,17 +391,17 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
       {/* Bulk add to list dialog */}
       <Dialog open={showBulkList} onOpenChange={setShowBulkList}>
         <DialogContent className="bg-[#1a1a1a] border-white/10 text-white">
-          <DialogHeader><DialogTitle>Add {selectedLeads.size} Leads to List</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{selectedLeads.size} {t('addLeadsToList')}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <Select value={selectedList} onValueChange={setSelectedList}>
-              <SelectTrigger className="bg-black/30 border-white/10 text-white"><SelectValue placeholder="Select a list..." /></SelectTrigger>
+              <SelectTrigger className="bg-black/30 border-white/10 text-white"><SelectValue placeholder={t('selectListPlaceholder')} /></SelectTrigger>
               <SelectContent className="bg-[#1a1a1a] border-white/10">
                 {leadLists.map(l => <SelectItem key={l.id} value={l.id} className="text-white">{l.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowBulkList(false)} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
-              <Button onClick={bulkAddToList} disabled={!selectedList} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">Add to List</Button>
+              <Button variant="outline" onClick={() => setShowBulkList(false)} className="border-white/10 text-white hover:bg-white/5">{t('cancel')}</Button>
+              <Button onClick={bulkAddToList} disabled={!selectedList} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">{t('addToList')}</Button>
             </div>
           </div>
         </DialogContent>
@@ -406,19 +410,19 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
       {/* Bulk workflow dialog */}
       <Dialog open={showBulkWorkflow} onOpenChange={setShowBulkWorkflow}>
         <DialogContent className="bg-[#1a1a1a] border-white/10 text-white">
-          <DialogHeader><DialogTitle>Apply Workflow to {selectedLeads.size} Leads</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('applyWorkflowTo')} {selectedLeads.size} {t('leadsLabel')}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
-              <SelectTrigger className="bg-black/30 border-white/10 text-white"><SelectValue placeholder="Select workflow..." /></SelectTrigger>
+              <SelectTrigger className="bg-black/30 border-white/10 text-white"><SelectValue placeholder={t('selectWorkflowPlaceholder')} /></SelectTrigger>
               <SelectContent className="bg-[#1a1a1a] border-white/10">
                 {workflows.map(w => <SelectItem key={w.id} value={w.id} className="text-white">{w.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <p className="text-gray-400 text-xs">This will enroll the selected leads in the chosen workflow.</p>
+            <p className="text-gray-400 text-xs">{t('workflowEnrollDesc')}</p>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowBulkWorkflow(false)} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
-              <Button onClick={() => { toast.success(`Enrolled ${selectedLeads.size} leads in workflow`); setShowBulkWorkflow(false); setSelectedLeads(new Set()); }}
-                disabled={!selectedWorkflow} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">Apply</Button>
+              <Button variant="outline" onClick={() => setShowBulkWorkflow(false)} className="border-white/10 text-white hover:bg-white/5">{t('cancel')}</Button>
+              <Button onClick={() => { toast.success(isPt ? `${selectedLeads.size} leads inscritos no fluxo` : `Enrolled ${selectedLeads.size} leads in workflow`); setShowBulkWorkflow(false); setSelectedLeads(new Set()); }}
+                disabled={!selectedWorkflow} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">{t('apply')}</Button>
             </div>
           </div>
         </DialogContent>
