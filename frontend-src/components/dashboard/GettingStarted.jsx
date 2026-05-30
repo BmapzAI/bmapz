@@ -9,13 +9,13 @@ export default function GettingStarted({ company, leadsCount, workflowsCount }) 
 
   const steps = [
     { number: 1, icon: Target, xp: 100, title: t('defineYourICP'), description: t('setUpICP'), completed: company?.icp && Object.keys(company.icp).length > 0, link: 'Settings', color: 'from-[#3572b9] to-[#38b6ff]' },
-    { number: 2, icon: Bot, xp: 150, title: 'Chat with AI Agent', description: 'Send your first message to the AI agent and discover its capabilities', completed: false, link: 'AIChat', color: 'from-[#38b6ff] to-[#cb6ce6]', highlight: true },
+    { number: 2, icon: Bot, xp: 150, title: t('chatWithAI'), description: t('chatWithAIDesc'), completed: false, link: 'AIChat', color: 'from-[#38b6ff] to-[#cb6ce6]', highlight: true },
     { number: 3, icon: Users, xp: 100, title: t('importLeads'), description: t('addLeadsManually'), completed: leadsCount > 0, link: 'Sales', color: 'from-[#38b6ff] to-[#00e7ff]' },
     { number: 4, icon: GitBranch, xp: 150, title: t('createWorkflows'), description: t('buildAutomated'), completed: workflowsCount > 0, link: 'Workflows', color: 'from-[#00e7ff] to-[#cb6ce6]' },
-    { number: 5, icon: LayoutTemplate, xp: 100, title: 'Create a Message Template', description: 'Build your first outreach template to use across channels', completed: false, link: 'TextTemplates', color: 'from-[#cb6ce6] to-[#38b6ff]' },
-    { number: 6, icon: Share2, xp: 150, title: 'Schedule Social Media Post', description: 'Plan and schedule your first social media content', completed: false, link: 'SocialMedia', color: 'from-[#E1306C] to-[#cb6ce6]' },
-    { number: 7, icon: Link2, xp: 200, title: 'Connect an Integration', description: 'Link WhatsApp, LinkedIn, or Email to start sending messages', completed: false, link: 'Integrations', color: 'from-[#38b6ff] to-[#00e7ff]' },
-    { number: 8, icon: Users, xp: 200, title: 'Contact 10 Leads', description: 'Reach out to your first 10 prospects via any channel', completed: leadsCount >= 10, link: 'Sales', color: 'from-[#22c55e] to-[#38b6ff]' },
+    { number: 5, icon: LayoutTemplate, xp: 100, title: t('createMsgTemplate'), description: t('createMsgTemplateDesc'), completed: false, link: 'TextTemplates', color: 'from-[#cb6ce6] to-[#38b6ff]' },
+    { number: 6, icon: Share2, xp: 150, title: t('scheduleSocial'), description: t('scheduleSocialDesc'), completed: false, link: 'SocialMedia', color: 'from-[#E1306C] to-[#cb6ce6]' },
+    { number: 7, icon: Link2, xp: 200, title: t('connectIntegration'), description: t('connectIntegrationDesc'), completed: false, link: 'Integrations', color: 'from-[#38b6ff] to-[#00e7ff]' },
+    { number: 8, icon: Users, xp: 200, title: t('contact10Leads'), description: t('contact10LeadsDesc'), completed: leadsCount >= 10, link: 'Sales', color: 'from-[#22c55e] to-[#38b6ff]' },
   ];
 
   const completedSteps = steps.filter(s => s.completed).length;
@@ -24,11 +24,11 @@ export default function GettingStarted({ company, leadsCount, workflowsCount }) 
   const progressPercent = Math.round((completedSteps / steps.length) * 100);
 
   const getLevelInfo = (xp) => {
-    if (xp >= 800) return { level: 5, title: 'Growth Expert', color: 'text-yellow-400' };
-    if (xp >= 500) return { level: 4, title: 'Sales Pro', color: 'text-[#cb6ce6]' };
-    if (xp >= 300) return { level: 3, title: 'Pipeline Builder', color: 'text-[#38b6ff]' };
-    if (xp >= 150) return { level: 2, title: 'Prospector', color: 'text-green-400' };
-    return { level: 1, title: 'Beginner', color: 'text-gray-400' };
+    if (xp >= 800) return { level: 5, title: t('growthExpert'), color: 'text-yellow-400' };
+    if (xp >= 500) return { level: 4, title: t('salesPro'), color: 'text-[#cb6ce6]' };
+    if (xp >= 300) return { level: 3, title: t('pipelineBuilder'), color: 'text-[#38b6ff]' };
+    if (xp >= 150) return { level: 2, title: t('prospector'), color: 'text-green-400' };
+    return { level: 1, title: t('beginner'), color: 'text-gray-400' };
   };
 
   const levelInfo = getLevelInfo(totalXP);
@@ -43,13 +43,13 @@ export default function GettingStarted({ company, leadsCount, workflowsCount }) 
             <Trophy size={28} className="text-white" />
           </div>
           <div>
-            <div className={`text-lg font-bold ${levelInfo.color}`}>Level {levelInfo.level}: {levelInfo.title}</div>
+            <div className={`text-lg font-bold ${levelInfo.color}`}>{t('levelLabel')} {levelInfo.level}: {levelInfo.title}</div>
             <div className="text-sm text-gray-400">{totalXP} / {maxXP} XP</div>
           </div>
         </div>
         <div className="flex-1 w-full">
           <div className="flex justify-between text-sm mb-2">
-            <span className="text-gray-400">{completedSteps}/{steps.length} steps completed</span>
+            <span className="text-gray-400">{completedSteps}/{steps.length} {t('stepsCompleted')}</span>
             <span className="font-medium text-white">{progressPercent}%</span>
           </div>
           <div className="h-3 rounded-full overflow-hidden bg-white/10">
@@ -62,7 +62,7 @@ export default function GettingStarted({ company, leadsCount, workflowsCount }) 
         {completedSteps === steps.length && (
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-400/20 text-yellow-400 font-semibold flex-shrink-0">
             <Star size={18} fill="currentColor" />
-            All Complete!
+            {t('allComplete')}
           </div>
         )}
       </div>
@@ -96,13 +96,13 @@ export default function GettingStarted({ company, leadsCount, workflowsCount }) 
                 <Icon size={22} className="text-white" />
               </div>
 
-              <div className="text-xs mb-1 text-gray-500">Step {step.number}</div>
+              <div className="text-xs mb-1 text-gray-500">{t('stepLabel')} {step.number}</div>
               <h3 className="font-semibold text-sm mb-1 text-white">{step.title}</h3>
               <p className="text-xs text-gray-400">{step.description}</p>
 
               <div className="flex items-center gap-1 mt-3 text-[#38b6ff] text-xs font-medium 
                 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <span>{step.completed ? 'View' : 'Get started'}</span>
+                <span>{step.completed ? t('viewBtn') : t('getStartedBtn')}</span>
                 <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
               </div>
             </Link>

@@ -14,46 +14,27 @@ import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
 import { useAuth } from '@/lib/AuthContext';
+import { useLanguage } from '@/components/ui/LanguageContext';
 
-const STEPS = [
-  {
-    id: 'welcome',
-    icon: Sparkles,
-    title: 'Welcome to BMAPZ!',
-    subtitle: "Let's get you set up in just a few minutes.",
-    color: 'from-[#3572b9] to-[#38b6ff]',
-  },
-  {
-    id: 'company',
-    icon: Building2,
-    title: 'Tell us about your company',
-    subtitle: 'This helps the AI personalize all outputs for your brand.',
-    color: 'from-[#38b6ff] to-[#00e7ff]',
-  },
-  {
-    id: 'icp',
-    icon: Target,
-    title: 'Define your ideal customer',
-    subtitle: 'Help the AI qualify and score your leads automatically.',
-    color: 'from-[#cb6ce6] to-[#38b6ff]',
-  },
-  {
-    id: 'done',
-    icon: Check,
-    title: "You're all set!",
-    subtitle: 'Your workspace is ready. Explore the platform.',
-    color: 'from-[#22c55e] to-[#38b6ff]',
-  },
-];
+// STEPS are built dynamically inside the component to use t()
+
 
 const STORAGE_KEY = 'bmapz_onboarding_complete';
 
 export default function OnboardingWizard() {
+  const { t } = useLanguage();
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
   const [companyForm, setCompanyForm] = useState({ name: '', website: '', industry: '', services_description: '' });
   const [icpForm, setIcpForm] = useState({ primary_audience: '', pain_points_text: '', budget_range: '' });
   const { company, refreshCompany } = useAuth();
+
+  const STEPS = [
+    { id: 'welcome', icon: Sparkles, title: t('onboardingWelcomeTitle'), subtitle: t('onboardingWelcomeSub'), color: 'from-[#3572b9] to-[#38b6ff]' },
+    { id: 'company', icon: Building2, title: t('onboardingCompanyTitle'), subtitle: t('onboardingCompanySub'), color: 'from-[#38b6ff] to-[#00e7ff]' },
+    { id: 'icp', icon: Target, title: t('onboardingICPTitle'), subtitle: t('onboardingICPSub'), color: 'from-[#cb6ce6] to-[#38b6ff]' },
+    { id: 'done', icon: Check, title: t('onboardingDoneTitle'), subtitle: t('onboardingDoneSub'), color: 'from-[#22c55e] to-[#38b6ff]' },
+  ];
 
   useEffect(() => {
     // Show only if not completed before and no company set up yet
@@ -93,7 +74,7 @@ export default function OnboardingWizard() {
           budget_range: icpForm.budget_range,
         }
       });
-      toast.success('Company profile saved!');
+      toast.success(t('onboardingCompanySaved'));
     }
     setStep(s => Math.min(s + 1, STEPS.length - 1));
   };
@@ -146,10 +127,10 @@ export default function OnboardingWizard() {
           {step === 0 && (
             <div className="space-y-3">
               {[
-                { icon: Building2, text: 'Set up your company profile & brand voice' },
-                { icon: Target, text: 'Define your Ideal Customer Profile (ICP)' },
-                { icon: GitBranch, text: 'Launch your first AI-powered workflow' },
-                { icon: Zap, text: 'Connect your channels (WhatsApp, Email, LinkedIn)' },
+                { icon: Building2, text: t('onboardingItem1') },
+                { icon: Target, text: t('onboardingItem2') },
+                { icon: GitBranch, text: t('onboardingItem3') },
+                { icon: Zap, text: t('onboardingItem4') },
               ].map(({ icon: I, text }, idx) => (
                 <div key={idx} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
                   <div className="w-8 h-8 rounded-lg bg-[#38b6ff]/15 flex items-center justify-center flex-shrink-0">
@@ -164,7 +145,7 @@ export default function OnboardingWizard() {
           {step === 1 && (
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-400 text-sm">Company Name *</Label>
+                <Label className="text-gray-400 text-sm">{t('onboardingCompanyName')}</Label>
                 <Input
                   value={companyForm.name}
                   onChange={(e) => setCompanyForm(p => ({ ...p, name: e.target.value }))}
@@ -173,7 +154,7 @@ export default function OnboardingWizard() {
                 />
               </div>
               <div>
-                <Label className="text-gray-400 text-sm">Website</Label>
+                <Label className="text-gray-400 text-sm">{t('onboardingWebsite')}</Label>
                 <Input
                   value={companyForm.website}
                   onChange={(e) => setCompanyForm(p => ({ ...p, website: e.target.value }))}
@@ -182,7 +163,7 @@ export default function OnboardingWizard() {
                 />
               </div>
               <div>
-                <Label className="text-gray-400 text-sm">Industry / Niche</Label>
+                <Label className="text-gray-400 text-sm">{t('onboardingIndustry')}</Label>
                 <Input
                   value={companyForm.industry}
                   onChange={(e) => setCompanyForm(p => ({ ...p, industry: e.target.value }))}
@@ -191,12 +172,12 @@ export default function OnboardingWizard() {
                 />
               </div>
               <div>
-                <Label className="text-gray-400 text-sm">What do you sell?</Label>
+                <Label className="text-gray-400 text-sm">{t('onboardingWhatSell')}</Label>
                 <Textarea
                   value={companyForm.services_description}
                   onChange={(e) => setCompanyForm(p => ({ ...p, services_description: e.target.value }))}
                   className="mt-1.5 bg-black/30 border-white/10 text-white min-h-[80px]"
-                  placeholder="Briefly describe your main product or service..."
+                  placeholder={t('onboardingWhatSellPlaceholder')}
                 />
               </div>
             </div>
@@ -205,7 +186,7 @@ export default function OnboardingWizard() {
           {step === 2 && (
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-400 text-sm">Describe your ideal customer</Label>
+                <Label className="text-gray-400 text-sm">{t('onboardingIdealCustomer')}</Label>
                 <Textarea
                   value={icpForm.primary_audience}
                   onChange={(e) => setIcpForm(p => ({ ...p, primary_audience: e.target.value }))}
@@ -214,7 +195,7 @@ export default function OnboardingWizard() {
                 />
               </div>
               <div>
-                <Label className="text-gray-400 text-sm">Main pain points (comma-separated)</Label>
+                <Label className="text-gray-400 text-sm">{t('onboardingPainPoints')}</Label>
                 <Input
                   value={icpForm.pain_points_text}
                   onChange={(e) => setIcpForm(p => ({ ...p, pain_points_text: e.target.value }))}
@@ -223,7 +204,7 @@ export default function OnboardingWizard() {
                 />
               </div>
               <div>
-                <Label className="text-gray-400 text-sm">Typical budget range</Label>
+                <Label className="text-gray-400 text-sm">{t('onboardingBudget')}</Label>
                 <Input
                   value={icpForm.budget_range}
                   onChange={(e) => setIcpForm(p => ({ ...p, budget_range: e.target.value }))}
@@ -237,10 +218,10 @@ export default function OnboardingWizard() {
           {step === 3 && (
             <div className="space-y-3">
               {[
-                { label: 'Add your first lead', path: 'Sales', desc: 'Import or create leads manually' },
-                { label: 'Build a workflow', path: 'Workflows', desc: 'Automate your outreach sequences' },
-                { label: 'Connect integrations', path: 'Integrations', desc: 'Link WhatsApp, Email, LinkedIn' },
-                { label: 'Chat with AI Agent', path: 'AIChat', desc: 'Generate messages, strategies & more' },
+                { label: t('onboardingLink1Label'), path: 'Sales', desc: t('onboardingLink1Desc') },
+                { label: t('onboardingLink2Label'), path: 'Workflows', desc: t('onboardingLink2Desc') },
+                { label: t('onboardingLink3Label'), path: 'Integrations', desc: t('onboardingLink3Desc') },
+                { label: t('onboardingLink4Label'), path: 'AIChat', desc: t('onboardingLink4Desc') },
               ].map(({ label, path, desc }) => (
                 <Link key={path} to={createPageUrl(path)} onClick={dismiss}
                   className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 hover:border-[#38b6ff]/30 hover:bg-[#38b6ff]/5 transition-all group">
@@ -258,13 +239,13 @@ export default function OnboardingWizard() {
           <div className="flex items-center justify-between mt-8">
             {!isFirst && !isLast ? (
               <button onClick={() => setStep(s => s - 1)} className="flex items-center gap-1.5 text-gray-400 hover:text-white text-sm transition-colors">
-                <ChevronLeft size={16} /> Back
+                <ChevronLeft size={16} /> {t('onboardingBack')}
               </button>
             ) : <div />}
 
             {isLast ? (
               <Button onClick={dismiss} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-                Go to Dashboard <ArrowRight size={16} />
+                {t('onboardingGoToDashboard')} <ArrowRight size={16} />
               </Button>
             ) : (
               <Button
@@ -272,7 +253,7 @@ export default function OnboardingWizard() {
                 disabled={saveMutation.isPending}
                 className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2"
               >
-                {saveMutation.isPending ? 'Saving...' : step === 0 ? "Let's go" : 'Continue'}
+                {saveMutation.isPending ? t('onboardingSaving') : step === 0 ? t('onboardingGo') : t('onboardingContinue')}
                 <ChevronRight size={16} />
               </Button>
             )}
@@ -280,7 +261,7 @@ export default function OnboardingWizard() {
 
           {!isLast && (
             <button onClick={dismiss} className="w-full text-center mt-4 text-xs text-gray-600 hover:text-gray-400 transition-colors">
-              Skip for now
+              {t('onboardingSkip')}
             </button>
           )}
         </div>

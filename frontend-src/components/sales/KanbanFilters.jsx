@@ -16,28 +16,30 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { 
-  SlidersHorizontal, ArrowUpDown, X, Eye, EyeOff, 
+import {
+  SlidersHorizontal, ArrowUpDown, X, Eye,
   DollarSign, Target, Calendar, User, Crown
 } from 'lucide-react';
+import { useLanguage } from '@/components/ui/LanguageContext';
 
-export default function KanbanFilters({ 
-  filters, 
-  onFiltersChange, 
-  sortBy, 
+export default function KanbanFilters({
+  filters,
+  onFiltersChange,
+  sortBy,
   onSortChange,
   visibleColumns,
   onColumnsChange,
-  stages 
+  stages
 }) {
+  const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
 
   const sortOptions = [
-    { value: 'created_date', label: 'Date Added', icon: Calendar },
-    { value: 'icp_score', label: 'ICP Score', icon: Target },
-    { value: 'estimated_value', label: 'Deal Value', icon: DollarSign },
-    { value: 'lead_name', label: 'Lead Name', icon: User },
-    { value: 'lead_company_name', label: 'Company Name', icon: User },
+    { value: 'created_date', label: t('dateAdded'), icon: Calendar },
+    { value: 'icp_score', label: t('icpScore'), icon: Target },
+    { value: 'estimated_value', label: t('dealValue'), icon: DollarSign },
+    { value: 'lead_name', label: t('leadName'), icon: User },
+    { value: 'lead_company_name', label: t('companyName'), icon: User },
   ];
 
   const handleFilterChange = (key, value) => {
@@ -55,9 +57,9 @@ export default function KanbanFilters({
     });
   };
 
-  const hasActiveFilters = filters.icpScoreMin > 0 || 
-    filters.icpScoreMax < 100 || 
-    filters.minValue > 0 || 
+  const hasActiveFilters = filters.icpScoreMin > 0 ||
+    filters.icpScoreMax < 100 ||
+    filters.minValue > 0 ||
     filters.maxValue ||
     filters.decisionMakerOnly ||
     filters.source !== 'all';
@@ -68,7 +70,7 @@ export default function KanbanFilters({
       <Select value={sortBy.field} onValueChange={(val) => onSortChange({ ...sortBy, field: val })}>
         <SelectTrigger className="w-[160px] bg-black/30 border-white/10 text-white">
           <ArrowUpDown size={14} className="mr-2 text-gray-400" />
-          <SelectValue placeholder="Sort by" />
+          <SelectValue placeholder={t('sortBy')} />
         </SelectTrigger>
         <SelectContent className="bg-[#1a1a1a] border-white/10">
           {sortOptions.map(opt => (
@@ -94,13 +96,13 @@ export default function KanbanFilters({
       {/* Filters */}
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          <Button 
-            variant="outline" 
-            className={`border-white/10 text-white hover:bg-white/5 gap-2 
+          <Button
+            variant="outline"
+            className={`border-white/10 text-white hover:bg-white/5 gap-2
               ${hasActiveFilters ? 'border-[#38b6ff]/50 bg-[#38b6ff]/10' : ''}`}
           >
             <SlidersHorizontal size={16} />
-            Filters
+            {t('filters')}
             {hasActiveFilters && (
               <span className="w-2 h-2 rounded-full bg-[#38b6ff]" />
             )}
@@ -109,15 +111,15 @@ export default function KanbanFilters({
         <PopoverContent className="w-80 bg-[#1a1a1a] border-white/10 text-white p-4" align="end">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="font-semibold">Filters</h4>
+              <h4 className="font-semibold">{t('filters')}</h4>
               {hasActiveFilters && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={clearFilters}
                   className="text-gray-400 hover:text-white h-auto p-0"
                 >
-                  <X size={14} className="mr-1" /> Clear
+                  <X size={14} className="mr-1" /> {t('clearFilters')}
                 </Button>
               )}
             </div>
@@ -126,7 +128,7 @@ export default function KanbanFilters({
             <div>
               <Label className="text-gray-400 text-sm flex items-center gap-2">
                 <Target size={14} />
-                ICP Score Range
+                {t('icpScoreRange')}
               </Label>
               <div className="flex items-center gap-4 mt-2">
                 <span className="text-sm text-gray-400 w-8">{filters.icpScoreMin}%</span>
@@ -148,7 +150,7 @@ export default function KanbanFilters({
             <div>
               <Label className="text-gray-400 text-sm flex items-center gap-2">
                 <DollarSign size={14} />
-                Minimum Deal Value
+                {t('minimumDealValue')}
               </Label>
               <Input
                 type="number"
@@ -163,7 +165,7 @@ export default function KanbanFilters({
             <div className="flex items-center justify-between">
               <Label className="text-gray-400 text-sm flex items-center gap-2">
                 <Crown size={14} />
-                Decision Makers Only
+                {t('decisionMakersOnly')}
               </Label>
               <Switch
                 checked={filters.decisionMakerOnly}
@@ -173,16 +175,16 @@ export default function KanbanFilters({
 
             {/* Lead Source */}
             <div>
-              <Label className="text-gray-400 text-sm">Lead Source</Label>
-              <Select 
-                value={filters.source} 
+              <Label className="text-gray-400 text-sm">{t('leadSource')}</Label>
+              <Select
+                value={filters.source}
                 onValueChange={(val) => handleFilterChange('source', val)}
               >
                 <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-[#1a1a1a] border-white/10">
-                  <SelectItem value="all" className="text-white">All Sources</SelectItem>
+                  <SelectItem value="all" className="text-white">{t('allSources')}</SelectItem>
                   <SelectItem value="manual" className="text-white">Manual</SelectItem>
                   <SelectItem value="csv" className="text-white">CSV Import</SelectItem>
                   <SelectItem value="api" className="text-white">API</SelectItem>
@@ -198,11 +200,11 @@ export default function KanbanFilters({
         <PopoverTrigger asChild>
           <Button variant="outline" className="border-white/10 text-white hover:bg-white/5 gap-2">
             <Eye size={16} />
-            Columns
+            {t('columns')}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-64 bg-[#1a1a1a] border-white/10 text-white p-4" align="end">
-          <h4 className="font-semibold mb-3">Visible Stages</h4>
+          <h4 className="font-semibold mb-3">{t('visibleStages')}</h4>
           <div className="space-y-2">
             {stages.map(stage => (
               <div key={stage.id} className="flex items-center justify-between">
