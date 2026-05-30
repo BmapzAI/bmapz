@@ -395,8 +395,14 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
  */
 async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action }) {
   const settings = await getCompanyAISettings(companyId);
-  const { planId, creditsTotal, creditsUsed } = await getCompanyPlan(companyId);
+  const { planId, creditsTotal, creditsUsed, status: planStatus } = await getCompanyPlan(companyId);
   const remainingCredits = Math.max(0, creditsTotal - creditsUsed);
+
+  // Trial users get FULL ACCESS during the 14-day trial — usage is tracked
+  // (so they see what they consume), but never blocks. This matches the
+  // marketing promise: "14-day trial with full access, no credit card".
+  // Credit gate is only enforced on paid plans (starter/growth/scale/enterprise).
+  const isOnTrial = planId === 'trial' || planStatus === 'trialing' || planStatus === 'inactive';
 
   // BYOK is only allowed for owner + system_admin. Everyone else uses platform keys.
   const allowBYOK = canUseBYOK(userRole);
@@ -415,14 +421,16 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
     throw err;
   }
 
-  // Pre-flight credit check (only when using PLATFORM keys — BYOK doesn't deduct)
+  // Pre-flight credit check — ONLY enforced on paid plans, never on trial.
+  // BYOK also bypasses (admin's key, admin's cost).
   const willUsePlatformKey = !companyOpenAI && !companyAnthropic;
-  if (willUsePlatformKey && remainingCredits < 1) {
+  if (willUsePlatformKey && !isOnTrial && remainingCredits < 1) {
     const err = new Error(`Out of AI credits (${remainingCredits} remaining). Upgrade your plan or buy a credit pack.`);
     err.code = 'CREDITS_EXHAUSTED';
     err.publicMessage = err.message;
     throw err;
   }
+  console.log(`[ai/runAIChat] company=${companyId} plan=${planId} trial=${isOnTrial} remaining=${remainingCredits} byok=${!!(companyOpenAI || companyAnthropic)}`);
 
   // Resolve which model to actually use given plan tier + action type
   const requestedModel = model
@@ -465,6 +473,7 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
       if (errors.length > 0) console.log(`[ai] succeeded with ${attempt.provider}/${attempt.source} after ${errors.length} failure(s)`);
 
       // Deduct credits ONLY when using platform key (BYOK doesn't deduct — admin's cost).
+      // For trial users, LOG usage but never block — matches "full access" promise.
       let creditsCharged = 0;
       let remainingAfter = remainingCredits;
       if (attempt.source === 'platform') {
@@ -475,14 +484,44 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
             promptTokens: result.usage?.prompt_tokens || 0,
             completionTokens: result.usage?.completion_tokens || 0,
           });
-          const deduction = await deductCredits({
-            companyId, userId, userEmail,
-            credits: creditsCharged,
-            feature: action || 'ai_chat',
-            model: result.model_used,
-            tokens,
-          });
-          remainingAfter = deduction.remaining;
+          if (isOnTrial) {
+            // Trial: log to credit_transactions for usage visibility, no enforcement
+            const { data: sub } = await supabaseAdmin
+              .from('subscriptions')
+              .select('id')
+              .eq('company_id', companyId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            await supabaseAdmin.from('credit_transactions').insert({
+              company_id: companyId,
+              subscription_id: sub?.id || null,
+              type: 'usage',
+              feature: action || 'ai_chat',
+              credits_delta: -creditsCharged,
+              credits_after: Math.max(0, remainingCredits - creditsCharged),
+              description: `${action || 'ai_chat'} — ${result.model_used} (${tokens} tokens) [trial]`,
+              metadata: {
+                user_id: userId || null,
+                user_email: userEmail || null,
+                model: result.model_used,
+                tokens,
+                tier: MODEL_TIER[result.model_used] || 'smart',
+                trial_uncapped: true,
+              },
+            });
+            remainingAfter = Math.max(0, remainingCredits - creditsCharged);
+          } else {
+            // Paid plan: real deduction with enforcement
+            const deduction = await deductCredits({
+              companyId, userId, userEmail,
+              credits: creditsCharged,
+              feature: action || 'ai_chat',
+              model: result.model_used,
+              tokens,
+            });
+            remainingAfter = deduction.remaining;
+          }
         } catch (deductErr) {
           // Log but don't fail the request — user already got the response
           console.error('[ai] credit deduction failed:', deductErr.message);
