@@ -108,6 +108,41 @@ const translations = {
     upgrade: 'Upgrade',
     currentPlan: 'Current Plan',
 
+    // Pricing & Billing
+    pricingTitle: 'Choose Your Plan',
+    pricingSubtitle: 'Start with a 14-day free trial. No credit card required.',
+    monthly: 'Monthly',
+    annual: 'Annual',
+    annualSave: 'Save 15%',
+    perMonth: 'per month',
+    creditsPerMonth: 'AI credits / month',
+    contactsLabel: 'contacts',
+    userSeats: 'users',
+    companyProfiles: 'company profiles',
+    fullScanTokens: 'Full Scan tokens / month',
+    liteScansPerMonth: 'Lite Scan / month',
+    extraUser: 'Extra user',
+    extraCreditPack: 'Extra Credit Pack',
+    fullScanAddon: 'Full Scan Token',
+    extraCompanyProfile: 'Extra Company Profile',
+    getStarted: 'Get started',
+    currentPlanBadge: 'Current plan',
+    addOns: 'Add-ons',
+    addOnsDesc: 'Boost any plan with extra resources',
+    cancellationFee: 'Annual Cancellation Fee',
+    cancellationFeeDesc: 'Cancelling an annual plan before 12 months recovers the 15% discount on the months you used.',
+    trialFullAccess: '14-day trial with full access — no credit card required',
+    recommended: 'RECOMMENDED',
+    // Usage tab
+    aiCreditUsage: 'AI Credit Usage',
+    totalCredits: 'Total Credits',
+    usedThisCycle: 'Used This Cycle',
+    remaining: 'Remaining',
+    byFeature: 'By Feature',
+    byModel: 'By Model',
+    byUser: 'By User',
+    recentActivityShort: 'Recent Activity',
+
     // Common
     save: 'Save Changes',
     cancel: 'Cancel',
@@ -346,11 +381,46 @@ const translations = {
     tofObjective: 'Objetivo TOF (Topo do Funil)',
     mofObjective: 'Objetivo MOF (Meio do Funil)',
     bofObjective: 'Objetivo BOF (Fundo do Funil)',
-    billing: 'Billing',
+    billing: 'Cobrança',
     aiCredits: 'Créditos de IA',
     scanTokens: 'Scan Tokens',
-    upgrade: 'Upgrade',
+    upgrade: 'Fazer Upgrade',
     currentPlan: 'Plano Atual',
+
+    // Pricing & Billing
+    pricingTitle: 'Escolha Seu Plano',
+    pricingSubtitle: 'Comece com 14 dias grátis. Sem cartão de crédito.',
+    monthly: 'Mensal',
+    annual: 'Anual',
+    annualSave: 'Economize 15%',
+    perMonth: 'por mês',
+    creditsPerMonth: 'créditos de IA / mês',
+    contactsLabel: 'contatos',
+    userSeats: 'usuários',
+    companyProfiles: 'perfis de empresa',
+    fullScanTokens: 'Full Scan tokens / mês',
+    liteScansPerMonth: 'Lite Scan / mês',
+    extraUser: 'Usuário Adicional',
+    extraCreditPack: 'Pacote de Créditos Extra',
+    fullScanAddon: 'Token de Full Scan',
+    extraCompanyProfile: 'Perfil de Empresa Adicional',
+    getStarted: 'Começar',
+    currentPlanBadge: 'Plano atual',
+    addOns: 'Add-ons',
+    addOnsDesc: 'Potencialize qualquer plano com recursos extras',
+    cancellationFee: 'Taxa de Cancelamento Anual',
+    cancellationFeeDesc: 'Cancelar plano anual antes de 12 meses recupera o desconto de 15% sobre os meses utilizados.',
+    trialFullAccess: '14 dias de trial com acesso completo — sem cartão de crédito',
+    recommended: 'RECOMENDADO',
+    // Usage tab
+    aiCreditUsage: 'Uso de Créditos de IA',
+    totalCredits: 'Total de Créditos',
+    usedThisCycle: 'Usados Neste Ciclo',
+    remaining: 'Restantes',
+    byFeature: 'Por Funcionalidade',
+    byModel: 'Por Modelo',
+    byUser: 'Por Usuário',
+    recentActivityShort: 'Atividade Recente',
 
     // Common
     save: 'Salvar',
@@ -495,20 +565,32 @@ const LanguageContext = createContext();
 
 export function LanguageProvider({ children }) {
   const [language, setLanguage] = useState(() => {
-    return localStorage.getItem('bmapz_language') || 'en';
+    // Saved preference first, then browser locale, then default to en
+    const saved = localStorage.getItem('bmapz_language');
+    if (saved === 'en' || saved === 'pt-BR') return saved;
+    const browserLang = (typeof navigator !== 'undefined' && navigator.language) || 'en';
+    return browserLang.toLowerCase().startsWith('pt') ? 'pt-BR' : 'en';
   });
+
+  // Reflect language on <html lang="..."> for accessibility + SEO
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = language === 'pt-BR' ? 'pt-BR' : 'en';
+    }
+  }, [language]);
 
   const t = (key) => {
     return translations[language]?.[key] || translations['en']?.[key] || key;
   };
 
   const changeLanguage = (lang) => {
+    if (lang !== 'en' && lang !== 'pt-BR') lang = 'en';
     setLanguage(lang);
     localStorage.setItem('bmapz_language', lang);
   };
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage: changeLanguage, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage: changeLanguage, t, isPt: language === 'pt-BR' }}>
       {children}
     </LanguageContext.Provider>
   );

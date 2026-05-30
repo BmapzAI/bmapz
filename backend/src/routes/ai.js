@@ -7,6 +7,8 @@ import {
   canUseBYOK,
   canRunScanAction,
   SCAN_ACTIONS,
+  PLAN_SCAN_TOKENS,
+  PLAN_MONTHLY_CREDITS,
   DEFAULT_MODEL_PER_PROVIDER,
   MODEL_TIER,
 } from '../lib/aiCredits.js';
@@ -41,12 +43,12 @@ const TRIAL_DAYS = 14;
 async function getCompanyPlan(companyId) {
   if (!companyId) {
     console.warn('[ai/getCompanyPlan] called with no companyId');
-    return { planId: 'trial', creditsTotal: 0, creditsUsed: 0, subscriptionId: null, status: 'inactive' };
+    return { planId: 'trial', creditsTotal: 0, creditsUsed: 0, subscriptionId: null, status: 'inactive', scanTokensRemaining: 0 };
   }
 
   let { data: sub, error: selectErr } = await supabaseAdmin
     .from('subscriptions')
-    .select('id, plan_id, ai_credits_total, ai_credits_used, topup_credits_purchased, status, trial_ends_at')
+    .select('id, plan_id, ai_credits_total, ai_credits_used, topup_credits_purchased, status, trial_ends_at, scan_tokens_total, scan_tokens_used, scan_tokens_addon, cycle_started_at, cycle_ends_at, billing_cycle, annual_start_at')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -114,14 +116,67 @@ async function getCompanyPlan(companyId) {
     }
   }
 
+  // ─── Auto-reset on monthly cycle rollover ─────────────────────────────────
+  // If the subscription's cycle has ended, reset AI credits + scan tokens to
+  // their per-plan defaults. Idempotent: only fires once per cycle.
+  if (sub && sub.cycle_ends_at && new Date(sub.cycle_ends_at) <= new Date()) {
+    const planId = sub.plan_id || 'trial';
+    const monthlyCredits = PLAN_MONTHLY_CREDITS[planId] || 0;
+    const monthlyScanTokens = PLAN_SCAN_TOKENS[planId] || 0;
+    const nextCycleStart = new Date();
+    const nextCycleEnd = new Date(nextCycleStart.getTime() + 30 * 86400_000);
+
+    const { data: resetSub, error: resetErr } = await supabaseAdmin
+      .from('subscriptions')
+      .update({
+        ai_credits_total: monthlyCredits,
+        ai_credits_used: 0,
+        scan_tokens_total: monthlyScanTokens,
+        scan_tokens_used: 0,
+        scan_tokens_addon: 0,           // add-ons don't roll over — use it or lose it
+        cycle_started_at: nextCycleStart.toISOString(),
+        cycle_ends_at: nextCycleEnd.toISOString(),
+        last_reset_at: nextCycleStart.toISOString(),
+      })
+      .eq('id', sub.id)
+      .select()
+      .single();
+    if (!resetErr && resetSub) {
+      sub = resetSub;
+      console.log(`[ai/getCompanyPlan] monthly cycle reset for company ${companyId}: +${monthlyCredits} credits, +${monthlyScanTokens} scan tokens`);
+      await supabaseAdmin.from('credit_transactions').insert([
+        {
+          company_id: companyId,
+          subscription_id: sub.id,
+          type: 'cycle_reset',
+          feature: 'monthly_grant',
+          credits_delta: monthlyCredits,
+          credits_after: monthlyCredits,
+          description: `Monthly cycle reset — +${monthlyCredits} AI credits, +${monthlyScanTokens} scan tokens`,
+          metadata: { plan_id: planId, credits: monthlyCredits, scan_tokens: monthlyScanTokens },
+        },
+      ]);
+    }
+  }
+
+  const scanTokensTotal = (sub?.scan_tokens_total || 0) + (sub?.scan_tokens_addon || 0);
+  const scanTokensRemaining = Math.max(0, scanTokensTotal - (sub?.scan_tokens_used || 0));
+
   const result = {
     planId: sub?.plan_id || 'trial',
     creditsTotal: (sub?.ai_credits_total || 0) + (sub?.topup_credits_purchased || 0),
     creditsUsed: sub?.ai_credits_used || 0,
     subscriptionId: sub?.id || null,
     status: sub?.status || 'inactive',
+    scanTokensTotal,
+    scanTokensUsed: sub?.scan_tokens_used || 0,
+    scanTokensRemaining,
+    cycleStartedAt: sub?.cycle_started_at || null,
+    cycleEndsAt: sub?.cycle_ends_at || null,
+    billingCycle: sub?.billing_cycle || 'monthly',
+    annualStartAt: sub?.annual_start_at || null,
   };
-  console.log(`[ai/getCompanyPlan] company=${companyId} plan=${result.planId} total=${result.creditsTotal} used=${result.creditsUsed} remaining=${result.creditsTotal - result.creditsUsed}`);
+  console.log(`[ai/getCompanyPlan] company=${companyId} plan=${result.planId} credits=${result.creditsTotal - result.creditsUsed}/${result.creditsTotal} scans=${result.scanTokensRemaining}/${result.scanTokensTotal}`);
   return result;
 }
 
@@ -397,7 +452,8 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
  */
 async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action }) {
   const settings = await getCompanyAISettings(companyId);
-  const { planId, creditsTotal, creditsUsed, status: planStatus } = await getCompanyPlan(companyId);
+  const planInfo = await getCompanyPlan(companyId);
+  const { planId, creditsTotal, creditsUsed, status: planStatus, scanTokensRemaining, subscriptionId } = planInfo;
   const remainingCredits = Math.max(0, creditsTotal - creditsUsed);
 
   // Trial users get FULL ACCESS during the 14-day trial — usage is tracked
@@ -434,14 +490,12 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
   }
 
   // Scan-token gate — separate budget from AI credits, NOT part of the trial.
-  // Trial users cannot run brand_scan / full_scan / lite_scan. Higher plans
-  // include 1-5 scans/month per PLAN_SCAN_TOKENS. BYOK does NOT bypass this —
-  // scans are expensive (30k-200k tokens) and we want clean upsell economics.
-  if (SCAN_ACTIONS.has(action) && !canRunScanAction(action, planId)) {
+  // Uses the LIVE remaining count (base monthly grant + addons - used this cycle).
+  if (SCAN_ACTIONS.has(action) && !canRunScanAction(action, planId, scanTokensRemaining)) {
     const err = new Error(
       planId === 'trial'
         ? 'Brand Scans are not included in the 14-day trial. Upgrade to Growth+ for Lite Scans or Scale+ for Full Scans, or purchase a one-off Full Scan from the pricing page.'
-        : 'Your current plan has no scan tokens included. Upgrade to Growth+ (1 Lite Scan/mo) or Scale+ (2-5 Full Scans/mo), or purchase a one-off Full Scan.'
+        : `You have 0 scan tokens remaining this cycle. Plans include: Growth = 1 Lite/mo, Scale = 2 Full/mo, Enterprise = 5 Full/mo. Or purchase a one-off Full Scan token for R$ 800.`
     );
     err.code = 'NO_SCAN_TOKENS';
     err.publicMessage = err.message;
@@ -494,7 +548,36 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
       // For trial users, LOG usage but never block — matches "full access" promise.
       let creditsCharged = 0;
       let remainingAfter = remainingCredits;
-      if (attempt.source === 'platform') {
+      let scanTokenCharged = 0;
+
+      // If this was a scan action, decrement 1 scan token from the subscription.
+      // Scans are charged the SCAN TOKEN, NOT AI credits — so we skip the credit
+      // deduction below for scan actions.
+      if (SCAN_ACTIONS.has(action) && subscriptionId) {
+        scanTokenCharged = 1;
+        await supabaseAdmin
+          .from('subscriptions')
+          .update({ scan_tokens_used: (planInfo.scanTokensUsed || 0) + 1 })
+          .eq('id', subscriptionId);
+        await supabaseAdmin.from('credit_transactions').insert({
+          company_id: companyId,
+          subscription_id: subscriptionId,
+          type: 'scan_usage',
+          feature: action,
+          credits_delta: 0, // scans don't burn AI credits
+          credits_after: remainingCredits,
+          description: `${action} — 1 scan token consumed`,
+          metadata: {
+            user_id: userId || null,
+            user_email: userEmail || null,
+            scan_token: 1,
+            scan_tokens_remaining_after: Math.max(0, scanTokensRemaining - 1),
+          },
+        });
+      }
+
+      // For non-scan actions on platform key → deduct AI credits as usual
+      if (attempt.source === 'platform' && !SCAN_ACTIONS.has(action)) {
         try {
           const tokens = (result.usage?.prompt_tokens || 0) + (result.usage?.completion_tokens || 0);
           creditsCharged = computeCreditCost({
@@ -551,6 +634,8 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
         key_source: attempt.source,
         credits_charged: creditsCharged,
         credits_remaining: remainingAfter,
+        scan_token_charged: scanTokenCharged,
+        scan_tokens_remaining: Math.max(0, scanTokensRemaining - scanTokenCharged),
         plan_id: planId,
         model_requested: requestedModel,
         model_resolved: resolvedModel,

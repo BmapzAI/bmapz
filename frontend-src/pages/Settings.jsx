@@ -159,8 +159,8 @@ export default function Settings() {
               <Select value={language} onValueChange={setLanguage}>
                 <SelectTrigger className="w-[180px] bg-black/30 border-white/10 text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-[#1a1a1a] border-white/10">
-                  <SelectItem value="en" className="text-white">English (US)</SelectItem>
-                  <SelectItem value="pt-BR" className="text-white">Portugu�s (BR)</SelectItem>
+                  <SelectItem value="en" className="text-white">🇺🇸 English (US)</SelectItem>
+                  <SelectItem value="pt-BR" className="text-white">🇧🇷 Português (BR)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

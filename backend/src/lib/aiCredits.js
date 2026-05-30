@@ -80,12 +80,25 @@ export const PLAN_SCAN_TOKENS = {
   enterprise: 5, // 5 Full Scan tokens per month
 };
 
+// Per-plan AI credits granted on each monthly cycle reset.
+// Keep in sync with frontend-src/lib/plans.js → PLANS[*].ai_credits.
+export const PLAN_MONTHLY_CREDITS = {
+  trial:      8000,
+  starter:    15000,
+  growth:     40000,
+  scale:      150000,
+  enterprise: 400000,
+};
+
 /**
- * Determine whether a scan action is allowed for a given plan.
- * Trial gets ZERO scans — they must upgrade or purchase a one-off Full Scan.
+ * Determine whether a scan action is allowed for a given plan based on
+ * REMAINING scan tokens. Pass scan_tokens_remaining from the subscription
+ * (= base monthly grant + addon purchases - tokens consumed this cycle).
  */
-export function canRunScanAction(action, planId) {
+export function canRunScanAction(action, planId, scanTokensRemaining) {
   if (!SCAN_ACTIONS.has(action)) return true;
+  if (typeof scanTokensRemaining === 'number') return scanTokensRemaining > 0;
+  // Fallback to plan-default if remaining count not available
   return (PLAN_SCAN_TOKENS[planId] || 0) > 0;
 }
 
