@@ -49,6 +49,25 @@ const API_KEY_FIELDS = new Set([
   'custom_api_url', 'custom_api_key', 'custom_api_headers',
   'whatsapp_api_token', 'whatsapp_phone_id', 'whatsapp_verify_token',
   'stripe_account_id', 'stripe_connected',
+  // Sales/email tools added Session 8 with the OAuth-only / per-user-account model
+  'lemlist_api_key',
+  'mailchimp_api_key', 'mailchimp_server_prefix',
+  'klaviyo_api_key',
+  'activecampaign_api_url', 'activecampaign_api_key',
+  'brevo_api_key',
+  'convertkit_api_key', 'convertkit_api_secret',
+  'mailerlite_api_key',
+  'intercom_access_token',
+  // Analytics
+  'mixpanel_project_token', 'mixpanel_service_secret',
+  'segment_write_key',
+  'hotjar_site_id', 'hotjar_api_token',
+  // AI tools (BYO accounts at user level)
+  'perplexity_api_key', 'jasper_api_key', 'loom_api_key', 'demio_api_key',
+  // eCommerce + site builders + meeting tools
+  'shopify_store_url', 'shopify_admin_token',
+  'webflow_api_token',
+  'zoom_account_id', 'zoom_client_id', 'zoom_client_secret',
 ]);
 
 /**

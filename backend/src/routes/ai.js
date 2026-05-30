@@ -25,16 +25,61 @@ async function getCompanyAISettings(companyId) {
 }
 
 /**
- * Get the active plan_id for a company. Falls back to 'trial' if no sub.
+ * Trial defaults — mirror PLANS.trial in frontend-src/lib/plans.js.
+ */
+const TRIAL_CREDITS = 8000;
+const TRIAL_DAYS = 14;
+
+/**
+ * Get the active plan_id for a company. If no subscription exists, AUTO-CREATE
+ * a 14-day trial with TRIAL_CREDITS so existing companies that predate the
+ * credit system (or any new signup that missed the initial seeding) can use
+ * AI immediately.
  */
 async function getCompanyPlan(companyId) {
-  const { data: sub } = await supabaseAdmin
+  let { data: sub } = await supabaseAdmin
     .from('subscriptions')
-    .select('plan_id, ai_credits_total, ai_credits_used, topup_credits_purchased, status')
+    .select('id, plan_id, ai_credits_total, ai_credits_used, topup_credits_purchased, status, trial_ends_at')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  // Auto-seed a trial subscription if missing
+  if (!sub && companyId) {
+    const trialEnds = new Date(Date.now() + TRIAL_DAYS * 86400_000).toISOString();
+    const { data: newSub, error: createErr } = await supabaseAdmin
+      .from('subscriptions')
+      .insert({
+        company_id: companyId,
+        plan_id: 'trial',
+        status: 'trialing',
+        ai_credits_total: TRIAL_CREDITS,
+        ai_credits_used: 0,
+        topup_credits_purchased: 0,
+        trial_ends_at: trialEnds,
+      })
+      .select()
+      .single();
+    if (!createErr && newSub) {
+      console.log(`[ai] auto-created trial subscription for company ${companyId}: ${TRIAL_CREDITS} credits`);
+      sub = newSub;
+      // Log the grant so it shows up in usage history
+      await supabaseAdmin.from('credit_transactions').insert({
+        company_id: companyId,
+        subscription_id: newSub.id,
+        type: 'monthly_grant',
+        feature: 'trial_grant',
+        credits_delta: TRIAL_CREDITS,
+        credits_after: TRIAL_CREDITS,
+        description: 'Auto-granted 14-day trial credits',
+        metadata: { auto_seeded: true },
+      });
+    } else if (createErr) {
+      console.error('[ai] failed to auto-create trial sub:', createErr.message);
+    }
+  }
+
   return {
     planId: sub?.plan_id || 'trial',
     creditsTotal: (sub?.ai_credits_total || 0) + (sub?.topup_credits_purchased || 0),

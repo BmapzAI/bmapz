@@ -82,18 +82,41 @@ router.get('/change-logs', async (req, res) => {
   }
 });
 
-// POST /api/admin/grant-credits — manually grant credits to a company
+// POST /api/admin/grant-credits — manually grant credits to a company.
+// If the company has no subscription yet, auto-creates a trial sub then grants.
 router.post('/grant-credits', async (req, res) => {
   try {
     const { company_id, amount, reason } = req.body;
+    if (!company_id || !amount) {
+      return res.status(400).json({ error: 'company_id and amount are required' });
+    }
 
-    const { data: sub } = await supabaseAdmin
+    let { data: sub } = await supabaseAdmin
       .from('subscriptions')
       .select('id, ai_credits_total, ai_credits_used')
       .eq('company_id', company_id)
-      .single();
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (!sub) return res.status(404).json({ error: 'Subscription not found' });
+    // No subscription → auto-create a trialing one so the grant can land
+    if (!sub) {
+      const trialEnds = new Date(Date.now() + 14 * 86400_000).toISOString();
+      const { data: newSub, error: createErr } = await supabaseAdmin
+        .from('subscriptions')
+        .insert({
+          company_id,
+          plan_id: 'trial',
+          status: 'trialing',
+          ai_credits_total: 0,
+          ai_credits_used: 0,
+          trial_ends_at: trialEnds,
+        })
+        .select()
+        .single();
+      if (createErr) return res.status(500).json({ error: `Failed to create subscription: ${createErr.message}` });
+      sub = newSub;
+    }
 
     const newTotal = (sub.ai_credits_total || 0) + amount;
     await supabaseAdmin.from('subscriptions').update({ ai_credits_total: newTotal }).eq('id', sub.id);

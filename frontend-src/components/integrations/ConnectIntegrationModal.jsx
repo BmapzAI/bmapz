@@ -112,6 +112,76 @@ const CREDENTIAL_FIELDS = {
     { key: 'custom_api_url', label: 'API Endpoint URL', placeholder: 'https://api.yourservice.com/webhook', secret: false },
     { key: 'custom_api_key', label: 'API Key (optional)', placeholder: 'Bearer token or API key', secret: true },
   ],
+  // ── Sales / Lead enrichment ─────────────────────────────────
+  apollo: [
+    { key: 'apollo_api_key', label: 'Apollo API Key', placeholder: 'Find in Apollo → Settings → Integrations → API', secret: true },
+  ],
+  lemlist: [
+    { key: 'lemlist_api_key', label: 'Lemlist API Key', placeholder: 'In Lemlist → Settings → Integrations → API Keys', secret: true },
+  ],
+  // ── Email marketing platforms ───────────────────────────────
+  mailchimp: [
+    { key: 'mailchimp_api_key', label: 'API Key', placeholder: 'In Mailchimp → Account → Extras → API Keys', secret: true },
+    { key: 'mailchimp_server_prefix', label: 'Server Prefix', placeholder: 'us19 (last part after the dash in your key)', secret: false },
+  ],
+  klaviyo: [
+    { key: 'klaviyo_api_key', label: 'Private API Key', placeholder: 'Klaviyo → Account → Settings → API Keys', secret: true },
+  ],
+  activecampaign: [
+    { key: 'activecampaign_api_url', label: 'API URL', placeholder: 'https://youraccount.api-us1.com', secret: false },
+    { key: 'activecampaign_api_key', label: 'API Key', placeholder: 'In ActiveCampaign → Settings → Developer', secret: true },
+  ],
+  brevo: [
+    { key: 'brevo_api_key', label: 'API Key (v3)', placeholder: 'In Brevo → Profile → SMTP & API → API Keys', secret: true },
+  ],
+  convertkit: [
+    { key: 'convertkit_api_key', label: 'API Key', placeholder: 'ConvertKit → Settings → Advanced → API', secret: true },
+    { key: 'convertkit_api_secret', label: 'API Secret', placeholder: 'Same page as API Key', secret: true },
+  ],
+  mailerlite: [
+    { key: 'mailerlite_api_key', label: 'API Token', placeholder: 'MailerLite → Integrations → API → Generate new token', secret: true },
+  ],
+  intercom: [
+    { key: 'intercom_access_token', label: 'Access Token', placeholder: 'Intercom → Developer Hub → Create app → API Keys', secret: true },
+  ],
+  // ── Analytics ────────────────────────────────────────────────
+  mixpanel: [
+    { key: 'mixpanel_project_token', label: 'Project Token', placeholder: 'Mixpanel → Project Settings → Access Keys', secret: true },
+    { key: 'mixpanel_service_secret', label: 'Service Account Secret (optional)', placeholder: 'For read API access', secret: true },
+  ],
+  segment: [
+    { key: 'segment_write_key', label: 'Write Key', placeholder: 'Segment → Sources → your-source → API Keys', secret: true },
+  ],
+  hotjar: [
+    { key: 'hotjar_site_id', label: 'Site ID', placeholder: 'Hotjar → Sites & Organizations', secret: false },
+    { key: 'hotjar_api_token', label: 'API Token (for data export)', placeholder: 'Generate in Hotjar → Account → API', secret: true },
+  ],
+  // ── Tools that work primarily via API key (no real OAuth flow) ──
+  perplexity: [
+    { key: 'perplexity_api_key', label: 'API Key', placeholder: 'perplexity.ai/settings/api', secret: true },
+  ],
+  jasper: [
+    { key: 'jasper_api_key', label: 'API Key', placeholder: 'Jasper → Settings → API Access', secret: true },
+  ],
+  loom: [
+    { key: 'loom_api_key', label: 'API Key', placeholder: 'Loom → Settings → Integrations → API', secret: true },
+  ],
+  demio: [
+    { key: 'demio_api_key', label: 'API Key', placeholder: 'Demio → Settings → API & Webhooks', secret: true },
+  ],
+  // ── eCommerce + Site builders (private app token) ───────────
+  shopify: [
+    { key: 'shopify_store_url', label: 'Store URL', placeholder: 'your-store.myshopify.com', secret: false },
+    { key: 'shopify_admin_token', label: 'Admin API Access Token', placeholder: 'Shopify → Apps → Develop apps → Create private app', secret: true },
+  ],
+  webflow: [
+    { key: 'webflow_api_token', label: 'Site API Token', placeholder: 'Webflow → Site Settings → Integrations → API Access', secret: true },
+  ],
+  zoom: [
+    { key: 'zoom_account_id', label: 'Account ID', placeholder: 'Zoom Marketplace → Build → Server-to-Server OAuth', secret: false },
+    { key: 'zoom_client_id', label: 'Client ID', placeholder: 'Same page', secret: false },
+    { key: 'zoom_client_secret', label: 'Client Secret', placeholder: 'Same page', secret: true },
+  ],
 };
 
 // REMOVED: manual OAuth credential fallback. Per Bmapz UX rules, users
@@ -128,6 +198,13 @@ const STATUS_KEY_MAP = {
   google_ads: 'google_ads', gmail: 'gmail',
   linkedin_ads: 'linkedin_ads', linkedin_social: 'linkedin',
   tiktok_ads: 'tiktok_ads', tiktok_social: 'tiktok_social',
+  apollo: 'apollo', lemlist: 'lemlist',
+  mailchimp: 'mailchimp', klaviyo: 'klaviyo', activecampaign: 'activecampaign',
+  brevo: 'brevo', convertkit: 'convertkit', mailerlite: 'mailerlite',
+  intercom: 'intercom',
+  mixpanel: 'mixpanel', segment: 'segment', hotjar: 'hotjar',
+  perplexity: 'perplexity', jasper: 'jasper', loom: 'loom', demio: 'demio',
+  shopify: 'shopify', webflow: 'webflow', zoom: 'zoom',
 };
 
 // Step indicators
@@ -152,16 +229,18 @@ export default function ConnectIntegrationModal({ integration, company, user, is
 
   if (!integration) return null;
 
-  // BYOK / manual key entry is ONLY allowed for owner + system_admin.
-  // Regular users + company admins must use OAuth (or wait for platform setup).
-  const isAdminUser = user?.role === 'owner' || user?.role === 'system_admin';
+  // Per Bmapz product spec (Session 8):
+  // - Integrations with external platforms work at the USER ACCOUNT level —
+  //   any user can connect their own Apollo / Mailchimp / Klaviyo / etc. account.
+  // - Only ONE-TIME platform-level app registration (e.g. creating the Bmapz
+  //   Meta App, Google OAuth client) is reserved for owner/system_admin and
+  //   will be implemented in the "Create App Integrations" phase.
+  // So the credential modal is open to ALL users.
+  void user; // kept for future phase-2 app-registration gating
 
   const isInternalizedOAuth = !!INTERNALIZED_OAUTH_MAP[integration.type];
   const credFields = CREDENTIAL_FIELDS[integration.type] || [];
-  // Manual creds only shown to admins AND only for platforms that genuinely don't have OAuth
-  // (Twilio, Zapier, Hunter, Lusha, custom webhooks, etc.). NEVER for Google/Meta/LinkedIn/Twitter/TikTok.
-  const isManualCreds = !isInternalizedOAuth && credFields.length > 0 && isAdminUser;
-  const needsAdminSetup = !isInternalizedOAuth && credFields.length > 0 && !isAdminUser;
+  const isManualCreds = !isInternalizedOAuth && credFields.length > 0;
 
   const handleInternalizedOAuth = async () => {
     setConnecting(true);
@@ -440,11 +519,13 @@ export default function ConnectIntegrationModal({ integration, company, user, is
                 </div>
               )}
 
-              {/* Manual credentials — ADMIN ONLY, only for non-OAuth platforms */}
+              {/* Manual credentials — any user can connect their own account.
+                  After saving, Bmapz runs a real connection test before marking
+                  the integration as Connected (no more false positives). */}
               {isManualCreds && (
                 <div className="space-y-4">
-                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
-                    <strong>Admin-only setup.</strong> This integration uses API keys (not OAuth). After saving, Bmapz will run a real connection test before marking it as connected.
+                  <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
+                    Connect your {integration.name} account. After you Save, Bmapz tests the connection live before marking it as connected.
                   </div>
                   {credFields.map(field => (
                     <div key={field.key}>
@@ -475,19 +556,8 @@ export default function ConnectIntegrationModal({ integration, company, user, is
                 </div>
               )}
 
-              {/* Non-admin user trying to set up a non-OAuth integration */}
-              {needsAdminSetup && (
-                <div className="text-center space-y-3 py-4">
-                  <Lock size={28} className="text-amber-400 mx-auto" />
-                  <p className="text-white text-sm font-medium">Admin setup required</p>
-                  <p className="text-gray-400 text-xs">
-                    {integration.name} uses an API key (not OAuth login). Only Owners and System Admins can configure this integration. Ask your admin to set it up in Settings → Integrations.
-                  </p>
-                </div>
-              )}
-
               {/* Truly unsupported (no OAuth, no creds) */}
-              {!isInternalizedOAuth && !isManualCreds && !needsAdminSetup && (
+              {!isInternalizedOAuth && !isManualCreds && (
                 <div className="text-center space-y-3 py-4">
                   <p className="text-gray-400 text-sm">
                     This integration requires setup through the {integration.name} platform.
