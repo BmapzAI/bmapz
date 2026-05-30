@@ -37,7 +37,12 @@ const TRIAL_DAYS = 14;
  * AI immediately.
  */
 async function getCompanyPlan(companyId) {
-  let { data: sub } = await supabaseAdmin
+  if (!companyId) {
+    console.warn('[ai/getCompanyPlan] called with no companyId');
+    return { planId: 'trial', creditsTotal: 0, creditsUsed: 0, subscriptionId: null, status: 'inactive' };
+  }
+
+  let { data: sub, error: selectErr } = await supabaseAdmin
     .from('subscriptions')
     .select('id, plan_id, ai_credits_total, ai_credits_used, topup_credits_purchased, status, trial_ends_at')
     .eq('company_id', companyId)
@@ -45,8 +50,10 @@ async function getCompanyPlan(companyId) {
     .limit(1)
     .maybeSingle();
 
-  // Auto-seed a trial subscription if missing
-  if (!sub && companyId) {
+  if (selectErr) console.error('[ai/getCompanyPlan] select error:', selectErr.message);
+
+  // Case A: no subscription at all → create a fresh trial sub with credits
+  if (!sub) {
     const trialEnds = new Date(Date.now() + TRIAL_DAYS * 86400_000).toISOString();
     const { data: newSub, error: createErr } = await supabaseAdmin
       .from('subscriptions')
@@ -61,10 +68,11 @@ async function getCompanyPlan(companyId) {
       })
       .select()
       .single();
-    if (!createErr && newSub) {
-      console.log(`[ai] auto-created trial subscription for company ${companyId}: ${TRIAL_CREDITS} credits`);
+    if (createErr) {
+      console.error('[ai/getCompanyPlan] auto-create trial sub failed:', createErr.message, createErr.code);
+    } else {
+      console.log(`[ai/getCompanyPlan] auto-created trial sub for company ${companyId} (+${TRIAL_CREDITS} credits)`);
       sub = newSub;
-      // Log the grant so it shows up in usage history
       await supabaseAdmin.from('credit_transactions').insert({
         company_id: companyId,
         subscription_id: newSub.id,
@@ -73,20 +81,46 @@ async function getCompanyPlan(companyId) {
         credits_delta: TRIAL_CREDITS,
         credits_after: TRIAL_CREDITS,
         description: 'Auto-granted 14-day trial credits',
-        metadata: { auto_seeded: true },
+        metadata: { auto_seeded: true, reason: 'no_subscription' },
       });
-    } else if (createErr) {
-      console.error('[ai] failed to auto-create trial sub:', createErr.message);
+    }
+  }
+  // Case B: sub EXISTS but with 0 credits total AND 0 used — e.g. an empty
+  // placeholder row created somewhere without seeding credits. Top it up.
+  else if ((sub.ai_credits_total || 0) === 0 && (sub.ai_credits_used || 0) === 0 && (sub.topup_credits_purchased || 0) === 0) {
+    console.log(`[ai/getCompanyPlan] sub ${sub.id} has 0 credits — seeding ${TRIAL_CREDITS}`);
+    const { data: updated, error: updateErr } = await supabaseAdmin
+      .from('subscriptions')
+      .update({ ai_credits_total: TRIAL_CREDITS, status: sub.status || 'trialing' })
+      .eq('id', sub.id)
+      .select()
+      .single();
+    if (updateErr) {
+      console.error('[ai/getCompanyPlan] backfill credits failed:', updateErr.message);
+    } else {
+      sub = updated;
+      await supabaseAdmin.from('credit_transactions').insert({
+        company_id: companyId,
+        subscription_id: sub.id,
+        type: 'monthly_grant',
+        feature: 'trial_grant',
+        credits_delta: TRIAL_CREDITS,
+        credits_after: TRIAL_CREDITS,
+        description: 'Auto-granted trial credits (existing empty sub)',
+        metadata: { auto_seeded: true, reason: 'empty_existing_sub' },
+      });
     }
   }
 
-  return {
+  const result = {
     planId: sub?.plan_id || 'trial',
     creditsTotal: (sub?.ai_credits_total || 0) + (sub?.topup_credits_purchased || 0),
     creditsUsed: sub?.ai_credits_used || 0,
     subscriptionId: sub?.id || null,
     status: sub?.status || 'inactive',
   };
+  console.log(`[ai/getCompanyPlan] company=${companyId} plan=${result.planId} total=${result.creditsTotal} used=${result.creditsUsed} remaining=${result.creditsTotal - result.creditsUsed}`);
+  return result;
 }
 
 /**
@@ -502,7 +536,17 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
 // GET /api/ai/diagnose — health check for AI providers (no PII returned)
 router.get('/diagnose', requireAuth, async (req, res) => {
   const settings = await getCompanyAISettings(req.companyId);
+  // Include plan + credits in diagnose so users can see exactly why AI is blocked
+  const plan = await getCompanyPlan(req.companyId);
   const diag = {
+    plan: {
+      id: plan.planId,
+      status: plan.status,
+      credits_total: plan.creditsTotal,
+      credits_used: plan.creditsUsed,
+      credits_remaining: Math.max(0, plan.creditsTotal - plan.creditsUsed),
+      subscription_id: plan.subscriptionId,
+    },
     company_id: req.companyId,
     active_provider: settings.ai_provider || 'openai',
     openai: {
