@@ -112,12 +112,45 @@ export const DEFAULT_MODEL_PER_PROVIDER = {
 const TOKENS_PER_CREDIT = 12;
 
 /**
+ * Family-based heuristics so NEW models released by Anthropic/OpenAI are
+ * automatically priced and tiered without a code change (auto-update).
+ * Exact entries in MODEL_COST_MULTIPLIER / MODEL_TIER always win; these
+ * heuristics only fire for model ids we've never seen.
+ */
+export function inferModelMultiplier(model) {
+  if (!model) return 1;
+  const m = model.toLowerCase();
+  if (MODEL_COST_MULTIPLIER[model] != null) return MODEL_COST_MULTIPLIER[model];
+  if (m.includes('opus')) return 90;
+  if (m.includes('fable')) return 30;      // Claude Fable family
+  if (m.includes('sonnet')) return 25;
+  if (m.includes('haiku')) return 6;
+  if (m.includes('nano')) return 0.5;
+  if (m.includes('mini')) return 1;
+  if (m.startsWith('o1') || m.startsWith('o3') || m.startsWith('o4')) return 40; // reasoning models
+  if (m.startsWith('gpt-5')) return 20;
+  if (m.startsWith('gpt-4.1')) return 12;
+  if (m.startsWith('gpt-4')) return 17;
+  if (m.startsWith('gpt-3')) return 1.7;
+  return 17; // unknown → assume mid-tier so we never undercharge badly
+}
+
+export function inferModelTier(model) {
+  if (!model) return 'smart';
+  if (MODEL_TIER[model]) return MODEL_TIER[model];
+  const mult = inferModelMultiplier(model);
+  if (mult >= 40) return 'smartest';
+  if (mult >= 10) return 'smarter';
+  return 'smart';
+}
+
+/**
  * Compute credit cost for a completed AI call.
  *   total tokens × multiplier / TOKENS_PER_CREDIT
  * Always rounds UP so we never under-charge.
  */
 export function computeCreditCost({ model, promptTokens = 0, completionTokens = 0 }) {
-  const multiplier = MODEL_COST_MULTIPLIER[model] || MODEL_COST_MULTIPLIER['gpt-4o-mini'];
+  const multiplier = inferModelMultiplier(model);
   const totalTokens = promptTokens + completionTokens;
   if (totalTokens === 0) return 1; // minimum 1 credit per call
   return Math.max(1, Math.ceil((totalTokens * multiplier) / TOKENS_PER_CREDIT));
@@ -127,7 +160,7 @@ export function computeCreditCost({ model, promptTokens = 0, completionTokens = 
  * Check if a model is allowed for the given plan.
  */
 export function isModelAllowedForPlan(model, planId) {
-  const tier = MODEL_TIER[model] || 'smart';
+  const tier = inferModelTier(model);
   const allowedTiers = PLAN_MODEL_ACCESS[planId] || PLAN_MODEL_ACCESS.starter;
   return allowedTiers.includes(tier);
 }

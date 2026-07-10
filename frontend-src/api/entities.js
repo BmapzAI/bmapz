@@ -176,6 +176,17 @@ export const DataDeletionRequest = {
 
 export const Funnel = createEntity('/api/funnels');
 
+// ─── AI Automations (scheduled tasks / cron jobs) ────────────────────────────
+
+export const AIAutomation = {
+  ...createEntity('/api/automations'),
+  runNow: (id) => api.post(`/api/automations/${id}/run`),
+};
+
+// ─── Design Studio templates ──────────────────────────────────────────────────
+
+export const DesignTemplate = createEntity('/api/design-templates');
+
 // ─── Dashboard Configs ────────────────────────────────────────────────────────
 
 export const DashboardConfig = {

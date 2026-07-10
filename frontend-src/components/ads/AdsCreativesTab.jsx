@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
+import { consumeDesignHandoff } from '@/lib/designHandoff';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -57,6 +58,18 @@ export default function AdsCreativesTab({ company }) {
   const [imagePrompt, setImagePrompt] = useState('');
   const [abTestEnabled, setAbTestEnabled] = useState(false);
   const [showGoogleDrivePicker, setShowGoogleDrivePicker] = useState(false);
+
+  // Design Studio → Ads handoff: attach exported design images as creatives
+  useEffect(() => {
+    const handoff = consumeDesignHandoff('ads');
+    if (handoff?.urls?.length) {
+      const items = handoff.urls.map((url, i) => ({
+        url, name: `${handoff.name}-${i + 1}.png`, type: 'image/png', size: 0,
+      }));
+      setUploadedCreatives(prev => [...prev, ...items]);
+      toast.success(`${items.length} design image(s) attached as creatives`);
+    }
+  }, []);
 
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files || []);

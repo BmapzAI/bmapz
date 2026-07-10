@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { consumeDesignHandoff } from '@/lib/designHandoff';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
@@ -63,6 +65,19 @@ export default function SocialMedia() {
   const [optimizationInsights, setOptimizationInsights] = useState(null);
   const [generatedContent, setGeneratedContent] = useState(null);
   const [showGoogleDrivePicker, setShowGoogleDrivePicker] = useState(false);
+  const navigate = useNavigate();
+
+  // Design Studio → Social handoff: attach exported design images and open the editor
+  useEffect(() => {
+    const handoff = consumeDesignHandoff('social');
+    if (handoff?.urls?.length) {
+      const media = handoff.urls.map((url, i) => ({ url, name: `${handoff.name}-${i + 1}.png`, type: 'image/png' }));
+      setUploadedMedia(prev => [...prev, ...media]);
+      openNewPost({ type: 'image' });
+      toast.success(isPt ? `${media.length} imagem(ns) do Design anexada(s)` : `${media.length} design image(s) attached`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
@@ -655,11 +670,11 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                     AI Design Brief
                   </button>
                   <button
-                    onClick={() => setShowAiImageInput(v => !v)}
+                    onClick={() => navigate('/Design')}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#38b6ff]/40 bg-[#38b6ff]/10 hover:bg-[#38b6ff]/20 text-[#38b6ff] text-sm transition-all"
                   >
                     <Sparkles size={14} />
-                    AI Image
+                    {isPt ? 'Design' : 'Design Studio'}
                   </button>
                   <button
                     onClick={() => setShowGoogleDrivePicker(true)}

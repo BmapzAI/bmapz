@@ -11,7 +11,10 @@ import {
   PLAN_MONTHLY_CREDITS,
   DEFAULT_MODEL_PER_PROVIDER,
   MODEL_TIER,
+  PLAN_MODEL_ACCESS,
 } from '../lib/aiCredits.js';
+import { getCompanyBrain } from '../lib/companyBrain.js';
+import { getLiveModels } from '../lib/modelRegistry.js';
 
 const router = Router();
 
@@ -450,8 +453,19 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
  *   5. Call providers in order, with fallback. Track tokens.
  *   6. On success: deduct credits based on model multiplier × tokens used.
  */
-async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action }) {
+async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action, skipBrain = false }) {
   const settings = await getCompanyAISettings(companyId);
+
+  // ── Company Brain: omniscient company context on EVERY AI call ──────────
+  // Prepended to the system prompt so all generations (chat, ads, social,
+  // blog, workflows, automations…) are grounded in the company's briefing,
+  // ICP, live funnel numbers and past approved/rejected outputs. Compact
+  // (≤ ~1.5k tokens) and cached 5 min per company; Anthropic prompt caching
+  // makes repeats ~90% cheaper. Pass skipBrain: true for context-free calls.
+  if (!skipBrain) {
+    const brain = await getCompanyBrain(companyId);
+    if (brain) system = system ? `${brain}\n\n${system}` : brain;
+  }
   const planInfo = await getCompanyPlan(companyId);
   const { planId, creditsTotal, creditsUsed, status: planStatus, scanTokensRemaining, subscriptionId } = planInfo;
   const remainingCredits = Math.max(0, creditsTotal - creditsUsed);
@@ -759,6 +773,27 @@ router.post('/chat', requireAuth, async (req, res) => {
       code: err.code,
       details: err._errors || undefined,
     });
+  }
+});
+
+// GET /api/ai/models — live model catalog (auto-updated from providers).
+// Returns models filtered to what the company's PLAN allows, plus the full
+// catalog for admins. New Anthropic/OpenAI models appear here automatically.
+router.get('/models', requireAuth, async (req, res) => {
+  try {
+    const [models, planInfo] = await Promise.all([
+      getLiveModels(),
+      getCompanyPlan(req.companyId),
+    ]);
+    const { planId } = planInfo;
+    const allowedTiers = PLAN_MODEL_ACCESS[planId] || PLAN_MODEL_ACCESS.starter;
+    res.json({
+      plan_id: planId,
+      allowed_tiers: allowedTiers,
+      models: models.map(m => ({ ...m, allowed: allowedTiers.includes(m.tier) })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

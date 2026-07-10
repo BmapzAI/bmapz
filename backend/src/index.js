@@ -30,6 +30,11 @@ import stripeWebhookRoutes from './routes/stripeWebhook.js';
 import whatsappWebhookRoutes from './routes/whatsappWebhook.js';
 import uploadsRoutes from './routes/uploads.js';
 import addonsRoutes from './routes/addons.js';
+import automationsRoutes from './routes/automations.js';
+import designTemplatesRoutes from './routes/designTemplates.js';
+import { runAIChat } from './routes/ai.js';
+import { startAutomationScheduler } from './lib/automationScheduler.js';
+import { startModelRegistryRefresh } from './lib/modelRegistry.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -105,6 +110,8 @@ app.use('/api/data-deletion', dataDeletionRoutes);
 app.use('/api/whatsapp', whatsappWebhookRoutes);
 app.use('/api/uploads', uploadsRoutes);
 app.use('/api/addons', addonsRoutes);
+app.use('/api/automations', automationsRoutes);
+app.use('/api/design-templates', designTemplatesRoutes);
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
@@ -115,6 +122,9 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`✅ Bmapz API running on port ${PORT}`);
+  // Background services: AI Automations cron engine + live model registry
+  startAutomationScheduler(runAIChat);
+  startModelRegistryRefresh();
 });
 
 export default app;

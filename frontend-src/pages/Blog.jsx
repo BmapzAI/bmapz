@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { consumeDesignHandoff } from '@/lib/designHandoff';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import IntegrationGate from '@/components/ui/IntegrationGate';
@@ -47,6 +48,18 @@ export default function Blog() {
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
   const company = companies[0];
   const integrationStatus = company?.integration_status || {};
+
+  // Design Studio → Blog handoff: insert exported images as markdown and open editor
+  useEffect(() => {
+    const handoff = consumeDesignHandoff('blog');
+    if (handoff?.urls?.length) {
+      const md = handoff.urls.map(url => `![${handoff.name}](${url})`).join('\n\n');
+      setPost(p => ({ ...p, content: p.content ? `${p.content}\n\n${md}` : md }));
+      setView('editor');
+      toast.success(`${handoff.urls.length} design image(s) inserted into the post`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: posts = [] } = useQuery({
     queryKey: ['blogPosts', company?.id],

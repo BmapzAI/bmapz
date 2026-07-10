@@ -48,6 +48,8 @@
  * The mainPage value must match a key in the PAGES object exactly.
  */
 import AIChat from './pages/AIChat';
+import AIAutomations from './pages/AIAutomations';
+import Design from './pages/Design';
 import Inbox from './pages/Inbox';
 import Billing from './pages/Billing';
 import Pricing from './pages/Pricing';
@@ -74,6 +76,8 @@ import __Layout from './Layout.jsx';
 export const PAGES = {
     "Inbox": Inbox,
     "AIChat": AIChat,
+    "AIAutomations": AIAutomations,
+    "Design": Design,
     "Billing": Billing,
     "Pricing": Pricing,
     "BrandScan": BrandScan,
