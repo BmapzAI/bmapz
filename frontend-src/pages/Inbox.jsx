@@ -270,33 +270,27 @@ export default function Inbox() {
   const syncInbox = async (channel = null) => {
     setSyncing(true);
     try {
-      const payload = { sync_to_crm: true, limit: 30 };
+      const payload = { limit: 30 };
       if (channel && channel !== 'all') payload.channel = channel;
-      const res = await api.get('/api/messaging', payload);
-      const d = res || {};
-
-      // Surface per-channel errors
-      if (d.email_error) toast.warning(`Email: ${d.email_error}`);
-      if (d.instagram_error) toast.warning(`Instagram: ${d.instagram_error}`);
-
-      if (!d.email_error && !d.instagram_error) {
-        toast.success(`Inbox synced! ${d.synced || 0} new messages imported.`);
-      } else if (d.synced > 0) {
-        toast.success(`${d.synced} new messages imported.`);
+      const result = await api.post('/api/messaging/sync', payload);
+      if (result.imported > 0) {
+        toast.success(result.message || `Synced ${result.imported} new message(s).`);
+      } else {
+        toast.info(result.message || 'Inbox checked; no new messages found.');
       }
-
       queryClient.invalidateQueries({ queryKey: ['inbox_messages'] });
+      refetch();
     } catch (e) {
-      toast.error('Sync failed: ' + e.message);
+      toast.error('Inbox sync failed: ' + e.message);
     } finally {
       setSyncing(false);
     }
   };
 
-  // Auto-sync on mount
+  // Load saved messages on mount. The Sync button performs external API imports.
   useEffect(() => {
-    if (company?.id) syncInbox(null);
-  }, [company?.id]);
+    if (company?.id) refetch();
+  }, [company?.id, refetch]);
 
   const handleReply = async (replyContent) => {
     if (!selectedConv?.last_message) return;
@@ -334,7 +328,7 @@ export default function Inbox() {
         </div>
         <Button onClick={(e) => { e.preventDefault(); syncInbox(channelFilter); }} disabled={syncing} variant="outline" className="gap-2 border-white/10">
           <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Syncing...' : channelFilter === 'all' ? 'Sync All' : `Sync ${CHANNEL_CONFIG[channelFilter]?.label || channelFilter}`}
+          {syncing ? 'Syncing...' : channelFilter === 'all' ? 'Sync Inbox' : `Sync ${CHANNEL_CONFIG[channelFilter]?.label || channelFilter}`}
         </Button>
       </div>
 

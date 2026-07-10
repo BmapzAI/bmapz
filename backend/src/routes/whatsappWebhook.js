@@ -162,14 +162,18 @@ router.post('/webhook', async (req, res) => {
           direction: 'inbound',
           channel: 'whatsapp',
           content: text,
-          metadata: { from: fromPhone, source: 'whatsapp_agent' },
+          platform_message_id: message.id,
+          sent_at: message.timestamp ? new Date(Number(message.timestamp) * 1000).toISOString() : new Date().toISOString(),
+          metadata: { from: fromPhone, from_phone: fromPhone, source: 'whatsapp_webhook' },
         },
         {
           company_id: user.companyId,
           direction: 'outbound',
           channel: 'whatsapp',
           content: reply,
-          metadata: { to: fromPhone, source: 'whatsapp_agent', ai_generated: true },
+          thread_id: message.id,
+          sent_at: new Date().toISOString(),
+          metadata: { to: fromPhone, from_phone: fromPhone, source: 'whatsapp_webhook', ai_generated: true },
         },
       ]);
     } catch (logErr) {

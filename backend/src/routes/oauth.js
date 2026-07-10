@@ -89,6 +89,7 @@ const GOOGLE_SCOPES_MAP = {
     'https://www.googleapis.com/auth/userinfo.email',
   ],
   gmail: [
+    'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/gmail.compose',
     'https://www.googleapis.com/auth/userinfo.email',
@@ -202,7 +203,7 @@ router.get(['/meta/initiate', '/meta/initiate-url'], requireAuth, async (req, re
       origin: origin || FRONTEND_URL,
     })).toString('base64url');
 
-    const scopes = 'email,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,ads_management,ads_read,business_management';
+    const scopes = 'email,pages_show_list,pages_read_engagement,pages_manage_posts,pages_messaging,instagram_basic,instagram_content_publish,instagram_manage_messages,ads_management,ads_read,business_management';
     const redirectUri = `${API_URL}/api/oauth/meta/callback`;
     const params = new URLSearchParams({
       client_id: appId,

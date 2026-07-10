@@ -588,7 +588,7 @@ beyond 14-day trial; prompt caching for margin protection.
 |------|-------|
 | Monthly scan counter | Growth users can run unlimited scans today (PLAN_SCAN_TOKENS check is a static boolean, not a monthly counter). Need `scan_tokens_used_this_cycle` tracked on subscriptions table with monthly reset. |
 | Model dropdown gating | Backend silently downgrades to cheapest model for trial/starter users. Frontend model selector should filter options by plan tier to avoid confusion. |
-| Inbox email sync | `/api/messaging?sync_to_crm=true` returns 0 — real external email sync endpoint doesn't exist yet. |
+| Inbox sync | `POST /api/messaging/sync` now exists. Gmail and Instagram attempt real imports when permissions exist; WhatsApp depends on webhook delivery; LinkedIn DM sync requires approved LinkedIn Messaging API access. |
 | Workflow execution | `POST /api/workflows/:id/run` creates a run record but doesn't execute nodes. Needs a task queue. |
 | Phase 2 integrations | One-time platform OAuth app setup for social/ad platforms (admin-only UI not built yet). |
 | pt-BR translation | Sessions 10–13 complete. ~50 components remain untranslated. Priority: ConnectIntegrationModal, AdsCopyForm, BrandScanSetup, LeadListManager, LeadListManagerFull. See Session 13 work log below. |
@@ -665,3 +665,66 @@ Added 17 new keys to `LanguageContext.jsx` (both `en` + `pt-BR`):
 - `LeadListManager.jsx`, `LeadListManagerFull.jsx`
 - `BrandScanSetup.jsx`, `BrandScanReport.jsx`
 - `MessageBubble.jsx`, `DashboardEditor.jsx`, `StatsCard.jsx`
+
+### 2026-07-10 - Codex (System diagnosis, Supabase hardening, truthful live-data UX)
+
+**User request:** diagnose the full Bmapz AI project, fix current issues where safe, document remaining work, and prepare Claude pickup instructions.
+
+**Files changed:**
+- `backend/src/routes/ads.js`
+- `frontend-src/components/ads/AdsRealDataPanel.jsx`
+- `frontend-src/pages/Inbox.jsx`
+- `frontend-src/pages/AIChat.jsx`
+- `frontend-src/components/ui/LanguageContext.jsx`
+- `eslint.config.js`
+- `docs/SYSTEM_AUDIT_2026-07-10.md`
+- `docs/CLAUDE_PICKUP_PROMPT_2026-07-10.md`
+- `supabase/backups/2026-07-10_security_snapshot.md`
+- `supabase/migrations/003_security_rls_hardening.sql`
+
+**Supabase:**
+- Project checked: `jmtnubzgnfjmtcwbegow` / `Bmapz AI`.
+- Found RLS disabled on `accounts`, `admin_change_logs`, and `data_deletion_requests`.
+- Found multiple RLS-enabled public tables with no policy.
+- Created local security snapshot: `supabase/backups/2026-07-10_security_snapshot.md`.
+- Applied remote migration: `20260710194731_security_rls_hardening_20260710`.
+- Post-apply verification confirmed the three disabled tables now have RLS enabled and the missing-policy tables now return at least one policy.
+
+**Runtime/product fixes:**
+- Ads data loading no longer shows success unless real campaigns are returned.
+- Ads backend now accepts frontend platform keys: `google_ads`, `meta_ads`, `linkedin_ads`.
+- Inbox sync now calls `POST /api/messaging/sync`.
+- Gmail sync imports recent inbox email if connected with Gmail read scope.
+- Instagram sync attempts Meta page conversation/message import when Meta permissions allow it.
+- WhatsApp is webhook-based; the sync result explains that no pull-history sync exists.
+- LinkedIn DM sync is marked as restricted because the normal LinkedIn social/ads token cannot read direct messages.
+- AI Chat bottom layout now has a clearer contained surface and footer/input area.
+- Removed duplicate translation keys in `LanguageContext.jsx`.
+- ESLint config now handles Node `.cjs` maintenance scripts.
+
+**Live/deployment notes:**
+- `https://ai.bmapz.com` responds HTTP 200 OK.
+- Old documented Railway URL `https://bmapz-production.up.railway.app/health` returns 404 "Application not found"; find the current Railway backend URL and update Cloudflare `VITE_API_URL` plus docs.
+- GitHub workflow `.github/workflows/deploy.yml` still rewrites `vite.config.js` and `frontend-src/App.jsx` during CI; remove this after confirming repo source builds directly in CI.
+
+**Local backups checked:**
+- `C:\Users\derek\OneDrive\Documents\BMapz\Backups\Bmapz.ai App`
+- Found Base44/reference backups including `bmapz-ai-sales-marketing-automation 09.05.2026 (pre-calude).zip` and `bmapz-standalone-v1.tar.gz`.
+
+**Verification:**
+- `npm run build`: passed.
+- `npm run build --prefix backend`: passed.
+- `npx eslint . --quiet`: passed.
+- Full `npm run lint` still has many old warnings, mostly unused imports/vars; no quiet-mode errors remain.
+
+**Additional verification after Inbox sync change:**
+- `node --check backend/src/routes/messaging.js`: passed.
+- `node --check backend/src/routes/oauth.js`: passed.
+- `node --check backend/src/routes/whatsappWebhook.js`: passed.
+- `npm run build`: passed.
+- `npm run build --prefix backend`: passed.
+- `npx eslint . --quiet`: passed.
+
+**Next Claude step:**
+- Use `docs/CLAUDE_PICKUP_PROMPT_2026-07-10.md`.
+- Highest priority: find current Railway backend URL, confirm Cloudflare `VITE_API_URL`, then run production smoke tests for login, AI Chat, integrations, Ads, Inbox, Social, Settings, and Workflows.

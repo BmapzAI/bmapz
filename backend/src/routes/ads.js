@@ -91,6 +91,13 @@ router.delete('/records/:id', requireAuth, async (req, res) => {
 router.get('/campaigns', requireAuth, async (req, res) => {
   try {
     const { platform } = req.query;
+    const normalizedPlatform = normalizeAdPlatform(platform);
+    if (!normalizedPlatform) {
+      return res.status(400).json({
+        error: 'Choose a supported ad platform: google_ads, meta_ads, or linkedin_ads.',
+      });
+    }
+
     const { data: companyRow } = await supabaseAdmin
       .from('companies')
       .select('*')
@@ -100,9 +107,9 @@ router.get('/campaigns', requireAuth, async (req, res) => {
       ? { ...companyRow, ...(companyRow.api_keys || {}), ...(companyRow.settings || {}) }
       : {};
 
-    const campaigns = {};
+    const response = { platform: normalizedPlatform, campaigns: [], source: 'live' };
 
-    if (!platform || platform === 'google') {
+    if (normalizedPlatform === 'google_ads') {
       if (company.google_access_token && company.google_ads_customer_id) {
         try {
           const r = await fetch(
@@ -120,29 +127,49 @@ router.get('/campaigns', requireAuth, async (req, res) => {
             }
           );
           const d = await r.json();
-          campaigns.google = d;
+          if (!r.ok || d.error) {
+            throw new Error(d.error?.message || 'Google Ads API returned an error.');
+          }
+          response.campaigns = mapGoogleAdsCampaigns(d);
         } catch (e) {
-          campaigns.google = { error: e.message };
+          return res.status(502).json({ error: `Google Ads fetch failed: ${e.message}` });
         }
+      } else {
+        return res.status(400).json({ error: 'Google Ads is not fully connected. Connect OAuth and set Customer ID first.' });
       }
     }
 
-    if (!platform || platform === 'meta') {
+    if (normalizedPlatform === 'meta_ads') {
       if (company.meta_access_token && company.meta_ads_account_id) {
         try {
-          const fields = 'id,name,status,objective,spend,impressions,clicks,ctr,cpc,reach';
+          const fields = 'campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,conversions,reach';
           const r = await fetch(
-            `https://graph.facebook.com/v19.0/act_${company.meta_ads_account_id}/campaigns?fields=${fields}&access_token=${company.meta_access_token}`
+            `https://graph.facebook.com/v19.0/act_${company.meta_ads_account_id}/insights?level=campaign&date_preset=last_30d&fields=${fields}&access_token=${company.meta_access_token}`
           );
           const d = await r.json();
-          campaigns.meta = d.data || [];
+          if (!r.ok || d.error) {
+            throw new Error(d.error?.message || 'Meta Ads API returned an error.');
+          }
+          response.campaigns = (d.data || []).map(c => ({
+            campaign_id: c.campaign_id,
+            campaign_name: c.campaign_name,
+            spend: Number(c.spend || 0),
+            impressions: Number(c.impressions || 0),
+            clicks: Number(c.clicks || 0),
+            ctr: c.ctr,
+            cpc: c.cpc,
+            reach: Number(c.reach || 0),
+            conversions: extractMetaConversions(c.conversions),
+          }));
         } catch (e) {
-          campaigns.meta = { error: e.message };
+          return res.status(502).json({ error: `Meta Ads fetch failed: ${e.message}` });
         }
+      } else {
+        return res.status(400).json({ error: 'Meta Ads is not fully connected. Connect Meta OAuth and set Meta Ads Account ID first.' });
       }
     }
 
-    if (!platform || platform === 'linkedin') {
+    if (normalizedPlatform === 'linkedin_ads') {
       if (company.linkedin_access_token && company.linkedin_ads_account_id) {
         try {
           const r = await fetch(
@@ -150,14 +177,30 @@ router.get('/campaigns', requireAuth, async (req, res) => {
             { headers: { Authorization: `Bearer ${company.linkedin_access_token}` } }
           );
           const d = await r.json();
-          campaigns.linkedin = d.elements || [];
+          if (!r.ok || d.message) {
+            throw new Error(d.message || 'LinkedIn Ads API returned an error.');
+          }
+          response.campaigns = (d.elements || []).map(c => ({
+            campaign_id: c.id,
+            campaign_name: c.name,
+            status: c.status,
+          }));
         } catch (e) {
-          campaigns.linkedin = { error: e.message };
+          return res.status(502).json({ error: `LinkedIn Ads fetch failed: ${e.message}` });
         }
+      } else {
+        return res.status(400).json({ error: 'LinkedIn Ads is not fully connected. Connect LinkedIn and set Ad Account ID first.' });
       }
     }
 
-    res.json(campaigns);
+    if (!response.campaigns.length) {
+      return res.json({
+        ...response,
+        warning: 'No live campaigns were returned by the ad platform for the last 30 days.',
+      });
+    }
+
+    res.json(response);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -215,3 +258,45 @@ router.get('/platform-leads', requireAuth, async (req, res) => {
 });
 
 export default router;
+
+function normalizeAdPlatform(platform) {
+  const raw = String(platform || '').toLowerCase();
+  const map = {
+    google: 'google_ads',
+    google_ads: 'google_ads',
+    meta: 'meta_ads',
+    facebook: 'meta_ads',
+    instagram: 'meta_ads',
+    meta_ads: 'meta_ads',
+    linkedin: 'linkedin_ads',
+    linkedin_ads: 'linkedin_ads',
+  };
+  return map[raw] || null;
+}
+
+function mapGoogleAdsCampaigns(payload) {
+  const batches = Array.isArray(payload) ? payload : [];
+  return batches.flatMap(batch => (batch.results || []).map(row => {
+    const campaign = row.campaign || {};
+    const metrics = row.metrics || {};
+    const costMicros = Number(metrics.costMicros || metrics.cost_micros || 0);
+    const clicks = Number(metrics.clicks || 0);
+    const impressions = Number(metrics.impressions || 0);
+    return {
+      campaign_id: campaign.id,
+      campaign_name: campaign.name,
+      status: campaign.status,
+      spend: costMicros / 1000000,
+      impressions,
+      clicks,
+      ctr: impressions > 0 ? `${((clicks / impressions) * 100).toFixed(2)}%` : '0.00%',
+      cpc: clicks > 0 ? (costMicros / 1000000 / clicks).toFixed(2) : '0.00',
+      conversions: Number(metrics.conversions || 0),
+    };
+  }));
+}
+
+function extractMetaConversions(conversions) {
+  if (!Array.isArray(conversions)) return 0;
+  return conversions.reduce((sum, item) => sum + Number(item.value || 0), 0);
+}

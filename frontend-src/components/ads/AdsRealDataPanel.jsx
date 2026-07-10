@@ -47,13 +47,6 @@ export default function AdsRealDataPanel({ company, onDataLoaded }) {
   };
 
   const fetchData = async (platformKey) => {
-    // Guard: if Meta is selected but token is missing, show OAuth prompt instead
-    if (platformKey === 'meta_ads' && !company?.api_keys?.meta_access_token) {
-      setActivePlatform(platformKey);
-      setCampaignData(null);
-      setError(null);
-      return;
-    }
     setActivePlatform(platformKey);
     setLoading(true);
     setError(null);
@@ -61,10 +54,20 @@ export default function AdsRealDataPanel({ company, onDataLoaded }) {
     try {
       const res = await api.get('/api/ads/campaigns', { platform: platformKey });
       if (res.error) throw new Error(res.error);
-      // Ensure data belongs to the requested platform
-      setCampaignData({ ...res, platform: platformKey });
-      onDataLoaded?.({ ...res, platform: platformKey });
-      toast.success(`${PLATFORMS.find(p => p.key === platformKey)?.label} data loaded`);
+      const campaigns = Array.isArray(res.campaigns) ? res.campaigns : [];
+      if (campaigns.length === 0) {
+        const message = res.warning || `No live ${PLATFORMS.find(p => p.key === platformKey)?.label} campaigns were returned for the last 30 days.`;
+        setCampaignData(null);
+        onDataLoaded?.(null);
+        setError(message);
+        toast.warning(message);
+        return;
+      }
+
+      const liveData = { ...res, platform: platformKey, campaigns };
+      setCampaignData(liveData);
+      onDataLoaded?.(liveData);
+      toast.success(`${PLATFORMS.find(p => p.key === platformKey)?.label} live data loaded`);
     } catch (e) {
       setError(e.message);
       toast.error('Failed to fetch data');

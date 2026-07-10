@@ -63,4 +63,24 @@ export default [
       'no-console': 'off',
     },
   },
+
+  // Maintenance scripts run in Node/CommonJS, not in the browser.
+  {
+    files: ['scripts/**/*.cjs'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.es2022,
+      },
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'commonjs',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+      'no-undef': 'off',
+      'no-func-assign': 'off',
+    },
+  },
 ];
