@@ -728,3 +728,134 @@ Added 17 new keys to `LanguageContext.jsx` (both `en` + `pt-BR`):
 **Next Claude step:**
 - Use `docs/CLAUDE_PICKUP_PROMPT_2026-07-10.md`.
 - Highest priority: find current Railway backend URL, confirm Cloudflare `VITE_API_URL`, then run production smoke tests for login, AI Chat, integrations, Ads, Inbox, Social, Settings, and Workflows.
+
+### 2026-07-10 - Claude (Session 15: Infra verification, CI cleanup, 4 new features)
+
+**Commits:** `3bd40eb` (Codex work committed), `2b2b62e` (CI cleanup), `01518b4` (features).
+
+#### Infra findings — IMPORTANT CORRECTIONS to the 2026-07-10 audit
+
+1. **The Railway backend URL is NOT dead.** `https://bmapz-production.up.railway.app/health`
+   returns `200 {"status":"ok"}`. Auth-protected routes return proper 401 JSON, and
+   `/api/ai/diagnose` (added Session 5) exists — the deployed backend is CURRENT.
+   The 404 in the audit was transient (Railway incident or redeploy window).
+   No Railway or Cloudflare change is needed.
+2. **Cloudflare `VITE_API_URL` is correct.** The deployed JS bundle at ai.bmapz.com has
+   `https://bmapz-production.up.railway.app` baked in — matches the live backend.
+   CORS preflight from `https://ai.bmapz.com` returns 204. End-to-end wiring is intact.
+3. **Google OAuth branding** — verified via the Supabase authorize redirect: Google login
+   uses a CUSTOM client (`25970699691-….apps.googleusercontent.com`), so branding is
+   fixable in Google Cloud Console (project that owns that client):
+   - OAuth consent screen → set App name "Bmapz AI", logo, support email; publish app.
+   - To remove the `jmtnubzgnfjmtcwbegow.supabase.co` host from the consent line entirely,
+     a Supabase **custom Auth domain** (e.g. `auth.bmapz.com`, paid feature) is required,
+     then update the redirect URI in Google Cloud + Site URL in Supabase.
+   This is dashboard work — no code change possible. (Derek action.)
+
+#### CI cleanup (task 6 — done)
+
+- `.github/workflows/deploy.yml` no longer rewrites `vite.config.js` / `App.jsx`, no longer
+  strips null bytes (all files verified clean UTF-8), and uses repo `package.json` directly
+  (`frontend-package.json` was byte-for-byte equivalent in deps/scripts).
+- NOTE: the repo `App.jsx` is NEWER than the old CI heredoc (server-error screen, /Admin +
+  /CompanyAdmin aliases, richColors toaster). The old workflow was silently reverting these
+  every deploy. Next push to main deploys the repo version — watch the first CI run.
+- `vite.config.js` gained the dev-server `/api` proxy block CI used to inject.
+
+#### New features (all 4 delivered, build-verified)
+
+1. **AI Automations (cron jobs)** — sidebar tab "AI Automations" (`/AIAutomations`):
+   - Schedule any prompt/task: every X min (5-min floor), hourly, daily, weekly, monthly.
+   - Backend scheduler (`lib/automationScheduler.js`, 60s tick, started in index.js) runs due
+     automations through `runAIChat` — plan/credit/BYOK rules and Company Brain all apply.
+   - Results land in AI Outputs (type `automation`, status pending) for review/approval.
+   - Routes: `/api/automations` CRUD + `POST /:id/run` (run-now). Claim-before-run pattern
+     prevents retry storms; per-tick cap of 10.
+2. **Design Studio** — sidebar tab "Design" (`/Design`):
+   - Single image or carousel; 10 aspect-ratio presets (1:1, 4:5, 9:16, 16:9, 1.91:1 link/ads,
+     2:1 blog hero, 3:1 banner, Pinterest 2:3, X 16:9, leaderboard 728×90).
+   - Backgrounds: color presets + picker, uploaded image, AI-generated (via /api/ai/generate-image,
+     persisted to storage so URLs don't expire).
+   - Text layers H1–H5/subtitle/body; 27-font library (Google Fonts loaded on demand); size,
+     weight, color, align; drag positioning. Image + logo layers (auto "Company logo" button
+     when `company.logo_url` exists) with width/opacity controls.
+   - Per-company brand template presets → `design_templates` table (save/load/delete).
+   - Export: full-resolution PNG via canvas (word-wrapped text, cover-fit backgrounds).
+   - Send-to: Social (attaches to post media + opens editor), Ads (attaches as creatives),
+     Blog (inserts markdown images) via `lib/designHandoff.js` localStorage handoff.
+   - The raw "AI Image" button in Social's media section now routes to Design Studio.
+3. **Company Omniscient AI Brain** (`backend/src/lib/companyBrain.js`):
+   - Compiles company profile, briefing, ICP, tone, competitors, live CRM funnel stats,
+     messaging volume by channel, workflows, recent social/ads/blog/SEO items, and
+     previously APPROVED vs REJECTED AI outputs into a ≤6KB system block.
+   - Injected into EVERY `runAIChat` call (opt-out: `skipBrain: true`). 5-min per-company
+     cache; Anthropic prompt caching makes repeat input ~90% cheaper.
+   - Net effect: chat, ads, social, blog, workflows, automations all generate with full
+     company context — no more generic output.
+4. **Auto-updating AI models** (`backend/src/lib/modelRegistry.js` + aiCredits changes):
+   - Pulls live model catalogs from OpenAI (`/v1/models`) + Anthropic (`/v1/models`) with
+     platform keys; 12h in-process cache; static fallback if both fail.
+   - `aiCredits.js` now infers credit multiplier + tier for UNKNOWN models by family
+     (opus 90×, fable 30×, sonnet 25×, haiku 6×, gpt-5 20×, o-series 40×, mini 1×, nano 0.5×),
+     so new provider releases are priced and plan-gated automatically.
+   - New endpoint `GET /api/ai/models` returns the catalog with per-plan `allowed` flags
+     (ready for the Settings model dropdown to consume — see "Remaining").
+
+#### DB migration required (Derek/Codex action)
+
+- Apply `supabase/migrations/004_ai_automations_design.sql` to Supabase
+  (tables `ai_automations`, `design_templates`, company-scoped RLS).
+  Until applied, the two new tabs will show empty lists and saves will error.
+
+#### Production smoke test — what was verified vs needs Derek
+
+Verified (no login required):
+- ai.bmapz.com loads; login page renders with zero console errors.
+- Backend /health 200; protected routes 401 JSON; CORS from ai.bmapz.com OK.
+- Deployed bundle API URL matches the live backend.
+
+Needs Derek (authenticated — Claude cannot enter credentials):
+1. Google login → lands on Home.
+2. AI Chat → send a message → contextual reply (should now reference company specifics —
+   the Brain in action).
+3. Settings → API Keys save/test; Usage tab loads.
+4. Integrations → Meta OAuth initiate (or "Awaiting platform setup" if env vars unset).
+5. Ads → Load Real Data with nothing connected → must show error/warning, NOT success
+   (Codex fix — verify).
+6. Inbox → Sync → truthful per-channel statuses (Gmail import only after reconnecting
+   Gmail with read scope).
+7. Social/Blog/Design/AI Automations → create a design, send to Social; create an
+   automation, Run Now, check AI Outputs.
+8. Workflows → create from template, activate.
+
+#### Full assessment for go-to-market (stage-2 readiness)
+
+DONE this session: CI trust restored (builds = repo source), infra verified healthy,
+4 product features (automations, design, brain, model auto-update), RLS hardening
+committed, truthful-data fixes committed.
+
+REMAINING before stage 2 (external integrations) — priority order:
+1. Apply migration 004 (blocker for the 2 new tabs).
+2. Watch first CI deploy after push (workflow simplified).
+3. Google consent branding + custom auth domain (Derek, dashboards).
+4. Authenticated smoke-test round (checklist above).
+5. Registered OAuth apps: META_APP_ID/SECRET, GOOGLE_CLIENT_ID/SECRET (+ ADS developer
+   token), LinkedIn/TikTok/Twitter — Railway env vars (blocks real social/ads data).
+6. Settings model dropdown should consume GET /api/ai/models (currently hardcoded list;
+   backend already tolerant of any model).
+7. Workflow execution engine (runs are recorded, nodes not executed) — biggest remaining
+   product gap.
+8. Monthly scan-token counter reset + Stripe price IDs in Railway (billing).
+9. Remaining pt-BR components (AdsCopy*, LeadListManager*, BrandScan*, MessageBubble,
+   DashboardEditor, StatsCard) + full-lint warning cleanup (~1500 unused-var warnings).
+
+**Verification (this session):**
+- `npm run build`: ✓ 3557 modules.
+- `npm run build --prefix backend`: ✓.
+- `npx eslint . --quiet`: ✓ 0 errors.
+- Backend module graph import test: ✓; schedule math spot-checked ✓.
+- `git status --short`: clean except untracked local `.claude/` (intentionally not committed).
+
+**Handover to Codex:** start with migration 004 apply + authenticated smoke checklist;
+then item 6 (models dropdown) is a small, well-scoped task: fetch `/api/ai/models`,
+filter `allowed`, render grouped by provider in ApiKeysTab.
