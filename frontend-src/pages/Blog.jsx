@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { consumeDesignHandoff } from '@/lib/designHandoff';
+import { useNavigate } from 'react-router-dom';
+import { consumeDesignHandoff, saveDesignReturn } from '@/lib/designHandoff';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import IntegrationGate from '@/components/ui/IntegrationGate';
@@ -37,7 +38,7 @@ const SEO_CHECKLIST = [
 const emptyPost = { title: '', slug: '', meta_description: '', content: '', keywords: [], newKeyword: '' };
 
 export default function Blog() {
-  const { t } = useLanguage();
+  const { t, isPt } = useLanguage();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(null);
   const [post, setPost] = useState(emptyPost);
@@ -49,17 +50,28 @@ export default function Blog() {
   const company = companies[0];
   const integrationStatus = company?.integration_status || {};
 
-  // Design Studio → Blog handoff: insert exported images as markdown and open editor
+  // Design Studio → Blog handoff: restore the draft the user was writing,
+  // then insert the exported images as markdown at the end of the content.
   useEffect(() => {
     const handoff = consumeDesignHandoff('blog');
     if (handoff?.urls?.length) {
       const md = handoff.urls.map(url => `![${handoff.name}](${url})`).join('\n\n');
-      setPost(p => ({ ...p, content: p.content ? `${p.content}\n\n${md}` : md }));
+      const draft = handoff.draft || {};
+      const base = draft.post || emptyPost;
+      setPost({ ...base, content: base.content ? `${base.content}\n\n${md}` : md });
+      if (draft.editing) setEditing(draft.editing);
       setView('editor');
-      toast.success(`${handoff.urls.length} design image(s) inserted into the post`);
+      toast.success(`${handoff.urls.length} design image(s) inserted into your post draft`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const navigate = useNavigate();
+  // Leaving for the Design Studio: save the draft so the images come back to it
+  const goToDesignStudio = () => {
+    saveDesignReturn('blog', { post, editing }, isPt ? 'seu rascunho de blog' : 'your blog post draft');
+    navigate('/Design');
+  };
 
   const { data: posts = [] } = useQuery({
     queryKey: ['blogPosts', company?.id],
@@ -296,13 +308,19 @@ Return JSON with: content (full article in markdown), meta_description (155 char
                 </div>
               </div>
               <div>
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                   <Label className="text-gray-400">Content (Markdown)</Label>
-                  <Button size="sm" onClick={generateWithAI} disabled={isGenerating}
-                    className="h-7 px-3 text-xs bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-1">
-                    {isGenerating ? <div className="w-3 h-3 rounded-full border border-white border-t-transparent animate-spin" /> : <Sparkles size={12} />}
-                    {t('aiGenerate')}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={goToDesignStudio}
+                      className="h-7 px-3 text-xs border-[#38b6ff]/40 bg-[#38b6ff]/10 text-[#38b6ff] hover:bg-[#38b6ff]/20 gap-1">
+                      🎨 {isPt ? 'Design' : 'Design Studio'}
+                    </Button>
+                    <Button size="sm" onClick={generateWithAI} disabled={isGenerating}
+                      className="h-7 px-3 text-xs bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-1">
+                      {isGenerating ? <div className="w-3 h-3 rounded-full border border-white border-t-transparent animate-spin" /> : <Sparkles size={12} />}
+                      {t('aiGenerate')}
+                    </Button>
+                  </div>
                 </div>
                 <div className="mb-2">
                   <AIContextField

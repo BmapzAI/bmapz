@@ -6,17 +6,21 @@
  * calls consumeDesignHandoff() on mount and attaches the images.
  */
 const KEY = 'bmapz_design_handoff';
+const RETURN_KEY = 'bmapz_design_return';
 const TTL_MS = 5 * 60 * 1000;
+const DRAFT_TTL_MS = 60 * 60 * 1000; // drafts live longer — designing can take a while
 
-export function setDesignHandoff({ target, urls, name }) {
+export function setDesignHandoff({ target, urls, name, draft }) {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ target, urls, name, at: Date.now() }));
+    localStorage.setItem(KEY, JSON.stringify({ target, urls, name, draft: draft || null, at: Date.now() }));
   } catch { /* storage full/blocked — handoff just won't happen */ }
 }
 
 /**
  * Read-and-clear the handoff if it targets `target` and is fresh.
- * Returns { urls, name } or null.
+ * Returns { urls, name, draft } or null. `draft` is the section's saved
+ * work-in-progress (post/creatives state) captured before the user left
+ * for the Design Studio — restore it so nothing they typed is lost.
  */
 export function consumeDesignHandoff(target) {
   try {
@@ -26,8 +30,37 @@ export function consumeDesignHandoff(target) {
     if (data.target !== target) return null;
     localStorage.removeItem(KEY);
     if (Date.now() - (data.at || 0) > TTL_MS) return null;
-    return { urls: data.urls || [], name: data.name || 'Design' };
+    return { urls: data.urls || [], name: data.name || 'Design', draft: data.draft || null };
   } catch {
     return null;
   }
+}
+
+/**
+ * Called by Social/Blog/Ads BEFORE navigating to /Design: remembers where the
+ * user came from and their in-progress draft. The Design page shows a
+ * "Send back to your <section> draft" action; on send, the draft rides along
+ * in the handoff so the origin page restores it with the images attached.
+ */
+export function saveDesignReturn(source, draft, label) {
+  try {
+    localStorage.setItem(RETURN_KEY, JSON.stringify({ source, draft: draft || null, label: label || null, at: Date.now() }));
+  } catch { /* non-fatal */ }
+}
+
+/** Design page: peek at the pending return context (without clearing). */
+export function peekDesignReturn() {
+  try {
+    const raw = localStorage.getItem(RETURN_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (Date.now() - (data.at || 0) > DRAFT_TTL_MS) { localStorage.removeItem(RETURN_KEY); return null; }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function clearDesignReturn() {
+  try { localStorage.removeItem(RETURN_KEY); } catch { /* non-fatal */ }
 }

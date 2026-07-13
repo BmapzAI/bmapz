@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-import { consumeDesignHandoff } from '@/lib/designHandoff';
+import { consumeDesignHandoff, saveDesignReturn } from '@/lib/designHandoff';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -59,17 +60,29 @@ export default function AdsCreativesTab({ company }) {
   const [abTestEnabled, setAbTestEnabled] = useState(false);
   const [showGoogleDrivePicker, setShowGoogleDrivePicker] = useState(false);
 
-  // Design Studio → Ads handoff: attach exported design images as creatives
+  const navigate = useNavigate();
+
+  // Design Studio → Ads handoff: restore the creatives the user already had,
+  // then attach the exported design images to them.
   useEffect(() => {
     const handoff = consumeDesignHandoff('ads');
     if (handoff?.urls?.length) {
       const items = handoff.urls.map((url, i) => ({
         url, name: `${handoff.name}-${i + 1}.png`, type: 'image/png', size: 0,
       }));
-      setUploadedCreatives(prev => [...prev, ...items]);
+      const prev = handoff.draft?.uploadedCreatives || [];
+      setUploadedCreatives([...prev, ...items]);
       toast.success(`${items.length} design image(s) attached as creatives`);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Leaving for the Design Studio: keep the current creatives so they're
+  // still here when the new design comes back.
+  const goToDesignStudio = () => {
+    saveDesignReturn('ads', { uploadedCreatives }, 'your ad creatives');
+    navigate('/Design');
+  };
 
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -231,13 +244,22 @@ Return a comprehensive creative brief in JSON.`,
               {isUploading ? <><Loader2 size={14} className="animate-spin inline mr-1" />Uploading...</> : 'Choose Files'}
             </div>
           </label>
-          <button
-            onClick={() => setShowGoogleDrivePicker(true)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-sm font-medium transition-all"
-          >
-            <FileImage size={16} />
-            Select from Google Drive
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={goToDesignStudio}
+              className="flex-1 min-w-[180px] flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-[#38b6ff]/40 bg-[#38b6ff]/10 hover:bg-[#38b6ff]/20 text-[#38b6ff] text-sm font-medium transition-all"
+            >
+              <Sparkles size={16} />
+              Create in Design Studio
+            </button>
+            <button
+              onClick={() => setShowGoogleDrivePicker(true)}
+              className="flex-1 min-w-[180px] flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-sm font-medium transition-all"
+            >
+              <FileImage size={16} />
+              Select from Google Drive
+            </button>
+          </div>
 
           {uploadedCreatives.length > 0 && (
             <div className="grid grid-cols-3 gap-2">

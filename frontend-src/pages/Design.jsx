@@ -20,7 +20,7 @@ import {
 import { toast } from 'sonner';
 import { Company, DesignTemplate } from '@/api/entities';
 import { GenerateImage, UploadFile } from '@/api/integrations';
-import { setDesignHandoff } from '@/lib/designHandoff';
+import { setDesignHandoff, peekDesignReturn, clearDesignReturn } from '@/lib/designHandoff';
 
 // ─── Aspect ratios (export resolution) ───────────────────────────────────────
 const ASPECT_RATIOS = [
@@ -200,6 +200,45 @@ export default function Design() {
   const [busy, setBusy] = useState(null); // 'export' | 'send:social' | 'aibg' | 'upload'
   const canvasWrapRef = useRef(null);
   const dragRef = useRef(null);
+  // Where the user came from (Social/Ads/Blog) + their saved draft, if any
+  const [returnCtx] = useState(peekDesignReturn);
+
+  // ── Undo history (Ctrl+Z) ───────────────────────────────────────────────
+  const historyRef = useRef([]);
+  const lastPushRef = useRef(0);
+  const pushHistory = useCallback(() => {
+    const now = Date.now();
+    if (now - lastPushRef.current < 500) return; // coalesce rapid edits (drag, typing)
+    lastPushRef.current = now;
+    setDesign(current => {
+      historyRef.current.push(JSON.stringify({ design: current }));
+      if (historyRef.current.length > 50) historyRef.current.shift();
+      return current;
+    });
+  }, []);
+
+  const undo = useCallback(() => {
+    const snap = historyRef.current.pop();
+    if (!snap) return;
+    lastPushRef.current = 0;
+    const { design: prev } = JSON.parse(snap);
+    setDesign(prev);
+    setActiveSlide(i => Math.min(i, prev.slides.length - 1));
+    setSelectedLayerId(null);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+      // Let native text-undo work inside inputs
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      undo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo]);
 
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
   const company = companies[0];
@@ -230,11 +269,12 @@ export default function Design() {
 
   // ── State updaters ──────────────────────────────────────────────────────
   const updateSlide = useCallback((updater) => {
+    pushHistory();
     setDesign(prev => {
       const slides = prev.slides.map((s, i) => (i === activeSlide ? updater(s) : s));
       return { ...prev, slides };
     });
-  }, [activeSlide]);
+  }, [activeSlide, pushHistory]);
 
   const updateLayer = (layerId, patch) => {
     updateSlide(s => ({ ...s, layers: s.layers.map(l => (l.id === layerId ? { ...l, ...patch } : l)) }));
@@ -304,10 +344,12 @@ export default function Design() {
 
   // ── Carousel ────────────────────────────────────────────────────────────
   const addSlide = () => {
+    pushHistory();
     setDesign(prev => ({ ...prev, format: 'carousel', slides: [...prev.slides, newSlide()] }));
     setActiveSlide(design.slides.length);
   };
   const duplicateSlide = () => {
+    pushHistory();
     const copy = JSON.parse(JSON.stringify(slide));
     copy.layers = copy.layers.map(l => ({ ...l, id: nextId() }));
     setDesign(prev => ({ ...prev, format: 'carousel', slides: [...prev.slides, copy] }));
@@ -315,6 +357,7 @@ export default function Design() {
   };
   const removeSlide = () => {
     if (design.slides.length <= 1) return;
+    pushHistory();
     setDesign(prev => {
       const slides = prev.slides.filter((_, i) => i !== activeSlide);
       return { ...prev, format: slides.length > 1 ? 'carousel' : 'single', slides };
@@ -381,7 +424,15 @@ export default function Design() {
         const { url } = await UploadFile({ file: f, folder: 'designs' });
         urls.push(url);
       }
-      setDesignHandoff({ target, urls, name: templateName || 'Design' });
+      // If the user came FROM this section, ride their saved draft along so
+      // the images attach to the exact post/creatives they were working on.
+      const cameFromTarget = returnCtx?.source === target;
+      setDesignHandoff({
+        target, urls,
+        name: templateName || 'Design',
+        draft: cameFromTarget ? returnCtx.draft : null,
+      });
+      if (cameFromTarget) clearDesignReturn();
       toast.success(isPt ? 'Design enviado!' : 'Design sent!');
       navigate(path);
     } catch (e) {
@@ -393,6 +444,7 @@ export default function Design() {
     try {
       const cfg = t.config || {};
       if (!cfg.slides?.length) throw new Error('empty');
+      pushHistory();
       setDesign({ format: cfg.format || 'single', aspectRatio: cfg.aspectRatio || 'square', slides: cfg.slides });
       setActiveSlide(0);
       setSelectedLayerId(null);
@@ -406,11 +458,30 @@ export default function Design() {
   // Load brand fonts on mount for defaults
   useEffect(() => { ensureFontLoaded('Inter'); ensureFontLoaded('Bebas Neue'); }, []);
 
-  // Preview scaling
-  const previewH = 420;
-  const previewW = previewH * (ratio.w / ratio.h);
+  // Preview scaling — fit BOTH a max height and the available container width,
+  // so wide banners and phones don't overflow horizontally.
+  const stageRef = useRef(null);
+  const [stageW, setStageW] = useState(0);
+  useEffect(() => {
+    if (!stageRef.current || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => setStageW(entries[0]?.contentRect?.width || 0));
+    ro.observe(stageRef.current);
+    return () => ro.disconnect();
+  }, []);
+  const maxPreviewH = 420;
+  let previewW = maxPreviewH * (ratio.w / ratio.h);
+  const availableW = stageW ? stageW - 24 : 0;
+  if (availableW > 100 && previewW > availableW) previewW = availableW;
+  const previewH = previewW * (ratio.h / ratio.w);
 
   const busyIs = (k) => busy === k;
+
+  const SEND_TARGETS = [
+    { key: 'social', label: isPt ? '📱 Redes Sociais' : '📱 Social Media', path: '/SocialMedia' },
+    { key: 'ads', label: isPt ? '📢 Anúncios' : '📢 Ads', path: '/Ads' },
+    { key: 'blog', label: '📝 Blog', path: '/Blog' },
+  ];
+  const returnTarget = returnCtx ? SEND_TARGETS.find(d => d.key === returnCtx.source) : null;
 
   return (
     <div className="space-y-6">
@@ -428,6 +499,10 @@ export default function Design() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={undo} title="Ctrl+Z"
+            className="border-white/10 text-white hover:bg-white/5 gap-2">
+            ↩ {isPt ? 'Desfazer' : 'Undo'}
+          </Button>
           <Button variant="outline" onClick={() => setShowSaveDialog(true)}
             className="border-white/10 text-white hover:bg-white/5 gap-2">
             <Save size={15} /> {isPt ? 'Salvar Template' : 'Save Template'}
@@ -456,7 +531,7 @@ export default function Design() {
             </div>
             <div>
               <Label className="text-gray-400 text-xs">{isPt ? 'Proporção' : 'Aspect ratio'}</Label>
-              <Select value={design.aspectRatio} onValueChange={(v) => setDesign(p => ({ ...p, aspectRatio: v }))}>
+              <Select value={design.aspectRatio} onValueChange={(v) => { pushHistory(); setDesign(p => ({ ...p, aspectRatio: v })); }}>
                 <SelectTrigger className="bg-black/30 border-white/10 text-white mt-1 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {ASPECT_RATIOS.map(r => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)}
@@ -495,11 +570,15 @@ export default function Design() {
           {/* Send to */}
           <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-2">
             <p className="text-white text-sm font-semibold flex items-center gap-2"><Send size={14} className="text-green-400" /> {isPt ? 'Enviar para' : 'Send to'}</p>
-            {[
-              { key: 'social', label: isPt ? '📱 Redes Sociais' : '📱 Social Media', path: '/SocialMedia' },
-              { key: 'ads', label: isPt ? '📢 Anúncios' : '📢 Ads', path: '/Ads' },
-              { key: 'blog', label: '📝 Blog', path: '/Blog' },
-            ].map(d => (
+            {returnTarget && (
+              <Button disabled={!!busy}
+                onClick={() => sendTo(returnTarget.key, returnTarget.path)}
+                className="w-full bg-gradient-to-r from-[#22c55e] to-[#38b6ff] text-white justify-start gap-2 text-sm font-semibold">
+                {busyIs(`send:${returnTarget.key}`) ? <Loader2 size={14} className="animate-spin" /> : '↩'}
+                {isPt ? `Voltar para ${returnCtx.label || returnTarget.label}` : `Send back to ${returnCtx.label || returnTarget.label}`}
+              </Button>
+            )}
+            {SEND_TARGETS.filter(d => d.key !== returnTarget?.key).map(d => (
               <Button key={d.key} variant="outline" disabled={!!busy}
                 onClick={() => sendTo(d.key, d.path)}
                 className="w-full border-white/10 text-white hover:bg-white/5 justify-start gap-2 text-sm">
@@ -528,7 +607,7 @@ export default function Design() {
             </div>
           )}
 
-          <div className="flex items-center justify-center rounded-2xl bg-black/40 border border-white/10 p-6 overflow-auto">
+          <div ref={stageRef} className="flex items-center justify-center rounded-2xl bg-black/40 border border-white/10 p-3 sm:p-6 overflow-auto">
             <div ref={canvasWrapRef}
               className="relative overflow-hidden shadow-2xl flex-shrink-0"
               style={{

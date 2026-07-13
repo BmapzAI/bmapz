@@ -190,12 +190,42 @@ export default function Dashboards() {
 
   const currentWidgets = localWidgets ?? activeDashboard?.widgets ?? DEFAULT_WIDGETS;
 
+  // ── Undo history (Ctrl+Z) for widget edits ──────────────────────────────
+  const undoStackRef = React.useRef([]);
+
   const saveWidgets = (widgets) => {
+    // Snapshot the state we're leaving so Ctrl+Z can bring it back
+    undoStackRef.current.push(JSON.stringify(currentWidgets));
+    if (undoStackRef.current.length > 30) undoStackRef.current.shift();
     setLocalWidgets(widgets); // instant optimistic update
     if (activeDashboard) {
       updateMutation.mutate({ id: activeDashboard.id, data: { widgets } });
     }
   };
+
+  const undoWidgets = React.useCallback(() => {
+    const snap = undoStackRef.current.pop();
+    if (!snap) { toast.info('Nothing to undo'); return; }
+    const widgets = JSON.parse(snap);
+    setLocalWidgets(widgets);
+    if (activeDashboard) {
+      updateMutation.mutate({ id: activeDashboard.id, data: { widgets } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDashboard?.id]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!isEditing) return;
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return; // native text undo
+      e.preventDefault();
+      undoWidgets();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isEditing, undoWidgets]);
 
   const createDashboard = (overrideName, overrideTemplate) => {
     const name = overrideName || newDashboardName;
@@ -455,7 +485,7 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
           <h1 className="text-3xl font-bold text-white tracking-tight" style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
             {t('dashboardsTitle')}
           </h1>
-          <p className="text-gray-400 mt-1">Multiple dashboards " Customizable widgets " Resizable layouts</p>
+          <p className="text-gray-400 mt-1">Multiple dashboards • Customizable widgets • Resizable layouts</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Select value={timeRange} onValueChange={setTimeRange}>
@@ -471,6 +501,12 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
           <Button onClick={() => setShowNewDashboard(true)} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
             <Plus size={18} /> New Dashboard
           </Button>
+          {activeDashboard && isEditing && (
+            <Button variant="outline" onClick={undoWidgets} title="Ctrl+Z"
+              className="border-white/10 text-white hover:bg-white/5 gap-2">
+              ↩ Undo
+            </Button>
+          )}
           {activeDashboard && (
             <Button variant="outline" onClick={() => setIsEditing(!isEditing)}
               className={`border-white/10 gap-2 ${isEditing ? 'bg-[#38b6ff]/20 text-[#38b6ff] border-[#38b6ff]/50' : 'text-white hover:bg-white/5'}`}>

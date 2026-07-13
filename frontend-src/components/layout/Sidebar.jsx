@@ -7,7 +7,7 @@ import {
   ChevronLeft, ChevronRight, LogOut,
   LayoutDashboard, Users, MessageSquare, Bot, GitBranch,
   Megaphone, Search, Share2, BookOpen, ScanLine,
-  Sparkles, FileText, BarChart3, Clock, Palette,
+  Sparkles, FileText, BarChart3, Clock, Palette, TrendingUp,
   Plug, HelpCircle, User, Settings as SettingsIcon,
   Building2, Shield,
 } from 'lucide-react';
@@ -110,6 +110,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         { name: t('aiOutputs'),      path: '/AIOutputs',     icon: Sparkles  },
         { name: t('textTemplates'),  path: '/TextTemplates', icon: FileText  },
         { name: t('dashboardsTitle'),path: '/Dashboards',    icon: BarChart3 },
+        { name: 'Insights',          path: '/WorkflowAnalytics', icon: TrendingUp },
       ],
     },
     {

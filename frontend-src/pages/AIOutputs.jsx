@@ -148,13 +148,13 @@ export default function AIOutputs() {
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10">
+      <div className="flex items-center gap-3 sm:gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 flex-wrap">
         <div className="flex items-center gap-2">
           <Filter size={16} className="text-gray-400" />
           <span className="text-gray-400 text-sm">Category:</span>
         </div>
         <Select value={category} onValueChange={setCategory}>
-          <SelectTrigger className="w-[220px] border-white/10">
+          <SelectTrigger className="w-full sm:w-[220px] border-white/10">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -206,7 +206,7 @@ export default function AIOutputs() {
                   output.status === 'rejected' ? 'bg-red-500/5 border-red-500/20' :
                   'bg-white/5 border-white/10'}`}
             >
-              <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
                   <div>
                     <div className="flex items-center gap-2 mb-1">

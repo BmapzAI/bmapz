@@ -7,6 +7,7 @@ import {
   Megaphone, Search, Share2, BookOpen, ScanLine,
   Sparkles, FileText, BarChart3, Plug, HelpCircle,
   User, Settings, Building2, Shield, X, MoreHorizontal,
+  Palette, Clock,
 } from 'lucide-react';
 
 function NavBtn({ icon: Icon, label, path, active, onClick }) {
@@ -51,15 +52,18 @@ export default function MobileBottomNav() {
         { icon: Search,    label: 'SEO',           path: '/SEO'         },
         { icon: Share2,    label: isPt ? 'Social' : 'Social', path: '/SocialMedia' },
         { icon: BookOpen,  label: t('blog'),       path: '/Blog'        },
+        { icon: Palette,   label: 'Design',        path: '/Design'      },
         { icon: ScanLine,  label: t('brandScan'),  path: '/BrandScan'   },
       ],
     },
     {
       label: t('contentAndAI'),
       items: [
+        { icon: Clock,     label: isPt ? 'Automações' : 'Automations', path: '/AIAutomations' },
         { icon: Sparkles,  label: t('aiOutputs'),     path: '/AIOutputs'     },
         { icon: FileText,  label: t('templates'),     path: '/TextTemplates' },
         { icon: BarChart3, label: t('dashboardsTitle'), path: '/Dashboards'  },
+        { icon: TrendingUp, label: 'Insights',        path: '/WorkflowAnalytics' },
       ],
     },
     {

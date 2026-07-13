@@ -873,32 +873,106 @@ router.post('/transcribe', requireAuth, async (req, res) => {
   }
 });
 
+// ─── Image generation ─────────────────────────────────────────────────────────
+// Valid OpenAI IMAGE models only — company settings sometimes hold a CHAT model
+// in ai_image_model (which made images.generate 404 with "model not available").
+const OPENAI_IMAGE_MODELS = ['gpt-image-1', 'dall-e-3', 'dall-e-2'];
+
+// Each image model accepts different size/quality values; map the request onto
+// whatever the attempted model supports instead of failing.
+function imageParamsFor(model, size, quality) {
+  const landscape = /^(1792|1536|1600|1920)x/.test(size);
+  const portrait = /x(1792|1536|1600|1920)$/.test(size);
+  if (model === 'gpt-image-1') {
+    return {
+      size: landscape ? '1536x1024' : portrait ? '1024x1536' : '1024x1024',
+      quality: quality === 'hd' || quality === 'high' ? 'high' : 'medium',
+    };
+  }
+  if (model === 'dall-e-3') {
+    return {
+      size: landscape ? '1792x1024' : portrait ? '1024x1792' : '1024x1024',
+      quality: quality === 'hd' || quality === 'high' ? 'hd' : 'standard',
+    };
+  }
+  // dall-e-2: square only, no quality param
+  return { size: '1024x1024', quality: undefined };
+}
+
+async function generateWithStability(settings, prompt, n) {
+  const apiKey = cleanKey(settings.stability_api_key) || cleanKey(process.env.STABILITY_API_KEY);
+  if (!apiKey) return null;
+  const response = await fetch('https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ text_prompts: [{ text: prompt, weight: 1 }], cfg_scale: 7, height: 1024, width: 1024, steps: 30, samples: n }),
+  });
+  if (!response.ok) throw new Error(`Stability AI error ${response.status}`);
+  const result = await response.json();
+  return result.artifacts?.map(a => `data:image/png;base64,${a.base64}`) || [];
+}
+
 // POST /api/ai/generate-image
+// Tries the preferred model first, then falls back through every other OpenAI
+// image model, then Stability — mirroring the resilience of the chat pipeline.
 router.post('/generate-image', requireAuth, async (req, res) => {
+  const { prompt, size = '1024x1024', quality = 'standard', n = 1 } = req.body;
   try {
-    const { prompt, size = '1024x1024', quality = 'standard', n = 1 } = req.body;
+    if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
     const settings = await getCompanyAISettings(req.companyId);
 
     const provider = settings.ai_image_provider || 'openai';
-    const model = settings.ai_image_model || 'dall-e-3';
 
+    // Explicit Stability selection
     if (provider === 'stability' || provider === 'stable_diffusion') {
-      const apiKey = settings.stability_api_key || process.env.STABILITY_API_KEY;
-      if (!apiKey) return res.status(402).json({ error: 'Stability AI API key not configured', code: 'MISSING_API_KEY' });
-      const response = await fetch('https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ text_prompts: [{ text: prompt, weight: 1 }], cfg_scale: 7, height: 1024, width: 1024, steps: 30, samples: n }),
-      });
-      const result = await response.json();
-      const urls = result.artifacts?.map(a => `data:image/png;base64,${a.base64}`) || [];
-      return res.json({ urls });
+      const urls = await generateWithStability(settings, prompt, n);
+      if (urls) return res.json({ urls });
+      return res.status(402).json({ error: 'Stability AI API key not configured', code: 'MISSING_API_KEY' });
     }
 
-    // Default: OpenAI DALL-E
+    // OpenAI path with model fallback. Ignore any non-image model that ended
+    // up in settings (e.g. a chat model) — that was the "model not available" bug.
+    const preferred = OPENAI_IMAGE_MODELS.includes(settings.ai_image_model) ? settings.ai_image_model : null;
+    const attempts = [...new Set([preferred, ...OPENAI_IMAGE_MODELS].filter(Boolean))];
+
     const client = await getOpenAIClient(req.companyId);
-    const result = await client.images.generate({ model: model || 'dall-e-3', prompt, size, quality, n });
-    res.json({ urls: result.data.map(img => img.url) });
+    const errors = [];
+    for (const model of attempts) {
+      try {
+        const params = imageParamsFor(model, size, quality);
+        const result = await client.images.generate({
+          model, prompt,
+          size: params.size,
+          ...(params.quality ? { quality: params.quality } : {}),
+          n: model === 'dall-e-3' ? 1 : Math.min(4, Math.max(1, n)),
+        });
+        // gpt-image-1 returns b64_json; dall-e returns url
+        const urls = (result.data || [])
+          .map(img => img.url || (img.b64_json ? `data:image/png;base64,${img.b64_json}` : null))
+          .filter(Boolean);
+        if (urls.length) return res.json({ urls, model_used: model });
+        errors.push(`${model}: empty result`);
+      } catch (err) {
+        const cat = categorizeProviderError(err, 'OpenAI');
+        errors.push(`${model}: ${cat.kind}`);
+        console.warn(`[ai/generate-image] ${model} failed (${cat.kind}): ${err.message}`);
+        // Auth/quota failures affect every OpenAI model — stop retrying OpenAI
+        if (cat.kind === 'AUTH' || cat.kind === 'QUOTA') { errors.push('skipping remaining OpenAI models'); break; }
+      }
+    }
+
+    // Last resort: Stability if a key exists
+    try {
+      const urls = await generateWithStability(settings, prompt, n);
+      if (urls?.length) return res.json({ urls, model_used: 'stable-diffusion-xl' });
+    } catch (e) { errors.push(`stability: ${e.message}`); }
+
+    console.error('[ai/generate-image] all providers failed:', errors.join(' | '));
+    return res.status(502).json({
+      error: 'Image generation is unavailable right now. The image provider rejected all attempts — check the OpenAI account has image access/credits, or add a Stability AI key.',
+      code: 'IMAGE_GEN_FAILED',
+      details: errors,
+    });
   } catch (err) {
     console.error('[ai/generate-image]', err.message);
     if (err.code === 'MISSING_API_KEY') {

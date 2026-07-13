@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { consumeDesignHandoff } from '@/lib/designHandoff';
+import { consumeDesignHandoff, saveDesignReturn } from '@/lib/designHandoff';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
@@ -67,17 +67,30 @@ export default function SocialMedia() {
   const [showGoogleDrivePicker, setShowGoogleDrivePicker] = useState(false);
   const navigate = useNavigate();
 
-  // Design Studio → Social handoff: attach exported design images and open the editor
+  // Design Studio → Social handoff: restore the draft the user was writing
+  // before they left for Design, then attach the exported images to it.
   useEffect(() => {
     const handoff = consumeDesignHandoff('social');
     if (handoff?.urls?.length) {
       const media = handoff.urls.map((url, i) => ({ url, name: `${handoff.name}-${i + 1}.png`, type: 'image/png' }));
-      setUploadedMedia(prev => [...prev, ...media]);
-      openNewPost({ type: 'image' });
-      toast.success(isPt ? `${media.length} imagem(ns) do Design anexada(s)` : `${media.length} design image(s) attached`);
+      const draft = handoff.draft || {};
+      const restoredPost = { ...EMPTY_POST, ...(draft.newPost || {}), type: 'image' };
+      setUploadedMedia([...(draft.uploadedMedia || []), ...media]);
+      setEditingPost({ ...restoredPost, _isNew: true });
+      setNewPost(restoredPost);
+      toast.success(isPt
+        ? `${media.length} imagem(ns) adicionada(s) ao seu rascunho de post`
+        : `${media.length} image(s) added to your post draft`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Leaving for the Design Studio: save the in-progress post so it survives
+  // the round-trip and the exported images come back to THIS draft.
+  const goToDesignStudio = () => {
+    saveDesignReturn('social', { newPost, uploadedMedia }, isPt ? 'seu rascunho de post' : 'your post draft');
+    navigate('/Design');
+  };
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
@@ -670,7 +683,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                     AI Design Brief
                   </button>
                   <button
-                    onClick={() => navigate('/Design')}
+                    onClick={goToDesignStudio}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#38b6ff]/40 bg-[#38b6ff]/10 hover:bg-[#38b6ff]/20 text-[#38b6ff] text-sm transition-all"
                   >
                     <Sparkles size={14} />
