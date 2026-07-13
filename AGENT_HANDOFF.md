@@ -859,3 +859,69 @@ REMAINING before stage 2 (external integrations) — priority order:
 **Handover to Codex:** start with migration 004 apply + authenticated smoke checklist;
 then item 6 (models dropdown) is a small, well-scoped task: fetch `/api/ai/models`,
 filter `allowed`, render grouped by provider in ApiKeysTab.
+
+### 2026-07-13 - Claude (Session 16: Google login fix verified, image gen, migration applied, UX round)
+
+**Commits:** `80e2395` (Google direct sign-in), `3313336` (this round). Both deployed via CI.
+
+#### Google login branding — RESOLVED (correct root cause)
+
+Prior sessions repeatedly blamed the Google Cloud consent screen. That was wrong —
+Derek had it configured correctly all along. The real cause: `signInWithOAuth`
+routes the browser through `<project>.supabase.co`, and Google always displays the
+redirect host. Fixed by switching to Google Identity Services + `signInWithIdToken`
+(sign-in happens ON ai.bmapz.com; no Supabase redirect). Verified live by Derek:
+Google now shows Bmapz branding. Fallback to old redirect flow if GIS script is
+blocked. Files: `lib/googleAuth.js`, `components/auth/GoogleSignInButton.jsx`.
+
+#### Fixed this session
+
+1. **Image generation platform-wide** — root cause: `ai_image_model` in company
+   settings could hold a CHAT model; `images.generate` then 404'd ("OpenAI model
+   not available"). Route now whitelists real image models, tries
+   gpt-image-1 → dall-e-3 → dall-e-2 (per-model size/quality mapping, b64+url
+   handling), Stability as last resort, and stops the chain early on auth/quota
+   errors. Affects Design AI backgrounds, Social AI image, Ads creatives.
+2. **AI Automations save error** — migration 004 was never applied; applied to
+   production Supabase via the dashboard SQL editor (through Derek's logged-in
+   browser session): `ai_automations` + `design_templates` + RLS. Result:
+   "Success. No rows returned". Both new tabs now function.
+3. **Insights section restored** — `WorkflowAnalytics` (workflow analytics,
+   channel stats, AI insights) was a registered route with NO nav link. Added
+   "Insights" to sidebar (Content & AI) and mobile More-drawer. That's the
+   answer to "what happened to the insights section".
+4. **Design round-trip drafts** — Social/Blog/Ads save their in-progress draft
+   when jumping to Design (`saveDesignReturn`); Design shows a green highlighted
+   "Send back to your … draft" button; on send the draft is restored with the
+   exported images attached to that exact post/creative set. Blog editor and
+   Ads creatives tab gained "Design Studio" buttons.
+5. **Undo (Ctrl+Z)** — Design Studio (50-step history, 500ms coalescing, keeps
+   native undo inside text fields) and Dashboards edit mode (30-step widget
+   history + visible ↩ Undo button).
+6. **Responsive pass** — Design canvas fits container width via ResizeObserver
+   (wide banners/stories no longer overflow); Design/Automations/Insights added
+   to mobile bottom nav; AIOutputs filter row wraps; base Table already scrolls;
+   Layout already had mobile header + bottom nav; fixed corrupted bullet chars
+   in Dashboards subtitle.
+
+#### Verification
+- `npm run build` ✓ · backend `node --check` ✓ · `npx eslint . --quiet` 0 errors ✓
+- Migration applied in production (verified success in SQL editor).
+- CI deploy of `3313336` pending at time of writing; smoke test follows.
+
+#### Remaining before stage 2 (updated priority)
+1. Authenticated end-to-end verification of: image generation (needs OpenAI
+   account with image API access/credits — if OpenAI quota is exhausted, images
+   still fail with a clear message; consider funding OpenAI or adding
+   STABILITY_API_KEY in Railway), automation scheduled run (wait for first
+   cron fire), Design → Social/Ads/Blog round-trip.
+2. Platform OAuth app registrations (META_APP_ID/SECRET, GOOGLE_CLIENT_ID/SECRET,
+   etc. in Railway) — blocks real ads/social data (stage-2 core).
+3. Settings model dropdown → consume `GET /api/ai/models` (small task, backend done).
+4. Workflow execution engine (runs recorded, nodes not executed) — biggest gap.
+5. Monthly scan-token reset; Stripe price IDs in Railway.
+6. Remaining pt-BR components + lint warning cleanup.
+
+**Handover to Codex:** items 3 (models dropdown) and 5 are small and well-scoped.
+Item 4 (workflow engine) is the big one: suggest a tick-based executor in
+backend (like automationScheduler) walking workflow nodes with delay handling.
