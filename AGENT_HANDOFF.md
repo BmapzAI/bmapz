@@ -925,3 +925,16 @@ blocked. Files: `lib/googleAuth.js`, `components/auth/GoogleSignInButton.jsx`.
 **Handover to Codex:** items 3 (models dropdown) and 5 are small and well-scoped.
 Item 4 (workflow engine) is the big one: suggest a tick-based executor in
 backend (like automationScheduler) walking workflow nodes with delay handling.
+
+#### Session 16 addendum — production smoke test results (authenticated, via Derek's browser)
+
+- AI Automations: created "Relatório semanal de vendas" → saved ✓ → Run Now ✓ →
+  result appeared in AI Outputs as pending ("⏰ … — manual run") ✓ → paused after
+  test (left in place as an example; Derek can enable it).
+- Image generation: Design → AI Background → "dark blue tech gradient…" →
+  "Fundo gerado!" and the background rendered on canvas ✓ (backend fallback
+  chain deployed on Railway and working).
+- Insights (/WorkflowAnalytics): loads with stat cards + both tabs ✓.
+- Dashboards: loads with widgets; corrupted bullet chars fixed ✓.
+- Design page: undo button, responsive canvas, send-to panel all render ✓.
+- Google login: verified by Derek — Bmapz branding shows, Supabase host gone ✓.
