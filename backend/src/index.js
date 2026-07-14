@@ -35,6 +35,7 @@ import designTemplatesRoutes from './routes/designTemplates.js';
 import { runAIChat } from './routes/ai.js';
 import { startAutomationScheduler } from './lib/automationScheduler.js';
 import { startModelRegistryRefresh } from './lib/modelRegistry.js';
+import { startWorkflowEngine } from './lib/workflowEngine.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -122,9 +123,11 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`✅ Bmapz API running on port ${PORT}`);
-  // Background services: AI Automations cron engine + live model registry
+  // Background services: AI Automations cron engine + live model registry +
+  // workflow execution engine (advances scheduled workflow steps)
   startAutomationScheduler(runAIChat);
   startModelRegistryRefresh();
+  startWorkflowEngine();
 });
 
 export default app;

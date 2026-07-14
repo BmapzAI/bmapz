@@ -44,7 +44,10 @@ router.patch('/me', requireAuth, async (req, res) => {
 // POST /api/users/invite — invite a new user to the company
 router.post('/invite', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
-    const { email, role = 'user', full_name } = req.body;
+    const { email, full_name } = req.body;
+    // Company-scoped invites can only create customer roles. Elevating a user to
+    // owner/system_admin is done afterwards from the Bmapz Admin Panel (admin routes).
+    const role = ['company_admin', 'user'].includes(req.body.role) ? req.body.role : 'user';
 
     // Create Supabase auth invite
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
@@ -76,7 +79,10 @@ router.post('/invite', requireAuth, requireCompanyAdmin, async (req, res) => {
 router.patch('/:id/role', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
     const { role } = req.body;
-    const validRoles = ['owner', 'company_admin', 'user'];
+    // Company admins can only assign CUSTOMER roles. 'owner' / 'system_admin'
+    // are Bmapz-internal and grantable only from the platform Admin Panel
+    // (admin routes), never through company-scoped endpoints.
+    const validRoles = ['company_admin', 'user'];
     if (!validRoles.includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
@@ -103,7 +109,10 @@ router.patch('/:id', requireAuth, requireCompanyAdmin, async (req, res) => {
     if (full_name !== undefined) updates.full_name = full_name;
     if (profile_picture !== undefined) updates.profile_picture = profile_picture;
     if (role !== undefined) {
-      const validRoles = ['owner', 'company_admin', 'user'];
+      // Company admins can only assign CUSTOMER roles. 'owner' / 'system_admin'
+    // are Bmapz-internal and grantable only from the platform Admin Panel
+    // (admin routes), never through company-scoped endpoints.
+    const validRoles = ['company_admin', 'user'];
       if (!validRoles.includes(role)) return res.status(400).json({ error: 'Invalid role' });
       updates.role = role;
     }

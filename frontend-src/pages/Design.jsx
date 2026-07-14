@@ -468,7 +468,15 @@ export default function Design() {
     ro.observe(stageRef.current);
     return () => ro.disconnect();
   }, []);
-  const maxPreviewH = 420;
+  // Canvas fits BOTH the available width and the viewport height so it always
+  // adjusts to the screen (laptops, big monitors, phones).
+  const [maxPreviewH, setMaxPreviewH] = useState(440);
+  useEffect(() => {
+    const calc = () => setMaxPreviewH(Math.max(260, Math.min(540, (window.innerHeight || 800) - 330)));
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, []);
   let previewW = maxPreviewH * (ratio.w / ratio.h);
   const availableW = stageW ? stageW - 24 : 0;
   if (availableW > 100 && previewW > availableW) previewW = availableW;
@@ -654,8 +662,9 @@ export default function Design() {
           {/* Add layer toolbar */}
           <div className="flex items-center justify-center gap-2 flex-wrap">
             <Select onValueChange={(v) => addTextLayer(v)} value="">
-              <SelectTrigger className="w-[150px] bg-white/5 border-white/10 text-white text-sm h-9">
-                <span className="flex items-center gap-1.5"><Type size={13} /> {isPt ? '+ Texto' : '+ Text'}</span>
+              <SelectTrigger className="w-auto min-w-[118px] justify-start gap-1.5 bg-white/5 border-white/10 text-white text-sm h-9">
+                <Type size={14} className="shrink-0" />
+                <span className="whitespace-nowrap">{isPt ? '+ Texto' : '+ Text'}</span>
               </SelectTrigger>
               <SelectContent>
                 {TEXT_ROLES.map(r => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)}

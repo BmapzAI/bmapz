@@ -22,9 +22,14 @@ async function provisionCompany(authUser) {
     .from('companies').insert({ name: companyName }).select().single();
   if (companyErr) throw companyErr;
 
+  // A new customer becomes 'company_admin' — the TOP role for a customer
+  // workspace (full control of their own company + team). 'owner' and
+  // 'system_admin' are reserved for the Bmapz platform team and can only be
+  // granted from the internal Admin Panel. This is deliberate: 'owner' unlocks
+  // BYOK, which bypasses Bmapz credit billing — customers must never self-grant it.
   const { data: updatedUser, error: userErr } = await supabaseAdmin
     .from('users')
-    .update({ company_id: company.id, role: 'owner', full_name: fullName })
+    .update({ company_id: company.id, role: 'company_admin', full_name: fullName })
     .eq('id', authUser.id).select('*, companies(*)').single();
   if (userErr) throw userErr;
 
@@ -65,7 +70,7 @@ router.get('/me', requireJWT, async (req, res) => {
     const { data: newUser, error: userErr } = await supabaseAdmin
       .from('users').upsert({
         id: userId, email: req.user.email, full_name: fullName,
-        company_id: company.id, role: 'owner',
+        company_id: company.id, role: 'company_admin', // top CUSTOMER role; owner is Bmapz-internal
       }).select('*, companies(*)').single();
     if (userErr) throw userErr;
 
@@ -89,7 +94,10 @@ router.post('/logout', requireAuth, async (req, res) => {
 
 router.post('/complete-profile', requireJWT, async (req, res) => {
   try {
-    const { full_name, company_name, role = 'owner' } = req.body;
+    // Ignore any client-supplied role — a customer completing their profile is
+    // always 'company_admin'. Elevated roles are granted only from the Bmapz Admin Panel.
+    const { full_name, company_name } = req.body;
+    const role = 'company_admin';
     const userId = req.user.id;
 
     const { data: existing } = await supabaseAdmin

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { enrollLead } from '../lib/workflowEngine.js';
 
 const router = Router();
 
@@ -96,33 +97,42 @@ router.delete('/:id', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/workflows/:id/run — manually trigger a workflow run
+// POST /api/workflows/:id/run — manually trigger a workflow run (optionally for a lead)
 router.post('/:id/run', requireAuth, async (req, res) => {
   try {
-    const { data: workflow } = await supabaseAdmin
-      .from('workflows')
-      .select('*')
-      .eq('id', req.params.id)
-      .eq('company_id', req.companyId)
-      .single();
-    if (!workflow) return res.status(404).json({ error: 'Workflow not found' });
+    const run = await enrollLead({
+      workflowId: req.params.id,
+      companyId: req.companyId,
+      leadId: req.body?.lead_id || null,
+      context: req.body || {},
+    });
+    // The background engine (lib/workflowEngine.js) advances the run through its
+    // nodes, honouring wait/delay steps. It's due immediately.
+    res.json({ run_id: run.id, status: 'active', message: 'Workflow run started' });
+  } catch (err) {
+    const status = /not found/i.test(err.message) ? 404 : 500;
+    res.status(status).json({ error: err.message });
+  }
+});
 
-    // Create a run record
-    const { data: run, error: runErr } = await supabaseAdmin
-      .from('workflow_runs')
-      .insert({
-        workflow_id: workflow.id,
-        company_id: req.companyId,
-        status: 'active',
-        context: req.body,
-      })
-      .select()
-      .single();
-    if (runErr) throw runErr;
+// POST /api/workflows/:id/enroll — enroll one or many leads into a workflow
+router.post('/:id/enroll', requireAuth, async (req, res) => {
+  try {
+    const leadIds = Array.isArray(req.body?.lead_ids)
+      ? req.body.lead_ids
+      : (req.body?.lead_id ? [req.body.lead_id] : []);
+    if (!leadIds.length) return res.status(400).json({ error: 'lead_id or lead_ids required' });
 
-    // For now: return the run record; actual step execution would be async
-    // In production, dispatch to a job queue (BullMQ, etc.)
-    res.json({ run_id: run.id, status: 'running', message: 'Workflow run started' });
+    const results = [];
+    for (const leadId of leadIds) {
+      try {
+        const run = await enrollLead({ workflowId: req.params.id, companyId: req.companyId, leadId });
+        results.push({ lead_id: leadId, run_id: run.id, enrolled: true });
+      } catch (e) {
+        results.push({ lead_id: leadId, enrolled: false, error: e.message });
+      }
+    }
+    res.json({ enrolled: results.filter(r => r.enrolled).length, total: leadIds.length, results });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

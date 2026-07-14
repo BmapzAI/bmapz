@@ -4,13 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Play, Pause, Trash2, Edit2, Copy, GitBranch, Users, Zap, MoreVertical, CheckCircle2, LayoutTemplate } from 'lucide-react';
+import { Plus, Search, Play, Pause, Trash2, Edit2, Copy, GitBranch, Users, Zap, MoreVertical, CheckCircle2, LayoutTemplate, UserPlus, Loader2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from 'sonner';
 import WorkflowBuilderModal from '@/components/workflows/WorkflowBuilderModal';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
-import { Company, Workflow } from '@/api/entities';
+import { Company, Workflow, Lead } from '@/api/entities';
+import { api } from '@/api/apiClient';
 
 const getStarterTemplates = (t) => [
   { id: 'st1', name: t('wfT1Name'), description: t('wfT1Desc'), steps: 5, category: 'Outreach' },
@@ -28,6 +30,10 @@ export default function Workflows() {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingWorkflow, setEditingWorkflow] = useState(null);
   const [showBuilder, setShowBuilder] = useState(false);
+  const [enrollWorkflow, setEnrollWorkflow] = useState(null); // workflow being enrolled into
+  const [enrollSelected, setEnrollSelected] = useState([]);   // selected lead ids
+  const [enrollSearch, setEnrollSearch] = useState('');
+  const [enrolling, setEnrolling] = useState(false);
 
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
   const company = companies[0];
@@ -78,6 +84,50 @@ export default function Workflows() {
     setShowBuilder(true);
   };
 
+  // Lead enrollment (only fetched when the enroll modal is open)
+  const { data: leadsForEnroll = [], isLoading: leadsLoading } = useQuery({
+    queryKey: ['leadsForEnroll'],
+    queryFn: () => Lead.list(),
+    enabled: !!enrollWorkflow,
+  });
+
+  const openEnroll = (w) => {
+    if (w.status !== 'active') {
+      toast.error(isPt ? 'Ative o fluxo antes de inscrever leads.' : 'Activate the workflow before enrolling leads.');
+      return;
+    }
+    setEnrollWorkflow(w);
+    setEnrollSelected([]);
+    setEnrollSearch('');
+  };
+
+  const toggleEnrollLead = (id) => {
+    setEnrollSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const submitEnroll = async () => {
+    if (!enrollSelected.length) return;
+    setEnrolling(true);
+    try {
+      const res = await api.post(`/api/workflows/${enrollWorkflow.id}/enroll`, { lead_ids: enrollSelected });
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      toast.success(isPt
+        ? `${res.enrolled} lead(s) inscrito(s). Os passos agendados começarão a rodar automaticamente.`
+        : `${res.enrolled} lead(s) enrolled. Scheduled steps will now run automatically.`);
+      setEnrollWorkflow(null);
+    } catch (e) {
+      toast.error((isPt ? 'Falha ao inscrever: ' : 'Enroll failed: ') + e.message);
+    } finally {
+      setEnrolling(false);
+    }
+  };
+
+  const enrollFiltered = leadsForEnroll.filter(l => {
+    if (!enrollSearch) return true;
+    const s = `${l.lead_name || ''} ${l.lead_company_name || ''} ${l.email || ''}`.toLowerCase();
+    return s.includes(enrollSearch.toLowerCase());
+  });
+
   const filter = (list) => list.filter(w => !searchQuery || w.name?.toLowerCase().includes(searchQuery.toLowerCase()));
   const active = filter(workflows.filter(w => w.status === 'active'));
   const drafts = filter(workflows.filter(w => w.status === 'draft'));
@@ -102,6 +152,7 @@ export default function Workflows() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="bg-[#1a1a1a] border-white/10">
+            <DropdownMenuItem onClick={() => openEnroll(w)} className="text-white hover:bg-white/10"><UserPlus size={14} className="mr-2" /> {isPt ? 'Inscrever leads' : 'Enroll leads'}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => openBuilder(w)} className="text-white hover:bg-white/10"><Edit2 size={14} className="mr-2" /> {t('edit')}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleDuplicate(w)} className="text-white hover:bg-white/10"><Copy size={14} className="mr-2" /> {t('duplicate')}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => deleteMutation.mutate(w.id)} className="text-red-400 hover:bg-red-500/10"><Trash2 size={14} className="mr-2" /> {t('delete')}</DropdownMenuItem>
@@ -252,6 +303,63 @@ export default function Workflows() {
           onClose={() => { setShowBuilder(false); setEditingWorkflow(null); queryClient.invalidateQueries({ queryKey: ['workflows'] }); }}
         />
       )}
+
+      {/* Enroll leads modal */}
+      <Dialog open={!!enrollWorkflow} onOpenChange={(o) => !o && setEnrollWorkflow(null)}>
+        <DialogContent className="max-w-lg bg-[#111] border-white/10 text-white max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus size={18} className="text-[#38b6ff]" />
+              {isPt ? 'Inscrever leads em' : 'Enroll leads into'} “{enrollWorkflow?.name}”
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-gray-400 text-sm">
+            {isPt
+              ? 'Os leads selecionados entram no fluxo agora. Mensagens e esperas agendadas rodam automaticamente em segundo plano.'
+              : 'Selected leads enter the workflow now. Scheduled messages and waits run automatically in the background.'}
+          </p>
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Input value={enrollSearch} onChange={(e) => setEnrollSearch(e.target.value)}
+              placeholder={isPt ? 'Buscar leads...' : 'Search leads...'}
+              className="pl-10 bg-white/5 border-white/10 text-white" />
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-1.5 min-h-[120px] max-h-[45vh]">
+            {leadsLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="animate-spin text-[#38b6ff]" /></div>
+            ) : enrollFiltered.length === 0 ? (
+              <p className="text-gray-500 text-sm text-center py-8">{isPt ? 'Nenhum lead encontrado.' : 'No leads found.'}</p>
+            ) : enrollFiltered.map(l => {
+              const sel = enrollSelected.includes(l.id);
+              return (
+                <button key={l.id} onClick={() => toggleEnrollLead(l.id)}
+                  className={`w-full flex items-center gap-3 p-2.5 rounded-xl border text-left transition-all ${sel ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40' : 'bg-white/5 border-white/10 hover:border-white/20'}`}>
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${sel ? 'bg-[#38b6ff] border-[#38b6ff]' : 'border-white/30'}`}>
+                    {sel && <CheckCircle2 size={12} className="text-white" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white text-sm truncate">{l.lead_name || l.lead_company_name || 'Lead'}</p>
+                    <p className="text-gray-500 text-xs truncate">{l.email || l.lead_company_name || '—'}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10">
+            <span className="text-gray-400 text-sm">{enrollSelected.length} {isPt ? 'selecionado(s)' : 'selected'}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setEnrollWorkflow(null)} className="border-white/10 text-white hover:bg-white/5">
+                {isPt ? 'Cancelar' : 'Cancel'}
+              </Button>
+              <Button onClick={submitEnroll} disabled={!enrollSelected.length || enrolling}
+                className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
+                {enrolling ? <Loader2 size={15} className="animate-spin" /> : <UserPlus size={15} />}
+                {isPt ? 'Inscrever' : 'Enroll'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
