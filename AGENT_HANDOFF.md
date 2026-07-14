@@ -938,3 +938,60 @@ backend (like automationScheduler) walking workflow nodes with delay handling.
 - Dashboards: loads with widgets; corrupted bullet chars fixed ✓.
 - Design page: undo button, responsive canvas, send-to panel all render ✓.
 - Google login: verified by Derek — Bmapz branding shows, Supabase host gone ✓.
+
+### 2026-07-13 - Claude (Session 17: workflow engine, Design fixes, Owner/BYOK revenue fix)
+
+**Commit pushed** (design + engine + role fix bundled). CI green.
+
+#### Workflow execution engine (the "scheduled steps don't run" fix)
+- `backend/src/lib/workflowEngine.js`: 60s ticker advances every active
+  `workflow_runs` row through its nodes. The core fix: `wait` nodes park the run
+  via `next_action_at` and resume at the node AFTER the wait — previously waits
+  and everything downstream never executed.
+  - Sends: email via shared `lib/emailSender.js` (Gmail/SMTP/Resend), WhatsApp via
+    Cloud API; LinkedIn/unconfigured channels are queued (status 'queued') for
+    manual send. Every send is written to `messages` (shows in Inbox + analytics).
+  - Conditions (`replied`/`no_response`/`opened`/`clicked`/`meeting_booked`)
+    evaluated from the lead's messages/activities; unknowns take the 'no' branch.
+  - Claim-before-run (pushes next_action_at forward) + MAX_STEPS_PER_TICK guard
+    prevent hot-loops. Personalizes {{lead_name}}/{{first_name}}/{{company}}.
+- `backend/src/routes/workflows.js`: `/:id/run` now enrolls+starts; new
+  `/:id/enroll` (one or many `lead_ids`). `enrollLead()` skips duplicate active runs.
+- `backend/src/routes/email.js` refactored onto `lib/emailSender.js` (no behaviour change).
+- `backend/src/index.js`: `startWorkflowEngine()` on boot.
+- Frontend `Workflows.jsx`: "Enroll leads" item in each workflow's menu → modal to
+  pick leads (search + multi-select) → `POST /:id/enroll`. Guards: workflow must be active.
+
+#### Design fixes
+- `+ Text` button no longer breaks into two lines (shadcn `[&>span]:line-clamp-1`
+  forced the icon+label span to display:-webkit-box → vertical stack; icon is now a
+  direct trigger child, label in a plain span, trigger `justify-start`).
+- Canvas scales to viewport height (resize listener) AND container width
+  (ResizeObserver) — adjusts on laptop/monitor/phone instead of a fixed 420px.
+
+#### SECURITY / BUSINESS MODEL — Owner/BYOK billing-bypass closed
+- Root cause: signup / `/auth/me` JIT / `/complete-profile` assigned `role:'owner'`
+  to EVERY new customer, and `canUseBYOK` = owner||system_admin → every customer
+  could add their own API key and bypass Bmapz credit billing (the monetization).
+- Fix (forward-looking, deployed): new customers = `company_admin` (top customer
+  role, full workspace control, NO BYOK). `owner`/`system_admin` are Bmapz-internal,
+  grantable only from the platform Admin Panel (`requireAdmin` admin routes).
+  Company-scoped role update + invite endpoints clamp to company_admin/user.
+- **Pending live step (Derek confirmed: keep only d2mdigitalmarketing@gmail.com):**
+  one-time SQL to downgrade legacy customer owners. NOT run by Claude because the
+  Supabase SQL editor is canvas-based and the browser screenshot/read tooling was
+  failing this session — a blind destructive write to live accounts was declined.
+  SQL to run in Supabase SQL editor:
+  ```sql
+  update public.users set role = 'company_admin'
+  where role = 'owner' and lower(email) <> 'd2mdigitalmarketing@gmail.com'
+  returning email, role;
+  ```
+- Business rule documented in Claude memory (bmapz-role-model).
+
+**Verification:** `npm run build` ✓, backend `node --check` (auth, users, workflows,
+email, engine) ✓, `npx eslint . --quiet` 0 errors ✓, engine module load + helper
+spot-check ✓.
+
+**Stage plan (Derek's framing):** Stage 2 = register app with external platforms +
+build integrations. Stage 3 = go-to-market / commercialization.
