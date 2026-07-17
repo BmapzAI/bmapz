@@ -984,6 +984,64 @@ router.post('/generate-image', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/ai/edit-image — AI image edits for the Design Studio.
+// operations: remove_bg (transparent background), enhance (quality boost),
+// custom (free-form prompt edit). Uses gpt-image-1 edits; returns a data URL
+// the frontend persists to storage.
+router.post('/edit-image', requireAuth, async (req, res) => {
+  try {
+    const { image_url, operation = 'custom', prompt: userPrompt } = req.body;
+    if (!image_url) return res.status(400).json({ error: 'image_url is required' });
+
+    // Load the source image (storage URL or data URL)
+    let buffer;
+    if (image_url.startsWith('data:')) {
+      const b64 = image_url.split(',')[1] || '';
+      buffer = Buffer.from(b64, 'base64');
+    } else {
+      const r = await fetch(image_url);
+      if (!r.ok) throw new Error(`Could not load source image (${r.status})`);
+      buffer = Buffer.from(await r.arrayBuffer());
+    }
+    if (buffer.length > 20 * 1024 * 1024) return res.status(413).json({ error: 'Image too large (max 20MB)' });
+
+    const prompts = {
+      remove_bg: 'Remove the background completely. Keep ONLY the main subject, perfectly cut out, on a fully transparent background. Do not alter the subject itself.',
+      enhance: 'Enhance this image: increase sharpness, clarity, detail and lighting quality. Fix noise and compression artifacts. Keep the content, composition and colors identical — only improve quality.',
+      custom: userPrompt || 'Improve this image.',
+    };
+    const prompt = prompts[operation] || prompts.custom;
+
+    const client = await getOpenAIClient(req.companyId);
+    const { toFile } = await import('openai');
+    const file = await toFile(buffer, 'source.png', { type: 'image/png' });
+
+    const params = { model: 'gpt-image-1', image: file, prompt, size: 'auto' };
+    if (operation === 'remove_bg') params.background = 'transparent';
+
+    let result;
+    try {
+      result = await client.images.edit(params);
+    } catch (err) {
+      // Some accounts/models reject optional params — retry once without extras
+      if (params.background || params.size) {
+        delete params.background; delete params.size;
+        result = await client.images.edit(params);
+      } else throw err;
+    }
+
+    const b64 = result.data?.[0]?.b64_json;
+    if (!b64) throw new Error('Image edit returned no image');
+    res.json({ url: `data:image/png;base64,${b64}`, operation });
+  } catch (err) {
+    console.error('[ai/edit-image]', err.message);
+    if (err.code === 'MISSING_API_KEY') return res.status(402).json({ error: err.message, code: 'MISSING_API_KEY' });
+    const cat = categorizeProviderError(err, 'OpenAI');
+    const status = cat.kind === 'AUTH' || cat.kind === 'QUOTA' ? 402 : cat.kind === 'RATE_LIMIT' ? 429 : 500;
+    res.status(status).json({ error: cat.msg, code: cat.kind });
+  }
+});
+
 // POST /api/ai/tts
 router.post('/tts', requireAuth, async (req, res) => {
   try {

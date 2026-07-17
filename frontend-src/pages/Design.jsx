@@ -15,11 +15,13 @@ import {
 import {
   Palette, Download, Save, Send, Plus, Trash2, Type, Image as ImageIcon,
   Layers, Loader2, Sparkles, ChevronLeft, ChevronRight, Copy, LayoutTemplate,
-  Upload, Wand2,
+  Upload, Wand2, Shapes, Smile, Crop, RotateCw, FlipHorizontal, FlipVertical,
+  Star, Scissors,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Company, DesignTemplate } from '@/api/entities';
 import { GenerateImage, UploadFile } from '@/api/integrations';
+import { api } from '@/api/apiClient';
 import { setDesignHandoff, peekDesignReturn, clearDesignReturn } from '@/lib/designHandoff';
 
 // ─── Aspect ratios (export resolution) ───────────────────────────────────────
@@ -89,7 +91,26 @@ const TEXT_ROLES = [
   { id: 'body', label: 'Text', size: 22, weight: 400 },
 ];
 
+// ─── Shapes / frames library (unit-square polygons → SVG preview + canvas export) ──
+const SHAPES = [
+  { id: 'rect',     label: '■',  kind: 'poly', pts: [[0,0],[1,0],[1,1],[0,1]] },
+  { id: 'circle',   label: '●',  kind: 'ellipse' },
+  { id: 'triangle', label: '▲',  kind: 'poly', pts: [[0.5,0],[1,1],[0,1]] },
+  { id: 'diamond',  label: '◆',  kind: 'poly', pts: [[0.5,0],[1,0.5],[0.5,1],[0,0.5]] },
+  { id: 'hexagon',  label: '⬢',  kind: 'poly', pts: [[0.25,0],[0.75,0],[1,0.5],[0.75,1],[0.25,1],[0,0.5]] },
+  { id: 'star',     label: '★',  kind: 'poly', pts: [[0.5,0],[0.612,0.346],[0.975,0.345],[0.681,0.559],[0.794,0.905],[0.5,0.69],[0.206,0.905],[0.319,0.559],[0.025,0.345],[0.388,0.346]] },
+  { id: 'arrow',    label: '➤',  kind: 'poly', pts: [[0,0.3],[0.6,0.3],[0.6,0],[1,0.5],[0.6,1],[0.6,0.7],[0,0.7]] },
+  { id: 'line',     label: '—',  kind: 'poly', pts: [[0,0.44],[1,0.44],[1,0.56],[0,0.56]] },
+  { id: 'frame',        label: '▢', kind: 'frame', dash: null,   double: false },
+  { id: 'frame-dashed', label: '⬚', kind: 'frame', dash: [12,8], double: false },
+  { id: 'frame-double', label: '▣', kind: 'frame', dash: null,   double: true },
+];
+
+// Icon library (emoji — render identically in preview and canvas export)
+const ICONS = ['⭐','❤️','🔥','💡','✅','➡️','📞','✉️','📍','🎯','🎁','💰','📈','🚀','👍','💬','🎉','⏰','🏆','✨','📸','🎵','☀️','🌙','🛒','🔒','🌍','⚡'];
+
 const BG_PRESETS = ['#111111', '#ffffff', '#38b6ff', '#3572b9', '#cb6ce6', '#22c55e', '#f59e0b', '#ef4444', '#0f172a', '#fdf6ec'];
+const FALLBACK_BRAND_COLORS = ['#3572b9', '#38b6ff', '#cb6ce6', '#0d0d0d', '#ffffff'];
 
 let idCounter = 1;
 const nextId = () => `l${Date.now().toString(36)}${idCounter++}`;
@@ -102,6 +123,7 @@ const newSlide = () => ({
 const DEFAULT_DESIGN = () => ({
   format: 'single',
   aspectRatio: 'square',
+  brandMode: false,
   slides: [newSlide()],
 });
 
@@ -116,6 +138,29 @@ function loadImg(url) {
   });
 }
 
+function roundedPath(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  if (ctx.roundRect) { ctx.roundRect(x, y, w, h, rr); return; }
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+// Apply rotate/flip/opacity around the layer box center, run draw(), restore.
+function withTransforms(ctx, { cx, cy, rotation, flipH, flipV, opacity }, draw) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (rotation) ctx.rotate((rotation * Math.PI) / 180);
+  ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+  ctx.globalAlpha = opacity ?? 1;
+  draw();
+  ctx.restore();
+}
+
 async function renderSlideToCanvas(slide, ratio) {
   const canvas = document.createElement('canvas');
   canvas.width = ratio.w;
@@ -126,7 +171,6 @@ async function renderSlideToCanvas(slide, ratio) {
   if (slide.background.type !== 'color' && slide.background.imageUrl) {
     try {
       const img = await loadImg(slide.background.imageUrl);
-      // cover fit
       const scale = Math.max(ratio.w / img.width, ratio.h / img.height);
       const dw = img.width * scale, dh = img.height * scale;
       ctx.drawImage(img, (ratio.w - dw) / 2, (ratio.h - dh) / 2, dw, dh);
@@ -142,24 +186,72 @@ async function renderSlideToCanvas(slide, ratio) {
   await document.fonts.ready;
 
   for (const layer of slide.layers) {
+    const opacity = layer.opacity ?? 1;
+    const rotation = layer.rotation || 0;
+    const { flipH, flipV } = layer;
+
     if (layer.type === 'image') {
       try {
         const img = await loadImg(layer.url);
-        const w = layer.w * ratio.w;
-        const h = w * (img.height / img.width);
-        ctx.globalAlpha = layer.opacity ?? 1;
-        ctx.drawImage(img, layer.x * ratio.w, layer.y * ratio.h, w, h);
-        ctx.globalAlpha = 1;
+        const crop = layer.crop || { x: 0, y: 0, w: 1, h: 1 };
+        const sx = crop.x * img.width, sy = crop.y * img.height;
+        const sw = crop.w * img.width, sh = crop.h * img.height;
+        const dw = layer.w * ratio.w;
+        const dh = dw * (sh / sw);
+        const dx = layer.x * ratio.w, dy = layer.y * ratio.h;
+        withTransforms(ctx, { cx: dx + dw / 2, cy: dy + dh / 2, rotation, flipH, flipV, opacity }, () => {
+          if (layer.radius) {
+            roundedPath(ctx, -dw / 2, -dh / 2, dw, dh, (layer.radius / 100) * Math.min(dw, dh));
+            ctx.clip();
+          }
+          ctx.drawImage(img, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+        });
       } catch { /* skip broken image */ }
+    } else if (layer.type === 'shape') {
+      const def = SHAPES.find(s => s.id === layer.shape) || SHAPES[0];
+      const dw = layer.w * ratio.w;
+      const dh = dw * (layer.hRel || 1);
+      const dx = layer.x * ratio.w, dy = layer.y * ratio.h;
+      withTransforms(ctx, { cx: dx + dw / 2, cy: dy + dh / 2, rotation, flipH, flipV, opacity }, () => {
+        ctx.fillStyle = layer.fill || '#38b6ff';
+        ctx.strokeStyle = layer.fill || '#38b6ff';
+        if (def.kind === 'ellipse') {
+          ctx.beginPath();
+          ctx.ellipse(0, 0, dw / 2, dh / 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (def.kind === 'frame') {
+          const sw2 = Math.max(2, (layer.strokeW || 4) * (ratio.w / 1080));
+          ctx.lineWidth = sw2;
+          if (def.dash) ctx.setLineDash(def.dash.map(d => d * (ratio.w / 1080)));
+          const r = (layer.radius / 100) * Math.min(dw, dh) || 0;
+          roundedPath(ctx, -dw / 2 + sw2 / 2, -dh / 2 + sw2 / 2, dw - sw2, dh - sw2, r);
+          ctx.stroke();
+          if (def.double) {
+            const inset = sw2 * 2.5;
+            roundedPath(ctx, -dw / 2 + inset, -dh / 2 + inset, dw - inset * 2, dh - inset * 2, Math.max(0, r - inset));
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+        } else {
+          if (layer.radius && layer.shape === 'rect') {
+            roundedPath(ctx, -dw / 2, -dh / 2, dw, dh, (layer.radius / 100) * Math.min(dw, dh));
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            def.pts.forEach(([px, py], i) => {
+              const X = (px - 0.5) * dw, Y = (py - 0.5) * dh;
+              i === 0 ? ctx.moveTo(X, Y) : ctx.lineTo(X, Y);
+            });
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+      });
     } else if (layer.type === 'text') {
       const fontPx = layer.size * (ratio.w / 1080);
       ctx.font = `${layer.weight || 400} ${fontPx}px "${layer.font || 'Inter'}", sans-serif`;
-      ctx.fillStyle = layer.color || '#fff';
-      ctx.textAlign = layer.align || 'left';
-      ctx.textBaseline = 'top';
-      const x = layer.x * ratio.w + (layer.align === 'center' ? (layer.wFrac || 0.8) * ratio.w / 2 : layer.align === 'right' ? (layer.wFrac || 0.8) * ratio.w : 0);
-      // simple word wrap within layer width
       const maxW = (layer.wFrac || 0.8) * ratio.w;
+      // word-wrap
       const lines = [];
       for (const para of String(layer.text || '').split('\n')) {
         let line = '';
@@ -170,8 +262,16 @@ async function renderSlideToCanvas(slide, ratio) {
         }
         lines.push(line);
       }
-      lines.forEach((ln, i) => {
-        ctx.fillText(ln, x, layer.y * ratio.h + i * fontPx * 1.25);
+      const lineH = fontPx * 1.25;
+      const blockH = lines.length * lineH;
+      const bx = layer.x * ratio.w, by = layer.y * ratio.h;
+      withTransforms(ctx, { cx: bx + maxW / 2, cy: by + blockH / 2, rotation, flipH, flipV, opacity }, () => {
+        ctx.font = `${layer.weight || 400} ${fontPx}px "${layer.font || 'Inter'}", sans-serif`;
+        ctx.fillStyle = layer.color || '#fff';
+        ctx.textAlign = layer.align || 'left';
+        ctx.textBaseline = 'top';
+        const tx = layer.align === 'center' ? 0 : layer.align === 'right' ? maxW / 2 : -maxW / 2;
+        lines.forEach((ln, i) => ctx.fillText(ln, tx, -blockH / 2 + i * lineH));
       });
     }
   }
@@ -182,6 +282,13 @@ function canvasToFile(canvas, name) {
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(new File([blob], `${name}.png`, { type: 'image/png' })), 'image/png');
   });
+}
+
+// Persist a data-URL (from AI generate/edit) to storage so it survives.
+async function persistDataUrl(dataUrl, name = 'design-asset') {
+  const blob = await fetch(dataUrl).then(r => r.blob());
+  const saved = await UploadFile({ file: new File([blob], `${name}.png`, { type: 'image/png' }), folder: 'designs' });
+  return saved.url;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -196,11 +303,15 @@ export default function Design() {
   const [templateName, setTemplateName] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showAIBg, setShowAIBg] = useState(false);
+  const [aiMode, setAiMode] = useState('bg'); // 'bg' → background, 'layer' → new image layer
   const [aiBgPrompt, setAiBgPrompt] = useState('');
-  const [busy, setBusy] = useState(null); // 'export' | 'send:social' | 'aibg' | 'upload'
+  const [aiEditPrompt, setAiEditPrompt] = useState('');
+  const [showShapes, setShowShapes] = useState(false);
+  const [showIcons, setShowIcons] = useState(false);
+  const [croppingId, setCroppingId] = useState(null);
+  const [busy, setBusy] = useState(null);
   const canvasWrapRef = useRef(null);
   const dragRef = useRef(null);
-  // Where the user came from (Social/Ads/Blog) + their saved draft, if any
   const [returnCtx] = useState(peekDesignReturn);
 
   // ── Undo history (Ctrl+Z) ───────────────────────────────────────────────
@@ -208,7 +319,7 @@ export default function Design() {
   const lastPushRef = useRef(0);
   const pushHistory = useCallback(() => {
     const now = Date.now();
-    if (now - lastPushRef.current < 500) return; // coalesce rapid edits (drag, typing)
+    if (now - lastPushRef.current < 500) return;
     lastPushRef.current = now;
     setDesign(current => {
       historyRef.current.push(JSON.stringify({ design: current }));
@@ -225,20 +336,25 @@ export default function Design() {
     setDesign(prev);
     setActiveSlide(i => Math.min(i, prev.slides.length - 1));
     setSelectedLayerId(null);
+    setCroppingId(null);
   }, []);
 
   useEffect(() => {
     const onKey = (e) => {
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
-      // Let native text-undo work inside inputs
       const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      e.preventDefault();
-      undo();
+      const inField = tag === 'INPUT' || tag === 'TEXTAREA';
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !inField) {
+        e.preventDefault(); undo(); return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && selectedLayerId) {
+        e.preventDefault();
+        removeLayer(selectedLayerId);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undo, selectedLayerId, activeSlide]);
 
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
   const company = companies[0];
@@ -267,6 +383,26 @@ export default function Design() {
   const slide = design.slides[activeSlide] || design.slides[0];
   const selectedLayer = slide?.layers.find(l => l.id === selectedLayerId) || null;
 
+  // ── Brand identity mode ─────────────────────────────────────────────────
+  const brandMode = !!design.brandMode;
+  const brandColors = (company?.briefing?.brand_colors?.length ? company.briefing.brand_colors : null)
+    || (company?.brand_colors?.length ? company.brand_colors : null)
+    || FALLBACK_BRAND_COLORS;
+  const brandFont = company?.briefing?.brand_font || company?.brand_font || 'Montserrat';
+  const bgPresets = brandMode ? brandColors : BG_PRESETS;
+
+  const toggleBrandMode = () => {
+    pushHistory();
+    const turningOn = !brandMode;
+    setDesign(p => ({ ...p, brandMode: turningOn }));
+    if (turningOn) {
+      ensureFontLoaded(brandFont);
+      toast.success(isPt
+        ? 'Modo marca ativado — cores, fonte e logo da empresa aplicados aos novos elementos.'
+        : 'Brand mode on — company colors, font and logo applied to new elements.');
+    }
+  };
+
   // ── State updaters ──────────────────────────────────────────────────────
   const updateSlide = useCallback((updater) => {
     pushHistory();
@@ -280,16 +416,55 @@ export default function Design() {
     updateSlide(s => ({ ...s, layers: s.layers.map(l => (l.id === layerId ? { ...l, ...patch } : l)) }));
   };
 
+  // Metadata-only updates (e.g. measured image aspect) — no undo history entry
+  const updateLayerSilent = (layerId, patch) => {
+    setDesign(prev => ({
+      ...prev,
+      slides: prev.slides.map((s, i) => i === activeSlide
+        ? { ...s, layers: s.layers.map(l => (l.id === layerId ? { ...l, ...patch } : l)) }
+        : s),
+    }));
+  };
+
   const addTextLayer = (role) => {
     const r = TEXT_ROLES.find(t => t.id === role) || TEXT_ROLES[0];
     const layer = {
       id: nextId(), type: 'text', role: r.id,
       text: r.label === 'Text' ? (isPt ? 'Seu texto aqui' : 'Your text here') : r.label,
-      font: 'Inter', size: r.size, weight: r.weight, color: '#ffffff',
+      font: brandMode ? brandFont : 'Inter',
+      size: r.size, weight: r.weight,
+      color: brandMode && r.id === 'h1' ? brandColors[0] : '#ffffff',
       align: 'left', x: 0.08, y: 0.1 + slide.layers.length * 0.08, wFrac: 0.84,
+    };
+    if (brandMode) ensureFontLoaded(brandFont);
+    updateSlide(s => ({ ...s, layers: [...s.layers, layer] }));
+    setSelectedLayerId(layer.id);
+  };
+
+  const addIconLayer = (emoji) => {
+    const layer = {
+      id: nextId(), type: 'text', role: 'icon', text: emoji,
+      font: 'Inter', size: 120, weight: 400, color: '#ffffff',
+      align: 'center', x: 0.4, y: 0.4, wFrac: 0.2,
     };
     updateSlide(s => ({ ...s, layers: [...s.layers, layer] }));
     setSelectedLayerId(layer.id);
+    setShowIcons(false);
+  };
+
+  const addShapeLayer = (shapeId) => {
+    const isFrame = shapeId.startsWith('frame');
+    const layer = {
+      id: nextId(), type: 'shape', shape: shapeId,
+      fill: brandMode ? brandColors[1] || brandColors[0] : '#38b6ff',
+      w: isFrame ? 0.9 : 0.25,
+      hRel: isFrame ? (ratio.h / ratio.w) * 0.9 / 0.9 : (shapeId === 'line' ? 0.04 : 1),
+      x: isFrame ? 0.05 : 0.375, y: isFrame ? 0.05 * (ratio.w / ratio.h) : 0.375,
+      strokeW: 6, opacity: 1,
+    };
+    updateSlide(s => ({ ...s, layers: [...s.layers, layer] }));
+    setSelectedLayerId(layer.id);
+    setShowShapes(false);
   };
 
   const addImageLayer = async (file, role = 'image') => {
@@ -307,6 +482,7 @@ export default function Design() {
   const removeLayer = (layerId) => {
     updateSlide(s => ({ ...s, layers: s.layers.filter(l => l.id !== layerId) }));
     if (selectedLayerId === layerId) setSelectedLayerId(null);
+    if (croppingId === layerId) setCroppingId(null);
   };
 
   const setBg = (patch) => updateSlide(s => ({ ...s, background: { ...s.background, ...patch } }));
@@ -321,31 +497,63 @@ export default function Design() {
     } finally { setBusy(null); }
   };
 
-  const generateAIBg = async () => {
+  // ── AI: generate (background or layer) ──────────────────────────────────
+  const generateAI = async () => {
     if (!aiBgPrompt.trim()) return;
     setBusy('aibg');
     try {
+      const brandHint = brandMode ? ` Use the brand color palette: ${brandColors.join(', ')}.` : '';
       const url = await GenerateImage({
-        prompt: `${aiBgPrompt}. Style: clean marketing background image, no text, no words, no letters.`,
+        prompt: aiMode === 'bg'
+          ? `${aiBgPrompt}. Style: clean marketing background image, no text, no words, no letters.${brandHint}`
+          : `${aiBgPrompt}.${brandHint}`,
         size: ratio.w >= ratio.h ? '1792x1024' : '1024x1792',
       });
       if (!url) throw new Error('No image returned');
-      // Persist to our storage (provider URLs expire)
-      const blob = await fetch(url).then(r => r.blob());
-      const saved = await UploadFile({ file: new File([blob], 'ai-bg.png', { type: 'image/png' }), folder: 'designs' });
-      setBg({ type: 'ai', imageUrl: saved.url });
+      const savedUrl = await persistDataUrl(url, 'ai-image');
+      if (aiMode === 'bg') {
+        setBg({ type: 'ai', imageUrl: savedUrl });
+      } else {
+        const layer = { id: nextId(), type: 'image', role: 'image', url: savedUrl, x: 0.15, y: 0.15, w: 0.5, opacity: 1 };
+        updateSlide(s => ({ ...s, layers: [...s.layers, layer] }));
+        setSelectedLayerId(layer.id);
+      }
       setShowAIBg(false);
       setAiBgPrompt('');
-      toast.success(isPt ? 'Fundo gerado!' : 'Background generated!');
+      toast.success(isPt ? 'Imagem gerada!' : 'Image generated!');
     } catch (e) {
       toast.error((isPt ? 'Falha ao gerar: ' : 'Generation failed: ') + e.message);
+    } finally { setBusy(null); }
+  };
+
+  // ── AI: edit selected image (remove bg / enhance / custom) ──────────────
+  const aiEditImage = async (operation, prompt) => {
+    if (!selectedLayer || selectedLayer.type !== 'image') return;
+    setBusy(`ai:${operation}`);
+    try {
+      const res = await api.post('/api/ai/edit-image', {
+        image_url: selectedLayer.url, operation, prompt,
+      });
+      const savedUrl = await persistDataUrl(res.url, operation);
+      updateLayer(selectedLayer.id, { url: savedUrl, crop: undefined, natAsp: undefined });
+      setAiEditPrompt('');
+      toast.success(
+        operation === 'remove_bg' ? (isPt ? 'Fundo removido!' : 'Background removed!')
+        : operation === 'enhance' ? (isPt ? 'Qualidade melhorada!' : 'Quality enhanced!')
+        : (isPt ? 'Imagem editada!' : 'Image edited!'));
+    } catch (e) {
+      toast.error((isPt ? 'Falha na edição: ' : 'Edit failed: ') + e.message);
     } finally { setBusy(null); }
   };
 
   // ── Carousel ────────────────────────────────────────────────────────────
   const addSlide = () => {
     pushHistory();
-    setDesign(prev => ({ ...prev, format: 'carousel', slides: [...prev.slides, newSlide()] }));
+    const s = newSlide();
+    if (brandMode && company?.logo_url) {
+      s.layers.push({ id: nextId(), type: 'image', role: 'logo', url: company.logo_url, x: 0.78, y: 0.05, w: 0.16, opacity: 1 });
+    }
+    setDesign(prev => ({ ...prev, format: 'carousel', slides: [...prev.slides, s] }));
     setActiveSlide(design.slides.length);
   };
   const duplicateSlide = () => {
@@ -365,19 +573,55 @@ export default function Design() {
     setActiveSlide(Math.max(0, activeSlide - 1));
   };
 
-  // ── Drag positioning ────────────────────────────────────────────────────
-  const startDrag = (e, layer) => {
+  // ── Drag: move / resize / crop ──────────────────────────────────────────
+  const startDrag = (e, layer, mode = 'move', extra = null) => {
     e.preventDefault();
     e.stopPropagation();
     setSelectedLayerId(layer.id);
     const rect = canvasWrapRef.current.getBoundingClientRect();
-    dragRef.current = { layerId: layer.id, rect, startX: e.clientX, startY: e.clientY, origX: layer.x, origY: layer.y };
+    dragRef.current = {
+      layerId: layer.id, mode, extra, rect,
+      startX: e.clientX, startY: e.clientY,
+      orig: { x: layer.x, y: layer.y, w: layer.w, wFrac: layer.wFrac, size: layer.size, crop: layer.crop ? { ...layer.crop } : { x: 0, y: 0, w: 1, h: 1 }, natAsp: layer.natAsp },
+    };
     const onMove = (ev) => {
       const d = dragRef.current;
       if (!d) return;
-      const dx = (ev.clientX - d.startX) / d.rect.width;
-      const dy = (ev.clientY - d.startY) / d.rect.height;
-      updateLayer(d.layerId, { x: Math.min(0.98, Math.max(-0.3, d.origX + dx)), y: Math.min(0.98, Math.max(-0.3, d.origY + dy)) });
+      const fx = (ev.clientX - d.startX) / d.rect.width;
+      const fy = (ev.clientY - d.startY) / d.rect.height;
+
+      if (d.mode === 'move') {
+        updateLayer(d.layerId, {
+          x: Math.min(0.98, Math.max(-0.4, d.orig.x + fx)),
+          y: Math.min(0.98, Math.max(-0.4, d.orig.y + fy)),
+        });
+      } else if (d.mode === 'resize') {
+        // corner handle: drag right/down to grow
+        const grow = fx; // horizontal movement drives size
+        if (d.orig.wFrac !== undefined && d.orig.size !== undefined) {
+          // text layer: scale box AND font together
+          const factor = Math.max(0.1, (d.orig.wFrac + grow) / d.orig.wFrac);
+          updateLayer(d.layerId, {
+            wFrac: Math.min(1, Math.max(0.05, d.orig.wFrac + grow)),
+            size: Math.max(8, Math.round(d.orig.size * factor)),
+          });
+        } else {
+          updateLayer(d.layerId, { w: Math.min(1.5, Math.max(0.03, d.orig.w + grow)) });
+        }
+      } else if (d.mode === 'crop') {
+        // edge handles trim the CURRENT crop window
+        const c = { ...d.orig.crop };
+        const layerW = d.orig.w; // fraction of canvas width
+        const dispW = layerW * d.rect.width;
+        const dispH = dispW * (c.h / c.w) * (d.orig.natAsp || 1);
+        const dxFrac = (ev.clientX - d.startX) / dispW; // fraction of displayed crop
+        const dyFrac = (ev.clientY - d.startY) / dispH;
+        if (d.extra === 'left')   { const t = Math.min(0.9 * c.w, Math.max(0, dxFrac * c.w));  c.x = d.orig.crop.x + t; c.w = d.orig.crop.w - t; }
+        if (d.extra === 'right')  { const t = Math.min(0.9 * c.w, Math.max(0, -dxFrac * c.w)); c.w = d.orig.crop.w - t; }
+        if (d.extra === 'top')    { const t = Math.min(0.9 * c.h, Math.max(0, dyFrac * c.h));  c.y = d.orig.crop.y + t; c.h = d.orig.crop.h - t; }
+        if (d.extra === 'bottom') { const t = Math.min(0.9 * c.h, Math.max(0, -dyFrac * c.h)); c.h = d.orig.crop.h - t; }
+        updateLayer(d.layerId, { crop: c });
+      }
     };
     const onUp = () => {
       dragRef.current = null;
@@ -424,14 +668,8 @@ export default function Design() {
         const { url } = await UploadFile({ file: f, folder: 'designs' });
         urls.push(url);
       }
-      // If the user came FROM this section, ride their saved draft along so
-      // the images attach to the exact post/creatives they were working on.
       const cameFromTarget = returnCtx?.source === target;
-      setDesignHandoff({
-        target, urls,
-        name: templateName || 'Design',
-        draft: cameFromTarget ? returnCtx.draft : null,
-      });
+      setDesignHandoff({ target, urls, name: templateName || 'Design', draft: cameFromTarget ? returnCtx.draft : null });
       if (cameFromTarget) clearDesignReturn();
       toast.success(isPt ? 'Design enviado!' : 'Design sent!');
       navigate(path);
@@ -445,7 +683,7 @@ export default function Design() {
       const cfg = t.config || {};
       if (!cfg.slides?.length) throw new Error('empty');
       pushHistory();
-      setDesign({ format: cfg.format || 'single', aspectRatio: cfg.aspectRatio || 'square', slides: cfg.slides });
+      setDesign({ format: cfg.format || 'single', aspectRatio: cfg.aspectRatio || 'square', brandMode: !!cfg.brandMode, slides: cfg.slides });
       setActiveSlide(0);
       setSelectedLayerId(null);
       cfg.slides.forEach(s => s.layers?.forEach(l => l.font && ensureFontLoaded(l.font)));
@@ -455,11 +693,9 @@ export default function Design() {
     }
   };
 
-  // Load brand fonts on mount for defaults
   useEffect(() => { ensureFontLoaded('Inter'); ensureFontLoaded('Bebas Neue'); }, []);
 
-  // Preview scaling — fit BOTH a max height and the available container width,
-  // so wide banners and phones don't overflow horizontally.
+  // Preview sizing — fit viewport height AND container width
   const stageRef = useRef(null);
   const [stageW, setStageW] = useState(0);
   useEffect(() => {
@@ -468,8 +704,6 @@ export default function Design() {
     ro.observe(stageRef.current);
     return () => ro.disconnect();
   }, []);
-  // Canvas fits BOTH the available width and the viewport height so it always
-  // adjusts to the screen (laptops, big monitors, phones).
   const [maxPreviewH, setMaxPreviewH] = useState(440);
   useEffect(() => {
     const calc = () => setMaxPreviewH(Math.max(260, Math.min(540, (window.innerHeight || 800) - 330)));
@@ -491,6 +725,109 @@ export default function Design() {
   ];
   const returnTarget = returnCtx ? SEND_TARGETS.find(d => d.key === returnCtx.source) : null;
 
+  // ── Layer preview renderers ─────────────────────────────────────────────
+  const layerTransform = (l) => {
+    const parts = [];
+    if (l.rotation) parts.push(`rotate(${l.rotation}deg)`);
+    if (l.flipH) parts.push('scaleX(-1)');
+    if (l.flipV) parts.push('scaleY(-1)');
+    return parts.join(' ') || undefined;
+  };
+
+  const renderShapePreview = (l, isSel) => {
+    const def = SHAPES.find(s => s.id === l.shape) || SHAPES[0];
+    const wPct = l.w * 100;
+    const hPx = l.w * previewW * (l.hRel || 1);
+    return (
+      <div key={l.id}
+        onMouseDown={(e) => startDrag(e, l)}
+        className={`absolute cursor-move select-none ${isSel ? 'ring-2 ring-[#38b6ff]' : ''}`}
+        style={{
+          left: `${l.x * 100}%`, top: `${l.y * 100}%`,
+          width: `${wPct}%`, height: hPx,
+          transform: layerTransform(l), opacity: l.opacity ?? 1,
+        }}>
+        {def.kind === 'ellipse' ? (
+          <div style={{ width: '100%', height: '100%', background: l.fill, borderRadius: '50%' }} />
+        ) : def.kind === 'frame' ? (
+          (() => {
+            const bw = Math.max(1, (l.strokeW || 4) * (previewW / 1080));
+            const line = `${bw}px ${def.dash ? 'dashed' : 'solid'} ${l.fill}`;
+            return (
+              <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                <div style={{ position: 'absolute', inset: 0, border: line, borderRadius: `${l.radius || 0}%` }} />
+                {def.double && (
+                  <div style={{ position: 'absolute', inset: bw * 2.5, border: line, borderRadius: `${Math.max(0, (l.radius || 0) - 4)}%` }} />
+                )}
+              </div>
+            );
+          })()
+        ) : l.shape === 'rect' ? (
+          <div style={{ width: '100%', height: '100%', background: l.fill, borderRadius: `${l.radius || 0}%` }} />
+        ) : (
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
+            <polygon points={def.pts.map(([px, py]) => `${px * 100},${py * 100}`).join(' ')} fill={l.fill} />
+          </svg>
+        )}
+        {isSel && renderResizeHandle(l)}
+      </div>
+    );
+  };
+
+  const renderResizeHandle = (l) => (
+    <div
+      onMouseDown={(e) => startDrag(e, l, 'resize')}
+      title={isPt ? 'Arraste para redimensionar' : 'Drag to resize'}
+      className="absolute -right-2 -bottom-2 w-4 h-4 rounded-full bg-[#38b6ff] border-2 border-white cursor-nwse-resize shadow"
+      style={{ zIndex: 5 }}
+    />
+  );
+
+  const CROP_HANDLES = [
+    { k: 'left',   style: { left: -6, top: '50%', marginTop: -12, width: 12, height: 24, cursor: 'ew-resize' } },
+    { k: 'right',  style: { right: -6, top: '50%', marginTop: -12, width: 12, height: 24, cursor: 'ew-resize' } },
+    { k: 'top',    style: { top: -6, left: '50%', marginLeft: -12, width: 24, height: 12, cursor: 'ns-resize' } },
+    { k: 'bottom', style: { bottom: -6, left: '50%', marginLeft: -12, width: 24, height: 12, cursor: 'ns-resize' } },
+  ];
+
+  const renderImagePreview = (l, isSel) => {
+    const crop = l.crop;
+    const isCropping = croppingId === l.id;
+    const common = {
+      onMouseDown: (e) => (isCropping ? null : startDrag(e, l)),
+      className: `absolute select-none ${isCropping ? '' : 'cursor-move'} ${isSel ? 'ring-2 ring-[#38b6ff]' : ''}`,
+      style: {
+        left: `${l.x * 100}%`, top: `${l.y * 100}%`,
+        width: `${l.w * 100}%`,
+        transform: layerTransform(l),
+        opacity: l.opacity ?? 1,
+      },
+    };
+    const imgInner = crop && l.natAsp ? (
+      <div style={{ width: '100%', overflow: 'hidden', aspectRatio: `${crop.w / (crop.h * l.natAsp)}`, borderRadius: `${l.radius || 0}%` }}>
+        <img src={l.url} alt="" draggable={false}
+          style={{ width: `${100 / crop.w}%`, transform: `translate(-${crop.x * 100}%, -${crop.y * 100}%)`, display: 'block' }}
+          onLoad={(e) => { if (!l.natAsp) updateLayerSilent(l.id, { natAsp: e.target.naturalHeight / e.target.naturalWidth }); }} />
+      </div>
+    ) : (
+      <img src={l.url} alt="" draggable={false}
+        style={{ width: '100%', display: 'block', borderRadius: `${l.radius || 0}%` }}
+        onLoad={(e) => { if (!l.natAsp) updateLayerSilent(l.id, { natAsp: e.target.naturalHeight / e.target.naturalWidth }); }} />
+    );
+    return (
+      <div key={l.id} {...common}>
+        {imgInner}
+        {isSel && !isCropping && renderResizeHandle(l)}
+        {isCropping && CROP_HANDLES.map(h => (
+          <div key={h.k}
+            onMouseDown={(e) => startDrag(e, l, 'crop', h.k)}
+            className="absolute bg-[#38b6ff] border border-white rounded-sm shadow"
+            style={{ ...h.style, position: 'absolute', zIndex: 6 }} />
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -498,15 +835,24 @@ export default function Design() {
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight"
             style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>
-            {isPt ? 'Design' : 'Design'}
+            Design
           </h1>
           <p className="text-gray-400 mt-1">
             {isPt
-              ? 'Crie imagens alinhadas à marca para Blog, Redes Sociais e Anúncios — templates, textos, fundos e logos.'
-              : 'Create on-brand images for Blog, Social Media and Ads — templates, text, backgrounds and logos.'}
+              ? 'Crie imagens alinhadas à marca para Blog, Redes Sociais e Anúncios — templates, textos, fundos, formas e logos.'
+              : 'Create on-brand images for Blog, Social Media and Ads — templates, text, backgrounds, shapes and logos.'}
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          {/* Brand identity toggle */}
+          <button onClick={toggleBrandMode}
+            title={isPt ? 'Seguir identidade da marca' : 'Follow brand identity'}
+            className={`flex items-center gap-2 px-3 h-9 rounded-lg border text-sm transition-all ${brandMode ? 'bg-[#cb6ce6]/20 border-[#cb6ce6]/50 text-[#cb6ce6]' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
+            <span className={`w-7 h-4 rounded-full relative transition-colors ${brandMode ? 'bg-[#cb6ce6]' : 'bg-white/20'}`}>
+              <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${brandMode ? 'left-3.5' : 'left-0.5'}`} />
+            </span>
+            {isPt ? 'Marca' : 'Brand'}
+          </button>
           <Button variant="outline" onClick={undo} title="Ctrl+Z"
             className="border-white/10 text-white hover:bg-white/5 gap-2">
             ↩ {isPt ? 'Desfazer' : 'Undo'}
@@ -523,12 +869,12 @@ export default function Design() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr_300px] gap-5">
-        {/* ── LEFT: templates + format ── */}
+        {/* ── LEFT ── */}
         <div className="space-y-4">
           <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-3">
             <p className="text-white text-sm font-semibold flex items-center gap-2"><LayoutTemplate size={14} className="text-[#38b6ff]" /> {isPt ? 'Formato' : 'Format'}</p>
             <div className="flex gap-2">
-              <button onClick={() => { setDesign(p => ({ ...p, format: 'single', slides: [p.slides[activeSlide] || p.slides[0]] })); setActiveSlide(0); }}
+              <button onClick={() => { pushHistory(); setDesign(p => ({ ...p, format: 'single', slides: [p.slides[activeSlide] || p.slides[0]] })); setActiveSlide(0); }}
                 className={`flex-1 px-3 py-2 rounded-xl text-sm border transition-all ${design.format === 'single' ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40 text-[#38b6ff]' : 'bg-black/20 border-white/10 text-gray-400'}`}>
                 {isPt ? 'Única' : 'Single'}
               </button>
@@ -599,15 +945,14 @@ export default function Design() {
 
         {/* ── CENTER: canvas ── */}
         <div className="space-y-3">
-          {/* Slide nav (carousel) */}
           {design.format === 'carousel' && (
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex items-center justify-center gap-3 flex-wrap">
               <button onClick={() => setActiveSlide(Math.max(0, activeSlide - 1))} className="text-gray-400 hover:text-white"><ChevronLeft size={18} /></button>
-              <span className="text-gray-400 text-sm">{isPt ? 'Slide' : 'Slide'} {activeSlide + 1}/{design.slides.length}</span>
+              <span className="text-gray-400 text-sm">Slide {activeSlide + 1}/{design.slides.length}</span>
               <button onClick={() => setActiveSlide(Math.min(design.slides.length - 1, activeSlide + 1))} className="text-gray-400 hover:text-white"><ChevronRight size={18} /></button>
               <div className="flex gap-1 ml-2">
                 <Button size="sm" variant="outline" onClick={duplicateSlide} className="border-white/10 text-white h-7 px-2 text-xs gap-1"><Copy size={11} />{isPt ? 'Duplicar' : 'Duplicate'}</Button>
-                <Button size="sm" variant="outline" onClick={addSlide} className="border-white/10 text-white h-7 px-2 text-xs gap-1"><Plus size={11} />{isPt ? 'Slide' : 'Slide'}</Button>
+                <Button size="sm" variant="outline" onClick={addSlide} className="border-white/10 text-white h-7 px-2 text-xs gap-1"><Plus size={11} />Slide</Button>
                 {design.slides.length > 1 && (
                   <Button size="sm" variant="outline" onClick={removeSlide} className="border-red-500/20 text-red-400 h-7 px-2 text-xs"><Trash2 size={11} /></Button>
                 )}
@@ -624,21 +969,11 @@ export default function Design() {
                   ? `url(${slide.background.imageUrl}) center/cover`
                   : slide.background.color,
               }}
-              onMouseDown={() => setSelectedLayerId(null)}>
+              onMouseDown={() => { setSelectedLayerId(null); setCroppingId(null); }}>
               {slide.layers.map(layer => {
                 const isSel = layer.id === selectedLayerId;
-                if (layer.type === 'image') {
-                  return (
-                    <img key={layer.id} src={layer.url} alt=""
-                      draggable={false}
-                      onMouseDown={(e) => startDrag(e, layer)}
-                      className={`absolute cursor-move select-none ${isSel ? 'ring-2 ring-[#38b6ff]' : ''}`}
-                      style={{
-                        left: `${layer.x * 100}%`, top: `${layer.y * 100}%`,
-                        width: `${layer.w * 100}%`, opacity: layer.opacity ?? 1,
-                      }} />
-                  );
-                }
+                if (layer.type === 'image') return renderImagePreview(layer, isSel);
+                if (layer.type === 'shape') return renderShapePreview(layer, isSel);
                 const fontPx = layer.size * (previewW / 1080);
                 return (
                   <div key={layer.id}
@@ -651,8 +986,11 @@ export default function Design() {
                       fontSize: fontPx, fontWeight: layer.weight,
                       color: layer.color, textAlign: layer.align,
                       lineHeight: 1.25,
+                      transform: layerTransform(layer),
+                      opacity: layer.opacity ?? 1,
                     }}>
                     {layer.text}
+                    {isSel && renderResizeHandle(layer)}
                   </div>
                 );
               })}
@@ -675,6 +1013,18 @@ export default function Design() {
               <input type="file" accept="image/*" className="hidden"
                 onChange={(e) => e.target.files?.[0] && addImageLayer(e.target.files[0], 'image')} />
             </label>
+            <button onClick={() => { setShowShapes(v => !v); setShowIcons(false); }}
+              className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-sm transition-all ${showShapes ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40 text-[#38b6ff]' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}>
+              <Shapes size={13} /> {isPt ? '+ Forma' : '+ Shape'}
+            </button>
+            <button onClick={() => { setShowIcons(v => !v); setShowShapes(false); }}
+              className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-sm transition-all ${showIcons ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40 text-[#38b6ff]' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}>
+              <Smile size={13} /> {isPt ? '+ Ícone' : '+ Icon'}
+            </button>
+            <button onClick={() => { setAiMode('layer'); setShowAIBg(true); }}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-lg bg-gradient-to-r from-[#cb6ce6]/20 to-[#38b6ff]/20 border border-[#cb6ce6]/30 hover:border-[#cb6ce6]/60 text-sm text-white transition-all">
+              <Wand2 size={13} /> {isPt ? '+ Imagem IA' : '+ AI Image'}
+            </button>
             <label className="flex items-center gap-1.5 px-3 h-9 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 cursor-pointer text-sm text-white transition-all">
               <Sparkles size={13} /> {isPt ? '+ Logo' : '+ Logo'}
               <input type="file" accept="image/*" className="hidden"
@@ -689,15 +1039,47 @@ export default function Design() {
               </Button>
             )}
           </div>
+
+          {/* Shapes library */}
+          {showShapes && (
+            <div className="flex justify-center">
+              <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5 p-3 rounded-2xl bg-[#151515] border border-white/10">
+                {SHAPES.map(s => (
+                  <button key={s.id} onClick={() => addShapeLayer(s.id)}
+                    title={s.id}
+                    className="w-10 h-10 rounded-lg bg-white/5 hover:bg-[#38b6ff]/20 border border-white/10 hover:border-[#38b6ff]/40 text-white text-lg transition-all">
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Icons library */}
+          {showIcons && (
+            <div className="flex justify-center">
+              <div className="grid grid-cols-7 sm:grid-cols-14 gap-1.5 p-3 rounded-2xl bg-[#151515] border border-white/10">
+                {ICONS.map(ic => (
+                  <button key={ic} onClick={() => addIconLayer(ic)}
+                    className="w-10 h-10 rounded-lg bg-white/5 hover:bg-[#38b6ff]/20 border border-white/10 hover:border-[#38b6ff]/40 text-xl transition-all">
+                    {ic}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── RIGHT: properties ── */}
         <div className="space-y-4">
           {/* Background */}
           <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-3">
-            <p className="text-white text-sm font-semibold">{isPt ? 'Fundo' : 'Background'}</p>
+            <p className="text-white text-sm font-semibold flex items-center justify-between">
+              {isPt ? 'Fundo' : 'Background'}
+              {brandMode && <span className="text-[10px] text-[#cb6ce6] font-normal">{isPt ? 'cores da marca' : 'brand colors'}</span>}
+            </p>
             <div className="flex flex-wrap gap-1.5">
-              {BG_PRESETS.map(c => (
+              {bgPresets.map(c => (
                 <button key={c} onClick={() => setBg({ type: 'color', color: c, imageUrl: null })}
                   className={`w-7 h-7 rounded-lg border ${slide.background.type === 'color' && slide.background.color === c ? 'border-[#38b6ff] ring-1 ring-[#38b6ff]' : 'border-white/20'}`}
                   style={{ background: c }} />
@@ -712,7 +1094,7 @@ export default function Design() {
                 <input type="file" accept="image/*" className="hidden"
                   onChange={(e) => e.target.files?.[0] && uploadBgImage(e.target.files[0])} />
               </label>
-              <button onClick={() => setShowAIBg(true)}
+              <button onClick={() => { setAiMode('bg'); setShowAIBg(true); }}
                 className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-gradient-to-r from-[#cb6ce6]/20 to-[#38b6ff]/20 border border-[#cb6ce6]/30 hover:border-[#cb6ce6]/60 text-xs text-white transition-all">
                 <Wand2 size={12} /> {isPt ? 'Fundo IA' : 'AI Background'}
               </button>
@@ -727,72 +1109,169 @@ export default function Design() {
                 <button onClick={() => removeLayer(selectedLayer.id)} className="text-red-400/70 hover:text-red-400"><Trash2 size={13} /></button>
               )}
             </div>
-            {!selectedLayer && <p className="text-gray-500 text-xs">{isPt ? 'Clique em um elemento no canvas para editar. Arraste para posicionar.' : 'Click an element on the canvas to edit. Drag to position.'}</p>}
+            {!selectedLayer && <p className="text-gray-500 text-xs">{isPt ? 'Clique em um elemento no canvas. Arraste para mover; use o ponto azul para redimensionar.' : 'Click an element on the canvas. Drag to move; use the blue dot to resize.'}</p>}
 
-            {selectedLayer?.type === 'text' && (
-              <div className="space-y-3">
-                <Textarea value={selectedLayer.text}
-                  onChange={(e) => updateLayer(selectedLayer.id, { text: e.target.value })}
-                  className="bg-black/30 border-white/10 text-white text-sm min-h-[70px]" />
-                <div>
-                  <Label className="text-gray-400 text-xs">{isPt ? 'Fonte' : 'Font'}</Label>
-                  <Select value={selectedLayer.font}
-                    onValueChange={(v) => { ensureFontLoaded(v); updateLayer(selectedLayer.id, { font: v }); }}>
-                    <SelectTrigger className="bg-black/30 border-white/10 text-white mt-1 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent className="max-h-[260px]">
-                      {FONTS.map(f => <SelectItem key={f.name} value={f.name}><span style={{ fontFamily: f.name }}>{f.name}</span></SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
+            {selectedLayer && (
+              <>
+                {/* Common: rotate / flip / opacity / radius */}
+                <div className="space-y-2.5">
                   <div>
-                    <Label className="text-gray-400 text-xs">{isPt ? 'Tamanho' : 'Size'}</Label>
-                    <Input type="number" min={8} max={300} value={selectedLayer.size}
-                      onChange={(e) => updateLayer(selectedLayer.id, { size: Number(e.target.value) || 22 })}
-                      className="bg-black/30 border-white/10 text-white mt-1 h-8 text-xs" />
+                    <Label className="text-gray-400 text-xs flex items-center gap-1"><RotateCw size={11} /> {isPt ? 'Rotação' : 'Rotation'} ({selectedLayer.rotation || 0}°)</Label>
+                    <input type="range" min={-180} max={180} value={selectedLayer.rotation || 0}
+                      onChange={(e) => updateLayer(selectedLayer.id, { rotation: Number(e.target.value) })}
+                      onDoubleClick={() => updateLayer(selectedLayer.id, { rotation: 0 })}
+                      className="w-full mt-1 accent-[#38b6ff]" />
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => updateLayer(selectedLayer.id, { flipH: !selectedLayer.flipH })}
+                      className={`flex-1 py-1.5 rounded-lg text-xs border flex items-center justify-center gap-1 ${selectedLayer.flipH ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40 text-[#38b6ff]' : 'bg-black/20 border-white/10 text-gray-400'}`}>
+                      <FlipHorizontal size={12} /> {isPt ? 'Inverter H' : 'Flip H'}
+                    </button>
+                    <button onClick={() => updateLayer(selectedLayer.id, { flipV: !selectedLayer.flipV })}
+                      className={`flex-1 py-1.5 rounded-lg text-xs border flex items-center justify-center gap-1 ${selectedLayer.flipV ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40 text-[#38b6ff]' : 'bg-black/20 border-white/10 text-gray-400'}`}>
+                      <FlipVertical size={12} /> {isPt ? 'Inverter V' : 'Flip V'}
+                    </button>
                   </div>
                   <div>
-                    <Label className="text-gray-400 text-xs">{isPt ? 'Cor' : 'Color'}</Label>
-                    <input type="color" value={selectedLayer.color}
-                      onChange={(e) => updateLayer(selectedLayer.id, { color: e.target.value })}
-                      className="w-full h-8 mt-1 rounded-lg bg-transparent border border-white/20 cursor-pointer" />
+                    <Label className="text-gray-400 text-xs">{isPt ? 'Opacidade' : 'Opacity'} ({Math.round((selectedLayer.opacity ?? 1) * 100)}%)</Label>
+                    <input type="range" min={5} max={100} value={(selectedLayer.opacity ?? 1) * 100}
+                      onChange={(e) => updateLayer(selectedLayer.id, { opacity: Number(e.target.value) / 100 })}
+                      className="w-full mt-1 accent-[#38b6ff]" />
                   </div>
+                  {(selectedLayer.type === 'image' || (selectedLayer.type === 'shape' && ['rect', 'frame', 'frame-dashed', 'frame-double'].includes(selectedLayer.shape))) && (
+                    <div>
+                      <Label className="text-gray-400 text-xs">{isPt ? 'Cantos arredondados' : 'Border radius'} ({selectedLayer.radius || 0}%)</Label>
+                      <input type="range" min={0} max={50} value={selectedLayer.radius || 0}
+                        onChange={(e) => updateLayer(selectedLayer.id, { radius: Number(e.target.value) })}
+                        className="w-full mt-1 accent-[#38b6ff]" />
+                    </div>
+                  )}
                 </div>
-                <div className="flex gap-1.5">
-                  {['left', 'center', 'right'].map(a => (
-                    <button key={a} onClick={() => updateLayer(selectedLayer.id, { align: a })}
-                      className={`flex-1 py-1.5 rounded-lg text-xs border ${selectedLayer.align === a ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40 text-[#38b6ff]' : 'bg-black/20 border-white/10 text-gray-400'}`}>
-                      {a === 'left' ? (isPt ? 'Esq.' : 'Left') : a === 'center' ? (isPt ? 'Centro' : 'Center') : (isPt ? 'Dir.' : 'Right')}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-1.5">
-                  {[400, 700, 900].map(w => (
-                    <button key={w} onClick={() => updateLayer(selectedLayer.id, { weight: w })}
-                      className={`flex-1 py-1.5 rounded-lg text-xs border ${selectedLayer.weight === w ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40 text-[#38b6ff]' : 'bg-black/20 border-white/10 text-gray-400'}`}
-                      style={{ fontWeight: w }}>
-                      {w === 400 ? 'Regular' : w === 700 ? 'Bold' : 'Black'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            {selectedLayer?.type === 'image' && (
-              <div className="space-y-3">
-                <div>
-                  <Label className="text-gray-400 text-xs">{isPt ? 'Largura' : 'Width'} ({Math.round(selectedLayer.w * 100)}%)</Label>
-                  <input type="range" min={5} max={100} value={selectedLayer.w * 100}
-                    onChange={(e) => updateLayer(selectedLayer.id, { w: Number(e.target.value) / 100 })}
-                    className="w-full mt-1 accent-[#38b6ff]" />
-                </div>
-                <div>
-                  <Label className="text-gray-400 text-xs">{isPt ? 'Opacidade' : 'Opacity'} ({Math.round((selectedLayer.opacity ?? 1) * 100)}%)</Label>
-                  <input type="range" min={10} max={100} value={(selectedLayer.opacity ?? 1) * 100}
-                    onChange={(e) => updateLayer(selectedLayer.id, { opacity: Number(e.target.value) / 100 })}
-                    className="w-full mt-1 accent-[#38b6ff]" />
-                </div>
-              </div>
+                {/* Image-specific: crop + AI tools */}
+                {selectedLayer.type === 'image' && (
+                  <div className="space-y-2 pt-2 border-t border-white/10">
+                    <div className="flex gap-1.5">
+                      <button onClick={() => setCroppingId(croppingId === selectedLayer.id ? null : selectedLayer.id)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs border flex items-center justify-center gap-1 ${croppingId === selectedLayer.id ? 'bg-[#f59e0b]/20 border-[#f59e0b]/50 text-[#f59e0b]' : 'bg-black/20 border-white/10 text-gray-400'}`}>
+                        <Crop size={12} /> {croppingId === selectedLayer.id ? (isPt ? 'Concluir corte' : 'Done cropping') : (isPt ? 'Cortar' : 'Crop')}
+                      </button>
+                      {selectedLayer.crop && (
+                        <button onClick={() => updateLayer(selectedLayer.id, { crop: undefined })}
+                          className="py-1.5 px-2.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-400">
+                          {isPt ? 'Resetar' : 'Reset'}
+                        </button>
+                      )}
+                    </div>
+                    {croppingId === selectedLayer.id && (
+                      <p className="text-[10px] text-[#f59e0b]/80">{isPt ? 'Arraste as alças nas bordas da imagem para cortar.' : 'Drag the handles on the image edges to crop.'}</p>
+                    )}
+                    <div className="flex gap-1.5">
+                      <button onClick={() => aiEditImage('remove_bg')} disabled={!!busy}
+                        className="flex-1 py-1.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-300 hover:border-[#cb6ce6]/50 flex items-center justify-center gap-1 disabled:opacity-50">
+                        {busyIs('ai:remove_bg') ? <Loader2 size={12} className="animate-spin" /> : <Scissors size={12} />}
+                        {isPt ? 'Remover fundo' : 'Remove BG'}
+                      </button>
+                      <button onClick={() => aiEditImage('enhance')} disabled={!!busy}
+                        className="flex-1 py-1.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-300 hover:border-[#cb6ce6]/50 flex items-center justify-center gap-1 disabled:opacity-50">
+                        {busyIs('ai:enhance') ? <Loader2 size={12} className="animate-spin" /> : <Star size={12} />}
+                        {isPt ? 'Melhorar' : 'Enhance'}
+                      </button>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Input value={aiEditPrompt} onChange={(e) => setAiEditPrompt(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && aiEditPrompt.trim() && aiEditImage('custom', aiEditPrompt)}
+                        placeholder={isPt ? 'Editar com IA: ex. "deixe o céu roxo"' : 'AI edit: e.g. "make the sky purple"'}
+                        className="bg-black/30 border-white/10 text-white text-xs h-8" />
+                      <Button size="sm" disabled={!aiEditPrompt.trim() || !!busy}
+                        onClick={() => aiEditImage('custom', aiEditPrompt)}
+                        className="h-8 px-2.5 bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff]">
+                        {busyIs('ai:custom') ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Shape-specific */}
+                {selectedLayer.type === 'shape' && (
+                  <div className="space-y-2 pt-2 border-t border-white/10">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-gray-400 text-xs">{isPt ? 'Cor' : 'Color'}</Label>
+                      <input type="color" value={selectedLayer.fill}
+                        onChange={(e) => updateLayer(selectedLayer.id, { fill: e.target.value })}
+                        className="w-8 h-8 rounded-lg bg-transparent border border-white/20 cursor-pointer" />
+                      {brandMode && brandColors.map(c => (
+                        <button key={c} onClick={() => updateLayer(selectedLayer.id, { fill: c })}
+                          className="w-6 h-6 rounded border border-white/20" style={{ background: c }} />
+                      ))}
+                    </div>
+                    <div>
+                      <Label className="text-gray-400 text-xs">{isPt ? 'Altura' : 'Height'} ({Math.round((selectedLayer.hRel || 1) * 100)}%)</Label>
+                      <input type="range" min={2} max={200} value={(selectedLayer.hRel || 1) * 100}
+                        onChange={(e) => updateLayer(selectedLayer.id, { hRel: Number(e.target.value) / 100 })}
+                        className="w-full mt-1 accent-[#38b6ff]" />
+                    </div>
+                    {selectedLayer.shape?.startsWith('frame') && (
+                      <div>
+                        <Label className="text-gray-400 text-xs">{isPt ? 'Espessura da borda' : 'Border thickness'} ({selectedLayer.strokeW || 4}px)</Label>
+                        <input type="range" min={1} max={40} value={selectedLayer.strokeW || 4}
+                          onChange={(e) => updateLayer(selectedLayer.id, { strokeW: Number(e.target.value) })}
+                          className="w-full mt-1 accent-[#38b6ff]" />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Text-specific */}
+                {selectedLayer.type === 'text' && (
+                  <div className="space-y-3 pt-2 border-t border-white/10">
+                    <Textarea value={selectedLayer.text}
+                      onChange={(e) => updateLayer(selectedLayer.id, { text: e.target.value })}
+                      className="bg-black/30 border-white/10 text-white text-sm min-h-[70px]" />
+                    <div>
+                      <Label className="text-gray-400 text-xs">{isPt ? 'Fonte' : 'Font'}</Label>
+                      <Select value={selectedLayer.font}
+                        onValueChange={(v) => { ensureFontLoaded(v); updateLayer(selectedLayer.id, { font: v }); }}>
+                        <SelectTrigger className="bg-black/30 border-white/10 text-white mt-1 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent className="max-h-[260px]">
+                          {FONTS.map(f => <SelectItem key={f.name} value={f.name}><span style={{ fontFamily: f.name }}>{f.name}</span></SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-gray-400 text-xs">{isPt ? 'Tamanho' : 'Size'}</Label>
+                        <Input type="number" min={8} max={400} value={selectedLayer.size}
+                          onChange={(e) => updateLayer(selectedLayer.id, { size: Number(e.target.value) || 22 })}
+                          className="bg-black/30 border-white/10 text-white mt-1 h-8 text-xs" />
+                      </div>
+                      <div>
+                        <Label className="text-gray-400 text-xs">{isPt ? 'Cor' : 'Color'}</Label>
+                        <input type="color" value={selectedLayer.color}
+                          onChange={(e) => updateLayer(selectedLayer.id, { color: e.target.value })}
+                          className="w-full h-8 mt-1 rounded-lg bg-transparent border border-white/20 cursor-pointer" />
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5">
+                      {['left', 'center', 'right'].map(a => (
+                        <button key={a} onClick={() => updateLayer(selectedLayer.id, { align: a })}
+                          className={`flex-1 py-1.5 rounded-lg text-xs border ${selectedLayer.align === a ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40 text-[#38b6ff]' : 'bg-black/20 border-white/10 text-gray-400'}`}>
+                          {a === 'left' ? (isPt ? 'Esq.' : 'Left') : a === 'center' ? (isPt ? 'Centro' : 'Center') : (isPt ? 'Dir.' : 'Right')}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5">
+                      {[400, 700, 900].map(w => (
+                        <button key={w} onClick={() => updateLayer(selectedLayer.id, { weight: w })}
+                          className={`flex-1 py-1.5 rounded-lg text-xs border ${selectedLayer.weight === w ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40 text-[#38b6ff]' : 'bg-black/20 border-white/10 text-gray-400'}`}
+                          style={{ fontWeight: w }}>
+                          {w === 400 ? 'Regular' : w === 700 ? 'Bold' : 'Black'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -804,8 +1283,12 @@ export default function Design() {
                 {slide.layers.map(l => (
                   <button key={l.id} onClick={() => setSelectedLayerId(l.id)}
                     className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-left transition-all ${l.id === selectedLayerId ? 'bg-[#38b6ff]/15 text-[#38b6ff]' : 'text-gray-400 hover:bg-white/5'}`}>
-                    {l.type === 'text' ? <Type size={11} /> : <ImageIcon size={11} />}
-                    <span className="truncate">{l.type === 'text' ? l.text?.slice(0, 26) : (l.role === 'logo' ? 'Logo' : (isPt ? 'Imagem' : 'Image'))}</span>
+                    {l.type === 'text' ? <Type size={11} /> : l.type === 'shape' ? <Shapes size={11} /> : <ImageIcon size={11} />}
+                    <span className="truncate">
+                      {l.type === 'text' ? l.text?.slice(0, 26)
+                        : l.type === 'shape' ? (SHAPES.find(s => s.id === l.shape)?.id || 'shape')
+                        : (l.role === 'logo' ? 'Logo' : (isPt ? 'Imagem' : 'Image'))}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -827,8 +1310,8 @@ export default function Design() {
             </div>
             <p className="text-gray-500 text-xs">
               {isPt
-                ? 'O template salva formato, proporção, fundos, textos, fontes, posições e logos — reutilizável em qualquer criação.'
-                : 'The template saves format, aspect ratio, backgrounds, texts, fonts, positions and logos — reusable in any creation.'}
+                ? 'O template salva formato, proporção, fundos, textos, formas, posições, modo marca e logos.'
+                : 'The template saves format, aspect ratio, backgrounds, texts, shapes, positions, brand mode and logos.'}
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowSaveDialog(false)} className="border-white/10 text-white">{isPt ? 'Cancelar' : 'Cancel'}</Button>
@@ -843,19 +1326,30 @@ export default function Design() {
         </DialogContent>
       </Dialog>
 
-      {/* AI background dialog */}
+      {/* AI generate dialog (background or layer) */}
       <Dialog open={showAIBg} onOpenChange={setShowAIBg}>
         <DialogContent className="max-w-md bg-[#111] border-white/10 text-white">
-          <DialogHeader><DialogTitle>{isPt ? 'Gerar fundo com IA' : 'Generate AI background'}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>
+              {aiMode === 'bg'
+                ? (isPt ? 'Gerar fundo com IA' : 'Generate AI background')
+                : (isPt ? 'Gerar imagem com IA' : 'Generate AI image')}
+            </DialogTitle>
+          </DialogHeader>
           <div className="space-y-4 py-2">
             <Textarea value={aiBgPrompt} onChange={(e) => setAiBgPrompt(e.target.value)}
-              placeholder={isPt
-                ? 'Descreva o fundo: ex. "gradiente azul-escuro tech com formas geométricas sutis"'
-                : 'Describe the background: e.g., "dark blue tech gradient with subtle geometric shapes"'}
+              placeholder={aiMode === 'bg'
+                ? (isPt ? 'Descreva o fundo: ex. "gradiente azul-escuro tech com formas geométricas sutis"' : 'Describe the background: e.g., "dark blue tech gradient with subtle geometric shapes"')
+                : (isPt ? 'Descreva a imagem: ex. "foto de um notebook em mesa de madeira, luz natural"' : 'Describe the image: e.g., "photo of a laptop on a wooden desk, natural light"')}
               className="bg-black/30 border-white/10 text-white min-h-[90px]" />
+            {brandMode && (
+              <p className="text-[11px] text-[#cb6ce6]">
+                {isPt ? '🎨 Modo marca: a paleta da empresa será aplicada.' : '🎨 Brand mode: company palette will be applied.'}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowAIBg(false)} className="border-white/10 text-white">{isPt ? 'Cancelar' : 'Cancel'}</Button>
-              <Button disabled={!aiBgPrompt.trim() || busyIs('aibg')} onClick={generateAIBg}
+              <Button disabled={!aiBgPrompt.trim() || busyIs('aibg')} onClick={generateAI}
                 className="bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-2">
                 {busyIs('aibg') ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />}
                 {isPt ? 'Gerar' : 'Generate'}

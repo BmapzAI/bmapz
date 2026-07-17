@@ -106,6 +106,17 @@ async function executeSend(node, run, lead, companyKeys) {
   const body = personalize(node.content || '', lead);
   const autoSend = node.auto_send !== false;
 
+  // Idempotency key for retries after a provider accepted a send but the
+  // worker crashed before advancing the run.
+  const { data: existing } = await supabaseAdmin
+    .from('messages')
+    .select('id, status, metadata')
+    .eq('company_id', run.company_id)
+    .contains('metadata', { run_id: run.id, node_id: node.id })
+    .limit(1)
+    .maybeSingle();
+  if (existing) return { status: existing.status || 'queued', error: existing.metadata?.error || null, duplicate: true };
+
   let status = 'queued';
   let error = null;
 
@@ -250,10 +261,11 @@ async function advanceRun(run, wf, companyKeys) {
 }
 
 async function updateRun(id, fields) {
-  await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from('workflow_runs')
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', id);
+  if (error) throw error;
 }
 
 // ── enrollment ───────────────────────────────────────────────────────────────
@@ -264,6 +276,7 @@ async function updateRun(id, fields) {
 export async function enrollLead({ workflowId, companyId, leadId, context = {} }) {
   const { data: wf } = await supabaseAdmin.from('workflows').select('*').eq('id', workflowId).eq('company_id', companyId).single();
   if (!wf) throw new Error('Workflow not found');
+  if (wf.status !== 'active') throw new Error('Workflow must be active before enrolling leads');
 
   if (leadId) {
     const { data: existing } = await supabaseAdmin
@@ -324,8 +337,9 @@ async function tick() {
 
     for (const run of due) {
       try {
-        // claim: push next_action_at forward so a crash can't hot-loop this run
-        await updateRun(run.id, { next_action_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() });
+        // Claim atomically so two Railway workers cannot execute the same run.
+        const claimed = await claimRun(run);
+        if (!claimed) continue;
 
         let wf = wfCache.get(run.workflow_id);
         if (!wf) {
@@ -362,3 +376,16 @@ export function startWorkflowEngine() {
 
 // exported for manual/test execution from routes
 export { advanceRun, tick as runWorkflowTick };
+
+async function claimRun(run) {
+  const { data, error } = await supabaseAdmin
+    .from('workflow_runs')
+    .update({ next_action_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', run.id)
+    .eq('status', 'active')
+    .eq('next_action_at', run.next_action_at)
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
