@@ -314,10 +314,12 @@ export default function Design() {
   const dragRef = useRef(null);
   const [returnCtx] = useState(peekDesignReturn);
 
-  // ── Undo history (Ctrl+Z) ───────────────────────────────────────────────
+  // ── Undo/Redo history (Ctrl+Z · Ctrl+Y / Ctrl+Shift+Z) ──────────────────
   const historyRef = useRef([]);
+  const redoRef = useRef([]);
   const lastPushRef = useRef(0);
   const pushHistory = useCallback(() => {
+    redoRef.current = []; // any NEW edit invalidates the redo branch
     const now = Date.now();
     if (now - lastPushRef.current < 500) return;
     lastPushRef.current = now;
@@ -328,25 +330,50 @@ export default function Design() {
     });
   }, []);
 
+  const afterTimeTravel = (target) => {
+    lastPushRef.current = 0;
+    setActiveSlide(i => Math.min(i, target.slides.length - 1));
+    setSelectedLayerId(null);
+    setCroppingId(null);
+  };
+
   const undo = useCallback(() => {
     const snap = historyRef.current.pop();
     if (!snap) return;
-    lastPushRef.current = 0;
     const { design: prev } = JSON.parse(snap);
-    setDesign(prev);
-    setActiveSlide(i => Math.min(i, prev.slides.length - 1));
-    setSelectedLayerId(null);
-    setCroppingId(null);
+    setDesign(current => {
+      redoRef.current.push(JSON.stringify({ design: current }));
+      return prev;
+    });
+    afterTimeTravel(prev);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const redo = useCallback(() => {
+    const snap = redoRef.current.pop();
+    if (!snap) return;
+    const { design: next } = JSON.parse(snap);
+    setDesign(current => {
+      historyRef.current.push(JSON.stringify({ design: current }));
+      return next;
+    });
+    afterTimeTravel(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const onKey = (e) => {
       const tag = document.activeElement?.tagName;
       const inField = tag === 'INPUT' || tag === 'TEXTAREA';
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !inField) {
+      if (inField) return;
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
         e.preventDefault(); undo(); return;
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && selectedLayerId) {
+      if ((e.ctrlKey || e.metaKey) && (key === 'y' || (key === 'z' && e.shiftKey))) {
+        e.preventDefault(); redo(); return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedLayerId) {
         e.preventDefault();
         removeLayer(selectedLayerId);
       }
@@ -354,7 +381,7 @@ export default function Design() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undo, selectedLayerId, activeSlide]);
+  }, [undo, redo, selectedLayerId, activeSlide]);
 
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
   const company = companies[0];
@@ -856,6 +883,10 @@ export default function Design() {
           <Button variant="outline" onClick={undo} title="Ctrl+Z"
             className="border-white/10 text-white hover:bg-white/5 gap-2">
             ↩ {isPt ? 'Desfazer' : 'Undo'}
+          </Button>
+          <Button variant="outline" onClick={redo} title="Ctrl+Y / Ctrl+Shift+Z"
+            className="border-white/10 text-white hover:bg-white/5 gap-2">
+            ↪ {isPt ? 'Refazer' : 'Redo'}
           </Button>
           <Button variant="outline" onClick={() => setShowSaveDialog(true)}
             className="border-white/10 text-white hover:bg-white/5 gap-2">

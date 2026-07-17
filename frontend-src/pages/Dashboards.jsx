@@ -190,23 +190,11 @@ export default function Dashboards() {
 
   const currentWidgets = localWidgets ?? activeDashboard?.widgets ?? DEFAULT_WIDGETS;
 
-  // ── Undo history (Ctrl+Z) for widget edits ──────────────────────────────
+  // ── Undo/Redo history (Ctrl+Z · Ctrl+Y / Ctrl+Shift+Z) for widget edits ──
   const undoStackRef = React.useRef([]);
+  const redoStackRef = React.useRef([]);
 
-  const saveWidgets = (widgets) => {
-    // Snapshot the state we're leaving so Ctrl+Z can bring it back
-    undoStackRef.current.push(JSON.stringify(currentWidgets));
-    if (undoStackRef.current.length > 30) undoStackRef.current.shift();
-    setLocalWidgets(widgets); // instant optimistic update
-    if (activeDashboard) {
-      updateMutation.mutate({ id: activeDashboard.id, data: { widgets } });
-    }
-  };
-
-  const undoWidgets = React.useCallback(() => {
-    const snap = undoStackRef.current.pop();
-    if (!snap) { toast.info('Nothing to undo'); return; }
-    const widgets = JSON.parse(snap);
+  const applyWidgets = React.useCallback((widgets) => {
     setLocalWidgets(widgets);
     if (activeDashboard) {
       updateMutation.mutate({ id: activeDashboard.id, data: { widgets } });
@@ -214,18 +202,44 @@ export default function Dashboards() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDashboard?.id]);
 
+  const saveWidgets = (widgets) => {
+    // Snapshot the state we're leaving so Ctrl+Z can bring it back;
+    // a NEW edit invalidates the redo branch.
+    undoStackRef.current.push(JSON.stringify(currentWidgets));
+    if (undoStackRef.current.length > 30) undoStackRef.current.shift();
+    redoStackRef.current = [];
+    applyWidgets(widgets);
+  };
+
+  const undoWidgets = React.useCallback(() => {
+    const snap = undoStackRef.current.pop();
+    if (!snap) { toast.info('Nothing to undo'); return; }
+    redoStackRef.current.push(JSON.stringify(currentWidgets));
+    applyWidgets(JSON.parse(snap));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyWidgets, currentWidgets]);
+
+  const redoWidgets = React.useCallback(() => {
+    const snap = redoStackRef.current.pop();
+    if (!snap) { toast.info('Nothing to redo'); return; }
+    undoStackRef.current.push(JSON.stringify(currentWidgets));
+    applyWidgets(JSON.parse(snap));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyWidgets, currentWidgets]);
+
   useEffect(() => {
     const onKey = (e) => {
       if (!isEditing) return;
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+      if (!(e.ctrlKey || e.metaKey)) return;
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return; // native text undo
-      e.preventDefault();
-      undoWidgets();
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); undoWidgets(); }
+      else if (key === 'y' || (key === 'z' && e.shiftKey)) { e.preventDefault(); redoWidgets(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isEditing, undoWidgets]);
+  }, [isEditing, undoWidgets, redoWidgets]);
 
   const createDashboard = (overrideName, overrideTemplate) => {
     const name = overrideName || newDashboardName;
@@ -502,10 +516,16 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
             <Plus size={18} /> New Dashboard
           </Button>
           {activeDashboard && isEditing && (
-            <Button variant="outline" onClick={undoWidgets} title="Ctrl+Z"
-              className="border-white/10 text-white hover:bg-white/5 gap-2">
-              ↩ Undo
-            </Button>
+            <>
+              <Button variant="outline" onClick={undoWidgets} title="Ctrl+Z"
+                className="border-white/10 text-white hover:bg-white/5 gap-2">
+                ↩ Undo
+              </Button>
+              <Button variant="outline" onClick={redoWidgets} title="Ctrl+Y / Ctrl+Shift+Z"
+                className="border-white/10 text-white hover:bg-white/5 gap-2">
+                ↪ Redo
+              </Button>
+            </>
           )}
           {activeDashboard && (
             <Button variant="outline" onClick={() => setIsEditing(!isEditing)}

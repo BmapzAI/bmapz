@@ -574,6 +574,54 @@ const [selectedTemplateNode, setSelectedTemplateNode] = useState(null);
 const [isGeneratingContent, setIsGeneratingContent] = useState(false);
 const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+// ── Undo/Redo history over {nodes, connections} ─────────────────────────────
+// An observer effect snapshots the graph on every change; rapid changes within
+// 500ms (e.g. a node drag) collapse into ONE undo step. Any new edit clears redo.
+const historyRef = useRef([]);
+const redoRef = useRef([]);
+const lastSnapRef = useRef(null);
+const lastPushTimeRef = useRef(0);
+const restoringRef = useRef(false);
+
+useEffect(() => {
+  const snap = JSON.stringify({ nodes, connections });
+  if (restoringRef.current) { restoringRef.current = false; lastSnapRef.current = snap; return; }
+  if (lastSnapRef.current === null) { lastSnapRef.current = snap; return; }
+  if (snap === lastSnapRef.current) return;
+  const now = Date.now();
+  if (now - lastPushTimeRef.current > 500) {
+    historyRef.current.push(lastSnapRef.current);
+    if (historyRef.current.length > 50) historyRef.current.shift();
+    redoRef.current = [];
+  }
+  lastPushTimeRef.current = now;
+  lastSnapRef.current = snap;
+}, [nodes, connections]);
+
+const undoGraph = () => {
+  const prev = historyRef.current.pop();
+  if (!prev) return;
+  redoRef.current.push(JSON.stringify({ nodes, connections }));
+  restoringRef.current = true;
+  lastPushTimeRef.current = 0;
+  const p = JSON.parse(prev);
+  setNodes(p.nodes); setConnections(p.connections);
+  setSelectedNode(null); setSelectedConnection(null);
+  setHasUnsavedChanges(true);
+};
+
+const redoGraph = () => {
+  const next = redoRef.current.pop();
+  if (!next) return;
+  historyRef.current.push(JSON.stringify({ nodes, connections }));
+  restoringRef.current = true;
+  lastPushTimeRef.current = 0;
+  const p = JSON.parse(next);
+  setNodes(p.nodes); setConnections(p.connections);
+  setSelectedNode(null); setSelectedConnection(null);
+  setHasUnsavedChanges(true);
+};
+
   const createMutation = useMutation({
     mutationFn: (data) => Workflow.create({
       ...data,
@@ -783,6 +831,16 @@ const updateNode = (nodeId, updates) => {
       if (e.ctrlKey && e.key === 'l') {
         e.preventDefault();
         autoLayout();
+      }
+
+      // Undo / Redo (Ctrl+Z · Ctrl+Y or Ctrl+Shift+Z)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undoGraph();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redoGraph();
       }
 
       if (e.key === 'Escape') {
@@ -1205,14 +1263,23 @@ const endConnection = (nodeId) => {
             </PopoverContent>
           </Popover>
 
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={autoLayout}
             className="border-white/10 text-white hover:bg-white/5 gap-2"
             title="Auto-layout (Ctrl+L)"
           >
             <Layout size={16} />
             Auto-Layout
+          </Button>
+
+          <Button variant="outline" onClick={undoGraph} title="Undo (Ctrl+Z)"
+            className="border-white/10 text-white hover:bg-white/5 px-3">
+            ↩
+          </Button>
+          <Button variant="outline" onClick={redoGraph} title="Redo (Ctrl+Y)"
+            className="border-white/10 text-white hover:bg-white/5 px-3">
+            ↪
           </Button>
 
           {hasUnsavedChanges && (
