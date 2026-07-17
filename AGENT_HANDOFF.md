@@ -977,10 +977,9 @@ backend (like automationScheduler) walking workflow nodes with delay handling.
   role, full workspace control, NO BYOK). `owner`/`system_admin` are Bmapz-internal,
   grantable only from the platform Admin Panel (`requireAdmin` admin routes).
   Company-scoped role update + invite endpoints clamp to company_admin/user.
-- **Pending live step (Derek confirmed: keep only d2mdigitalmarketing@gmail.com):**
-  one-time SQL to downgrade legacy customer owners. NOT run by Claude because the
-  Supabase SQL editor is canvas-based and the browser screenshot/read tooling was
-  failing this session — a blind destructive write to live accounts was declined.
+- **Historical note (superseded by Session 18):** the one-time SQL downgrade was
+  pending in Session 17. Codex later verified directly in Supabase that only
+  `d2mdigitalmarketing@gmail.com` remains Owner; no further downgrade is needed.
   SQL to run in Supabase SQL editor:
   ```sql
   update public.users set role = 'company_admin'
@@ -995,3 +994,115 @@ spot-check ✓.
 
 **Stage plan (Derek's framing):** Stage 2 = register app with external platforms +
 build integrations. Stage 3 = go-to-market / commercialization.
+
+### 2026-07-14 - Codex (Session 18: authorization, workflow safety, Stage 2)
+
+**Active claims:** Codex owns `backend/src/routes/admin.js`,
+`backend/src/lib/workflowEngine.js`, `backend/src/routes/ads.js`,
+`frontend-src/components/settings/ApiKeysTab.jsx`, and the new audit/migration
+documents until this handoff is released. Claude should review the diff before
+editing those files.
+
+**Verified against production Supabase:**
+
+- Exactly one `owner` remains: `d2mdigitalmarketing@gmail.com`.
+- Current other roles are `company_admin` and `user`; no accidental legacy customer Owner remains.
+- RLS is enabled on all public tables and all audited tables have policies.
+- Supabase migration `security_and_workflow_indexes_20260713` was applied, followed by the RPC privilege correction. `handle_new_user()` is no longer executable by `PUBLIC`, `anon`, or `authenticated`.
+- The only remaining security advisor warning is the dashboard setting for leaked-password protection.
+- No workflow runs existed during this audit; no real lead was enrolled or contacted.
+
+**Implemented locally:**
+
+- Admin user role updates now use a server-side role allowlist and hierarchy. The platform Owner can still grant Owner; company-scoped endpoints remain unable to grant internal roles.
+- Workflow enrollment requires `status = active`; worker claims are atomic on the old `next_action_at`; send nodes use a `run_id + node_id` idempotency key.
+- Google Ads now calls REST v24, accepts the company developer token, normalizes customer IDs, and refreshes expired Google access tokens.
+- TikTok Ads campaign retrieval is now implemented against Marketing API v1.3 with truthful warnings when performance fields are not returned.
+- Meta/Google Ads/LinkedIn Ads/TikTok Ads integration test buttons now perform live provider reads instead of checking only whether a token string exists.
+- Settings AI model dropdowns use `GET /api/ai/models` and retain a static fallback.
+
+**Stage 2 boundary:** app registration/approval and Railway secret entry must be
+performed by the platform owner. Never put those values in Git, screenshots, or
+handoff documents. See `docs/CODEX_AUDIT_2026-07-13.md` and
+`docs/CLAUDE_PICKUP_PROMPT_2026-07-13.md`.
+
+**Verification still required before release:**
+
+- `npm run build`
+- `npm run build --prefix backend`
+- `npx eslint . --quiet`
+- `git diff --check`
+- sandbox-mailbox workflow test with no real recipient
+
+### 2026-07-13 - Claude (Session 18: Design Studio v2 — full editing suite)
+
+**Commit:** "Design Studio v2: full editing suite (10 new capabilities)". CI deployed.
+
+#### What was added to /Design (all 10 requested features)
+
+| # | Feature | How it works |
+|---|---------|--------------|
+| 1 | Remove background | Select an image → "Remove BG". New `POST /api/ai/edit-image` (backend/src/routes/ai.js) fetches the source, runs gpt-image-1 `images.edit` with `background:'transparent'`, returns a data URL the frontend persists to storage and swaps into the layer. |
+| 2 | Enhance quality | Same endpoint, `operation:'enhance'` (quality/sharpness prompt, content preserved). |
+| 3 | Drag-resize | Blue corner handle on every selected layer (`startDrag(..., 'resize')`). Text scales wFrac + font size together; images/shapes scale `w`. |
+| 4 | Drag-crop | "Crop" button on images → 4 edge handles trim the crop window `{x,y,w,h}` (fractions of source). Preview = CSS window (`aspectRatio` wrapper + translated inner img); export = `drawImage` source-rect. "Reset" restores full image. Note: crop math assumes unrotated axes — cropping a rotated image works but feels axis-shifted (known minor). |
+| 5 | Border radius | Slider (0–50%) on images, `rect` shape and frames. Export clips via `roundedPath` (roundRect with arcTo fallback). |
+| 6 | Shapes/icons/frames | `SHAPES` (unit-square polygons: rect/circle/triangle/diamond/hexagon/star/arrow/line + frame/frame-dashed/frame-double) render as SVG polygons (or CSS) in preview and canvas paths in export. `ICONS` = 28 emoji inserted as big text layers (emoji render identically in canvas `fillText`). |
+| 7 | Rotate & flip | `rotation` slider (−180…180, dbl-click resets) + Flip H/V toggles on every layer. Export wraps drawing in `withTransforms` (translate to box center → rotate → scale ±1 → alpha). |
+| 8 | AI generate/edit | "+ AI Image" toolbar button generates an image as a LAYER (aiMode 'layer'); "AI Background" kept (aiMode 'bg'). Free-form AI edit input on selected images (`operation:'custom'`). All AI outputs persisted via `persistDataUrl` → UploadFile. |
+| 9 | Brand toggle | Header switch → `design.brandMode` (saved in templates). ON: bg presets + shape palettes = `company.briefing.brand_colors` (fallback Bmapz palette), new text uses `brand_font` (default Montserrat, H1 tinted primary), new carousel slides auto-add company logo, AI prompts append the palette. |
+| 10 | Opacity | Slider on EVERY layer type (was image-only). |
+
+Also: Delete/Backspace removes the selected layer (skipped inside inputs);
+`updateLayerSilent` keeps measured `natAsp` out of undo history; double-frame
+preview = nested bordered divs (matches export's two stroked rects).
+
+#### Files touched
+- `frontend-src/pages/Design.jsx` — substantially rewritten (~1200 lines).
+  Layer model now: common `{x,y,rotation,flipH,flipV,opacity,radius}` +
+  image `{url,w,natAsp,crop}` + text `{text,font,size,weight,color,align,wFrac}`
+  + shape `{shape,fill,w,hRel,strokeW}`.
+- `backend/src/routes/ai.js` — new `POST /api/ai/edit-image` (remove_bg |
+  enhance | custom). 20MB cap, data-URL and http sources, one retry without
+  optional params for accounts that reject them.
+- `backend/src/lib/workflowEngine.js` — kept Codex's idempotency check
+  (messages.metadata contains {run_id,node_id} prevents duplicate sends).
+
+#### Verification
+- `npm run build` ✓ · `node --check` backend ✓ · `npx eslint . --quiet` 0 errors ✓.
+- Static review of all 10 features against code done; live smoke of /Design
+  pending post-deploy (page loads + toolbar/panel render confirmed in prior
+  sessions' pattern).
+
+#### Known minors / next pickup (Claude)
+1. Crop on a ROTATED image: handles follow the rotation, drag axes don't.
+   Fix later: temporarily zero rotation during crop mode, restore after.
+2. `images.edit` requires the platform OpenAI key to have gpt-image-1 access;
+   if the org lacks it, Remove BG/Enhance/AI-edit fail with the categorized
+   error toast. Consider a fallback (e.g. self-hosted rembg) later.
+3. Emoji icons export via canvas depend on OS emoji font (fine on Win/Mac).
+4. Z-order controls (bring forward/back) not yet built — layers render in
+   creation order; workaround is delete/re-add. Good candidate next session.
+5. Text layers ignore radius (no background box concept yet); a text
+   background-pill option would pair well with radius.
+
+#### Still open from previous sessions
+- Derek runs the legacy-owner downgrade SQL manually (Session 17 note).
+- Stage 2: external platform OAuth registrations + live integrations.
+- Settings model dropdown → GET /api/ai/models (small, backend ready).
+
+#### Addendum: Redo everywhere (same session)
+
+Redo (Ctrl+Y and Ctrl+Shift+Z) added wherever undo makes sense:
+- **Design Studio** — undo now feeds a redo stack; any NEW edit clears the redo
+  branch (standard branch-invalidate semantics); ↪ Redo button in header.
+- **Dashboards edit mode** — redo over the widget history; ↪ button beside Undo;
+  shortcuts only fire while editing and outside inputs.
+- **Workflow builder (FlowchartBuilder)** — had NO history at all. Added full
+  undo/redo over `{nodes, connections}` via an observer `useEffect` that
+  snapshots every graph change and collapses rapid changes (node drags) within
+  500ms into ONE step (`restoringRef` guard prevents undo/redo from re-snapshotting
+  themselves). Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z + ↩/↪ toolbar buttons next to
+  Auto-Layout. Time-travel marks hasUnsavedChanges so auto-save persists it.
+
+Both commits pushed; CI deploy of the second commit pending at write time.
