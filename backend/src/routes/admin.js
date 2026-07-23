@@ -263,11 +263,40 @@ router.patch('/purchases/:id', async (req, res) => {
 
 // ─── Admin User CRUD ──────────────────────────────────────────────────────────
 
+const ADMIN_ROLES = new Set(['owner', 'system_admin', 'company_admin', 'user']);
+
 router.patch('/users/:id', async (req, res) => {
   try {
+    const { role, full_name, profile_picture } = req.body || {};
+    const updates = {};
+    if (full_name !== undefined) updates.full_name = full_name;
+    if (profile_picture !== undefined) updates.profile_picture = profile_picture;
+
+    if (role !== undefined) {
+      if (!ADMIN_ROLES.has(role)) return res.status(400).json({ error: 'Invalid role' });
+      const { data: target, error: targetError } = await supabaseAdmin
+        .from('users')
+        .select('id, role')
+        .eq('id', req.params.id)
+        .single();
+      if (targetError) throw targetError;
+      // The UI mirrors this policy, but the backend is the real authorization boundary.
+      if (target.role === 'owner') {
+        return res.status(403).json({ error: 'Existing Owners cannot be changed from this panel' });
+      }
+      if (req.dbUser.role === 'system_admin' && ['owner', 'system_admin'].includes(role)) {
+        return res.status(403).json({ error: 'Only an Owner can grant internal admin roles' });
+      }
+      updates.role = role;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No supported user fields supplied' });
+    }
+
     const { data, error } = await supabaseAdmin
       .from('users')
-      .update(req.body)
+      .update(updates)
       .eq('id', req.params.id)
       .select()
       .single();

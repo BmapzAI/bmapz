@@ -209,31 +209,59 @@ router.post('/test/:type', requireAuth, async (req, res) => {
 
       case 'meta_ads': {
         const token = k.meta_access_token;
-        if (!token) return res.json({ success: false, message: 'Meta not connected via OAuth' });
-        const r = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${token}`);
-        if (r.ok) return res.json({ success: true, message: 'Meta Ads connected' });
-        return res.json({ success: false, message: 'Meta token invalid or expired. Please reconnect.' });
+        const accountId = k.meta_ads_account_id || k.meta_ad_account_id;
+        if (!token || !accountId) return res.json({ success: false, message: 'Meta Ads requires OAuth and an Ad Account ID' });
+        const r = await fetch(`https://graph.facebook.com/v19.0/act_${accountId}?fields=id,name&access_token=${token}`);
+        const d = await r.json();
+        if (r.ok && !d.error) return res.json({ success: true, message: `Meta Ads connected${d.name ? `: ${d.name}` : ''}` });
+        return res.json({ success: false, message: d.error?.message || 'Meta token or ad account is invalid. Please reconnect.' });
       }
 
       case 'google_ads': {
-        const hasCredentials = k.google_ads_developer_token && k.google_ads_customer_id &&
-          (k.google_ads_refresh_token || k.google_access_token);
-        if (!hasCredentials) {
-          return res.json({ success: false, message: 'Google Ads requires Developer Token, Customer ID, and OAuth token' });
+        const developerToken = k.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+        const customerId = String(k.google_ads_customer_id || '').replace(/-/g, '');
+        const token = k.google_access_token;
+        if (!developerToken || !customerId || !token) {
+          return res.json({ success: false, message: 'Google Ads requires Developer Token, Customer ID, and a connected OAuth token' });
         }
-        return res.json({ success: true, message: 'Google Ads credentials present' });
+        const r = await fetch(`https://googleads.googleapis.com/v24/customers/${customerId}/googleAds:searchStream`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'developer-token': developerToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query: 'SELECT customer.id FROM customer LIMIT 1' }),
+        });
+        const d = await r.json();
+        if (r.ok && !d.error) return res.json({ success: true, message: 'Google Ads live API connection confirmed' });
+        return res.json({ success: false, message: d.error?.message || 'Google Ads API rejected the connection. Reconnect OAuth if the token expired.' });
       }
 
       case 'linkedin_ads': {
         const token = k.linkedin_ads_access_token || k.linkedin_access_token;
-        if (!token) return res.json({ success: false, message: 'LinkedIn not connected' });
-        return res.json({ success: true, message: 'LinkedIn Ads token present' });
+        const accountId = k.linkedin_ads_account_id;
+        if (!token || !accountId) return res.json({ success: false, message: 'LinkedIn Ads requires OAuth and an Ad Account ID' });
+        const r = await fetch(`https://api.linkedin.com/v2/adCampaignsV2?q=search&search.account.values[0]=urn:li:sponsoredAccount:${accountId}&count=1`, {
+          headers: { Authorization: `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' },
+        });
+        const d = await r.json();
+        if (r.ok && !d.message) return res.json({ success: true, message: 'LinkedIn Ads live API connection confirmed' });
+        return res.json({ success: false, message: d.message || 'LinkedIn Ads API rejected the connection. Advertising API access may need approval.' });
       }
 
       case 'tiktok_ads': {
         const token = k.tiktok_access_token;
-        if (!token) return res.json({ success: false, message: 'TikTok not connected via OAuth' });
-        return res.json({ success: true, message: 'TikTok Ads token present' });
+        const advertiserId = k.tiktok_advertiser_id;
+        if (!token || !advertiserId) return res.json({ success: false, message: 'TikTok Ads requires OAuth and an Advertiser ID' });
+        const r = await fetch('https://business-api.tiktok.com/open_api/v1.3/campaign/get/', {
+          method: 'POST',
+          headers: { 'Access-Token': token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ advertiser_id: String(advertiserId), page_size: 1, page: 1 }),
+        });
+        const d = await r.json();
+        if (r.ok && d.code === 0) return res.json({ success: true, message: 'TikTok Ads live API connection confirmed' });
+        return res.json({ success: false, message: d.message || 'TikTok Ads API rejected the connection. Check app permissions.' });
       }
 
       case 'zapier': {

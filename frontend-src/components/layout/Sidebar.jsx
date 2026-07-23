@@ -3,13 +3,14 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { cn } from '@/lib/utils';
+import NotificationBell from './NotificationBell';
 import {
   ChevronLeft, ChevronRight, LogOut,
   LayoutDashboard, Users, MessageSquare, Bot, GitBranch,
   Megaphone, Search, Share2, BookOpen, ScanLine,
   Sparkles, FileText, BarChart3, Clock, Palette, TrendingUp,
   Plug, HelpCircle, User, Settings as SettingsIcon,
-  Building2, Shield,
+  Building2, Shield, Headset,
 } from 'lucide-react';
 
 /**
@@ -87,6 +88,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
       items: [
         { name: t('home'),      path: '/',          icon: LayoutDashboard },
         { name: t('sales'),     path: '/Sales',     icon: Users           },
+        { name: 'SDR',          path: '/SDR',       icon: Headset         },
         { name: t('inbox'),     path: '/Inbox',     icon: MessageSquare   },
         { name: agentName,      path: '/AIChat',    icon: Bot             },
         { name: t('workflows'), path: '/Workflows', icon: GitBranch       },
@@ -156,11 +158,16 @@ export default function Sidebar({ collapsed, setCollapsed }) {
           style={{ display: 'none' }}
         />
         {!collapsed && (
-          <span className="font-bold text-white text-lg tracking-tight truncate">
+          <span className="font-bold text-white text-lg tracking-tight truncate flex-1">
             Bmapz AI
           </span>
         )}
       </Link>
+
+      {/* Notification bell (desktop) */}
+      <div className={cn('px-3 py-2 border-b border-white/10 flex', collapsed ? 'justify-center' : 'justify-end')}>
+        <NotificationBell />
+      </div>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">

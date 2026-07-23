@@ -93,6 +93,11 @@ const IMAGE_MODELS_OPENAI = [
   { value: 'dall-e-2', label: 'DALL-E 2 — Faster, cheaper' },
 ];
 
+function mergeModelOption(currentValue, options) {
+  if (options.some(option => option.value === currentValue)) return options;
+  return [{ value: currentValue, label: `${currentValue} (current setting)` }, ...options];
+}
+
 function DiagnoseAI() {
   const [diag, setDiag] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -150,6 +155,8 @@ export default function ApiKeysTab({ company, user, onSave }) {
   // BYOK is restricted to owner + system_admin. Everyone else uses platform keys.
   const canUseBYOK = user?.role === 'owner' || user?.role === 'system_admin';
   const queryClient = useQueryClient();
+  const [modelCatalog, setModelCatalog] = useState(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
   const [keys, setKeys] = useState(() => ({
     ai_provider: company?.ai_provider || 'openai',
     openai_api_key: company?.openai_api_key || '',
@@ -190,6 +197,33 @@ export default function ApiKeysTab({ company, user, onSave }) {
   const [statuses, setStatuses] = useState(company?.integration_status || {});
   const [testing, setTesting] = useState({});
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setModelsLoading(true);
+    api.get('/api/ai/models')
+      .then(result => {
+        if (!cancelled && Array.isArray(result?.models)) {
+          setModelCatalog(result.models.filter(model => model.allowed));
+        }
+      })
+      .catch(() => {
+        // Static options remain available when the provider catalog is offline.
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const dynamicOpenAIModels = (modelCatalog || [])
+    .filter(model => model.provider === 'openai')
+    .map(model => ({ value: model.id, label: model.display_name || model.id }));
+  const dynamicAnthropicModels = (modelCatalog || [])
+    .filter(model => model.provider === 'anthropic')
+    .map(model => ({ value: model.id, label: model.display_name || model.id }));
+  const openAIModelOptions = mergeModelOption(keys.openai_model || 'gpt-4o-mini', dynamicOpenAIModels.length ? dynamicOpenAIModels : OPENAI_MODELS);
+  const anthropicModelOptions = mergeModelOption(keys.anthropic_model || 'claude-sonnet-4-5', dynamicAnthropicModels.length ? dynamicAnthropicModels : ANTHROPIC_MODELS);
 
   useEffect(() => {
     if (!company) return;
@@ -404,9 +438,9 @@ export default function ApiKeysTab({ company, user, onSave }) {
               <Label className="text-gray-400 text-xs">Default Model</Label>
               <select value={keys.openai_model || 'gpt-4o-mini'} onChange={(e) => set('openai_model', e.target.value)}
                 className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm">
-                {OPENAI_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                {openAIModelOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
-              <p className="text-gray-600 text-xs mt-1">Used when OpenAI is the active provider. If no key is set, platform credits are used.</p>
+              <p className="text-gray-600 text-xs mt-1">{modelsLoading ? 'Loading the current plan model catalog…' : 'Used when OpenAI is active. If no key is set, platform credits are used.'}</p>
             </div>
           </IntegrationSection>
 
@@ -421,7 +455,7 @@ export default function ApiKeysTab({ company, user, onSave }) {
               <Label className="text-gray-400 text-xs">Default Model</Label>
               <select value={keys.anthropic_model || 'claude-sonnet-4-5'} onChange={(e) => set('anthropic_model', e.target.value)}
                 className="w-full mt-1 bg-black/30 border border-white/10 text-white rounded-md px-3 py-2 text-sm">
-                {ANTHROPIC_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                {anthropicModelOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
               <p className="text-gray-600 text-xs mt-1">Used when Anthropic is the active provider.</p>
             </div>

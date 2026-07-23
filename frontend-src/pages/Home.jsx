@@ -10,8 +10,33 @@ import FunnelChart from '@/components/dashboard/FunnelChart';
 import ActivityFeed from '@/components/dashboard/ActivityFeed';
 import GettingStarted from '@/components/dashboard/GettingStarted';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
-import { Activity, Lead, Message, Workflow, Company } from '@/api/entities';
+import { Activity, Lead, Message, Workflow, Company, Notification } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
+
+const NOTIF_ICON = { lead: '🆕', handover: '🤝', sdr: '🤖', qualification: '📈', workflow: '⚙️', system: '🛎️', info: '💬' };
+
+function HomeNotifications({ isPt }) {
+  const { data: items = [], isLoading } = useQuery({
+    queryKey: ['notifHome'],
+    queryFn: () => Notification.list({ limit: 6 }),
+  });
+  if (isLoading) return <div className="py-6 flex justify-center"><div className="w-6 h-6 rounded-full border-2 border-[#38b6ff] border-t-transparent animate-spin" /></div>;
+  if (!items.length) return <p className="text-gray-500 text-sm py-4">{isPt ? 'Nenhuma notificação ainda — novos leads e handovers aparecem aqui.' : 'No notifications yet — new leads and hand-overs show up here.'}</p>;
+  return (
+    <div className="space-y-2">
+      {items.map(n => (
+        <Link key={n.id} to={n.link || '/Notifications'}
+          className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all hover:border-[#38b6ff]/30 ${n.read ? 'bg-black/20 border-white/5' : 'bg-[#38b6ff]/5 border-[#38b6ff]/20'}`}>
+          <span className="text-lg">{n.icon || NOTIF_ICON[n.type] || '💬'}</span>
+          <div className="min-w-0 flex-1">
+            <p className={`text-sm truncate ${n.read ? 'text-gray-400' : 'text-white'}`}>{n.title}</p>
+            <p className="text-gray-600 text-[10px]">{new Date(n.created_at).toLocaleString()}</p>
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
 
 function WhatsAppAgentButton({ user }) {
   // Read configured WhatsApp agent number from env (set by Derek in Cloudflare Pages).
@@ -131,6 +156,20 @@ export default function Home() {
           </div>
           <ActivityFeed activities={activities} />
         </div>
+      </div>
+
+      {/* Notifications */}
+      <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-xl font-bold text-white">{isPt ? 'Notificações' : 'Notifications'}</h2>
+            <p className="text-sm mt-0.5 text-gray-400">
+              {isPt ? 'Leads, qualificações e handovers recentes' : 'Recent leads, qualifications and hand-overs'}
+            </p>
+          </div>
+          <Link to="/Notifications" className="text-[#38b6ff] text-sm hover:underline">{isPt ? 'Ver tudo' : 'View all'}</Link>
+        </div>
+        <HomeNotifications isPt={isPt} />
       </div>
 
       {/* Getting Started */}

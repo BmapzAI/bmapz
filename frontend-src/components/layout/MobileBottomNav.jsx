@@ -7,7 +7,7 @@ import {
   Megaphone, Search, Share2, BookOpen, ScanLine,
   Sparkles, FileText, BarChart3, Plug, HelpCircle,
   User, Settings, Building2, Shield, X, MoreHorizontal,
-  Palette, Clock,
+  Palette, Clock, Bell as BellIcon,
 } from 'lucide-react';
 
 function NavBtn({ icon: Icon, label, path, active, onClick }) {
@@ -43,6 +43,8 @@ export default function MobileBottomNav() {
       label: isPt ? 'Núcleo' : 'Core',
       items: [
         { icon: GitBranch, label: t('workflows'), path: '/Workflows' },
+        { icon: Bot,       label: 'SDR',          path: '/SDR' },
+        { icon: BellIcon,  label: isPt ? 'Notificações' : 'Notifications', path: '/Notifications' },
       ],
     },
     {

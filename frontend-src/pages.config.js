@@ -51,6 +51,8 @@ import AIChat from './pages/AIChat';
 import AIAutomations from './pages/AIAutomations';
 import Design from './pages/Design';
 import Inbox from './pages/Inbox';
+import Notifications from './pages/Notifications';
+import SDR from './pages/SDR';
 import Billing from './pages/Billing';
 import Pricing from './pages/Pricing';
 import BrandScan from './pages/BrandScan';
@@ -78,6 +80,8 @@ export const PAGES = {
     "AIChat": AIChat,
     "AIAutomations": AIAutomations,
     "Design": Design,
+    "Notifications": Notifications,
+    "SDR": SDR,
     "Billing": Billing,
     "Pricing": Pricing,
     "BrandScan": BrandScan,

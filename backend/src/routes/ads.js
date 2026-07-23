@@ -94,7 +94,7 @@ router.get('/campaigns', requireAuth, async (req, res) => {
     const normalizedPlatform = normalizeAdPlatform(platform);
     if (!normalizedPlatform) {
       return res.status(400).json({
-        error: 'Choose a supported ad platform: google_ads, meta_ads, or linkedin_ads.',
+        error: 'Choose a supported ad platform: google_ads, meta_ads, linkedin_ads, or tiktok_ads.',
       });
     }
 
@@ -110,15 +110,16 @@ router.get('/campaigns', requireAuth, async (req, res) => {
     const response = { platform: normalizedPlatform, campaigns: [], source: 'live' };
 
     if (normalizedPlatform === 'google_ads') {
-      if (company.google_access_token && company.google_ads_customer_id) {
+      const googleAccessToken = await getGoogleAdsAccessToken(req.companyId, company);
+      if (googleAccessToken && company.google_ads_customer_id) {
         try {
           const r = await fetch(
-            `https://googleads.googleapis.com/v17/customers/${company.google_ads_customer_id}/googleAds:searchStream`,
+            `https://googleads.googleapis.com/v24/customers/${company.google_ads_customer_id.replace(/-/g, '')}/googleAds:searchStream`,
             {
               method: 'POST',
               headers: {
-                Authorization: `Bearer ${company.google_access_token}`,
-                'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '',
+                Authorization: `Bearer ${googleAccessToken}`,
+                'developer-token': company.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '',
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
@@ -136,6 +137,46 @@ router.get('/campaigns', requireAuth, async (req, res) => {
         }
       } else {
         return res.status(400).json({ error: 'Google Ads is not fully connected. Connect OAuth and set Customer ID first.' });
+      }
+    }
+
+    if (normalizedPlatform === 'tiktok_ads') {
+      if (company.tiktok_access_token && company.tiktok_advertiser_id) {
+        try {
+          const r = await fetch('https://business-api.tiktok.com/open_api/v1.3/campaign/get/', {
+            method: 'POST',
+            headers: {
+              'Access-Token': company.tiktok_access_token,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              advertiser_id: String(company.tiktok_advertiser_id),
+              page_size: 50,
+              page: 1,
+            }),
+          });
+          const d = await r.json();
+          if (!r.ok || d.code !== 0) throw new Error(d.message || 'TikTok Ads API returned an error.');
+          response.campaigns = (d.data?.list || []).map(c => ({
+            campaign_id: c.campaign_id,
+            campaign_name: c.campaign_name,
+            status: c.operation_status || c.status,
+            objective: c.objective_type,
+            spend: Number(c.spend || 0),
+            impressions: Number(c.impressions || 0),
+            clicks: Number(c.clicks || 0),
+            ctr: c.ctr,
+            cpc: c.cpc,
+            conversions: Number(c.conversion || c.conversions || 0),
+          }));
+          if (response.campaigns.length && response.campaigns.every(c => c.spend === 0 && c.impressions === 0)) {
+            response.warning = 'TikTok returned live campaigns, but this endpoint did not include performance metrics for them.';
+          }
+        } catch (e) {
+          return res.status(502).json({ error: `TikTok Ads fetch failed: ${e.message}` });
+        }
+      } else {
+        return res.status(400).json({ error: 'TikTok Ads is not fully connected. Connect TikTok and set Advertiser ID first.' });
       }
     }
 
@@ -270,6 +311,8 @@ function normalizeAdPlatform(platform) {
     meta_ads: 'meta_ads',
     linkedin: 'linkedin_ads',
     linkedin_ads: 'linkedin_ads',
+    tiktok: 'tiktok_ads',
+    tiktok_ads: 'tiktok_ads',
   };
   return map[raw] || null;
 }
@@ -299,4 +342,41 @@ function mapGoogleAdsCampaigns(payload) {
 function extractMetaConversions(conversions) {
   if (!Array.isArray(conversions)) return 0;
   return conversions.reduce((sum, item) => sum + Number(item.value || 0), 0);
+}
+
+async function getGoogleAdsAccessToken(companyId, company) {
+  const refreshToken = company.google_ads_refresh_token || company.google_refresh_token;
+  const clientId = company.google_ads_client_id || company.google_client_id || process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = company.google_ads_client_secret || company.google_client_secret || process.env.GOOGLE_CLIENT_SECRET;
+  const currentToken = company.google_access_token;
+  const expiresAt = company.google_token_expires_at ? new Date(company.google_token_expires_at).getTime() : 0;
+
+  if (currentToken && expiresAt > Date.now() + 5 * 60 * 1000) return currentToken;
+  if (!refreshToken || !clientId || !clientSecret) return currentToken || null;
+
+  const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+  });
+  const tokens = await tokenResp.json();
+  if (!tokenResp.ok || tokens.error || !tokens.access_token) {
+    throw new Error(tokens.error_description || tokens.error || 'Google OAuth token refresh failed. Reconnect Google Ads.');
+  }
+
+  const { data: row } = await supabaseAdmin.from('companies').select('api_keys').eq('id', companyId).single();
+  const apiKeys = row?.api_keys || {};
+  await supabaseAdmin.from('companies').update({
+    api_keys: {
+      ...apiKeys,
+      google_access_token: tokens.access_token,
+      google_token_expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
+    },
+  }).eq('id', companyId);
+  return tokens.access_token;
 }

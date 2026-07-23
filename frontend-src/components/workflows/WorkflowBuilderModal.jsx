@@ -201,6 +201,9 @@ export default function WorkflowBuilderModal({ workflow, company: companyProp, o
   const buildSaveData = useCallback(() => ({
     name: name || 'Untitled Workflow',
     type,
+    // Entry point lives on the Start node in the UI; persist it at workflow
+    // level so the backend trigger matcher (enrollByTrigger) can query it.
+    trigger_type: nodes.find(n => n.type === 'trigger')?.trigger_type || 'manual',
     nodes: nodes.map(n => JSON.stringify(n)),
     connections: connections.map(c => JSON.stringify(c)),
     triggers: (workflow?.triggers && typeof workflow.triggers === 'object' && !Array.isArray(workflow.triggers))
@@ -299,9 +302,11 @@ export default function WorkflowBuilderModal({ workflow, company: companyProp, o
       id: `node_${Date.now()}`, type, name: NODE_TYPES[type]?.name || 'Node',
       x: last ? last.x : 380, y: last ? last.y + 130 : 170,
       delay_days: type === 'wait' ? 1 : 0, delay_hours: 0,
-      channel: type === 'send_message' ? 'email' : null,
+      channel: type === 'send_message' ? 'email' : type === 'sdr' ? 'email' : null,
       ...(type === 'social_action' ? { social_platform: 'linkedin', timing_mode: 'business_hours', skip_if_done: true, retry_on_failure: true } : {}),
       ...(type === 'enrich_lead' ? { enrich_provider: 'apollo', enrich_fields: ['email', 'linkedin_profile'], enrich_fallback: 'continue' } : {}),
+      ...(type === 'handover' ? { handover_channels: { notification: true, email: false, sms: false, whatsapp: false }, set_stage_on_handover: true } : {}),
+      ...(type === 'qualify' ? { qualify_action: 'next', qualify_stage: 'mql' } : {}),
     };
     const newNodes = [...nodes, newNode];
     setNodes(newNodes);

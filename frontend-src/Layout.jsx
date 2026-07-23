@@ -3,6 +3,7 @@ import { LanguageProvider } from '@/components/ui/LanguageContext';
 import { ThemeProvider } from '@/components/ui/ThemeContext';
 import Sidebar from '@/components/layout/Sidebar';
 import MobileBottomNav from '@/components/layout/MobileBottomNav';
+import NotificationBell from '@/components/layout/NotificationBell';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import { useAuth } from '@/lib/AuthContext';
 import { Toaster } from 'sonner';
@@ -85,6 +86,7 @@ function LayoutContent({ children }) {
               {company?.personal_agent_name || 'Bmapz AI'}
             </span>
           </Link>
+          <NotificationBell />
         </header>
 
         <main className={`transition-all duration-300 ml-0 min-h-screen ${collapsed ? 'md:ml-[72px]' : 'md:ml-[240px]'}`}>

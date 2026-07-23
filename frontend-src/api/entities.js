@@ -187,6 +187,28 @@ export const AIAutomation = {
 
 export const DesignTemplate = createEntity('/api/design-templates');
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export const Notification = {
+  list: (params) => api.get('/api/notifications', params),
+  unreadCount: () => api.get('/api/notifications/unread-count'),
+  markRead: (id, read = true) => api.patch(`/api/notifications/${id}`, { read }),
+  readAll: () => api.post('/api/notifications/read-all'),
+  delete: (id) => api.delete(`/api/notifications/${id}`),
+};
+
+// ─── SDR (client-facing sales-development bot) ────────────────────────────────
+
+export const SDR = {
+  getAgent: () => api.get('/api/sdr/agent'),
+  saveAgent: (data) => api.patch('/api/sdr/agent', data),
+  autofill: () => api.post('/api/sdr/autofill'),
+  conversations: (params) => api.get('/api/sdr/conversations', params),
+  conversation: (id) => api.get(`/api/sdr/conversations/${id}`),
+  test: (data) => api.post('/api/sdr/test', data),
+  inbound: (data) => api.post('/api/sdr/inbound', data),
+};
+
 // ─── Dashboard Configs ────────────────────────────────────────────────────────
 
 export const DashboardConfig = {

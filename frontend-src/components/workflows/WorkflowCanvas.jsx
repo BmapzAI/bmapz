@@ -1,10 +1,13 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Copy, Sparkles, Play, Check, Clock, GitBranch, MessageSquare, Calendar, Share2, UserSearch } from 'lucide-react';
+import { X, Copy, Sparkles, Play, Check, Clock, GitBranch, MessageSquare, Calendar, Share2, UserSearch, Bot, Handshake, TrendingUp } from 'lucide-react';
 import { Zap } from 'lucide-react';
 
 export const NODE_TYPES = {
   trigger:          { name: 'Start',             icon: Play,         color: '#22c55e', category: 'trigger' },
   send_message:     { name: 'Send Message',      icon: MessageSquare,color: '#38b6ff', category: 'action'  },
+  sdr:              { name: 'SDR (AI Sales Rep)',icon: Bot,          color: '#38b6ff', category: 'action'  },
+  handover:         { name: 'Hand-over to Sales',icon: Handshake,    color: '#22c55e', category: 'action'  },
+  qualify:          { name: 'Lead Qualification',icon: TrendingUp,   color: '#f59e0b', category: 'action'  },
   social_action:    { name: 'Social Action',     icon: Share2,       color: '#e1306c', category: 'action'  },
   enrich_lead:      { name: 'Enrich Lead',       icon: UserSearch,   color: '#f59e0b', category: 'action'  },
   schedule_meeting: { name: 'Schedule Meeting',  icon: Calendar,     color: '#a78bfa', category: 'action'  },
@@ -13,6 +16,16 @@ export const NODE_TYPES = {
   end_success:      { name: 'End (Success)',     icon: Check,        color: '#22c55e', category: 'end'     },
   end_failed:       { name: 'End (Failed)',      icon: X,            color: '#ef4444', category: 'end'     },
 };
+
+// Entry points / auto-enrollment reasons for the Start node. 'manual' keeps
+// today's behavior (enroll by hand); the others auto-enroll leads when the
+// matching event happens (wired in backend workflowEngine.handleInboundEvent).
+export const TRIGGER_TYPES = [
+  { value: 'manual',          label: '👤 Manual enrollment (default)' },
+  { value: 'new_lead',        label: '🆕 New inbound lead created' },
+  { value: 'inbound_message', label: '💬 Message received from a lead' },
+  { value: 'new_conversation',label: '🗨️ New conversation started' },
+];
 
 export const CONDITION_OPTIONS = [
   // Reply detection

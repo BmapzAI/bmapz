@@ -26,8 +26,15 @@ const MAX_STEPS_PER_TICK = 12; // guard against loops within one run per tick
 let running = false;
 
 // ── helpers ────────────────────────────────────────────────────────────────
-const nodesOf = (wf) => (wf.nodes || []);
-const connsOf = (wf) => (wf.connections || []);
+// The live builder (WorkflowBuilderModal) stores nodes/connections as JSON
+// STRINGS inside JSONB[] — normalize both formats so the engine always works
+// with objects regardless of how the workflow was saved.
+const parseItem = (x) => {
+  if (typeof x !== 'string') return x;
+  try { return JSON.parse(x); } catch { return null; }
+};
+const nodesOf = (wf) => (wf.nodes || []).map(parseItem).filter(Boolean);
+const connsOf = (wf) => (wf.connections || []).map(parseItem).filter(Boolean);
 
 function nodeById(wf, id) {
   return nodesOf(wf).find(n => n.id === id) || null;

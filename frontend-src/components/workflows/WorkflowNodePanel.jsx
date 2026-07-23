@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sparkles, Trash2, Info, Mic, MicOff, Loader2 } from 'lucide-react';
 
 import { toast } from 'sonner';
-import { NODE_TYPES, CONDITION_OPTIONS } from './WorkflowCanvas';
+import { NODE_TYPES, CONDITION_OPTIONS, TRIGGER_TYPES } from './WorkflowCanvas';
 import ScheduleMeetingPanel from './ScheduleMeetingPanel';
 import { InvokeLLM, TranscribeAudio } from '@/api/integrations';
 
@@ -623,6 +623,129 @@ ${channel === 'email' ? 'Return JSON with "subject" (max 60 chars) and "content"
               className="w-4 h-4 rounded border-white/20 bg-black/30 accent-[#38b6ff]" />
           </div>
         </>
+      )}
+
+      {/* ── Trigger node — entry point / auto-enrollment reason ── */}
+      {node.type === 'trigger' && (
+        <div className="space-y-3">
+          <div>
+            <Label className="text-gray-400 text-xs">Entry point (when do leads enter this workflow?)</Label>
+            <Select value={node.trigger_type || 'manual'} onValueChange={(v) => onUpdate(node.id, { trigger_type: v })}>
+              <SelectTrigger className="mt-1 bg-black/30 border-white/10 text-white text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#1a1a1a] border-white/10">
+                {TRIGGER_TYPES.map(o => (
+                  <SelectItem key={o.value} value={o.value} className="text-white">{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {node.trigger_type && node.trigger_type !== 'manual' && (
+            <div className="p-2.5 rounded-lg bg-[#22c55e]/10 border border-[#22c55e]/20">
+              <p className="text-[#22c55e] text-[11px]">
+                ⚡ Auto-enrollment: leads are enrolled automatically when this event happens
+                (workflow must be Active). Manual enrollment still works too.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── SDR node — AI sales rep takes over the conversation ── */}
+      {node.type === 'sdr' && (
+        <div className="space-y-3">
+          <div className="p-2.5 rounded-lg bg-[#38b6ff]/10 border border-[#38b6ff]/20">
+            <p className="text-[#38b6ff] text-[11px]">
+              🤖 The SDR bot opens a conversation with the lead, replies to their messages,
+              asks your qualifying questions and applies its outcomes (qualify, hand-over,
+              offer product). Configure the SDR in the <b>SDR</b> section.
+            </p>
+          </div>
+          <div>
+            <Label className="text-gray-400 text-xs">Channel to reach the lead</Label>
+            <Select value={node.channel || 'email'} onValueChange={(v) => onUpdate(node.id, { channel: v })}>
+              <SelectTrigger className="mt-1 bg-black/30 border-white/10 text-white text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#1a1a1a] border-white/10">
+                <SelectItem value="email" className="text-white">📧 Email</SelectItem>
+                <SelectItem value="whatsapp" className="text-white">💬 WhatsApp</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-gray-400 text-xs">Custom opener (optional — otherwise the SDR greeting is used)</Label>
+            <Textarea value={node.content || ''} onChange={(e) => onUpdate(node.id, { content: e.target.value })}
+              placeholder="Hi {{first_name}}! ..." className="min-h-[80px] mt-1 bg-black/30 border-white/10 text-white text-sm" />
+          </div>
+        </div>
+      )}
+
+      {/* ── Hand-over to sales node ── */}
+      {node.type === 'handover' && (
+        <div className="space-y-3">
+          <div>
+            <Label className="text-gray-400 text-xs">Inform the team via</Label>
+            <div className="grid grid-cols-2 gap-2 mt-1.5">
+              {[['notification', '🔔 Notification'], ['email', '📧 Email'], ['sms', '📱 SMS'], ['whatsapp', '💬 WhatsApp']].map(([ch, label]) => (
+                <label key={ch} className="flex items-center gap-2 py-2 px-3 rounded-lg bg-white/5 border border-white/10 cursor-pointer text-xs text-gray-300">
+                  <input type="checkbox"
+                    checked={!!(node.handover_channels || { notification: true })[ch]}
+                    onChange={(e) => onUpdate(node.id, { handover_channels: { ...(node.handover_channels || { notification: true }), [ch]: e.target.checked } })}
+                    className="w-4 h-4 accent-[#22c55e]" />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <Label className="text-gray-400 text-xs">Recipients (emails / phone numbers, comma-separated)</Label>
+            <Input value={node.handover_recipients || ''} onChange={(e) => onUpdate(node.id, { handover_recipients: e.target.value })}
+              placeholder="sales@company.com, +55 11 9..." className="mt-1 bg-black/30 border-white/10 text-white text-sm" />
+          </div>
+          <div>
+            <Label className="text-gray-400 text-xs">Message to the team (optional)</Label>
+            <Textarea value={node.content || ''} onChange={(e) => onUpdate(node.id, { content: e.target.value })}
+              placeholder="{{lead_name}} is ready — qualified via workflow." className="min-h-[70px] mt-1 bg-black/30 border-white/10 text-white text-sm" />
+          </div>
+          <label className="flex items-center justify-between py-2 px-3 rounded-lg bg-white/5 border border-white/10 cursor-pointer">
+            <div>
+              <p className="text-white text-xs font-medium">Move lead to SQL on hand-over</p>
+              <p className="text-gray-500 text-[10px]">Marks the lead sales-qualified automatically</p>
+            </div>
+            <input type="checkbox" checked={node.set_stage_on_handover !== false}
+              onChange={(e) => onUpdate(node.id, { set_stage_on_handover: e.target.checked })}
+              className="w-4 h-4 accent-[#22c55e]" />
+          </label>
+        </div>
+      )}
+
+      {/* ── Lead qualification node ── */}
+      {node.type === 'qualify' && (
+        <div className="space-y-3">
+          <div>
+            <Label className="text-gray-400 text-xs">Action</Label>
+            <Select value={node.qualify_action || 'next'} onValueChange={(v) => onUpdate(node.id, { qualify_action: v })}>
+              <SelectTrigger className="mt-1 bg-black/30 border-white/10 text-white text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#1a1a1a] border-white/10">
+                <SelectItem value="next" className="text-white">⬆️ Move to next stage</SelectItem>
+                <SelectItem value="previous" className="text-white">⬇️ Move to previous stage</SelectItem>
+                <SelectItem value="set" className="text-white">🎯 Set a specific stage</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {(node.qualify_action || 'next') === 'set' && (
+            <div>
+              <Label className="text-gray-400 text-xs">Set stage to</Label>
+              <Select value={node.qualify_stage || 'mql'} onValueChange={(v) => onUpdate(node.id, { qualify_stage: v })}>
+                <SelectTrigger className="mt-1 bg-black/30 border-white/10 text-white text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-[#1a1a1a] border-white/10">
+                  {[['prospect', 'Prospect'], ['awareness', 'Awareness'], ['consideration', 'Consideration (Lead)'], ['mql', 'MQL'], ['sql', 'SQL'], ['opportunity', 'Opportunity'], ['customer', 'Customer'], ['retention', 'Retention'], ['advocacy', 'Advocacy']].map(([v, l]) => (
+                    <SelectItem key={v} value={v} className="text-white">{l}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <p className="text-gray-500 text-[10px]">The stage change is logged in the lead's timeline and raises a notification.</p>
+        </div>
       )}
 
       {/* ── Social Action node ── */}
