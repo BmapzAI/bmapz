@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { handleInboundEvent } from '../lib/workflowEngine.js';
 
 const router = Router();
 
@@ -473,6 +474,26 @@ async function insertMessageIfNew(record) {
 
   const { error } = await supabaseAdmin.from('messages').insert(record);
   if (error) throw error;
+
+  // Real prospect message arrived → fire workflow triggers + let the SDR answer.
+  // Fire-and-forget so a slow AI turn never blocks the sync.
+  if (record.direction === 'inbound') {
+    const contactHandle = record.from_address
+      || record.metadata?.from_phone
+      || record.metadata?.ig_sender_id
+      || null;
+    const contactName = record.metadata?.from_name || record.metadata?.ig_sender_name || null;
+    // A message with no thread_id (or a novel thread) is treated as a new conversation.
+    handleInboundEvent({
+      companyId: record.company_id,
+      channel: record.channel,
+      contactHandle,
+      contactName,
+      text: record.content || '',
+      leadId: record.lead_id || null,
+      isNewConversation: !record.thread_id,
+    }).catch(err => console.error('[messaging] inbound trigger failed:', err.message));
+  }
   return true;
 }
 

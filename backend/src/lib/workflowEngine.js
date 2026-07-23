@@ -18,6 +18,8 @@
  */
 import { supabaseAdmin } from './supabase.js';
 import { sendCompanyEmail } from './emailSender.js';
+import { createNotification } from './notify.js';
+import { startSdrConversation, notifyHandover, handleInboundForSdr, FUNNEL_STAGES } from './sdrEngine.js';
 
 const TICK_MS = 60 * 1000;
 const MAX_STEPS_PER_TICK = 12; // guard against loops within one run per tick
@@ -56,6 +58,8 @@ function delayMsFor(node) {
   const ms = ((days * 24 + hours) * 60 + mins) * 60 * 1000;
   return ms > 0 ? ms : 60 * 1000; // never 0 — a wait with no value pauses 1 min
 }
+
+const leadName = (lead) => lead?.lead_name || lead?.lead_company_name || 'A lead';
 
 function personalize(text, lead) {
   if (!text) return '';
@@ -252,6 +256,70 @@ async function advanceRun(run, wf, companyKeys) {
       continue;
     }
 
+    // SDR node — hand this lead's conversation to the client-facing SDR bot
+    // (sends the opener; subsequent inbound replies are handled automatically).
+    if (node.type === 'sdr') {
+      try {
+        await startSdrConversation({
+          companyId: run.company_id,
+          leadId: run.lead_id,
+          lead,
+          channel: node.channel || 'email',
+          openingText: node.content || null,
+        });
+      } catch (e) { console.error('[workflowEngine] sdr node failed:', e.message); }
+      steps += 1;
+      currentId = nextNodeId(wf, node.id, 'default');
+      continue;
+    }
+
+    // Hand-over to sales — notify the team via the configured channels.
+    if (node.type === 'handover') {
+      const who = lead?.lead_name || lead?.lead_company_name || 'A lead';
+      await notifyHandover({
+        companyId: run.company_id,
+        who, leadId: run.lead_id,
+        note: personalize(node.content || 'A workflow handed this lead to the sales team.', lead),
+        channels: node.handover_channels || { notification: true },
+        recipients: node.handover_recipients || '',
+      });
+      if (run.lead_id && node.set_stage_on_handover !== false) {
+        await supabaseAdmin.from('leads').update({ funnel_stage: 'sql', status: 'qualified' })
+          .eq('id', run.lead_id).eq('company_id', run.company_id);
+      }
+      steps += 1;
+      currentId = nextNodeId(wf, node.id, 'default');
+      continue;
+    }
+
+    // Lead qualification — move stage next/previous or set a specific stage.
+    if (node.type === 'qualify') {
+      if (run.lead_id) {
+        const action = node.qualify_action || 'set'; // next | previous | set
+        let target = null;
+        const cur = lead?.funnel_stage || 'prospect';
+        const idx = FUNNEL_STAGES.indexOf(cur);
+        if (action === 'next') target = FUNNEL_STAGES[Math.min(FUNNEL_STAGES.length - 1, (idx < 0 ? 0 : idx) + 1)];
+        else if (action === 'previous') target = FUNNEL_STAGES[Math.max(0, (idx < 0 ? 0 : idx) - 1)];
+        else if (FUNNEL_STAGES.includes(node.qualify_stage)) target = node.qualify_stage;
+        if (target && target !== cur) {
+          await supabaseAdmin.from('leads').update({ funnel_stage: target }).eq('id', run.lead_id).eq('company_id', run.company_id);
+          await supabaseAdmin.from('activities').insert({
+            company_id: run.company_id, lead_id: run.lead_id, type: 'stage_change',
+            title: `Moved to ${target}`, description: `Workflow "${wf.name}" set funnel stage → ${target}`,
+            metadata: { workflow_id: run.workflow_id, run_id: run.id, node_id: node.id, from: cur, to: target },
+          });
+          await createNotification({
+            companyId: run.company_id, type: 'qualification', icon: '📈', leadId: run.lead_id,
+            title: `${leadName(lead)} → ${target}`, body: `Workflow "${wf.name}" advanced this lead.`, link: '/Sales',
+          });
+        }
+      }
+      steps += 1;
+      currentId = nextNodeId(wf, node.id, 'default');
+      continue;
+    }
+
     // Unknown node type — skip forward so a run never gets stuck
     currentId = nextNodeId(wf, node.id, 'default');
   }
@@ -314,6 +382,100 @@ export async function enrollLead({ workflowId, companyId, leadId, context = {} }
     .eq('id', workflowId);
 
   return run;
+}
+
+// ── event-driven triggers ────────────────────────────────────────────────────
+/**
+ * Enroll a lead into every ACTIVE workflow whose trigger_type matches `event`.
+ * This is how "new inbound lead", "message received" and "new conversation"
+ * auto-start workflows. Returns the number of enrollments.
+ */
+export async function enrollByTrigger({ companyId, event, leadId, context = {} }) {
+  if (!companyId || !event) return 0;
+  const { data: workflows } = await supabaseAdmin
+    .from('workflows')
+    .select('id, trigger_type, trigger_config')
+    .eq('company_id', companyId)
+    .eq('status', 'active')
+    .eq('is_template', false)
+    .eq('trigger_type', event);
+  if (!workflows?.length) return 0;
+  let n = 0;
+  for (const wf of workflows) {
+    try { await enrollLead({ workflowId: wf.id, companyId, leadId, context: { ...context, trigger: event } }); n++; }
+    catch (e) { console.error('[workflowEngine] trigger enroll failed:', e.message); }
+  }
+  return n;
+}
+
+/**
+ * Central handler for an inbound message from a prospect/customer. Called from
+ * the WhatsApp webhook and the messaging sync. It:
+ *   1. resolves or creates the lead,
+ *   2. fires the matching workflow triggers (new_lead / inbound_message /
+ *      new_conversation),
+ *   3. lets the SDR bot answer if it's enabled for the channel,
+ *   4. raises a notification for a brand-new inbound lead.
+ * `isNewLead` / `isNewConversation` are computed by the caller where cheap, but
+ * this function will resolve the lead if only a handle is supplied.
+ */
+export async function handleInboundEvent({ companyId, channel, contactHandle, contactName, text, leadId, isNewConversation }) {
+  if (!companyId) return;
+  try {
+    let lead = null;
+    if (leadId) {
+      const { data } = await supabaseAdmin.from('leads').select('*').eq('id', leadId).eq('company_id', companyId).maybeSingle();
+      lead = data;
+    }
+    // Resolve by contact handle (email/phone) if we don't have the lead yet
+    if (!lead && contactHandle) {
+      const isEmail = /@/.test(contactHandle);
+      const col = isEmail ? 'email' : 'phone';
+      const { data } = await supabaseAdmin.from('leads').select('*')
+        .eq('company_id', companyId).eq(col, contactHandle).maybeSingle();
+      lead = data;
+    }
+    let brandNewLead = false;
+    if (!lead && contactHandle) {
+      const isEmail = /@/.test(contactHandle);
+      const { data: created } = await supabaseAdmin.from('leads').insert({
+        company_id: companyId,
+        lead_name: contactName || (isEmail ? contactHandle.split('@')[0] : 'Inbound lead'),
+        email: isEmail ? contactHandle : null,
+        phone: isEmail ? null : contactHandle,
+        source: `inbound_${channel}`,
+        funnel_stage: 'awareness',
+        status: 'new',
+      }).select().single();
+      lead = created;
+      brandNewLead = true;
+    }
+
+    const ctx = { channel, contact_handle: contactHandle, contact_name: contactName };
+
+    // Fire triggers
+    if (brandNewLead) await enrollByTrigger({ companyId, event: 'new_lead', leadId: lead?.id, context: ctx });
+    if (isNewConversation) await enrollByTrigger({ companyId, event: 'new_conversation', leadId: lead?.id, context: ctx });
+    await enrollByTrigger({ companyId, event: 'inbound_message', leadId: lead?.id, context: ctx });
+
+    // Notify on a brand-new inbound lead
+    if (brandNewLead) {
+      await createNotification({
+        companyId, type: 'lead', icon: '🆕', priority: 'normal', leadId: lead?.id,
+        title: `New inbound lead: ${lead?.lead_name || contactHandle}`,
+        body: text ? `“${String(text).slice(0, 120)}”` : `via ${channel}`,
+        link: '/Sales',
+      });
+    }
+
+    // Let the SDR answer (if enabled for this channel)
+    if (text) {
+      await handleInboundForSdr({ companyId, channel, contactHandle, contactName, leadId: lead?.id, text }).catch(e =>
+        console.error('[workflowEngine] SDR inbound failed:', e.message));
+    }
+  } catch (err) {
+    console.error('[workflowEngine] handleInboundEvent failed:', err.message);
+  }
 }
 
 // ── ticker ───────────────────────────────────────────────────────────────────

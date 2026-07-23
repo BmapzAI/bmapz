@@ -32,6 +32,8 @@ import uploadsRoutes from './routes/uploads.js';
 import addonsRoutes from './routes/addons.js';
 import automationsRoutes from './routes/automations.js';
 import designTemplatesRoutes from './routes/designTemplates.js';
+import notificationsRoutes from './routes/notifications.js';
+import sdrRoutes from './routes/sdr.js';
 import { runAIChat } from './routes/ai.js';
 import { startAutomationScheduler } from './lib/automationScheduler.js';
 import { startModelRegistryRefresh } from './lib/modelRegistry.js';
@@ -113,6 +115,8 @@ app.use('/api/uploads', uploadsRoutes);
 app.use('/api/addons', addonsRoutes);
 app.use('/api/automations', automationsRoutes);
 app.use('/api/design-templates', designTemplatesRoutes);
+app.use('/api/notifications', notificationsRoutes);
+app.use('/api/sdr', sdrRoutes);
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
