@@ -13,6 +13,31 @@ import WorkflowAIPanel from './WorkflowAIPanel';
 import { Company, Lead, Workflow } from '@/api/entities';
 
 const TEMPLATES = {
+  lead_qualification: {
+    name: 'Inbound Lead Qualification (SDR)', type: 'qualification',
+    trigger_type: 'new_lead',
+    nodes: [
+      { id: 't',  type: 'trigger',  name: 'New inbound lead', x: 380, y: 40, trigger_type: 'new_lead' },
+      { id: 'sdr',type: 'sdr',      name: 'SDR greets & qualifies', x: 380, y: 170, channel: 'email' },
+      { id: 'w1', type: 'wait',     name: 'Give the lead time', x: 380, y: 300, delay_days: 2 },
+      { id: 'c1', type: 'condition',name: 'Qualified?', x: 380, y: 430, condition: 'qualified' },
+      { id: 'q',  type: 'qualify',  name: 'Move to SQL', x: 200, y: 560, qualify_action: 'set', qualify_stage: 'sql' },
+      { id: 'h',  type: 'handover', name: 'Hand to sales', x: 200, y: 690, handover_channels: { notification: true, email: true }, set_stage_on_handover: true },
+      { id: 'nq', type: 'qualify',  name: 'Nurture (Awareness)', x: 560, y: 560, qualify_action: 'set', qualify_stage: 'awareness' },
+      { id: 'ok', type: 'end_success', name: 'Done', x: 200, y: 820 },
+      { id: 'end2', type: 'end_success', name: 'Nurturing', x: 560, y: 690 },
+    ],
+    connections: [
+      { from: { nodeId: 't', port: 'default' }, to: 'sdr' },
+      { from: { nodeId: 'sdr', port: 'default' }, to: 'w1' },
+      { from: { nodeId: 'w1', port: 'default' }, to: 'c1' },
+      { from: { nodeId: 'c1', port: 'yes' }, to: 'q' },
+      { from: { nodeId: 'q', port: 'default' }, to: 'h' },
+      { from: { nodeId: 'h', port: 'default' }, to: 'ok' },
+      { from: { nodeId: 'c1', port: 'no' }, to: 'nq' },
+      { from: { nodeId: 'nq', port: 'default' }, to: 'end2' },
+    ]
+  },
   email_sequence: {
     name: 'Email Outreach Sequence', type: 'sales_outreach',
     nodes: [

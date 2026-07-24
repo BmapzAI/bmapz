@@ -96,6 +96,20 @@ async function evalCondition(node, run) {
   const inbound = (msgs || []).filter(m => m.direction === 'inbound' && (!since || new Date(m.created_at) >= new Date(since)));
   const outbound = (msgs || []).filter(m => m.direction === 'outbound');
 
+  // Qualified/disqualified CHECK the lead's real CRM state — the same fields the
+  // Lead-Qualification action, the Sales board, and the SDR all write. So the
+  // 'qualified' condition branches on whatever qualified the lead (SDR, a workflow,
+  // or a human on the Sales board). Condition = read/branch; qualify action = write.
+  if (cond === 'qualified' || cond === 'disqualified') {
+    const { data: lead } = await supabaseAdmin
+      .from('leads').select('funnel_stage, status').eq('id', run.lead_id).maybeSingle();
+    const stageIdx = FUNNEL_STAGES.indexOf(lead?.funnel_stage || 'awareness');
+    const isQualified = (lead?.status === 'qualified') || stageIdx >= FUNNEL_STAGES.indexOf('mql');
+    const isDisqualified = ['disqualified', 'lost'].includes(lead?.status);
+    if (cond === 'qualified') return isQualified ? 'yes' : 'no';
+    return isDisqualified ? 'yes' : 'no';
+  }
+
   switch (cond) {
     case 'replied':          return inbound.length > 0 ? 'yes' : 'no';
     case 'no_response':      return inbound.length === 0 ? 'yes' : 'no';
