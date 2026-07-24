@@ -942,6 +942,52 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                   ))}
                 </div>
 
+                {/* Drafts & Scheduled — where saved-but-not-live posts live; click to open/edit */}
+                {(() => {
+                  const pending = filtered
+                    .filter(p => p.status === 'draft' || p.status === 'scheduled')
+                    .sort((a, b) => new Date(b.scheduled_for || b.created_date || 0) - new Date(a.scheduled_for || a.created_date || 0));
+                  return (
+                    <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
+                      <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+                        <Edit3 size={18} className="text-[#38b6ff]" /> {isPt ? 'Rascunhos & Agendados' : 'Drafts & Scheduled'}
+                        <span className="text-gray-500 text-sm font-normal">({pending.length})</span>
+                      </h3>
+                      {pending.length === 0 ? (
+                        <div className="text-center py-10">
+                          <FileImage size={40} className="text-gray-600 mx-auto mb-3" />
+                          <p className="text-gray-400 text-sm">{isPt ? 'Nenhum rascunho ou post agendado.' : 'No drafts or scheduled posts.'}</p>
+                          <Button size="sm" onClick={() => { openNewPost(); setActiveTab('content'); }} className="mt-3 bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-1.5">
+                            <Plus size={14} /> {isPt ? 'Criar post' : 'Create a post'}
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {pending.map(post => (
+                            <div key={post.id}
+                              className="flex items-center gap-3 p-3 rounded-xl bg-black/30 border border-white/10 hover:border-[#38b6ff]/40 transition-all group cursor-pointer"
+                              onClick={() => { setEditingPost(post); setNewPost(post); setActiveTab('content'); }}>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full border flex-shrink-0 ${post.status === 'scheduled' ? 'text-[#38b6ff] bg-[#38b6ff]/10 border-[#38b6ff]/20' : 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20'}`}>
+                                {post.status === 'scheduled' ? (isPt ? 'Agendado' : 'Scheduled') : (isPt ? 'Rascunho' : 'Draft')}
+                              </span>
+                              <div className="flex gap-1 flex-shrink-0">{(post.platforms || []).map(p => <span key={p} className="text-base">{PLATFORMS.find(pl => pl.value === p)?.icon}</span>)}</div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-white text-sm font-medium truncate">{post.title || (post.content ? post.content.slice(0, 60) : (isPt ? '(sem título)' : '(untitled)'))}</p>
+                                <p className="text-gray-500 text-xs truncate">
+                                  {post.scheduled_for ? `${isPt ? 'Para' : 'For'} ${new Date(post.scheduled_for).toLocaleString()}` : (post.content ? post.content.slice(0, 80) : '')}
+                                </p>
+                              </div>
+                              {(post.media_urls?.length > 0) && <span className="text-gray-500 text-xs flex-shrink-0">🖼️ {post.media_urls.length}</span>}
+                              <button onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(post.id); }}
+                                className="text-gray-600 hover:text-red-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {filteredPublished.filter(p => p.performance).length > 0 && (
                   <div className="grid grid-cols-3 gap-4">
                     {[
