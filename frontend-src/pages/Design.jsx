@@ -1116,9 +1116,13 @@ export default function Design() {
       style: { left: `${l.x * 100}%`, top: `${l.y * 100}%`, width: `${l.w * 100}%`, transform: layerTransform(l), opacity: l.opacity ?? 1 },
     };
     const imgInner = crop && l.natAsp ? (
-      <div style={{ width: '100%', overflow: 'hidden', aspectRatio: `${crop.w / (crop.h * l.natAsp)}`, borderRadius: `${l.radius || 0}%` }}>
+      // Show the cropped region using the SAME oversized-image + overflow technique
+      // as the crop-mode window (and matching the canvas export), so what you see
+      // after "Done cropping" is exactly what you selected. Position the full image
+      // absolutely and offset it by the crop origin.
+      <div style={{ position: 'relative', width: '100%', overflow: 'hidden', aspectRatio: `${crop.w / (crop.h * l.natAsp)}`, borderRadius: `${l.radius || 0}%` }}>
         <img src={l.url} alt="" draggable={false}
-          style={{ width: `${100 / crop.w}%`, transform: `translate(-${(crop.x / crop.w) * 100}%, -${(crop.y / crop.h) * 100}%)`, display: 'block' }}
+          style={{ position: 'absolute', width: `${100 / crop.w}%`, height: `${100 / crop.h}%`, left: `${-(crop.x / crop.w) * 100}%`, top: `${-(crop.y / crop.h) * 100}%`, maxWidth: 'none', display: 'block' }}
           onLoad={(e) => { if (!l.natAsp) updateLayerSilent(l.id, { natAsp: e.target.naturalHeight / e.target.naturalWidth }); }} />
       </div>
     ) : (
