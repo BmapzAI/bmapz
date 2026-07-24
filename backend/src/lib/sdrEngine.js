@@ -18,16 +18,43 @@ import { sendCompanyEmail } from './emailSender.js';
 import { createNotification } from './notify.js';
 
 export const FUNNEL_STAGES = ['prospect', 'awareness', 'consideration', 'mql', 'sql', 'opportunity', 'customer', 'retention', 'advocacy'];
+export const ALL_OUTCOMES = ['offer_product', 'handover', 'qualified', 'not_qualified', 'support'];
 
-/** Load the company's SDR config, creating a disabled default if none exists. */
-export async function getSdrAgent(companyId) {
-  const { data } = await supabaseAdmin.from('sdr_agents').select('*').eq('company_id', companyId).maybeSingle();
+async function defaultSdrName(companyId) {
+  const { data } = await supabaseAdmin.from('companies').select('personal_agent_name').eq('id', companyId).single();
+  return data?.personal_agent_name || 'Sales Assistant';
+}
+
+/**
+ * Load a user's SDR config (per-user so each user names/tunes their own),
+ * creating a disabled default seeded from the company agent name if missing.
+ * Pass userId = null for the company-default row (used by inbound automation).
+ */
+export async function getSdrAgent(companyId, userId = null) {
+  let q = supabaseAdmin.from('sdr_agents').select('*').eq('company_id', companyId);
+  q = userId ? q.eq('user_id', userId) : q.is('user_id', null);
+  const { data } = await q.maybeSingle();
   if (data) return data;
+  const name = await defaultSdrName(companyId);
   const { data: created } = await supabaseAdmin.from('sdr_agents')
-    .insert({ company_id: companyId, enabled: false })
+    .insert({ company_id: companyId, user_id: userId, enabled: false, name })
     .select().single();
   return created;
 }
+
+/** The SDR config used for inbound automation: any enabled agent, else the company default. */
+export async function getCompanySdrAgent(companyId) {
+  const { data } = await supabaseAdmin.from('sdr_agents').select('*')
+    .eq('company_id', companyId).eq('enabled', true)
+    .order('user_id', { ascending: true, nullsFirst: true }).limit(1).maybeSingle();
+  if (data) return data;
+  return getSdrAgent(companyId, null);
+}
+
+const allowedOutcomesOf = (agent) => {
+  const a = Array.isArray(agent?.allowed_outcomes) && agent.allowed_outcomes.length ? agent.allowed_outcomes : ALL_OUTCOMES;
+  return a.filter(o => ALL_OUTCOMES.includes(o));
+};
 
 async function getCompanyFacts(companyId) {
   const { data: c } = await supabaseAdmin
@@ -41,6 +68,7 @@ const trunc = (s, n) => (s && s.length > n ? s.slice(0, n) + '…' : s || '');
 
 /** Build the client-safe system prompt from config + company facts. */
 export function buildSdrSystemPrompt(agent, facts) {
+  const allowed = allowedOutcomesOf(agent);
   const icp = facts.icp || {};
   const briefing = facts.briefing || {};
   const name = agent.name || facts.personal_agent_name || 'Sales Assistant';
@@ -68,10 +96,15 @@ export function buildSdrSystemPrompt(agent, facts) {
     questions.length ? `\nQualifying questions to work in naturally (don't interrogate — one at a time):\n${questions.map((q, i) => `${i + 1}. ${typeof q === 'string' ? q : q.question}`).join('\n')}` : '',
     `\nConversation flow to follow: ${flow.map(f => (typeof f === 'string' ? f : f.step)).join(' → ')}.`,
     agent.guardrails ? `\nGuardrails: ${trunc(agent.guardrails, 400)}` : '',
-    `\nHARD RULES: Never reveal internal metrics, pipeline numbers, or other customers. Never invent products, prices, or promises. Stay strictly on topics about ${facts.name || 'the company'} and its offering. If the prospect is ready to buy, is high-value, or explicitly asks for a human, HAND OVER to sales. If they need technical support, route to support.`,
+    `\nHARD RULES: Never reveal internal metrics, pipeline numbers, or other customers. Never invent products, prices, or promises. Stay strictly on topics about ${facts.name || 'the company'} and its offering.`,
+    `\nALLOWED OUTCOMES — you may ONLY ever choose from this exact list, nothing else: ${allowed.join(', ')}, or "none". If a situation seems to call for an outcome that is NOT in this list, choose "none" and keep helping or ask a clarifying question. This is a strict business rule.`,
     `\nYou MUST reply with a JSON object ONLY, no prose around it, shaped exactly:`,
-    `{"reply": "<the message to send to the prospect>", "outcome": "none|offer_product|handover|qualified|not_qualified|support", "recommended_product": "<product name or null>", "qualification": {"<question or attribute>": "<their answer/observation>"}, "internal_note": "<one sentence: which flow step you're on and why this outcome>", "stage": "prospect|awareness|consideration|mql|sql|opportunity|null"}`,
-    `Set outcome to "handover" only when it's time for a human; "qualified" when they clearly fit and are interested; "not_qualified" when they're clearly out of scope; "support" for support requests; otherwise "none". Keep "reply" natural and channel-appropriate (short for chat/WhatsApp).`,
+    `{"reply": "<the message to send to the prospect>", "outcome": "none|${allowed.join('|')}", "recommended_product": "<product name or null>", "qualification": {"<question or attribute>": "<their answer/observation>"}, "internal_note": "<one sentence: which flow step you're on and why this outcome>", "stage": "prospect|awareness|consideration|mql|sql|opportunity|null"}`,
+    allowed.includes('handover') ? `Set "handover" only when it's time for a human.` : '',
+    allowed.includes('qualified') ? `Set "qualified" when they clearly fit and are interested.` : '',
+    allowed.includes('not_qualified') ? `Set "not_qualified" when they're clearly out of scope.` : '',
+    allowed.includes('support') ? `Set "support" for support requests.` : '',
+    `Otherwise "none". Keep "reply" natural and channel-appropriate (short for chat/WhatsApp).`,
   ].filter(Boolean).join('\n');
 }
 
@@ -96,6 +129,12 @@ export async function sdrRespond({ companyId, agent, facts, conversationMessages
   let parsed;
   try { parsed = JSON.parse(result.content); }
   catch { parsed = { reply: result.content, outcome: 'none', qualification: {}, internal_note: 'unstructured reply', stage: null }; }
+  // Hard guardrail: clamp the outcome to the allowed set, no matter what the model returned.
+  const allowed = allowedOutcomesOf(agent);
+  if (parsed.outcome && parsed.outcome !== 'none' && !allowed.includes(parsed.outcome)) {
+    parsed.internal_note = `${parsed.internal_note || ''} [outcome "${parsed.outcome}" not allowed → forced to none]`.trim();
+    parsed.outcome = 'none';
+  }
   return { ...parsed, _usage: result.usage, _model: result.model_used };
 }
 
@@ -106,7 +145,7 @@ export async function sdrRespond({ companyId, agent, facts, conversationMessages
  * Returns { conversation, reply, outcome } or null if the SDR is disabled.
  */
 export async function handleInboundForSdr({ companyId, channel = 'web', contactHandle, contactName, leadId, text }) {
-  const agent = await getSdrAgent(companyId);
+  const agent = await getCompanySdrAgent(companyId);
   if (!agent?.enabled) return null;
   const channels = Array.isArray(agent.channels) ? agent.channels : [];
   if (channels.length && !channels.includes(channel)) return null;
@@ -138,6 +177,18 @@ export async function handleInboundForSdr({ companyId, channel = 'web', contactH
 
   const messages = [...(convo.messages || []), { role: 'client', content: text, at: new Date().toISOString() }];
 
+  // Always log the client's inbound message to the unified Inbox thread.
+  await logToInbox({ companyId, leadId: convo.lead_id || leadId, channel, direction: 'inbound', content: text, from: contactHandle, convoId: convo.id });
+
+  // If a human has taken over (replied from the Inbox), the SDR stands down —
+  // it records the message but does NOT auto-reply.
+  if (convo.human_takeover) {
+    await supabaseAdmin.from('sdr_conversations').update({
+      messages, last_message_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).eq('id', convo.id);
+    return { conversation: convo, reply: null, outcome: 'none', handedToHuman: true };
+  }
+
   const decision = await sdrRespond({ companyId, agent, facts, conversationMessages: messages });
   const reply = decision.reply || "Thanks for reaching out! Someone from our team will follow up shortly.";
 
@@ -160,11 +211,11 @@ export async function handleInboundForSdr({ companyId, channel = 'web', contactH
     last_message_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   }).eq('id', convo.id);
 
-  // Send the reply on the channel it came from
-  await sendSdrReply({ companyId, channel, contactHandle, leadId, reply });
+  // Send the reply on the channel it came from (also logs to Inbox)
+  await sendSdrReply({ companyId, channel, contactHandle, leadId: convo.lead_id || leadId, reply, convoId: convo.id });
 
   // Outcome side-effects
-  await applySdrOutcome({ companyId, agent, convo, leadId, decision, contactName: contactName || convo.contact_name });
+  await applySdrOutcome({ companyId, agent, convo, leadId: convo.lead_id || leadId, decision, contactName: contactName || convo.contact_name });
 
   return { conversation: convo, reply, outcome: decision.outcome || 'none' };
 }
@@ -175,7 +226,7 @@ export async function handleInboundForSdr({ companyId, channel = 'web', contactH
  * and opens an sdr_conversation so the lead's replies are handled by the SDR.
  */
 export async function startSdrConversation({ companyId, leadId, lead, channel = 'email', openingText }) {
-  const agent = await getSdrAgent(companyId);
+  const agent = await getCompanySdrAgent(companyId);
   if (!agent?.enabled) return null;
   const facts = await getCompanyFacts(companyId);
 
@@ -205,19 +256,28 @@ export async function startSdrConversation({ companyId, leadId, lead, channel = 
     qualification: {}, notes: [{ at: new Date().toISOString(), note: 'SDR conversation started by workflow' }],
   }).select().single();
 
-  await sendSdrReply({ companyId, channel, contactHandle, leadId, reply: opener });
+  await sendSdrReply({ companyId, channel, contactHandle, leadId, reply: opener, convoId: convo.id });
   return convo;
 }
 
-async function sendSdrReply({ companyId, channel, contactHandle, leadId, reply }) {
+// Log an SDR message into the unified `messages` table so the Inbox shows the
+// full client thread (both directions), lets sales pick it up, and keeps history.
+async function logToInbox({ companyId, leadId, channel, direction, content, from, to, convoId, human }) {
   try {
-    // Log to the unified messages table so it shows in Inbox
     await supabaseAdmin.from('messages').insert({
       company_id: companyId, lead_id: leadId || null,
-      direction: 'outbound', channel: channel === 'web' ? 'internal' : channel,
-      content: reply, status: 'sent', sent_at: new Date().toISOString(),
-      to_address: contactHandle || null, metadata: { sdr: true },
+      direction, channel: channel === 'web' ? 'internal' : channel,
+      content, status: direction === 'inbound' ? 'received' : 'sent',
+      sent_at: new Date().toISOString(),
+      from_address: from || null, to_address: to || null,
+      metadata: { sdr: !human, human: !!human, sdr_conversation_id: convoId || null },
     });
+  } catch (err) { console.error('[sdr] logToInbox failed:', err.message); }
+}
+
+async function sendSdrReply({ companyId, channel, contactHandle, leadId, reply, convoId }) {
+  try {
+    await logToInbox({ companyId, leadId, channel, direction: 'outbound', content: reply, to: contactHandle, convoId });
     if (channel === 'email' && contactHandle) {
       const { data: c } = await supabaseAdmin.from('companies').select('api_keys').eq('id', companyId).single();
       await sendCompanyEmail(c?.api_keys || {}, { to: contactHandle, subject: 'Re: your enquiry', html: reply.replace(/\n/g, '<br>'), text: reply });

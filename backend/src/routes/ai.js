@@ -984,14 +984,15 @@ router.post('/generate-image', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/ai/edit-image — AI image edits for the Design Studio.
-// operations: remove_bg (transparent background), enhance (quality boost),
-// custom (free-form prompt edit). Uses gpt-image-1 edits; returns a data URL
-// the frontend persists to storage.
+// POST /api/ai/edit-image — free-form AI image edit for the Design Studio
+// (e.g. "make the sky purple"). Uses gpt-image-1 edits; returns a data URL the
+// frontend persists to storage. (remove-background and enhance operations were
+// removed — they altered the source too much.)
 router.post('/edit-image', requireAuth, async (req, res) => {
   try {
-    const { image_url, operation = 'custom', prompt: userPrompt } = req.body;
+    const { image_url, prompt: userPrompt } = req.body;
     if (!image_url) return res.status(400).json({ error: 'image_url is required' });
+    if (!userPrompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
 
     // Load the source image (storage URL or data URL)
     let buffer;
@@ -1005,21 +1006,15 @@ router.post('/edit-image', requireAuth, async (req, res) => {
     }
     if (buffer.length > 20 * 1024 * 1024) return res.status(413).json({ error: 'Image too large (max 20MB)' });
 
-    const prompts = {
-      remove_bg: 'Cut out the main subject and place it on a fully transparent background. CRITICAL: preserve the subject EXACTLY, pixel-for-pixel — do not repaint, restyle, recolor, move, crop, or regenerate the subject in any way. Only the background is removed; every detail, edge, texture and color of the subject stays identical to the source.',
-      enhance: 'Upscale and enhance this image to the highest quality: increase resolution, sharpness, fine detail, and lighting; remove noise and JPEG/compression artifacts. CRITICAL: keep the exact same subject, composition, framing, colors and content — this is a quality restoration, NOT a redesign. Do not add, remove, or move anything.',
-      custom: userPrompt || 'Improve this image while preserving its subject and composition.',
-    };
-    const prompt = prompts[operation] || prompts.custom;
+    const prompt = userPrompt;
 
     const client = await getOpenAIClient(req.companyId);
     const { toFile } = await import('openai');
     const file = await toFile(buffer, 'source.png', { type: 'image/png' });
 
     // Highest quality + high input fidelity so the source is preserved as closely
-    // as the model allows (input_fidelity is key to not "altering too much").
+    // as the model allows.
     const params = { model: 'gpt-image-1', image: file, prompt, size: 'auto', quality: 'high', input_fidelity: 'high' };
-    if (operation === 'remove_bg') params.background = 'transparent';
 
     // Progressive fallback: drop the least-supported params first, so newer
     // accounts get max quality and older ones still succeed.
@@ -1027,7 +1022,7 @@ router.post('/edit-image', requireAuth, async (req, res) => {
       params,
       { ...params, input_fidelity: undefined },
       { ...params, input_fidelity: undefined, quality: undefined },
-      { ...params, input_fidelity: undefined, quality: undefined, background: undefined, size: undefined },
+      { ...params, input_fidelity: undefined, quality: undefined, size: undefined },
     ].map(p => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)));
 
     let result, lastErr;
@@ -1044,7 +1039,7 @@ router.post('/edit-image', requireAuth, async (req, res) => {
 
     const b64 = result.data?.[0]?.b64_json;
     if (!b64) throw new Error('Image edit returned no image');
-    res.json({ url: `data:image/png;base64,${b64}`, operation });
+    res.json({ url: `data:image/png;base64,${b64}` });
   } catch (err) {
     console.error('[ai/edit-image]', err.message);
     if (err.code === 'MISSING_API_KEY') return res.status(402).json({ error: err.message, code: 'MISSING_API_KEY' });

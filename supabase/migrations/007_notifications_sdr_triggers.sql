@@ -41,8 +41,9 @@ end $$;
 CREATE TABLE IF NOT EXISTS public.sdr_agents (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  user_id UUID,                    -- per-USER SDR (each user names/tunes their own); NULL = company default
   enabled BOOLEAN DEFAULT FALSE,
-  name TEXT,                       -- defaults to company.personal_agent_name
+  name TEXT,                       -- defaults to company.personal_agent_name, user-settable
   greeting TEXT,
   goal TEXT,
   persona TEXT,
@@ -54,13 +55,18 @@ CREATE TABLE IF NOT EXISTS public.sdr_agents (
   handoff_conditions TEXT,
   handoff_channels JSONB DEFAULT '{"notification":true}', -- {email,sms,notification,whatsapp}
   handoff_recipients TEXT,         -- comma-separated emails/phones
-  outcomes JSONB DEFAULT '{}',     -- config for offer/handover/qualified/support outcomes
+  -- The ONLY outcomes the SDR is allowed to decide (a hard guardrail).
+  allowed_outcomes JSONB DEFAULT '["offer_product","handover","qualified","not_qualified","support"]',
+  outcomes JSONB DEFAULT '{}',     -- extra per-outcome config
   channels JSONB DEFAULT '["whatsapp","email","instagram"]', -- where the SDR is active
   ai_configured BOOLEAN DEFAULT FALSE, -- true once Company Brain autofill has run
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sdr_agents_company ON public.sdr_agents(company_id);
+-- One SDR config per (company, user). NULLs are distinct in Postgres unique
+-- indexes, so COALESCE pins a single company-default row (user_id NULL).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sdr_agents_company_user
+  ON public.sdr_agents(company_id, COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid));
 ALTER TABLE public.sdr_agents ENABLE ROW LEVEL SECURITY;
 
 do $$ begin
@@ -85,9 +91,10 @@ CREATE TABLE IF NOT EXISTS public.sdr_conversations (
   contact_handle TEXT,             -- email/phone/ig id of the prospect
   status TEXT DEFAULT 'active' CHECK (status IN ('active','qualified','not_qualified','handed_over','support','closed')),
   outcome TEXT,                    -- offer_product | handover | qualified | not_qualified | support | none
-  messages JSONB DEFAULT '[]',     -- [{role:'client'|'sdr', content, at}]
+  messages JSONB DEFAULT '[]',     -- [{role:'client'|'sdr'|'human', content, at}]
   qualification JSONB DEFAULT '{}',-- extracted answers {question: answer}
   notes JSONB DEFAULT '[]',        -- internal-only SDR reasoning / conditions followed
+  human_takeover BOOLEAN DEFAULT FALSE, -- true once a human replied via Inbox → SDR stops auto-replying
   last_message_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()

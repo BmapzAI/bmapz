@@ -9,27 +9,29 @@ import { getSdrAgent, autofillSdrConfig, handleInboundForSdr, sdrRespond } from 
 
 const router = Router();
 
-// GET /api/sdr/agent — the company's SDR config (created disabled if missing)
+// GET /api/sdr/agent — this USER's SDR config (per-user; created disabled if missing)
 router.get('/agent', requireAuth, async (req, res) => {
   try {
-    res.json(await getSdrAgent(req.companyId));
+    res.json(await getSdrAgent(req.companyId, req.dbUser?.id || null));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PATCH /api/sdr/agent — save config
+// PATCH /api/sdr/agent — save this user's config
 router.patch('/agent', requireAuth, async (req, res) => {
   try {
-    await getSdrAgent(req.companyId); // ensure a row exists
+    const userId = req.dbUser?.id || null;
+    await getSdrAgent(req.companyId, userId); // ensure the user's row exists
     const allowed = ['enabled', 'name', 'greeting', 'goal', 'persona', 'guardrails', 'show_prices',
       'products', 'qualifying_questions', 'conversation_flow', 'handoff_conditions',
-      'handoff_channels', 'handoff_recipients', 'outcomes', 'channels', 'ai_configured'];
+      'handoff_channels', 'handoff_recipients', 'outcomes', 'allowed_outcomes', 'channels', 'ai_configured'];
     const patch = {};
     for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
     patch.updated_at = new Date().toISOString();
-    const { data, error } = await supabaseAdmin.from('sdr_agents')
-      .update(patch).eq('company_id', req.companyId).select().single();
+    let q = supabaseAdmin.from('sdr_agents').update(patch).eq('company_id', req.companyId);
+    q = userId ? q.eq('user_id', userId) : q.is('user_id', null);
+    const { data, error } = await q.select().single();
     if (error) throw error;
     res.json(data);
   } catch (err) {
@@ -40,10 +42,12 @@ router.patch('/agent', requireAuth, async (req, res) => {
 // POST /api/sdr/autofill — fill the whole config with the Company Brain
 router.post('/autofill', requireAuth, async (req, res) => {
   try {
+    const userId = req.dbUser?.id || null;
     const { cfg, usage } = await autofillSdrConfig(req.companyId);
-    await getSdrAgent(req.companyId);
-    const { data, error } = await supabaseAdmin.from('sdr_agents').update({
-      name: cfg.name || null,
+    const existing = await getSdrAgent(req.companyId, userId);
+    let q = supabaseAdmin.from('sdr_agents').update({
+      // Keep the user's chosen name unless they never set one
+      name: existing.name || cfg.name || null,
       greeting: cfg.greeting || null,
       goal: cfg.goal || null,
       persona: cfg.persona || null,
@@ -55,7 +59,9 @@ router.post('/autofill', requireAuth, async (req, res) => {
       handoff_conditions: cfg.handoff_conditions || null,
       ai_configured: true,
       updated_at: new Date().toISOString(),
-    }).eq('company_id', req.companyId).select().single();
+    }).eq('company_id', req.companyId);
+    q = userId ? q.eq('user_id', userId) : q.is('user_id', null);
+    const { data, error } = await q.select().single();
     if (error) throw error;
     res.json({ agent: data, tokens_used: usage?.total_tokens || 0 });
   } catch (err) {
@@ -97,7 +103,7 @@ router.get('/conversations/:id', requireAuth, async (req, res) => {
 // Body: { messages:[{role:'client'|'sdr',content}], text } — used by the in-app tester.
 router.post('/test', requireAuth, async (req, res) => {
   try {
-    const agent = await getSdrAgent(req.companyId);
+    const agent = await getSdrAgent(req.companyId, req.dbUser?.id || null);
     const { data: facts } = await supabaseAdmin.from('companies')
       .select('name, industry, services_description, value_propositions, icp, briefing, website, personal_agent_name')
       .eq('id', req.companyId).single();

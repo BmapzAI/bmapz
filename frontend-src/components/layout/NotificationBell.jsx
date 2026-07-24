@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useLayoutEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
@@ -21,6 +21,18 @@ export default function NotificationBell() {
   const { isPt } = useLanguage();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  // Anchor the dropdown with FIXED positioning so it never gets clipped by the
+  // sidebar's bounds; clamp to the viewport so it stays fully visible.
+  useLayoutEffect(() => {
+    if (!open || !btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+    setPos({ top: r.bottom + 8, left, width });
+  }, [open]);
 
   const { data: countData } = useQuery({
     queryKey: ['notifUnread'],
@@ -44,7 +56,7 @@ export default function NotificationBell() {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen(o => !o)}
+      <button ref={btnRef} onClick={() => setOpen(o => !o)}
         className="relative w-9 h-9 rounded-lg flex items-center justify-center text-white/70 hover:text-white hover:bg-white/5 transition-colors"
         title={isPt ? 'Notificações' : 'Notifications'}>
         <Bell size={18} />
@@ -57,8 +69,9 @@ export default function NotificationBell() {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-2 w-80 max-w-[92vw] z-50 rounded-2xl bg-[#141414] border border-white/10 shadow-2xl overflow-hidden">
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div className="fixed z-[61] rounded-2xl bg-[#141414] border border-white/10 shadow-2xl overflow-hidden"
+            style={{ top: pos.top, left: pos.left, width: pos.width }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
               <span className="text-white font-semibold text-sm">{isPt ? 'Notificações' : 'Notifications'}</span>
               <div className="flex items-center gap-2">

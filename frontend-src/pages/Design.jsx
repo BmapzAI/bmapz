@@ -16,7 +16,6 @@ import {
   Palette, Download, Save, Send, Plus, Trash2, Type, Image as ImageIcon,
   Layers, Loader2, Sparkles, ChevronLeft, ChevronRight, Copy, LayoutTemplate,
   Upload, Wand2, Shapes, Smile, Crop, RotateCw, FlipHorizontal, FlipVertical,
-  Star, Scissors,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Company, DesignTemplate, Canva } from '@/api/entities';
@@ -659,21 +658,16 @@ export default function Design() {
     } finally { setBusy(null); }
   };
 
-  // ── AI: edit selected image (remove bg / enhance / custom) ──────────────
-  const aiEditImage = async (operation, prompt) => {
-    if (!selectedLayer || selectedLayer.type !== 'image') return;
-    setBusy(`ai:${operation}`);
+  // ── AI: free-form edit of the selected image ("make the sky purple") ──────
+  const aiEditImage = async (prompt) => {
+    if (!selectedLayer || selectedLayer.type !== 'image' || !prompt?.trim()) return;
+    setBusy('ai:custom');
     try {
-      const res = await api.post('/api/ai/edit-image', {
-        image_url: selectedLayer.url, operation, prompt,
-      });
-      const savedUrl = await persistDataUrl(res.url, operation);
+      const res = await api.post('/api/ai/edit-image', { image_url: selectedLayer.url, prompt });
+      const savedUrl = await persistDataUrl(res.url, 'ai-edit');
       updateLayer(selectedLayer.id, { url: savedUrl, crop: undefined, natAsp: undefined });
       setAiEditPrompt('');
-      toast.success(
-        operation === 'remove_bg' ? (isPt ? 'Fundo removido!' : 'Background removed!')
-        : operation === 'enhance' ? (isPt ? 'Qualidade melhorada!' : 'Quality enhanced!')
-        : (isPt ? 'Imagem editada!' : 'Image edited!'));
+      toast.success(isPt ? 'Imagem editada!' : 'Image edited!');
     } catch (e) {
       toast.error((isPt ? 'Falha na edição: ' : 'Edit failed: ') + e.message);
     } finally { setBusy(null); }
@@ -1470,24 +1464,12 @@ export default function Design() {
                       ⇲ {isPt ? 'Usar como fundo do slide' : 'Set as slide background'}
                     </button>
                     <div className="flex gap-1.5">
-                      <button onClick={() => aiEditImage('remove_bg')} disabled={!!busy}
-                        className="flex-1 py-1.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-300 hover:border-[#cb6ce6]/50 flex items-center justify-center gap-1 disabled:opacity-50">
-                        {busyIs('ai:remove_bg') ? <Loader2 size={12} className="animate-spin" /> : <Scissors size={12} />}
-                        {isPt ? 'Remover fundo' : 'Remove BG'}
-                      </button>
-                      <button onClick={() => aiEditImage('enhance')} disabled={!!busy}
-                        className="flex-1 py-1.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-300 hover:border-[#cb6ce6]/50 flex items-center justify-center gap-1 disabled:opacity-50">
-                        {busyIs('ai:enhance') ? <Loader2 size={12} className="animate-spin" /> : <Star size={12} />}
-                        {isPt ? 'Melhorar' : 'Enhance'}
-                      </button>
-                    </div>
-                    <div className="flex gap-1.5">
                       <Input value={aiEditPrompt} onChange={(e) => setAiEditPrompt(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && aiEditPrompt.trim() && aiEditImage('custom', aiEditPrompt)}
+                        onKeyDown={(e) => e.key === 'Enter' && aiEditPrompt.trim() && aiEditImage(aiEditPrompt)}
                         placeholder={isPt ? 'Editar com IA: ex. "deixe o céu roxo"' : 'AI edit: e.g. "make the sky purple"'}
                         className="bg-black/30 border-white/10 text-white text-xs h-8" />
                       <Button size="sm" disabled={!aiEditPrompt.trim() || !!busy}
-                        onClick={() => aiEditImage('custom', aiEditPrompt)}
+                        onClick={() => aiEditImage(aiEditPrompt)}
                         className="h-8 px-2.5 bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff]">
                         {busyIs('ai:custom') ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
                       </Button>
