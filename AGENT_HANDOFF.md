@@ -1106,3 +1106,98 @@ Redo (Ctrl+Y and Ctrl+Shift+Z) added wherever undo makes sense:
   Auto-Layout. Time-travel marks hasUnsavedChanges so auto-save persists it.
 
 Both commits pushed; CI deploy of the second commit pending at write time.
+
+### 2026-07-24 - Claude (Session 19: Inbound/SDR/Notifications system + Design Studio v3)
+
+Two large feature areas. All pushed; frontend builds, eslint --quiet 0 errors,
+backend node --check + module-load all pass. **One blocker: migration 007 not yet
+applied (Supabase dashboard session expired mid-apply) — the new tabs error until it runs.**
+
+#### PART 2 — Inbound lead / SDR / Notifications (revenue engine)
+
+DB: `supabase/migrations/007_notifications_sdr_triggers.sql` — tables
+`notifications`, `sdr_agents`, `sdr_conversations` (company-scoped RLS);
+`workflows.trigger_type`/`trigger_config`; `leads.disqualification_reason/notes`.
+**MUST BE APPLIED** (renamed 005→007 to avoid collision with Codex's 005/006).
+
+Notifications (backend `lib/notify.js` + `routes/notifications.js`; frontend
+`components/layout/NotificationBell.jsx`, `pages/Notifications.jsx`, Home widget):
+bell w/ unread badge in desktop sidebar + mobile header; full page; Home card.
+
+SDR — client-facing AI Sales Development Rep (`backend/lib/sdrEngine.js`,
+`routes/sdr.js`; `frontend/pages/SDR.jsx`, nav "SDR" w/ Headset icon):
+- Client-SAFE prompt (uses company facts, NOT the internal Company Brain that
+  leaks funnel numbers; hides prices unless show_prices). Structured turns:
+  reply + outcome(none|offer_product|handover|qualified|not_qualified|support)
+  + qualification answers + internal note + funnel-stage rec.
+- handleInboundForSdr = full loop (find/create convo → reply → send on channel →
+  persist → apply outcome side-effects: notifications + CRM stage moves).
+- Chats tab: transcript + INTERNAL-ONLY panel (qualification answers, SDR
+  reasoning/conditions). Settings tab: identity/greeting/goal/persona/guardrails,
+  show-prices, products (how-to-pitch + offer-when), qualifying questions,
+  conversation flow, hand-over channels(checkboxes)+recipients, active channels,
+  live tester. 'Fill with AI' = Company-Brain autofill with a token-cost
+  confirmation popup (`autofillSdrConfig`).
+
+Workflow builder (LIVE path = WorkflowCanvas/BuilderModal/NodePanel — NOT the
+legacy FlowchartBuilder). New node types wired end-to-end (palette + defaults +
+settings panel + engine executor):
+- SDR (hands the lead's conversation to the bot; channel + custom opener)
+- Hand-over to Sales (notify via notification/email/sms/whatsapp checkboxes +
+  recipients + team message + move-to-SQL toggle)
+- Lead Qualification (move next/previous stage or set any of the 9 funnel stages)
+- Start node Entry-Point selector (manual | new_lead | inbound_message |
+  new_conversation) → persisted to workflows.trigger_type.
+Engine (`backend/lib/workflowEngine.js`): executors for the 3 new types;
+`enrollByTrigger` (auto-enroll into active workflows by trigger_type);
+`handleInboundEvent` (resolve/create lead → fire triggers → SDR answers → notify)
+wired into `messaging.js insertMessageIfNew` for real inbound (Gmail/Instagram).
+**ENGINE BUG FIX**: builder saves nodes/connections as JSON STRINGS in JSONB[];
+engine expected objects, so ALL builder-made workflows silently no-op'd.
+nodesOf/connsOf now normalize both.
+
+#### PART 1 — Design Studio v3 (Canva-like)
+
+`frontend/pages/Design.jsx` (large), `lib/designHandoff.js`, `backend/routes/ai.js`:
+- Background is a real object: selectable (click canvas), draggable (object-position),
+  opacity, flip H/V; 'Detach as layer' + 'Set as slide background'. Export honors all.
+- Crop: preset ratios (1:1/4:5/3:4/16:9/9:16) + Free hand-drag.
+- Shapes/frames FILL WITH IMAGE (clipped inside borders); +circle frame.
+- Libraries: shapes 11→22, icons 28→64.
+- Layer reorder: drag rows in the Layers panel (+ ▲▼); array order = z-order.
+- Design-brief hand-off: Social 'Create image from brief' + Ads single & A/B
+  'Open in Design Studio' → normalizeBrief through saveDesignReturn → Design shows
+  brief card + prefills AI prompt (briefToPrompt).
+- Higher-quality / less-altering AI: /api/ai/edit-image quality:'high' +
+  input_fidelity:'high' + progressive fallback; remove_bg/enhance prompts demand
+  pixel-preservation; AI generate quality:'hd'.
+
+Canva integration (Design, Ads, Social, Blog):
+- `backend/routes/oauth.js` Canva Connect OAuth2+PKCE(S256) + refreshCanvaToken;
+  `backend/routes/canva.js` status/designs/export(→PNG import)/import(→Canva).
+- `frontend/components/integrations/CanvaPicker.jsx` (connect + grid + export)
+  wired into all 4 sections; Design also has 'Edit in Canva' (export→upload→open).
+- Registered in ConnectIntegrationModal (INTERNALIZED_OAUTH_MAP/STATUS_KEY_MAP +
+  canva oauthPath). **Needs CANVA_CLIENT_ID/SECRET in Railway + a Canva dev app**
+  with redirect URI <API_URL>/api/oauth/canva/callback (same code-ready/env-pending
+  model as Meta/Google). UI shows a clear not-configured/connect state until then.
+
+#### Pending / Derek actions
+1. **Apply migration 007** (Supabase SQL editor) — blocker for Notifications/SDR/
+   trigger tabs. Session expired during this session's attempt.
+2. Canva: register a Canva developer app + set CANVA_CLIENT_ID/SECRET (Railway) to
+   activate the Canva buttons (they show "not configured" until then).
+3. Image AI features (Design remove-bg/enhance/generate, SDR autofill) need the
+   platform OpenAI key funded / with gpt-image-1 access.
+4. Legacy-owner downgrade SQL (Session 17) still Derek's to run manually.
+5. Full inbound auto-trigger only fires from Gmail/Instagram sync today; the
+   WhatsApp webhook is the INTERNAL agent (left as-is). A dedicated client-facing
+   WhatsApp number would extend SDR inbound — future.
+
+#### Known follow-ups (next Claude)
+- SDR: no public unauthenticated web-widget endpoint yet (test/inbound are auth'd);
+  a public embed would need a service path + rate limiting.
+- Canva import() uses a 'presentation' preset design_type; may want per-section
+  sizing. Export polling capped at ~30s.
+- The legacy FlowchartBuilder.jsx still carries the old redo work but is dead
+  code (Workflows renders WorkflowBuilderModal). Consider deleting it.
