@@ -22,7 +22,7 @@ import { toast } from 'sonner';
 import { Company, DesignTemplate } from '@/api/entities';
 import { GenerateImage, UploadFile } from '@/api/integrations';
 import { api } from '@/api/apiClient';
-import { setDesignHandoff, peekDesignReturn, clearDesignReturn } from '@/lib/designHandoff';
+import { setDesignHandoff, peekDesignReturn, clearDesignReturn, briefToPrompt } from '@/lib/designHandoff';
 
 // ─── Aspect ratios (export resolution) ───────────────────────────────────────
 const ASPECT_RATIOS = [
@@ -92,22 +92,41 @@ const TEXT_ROLES = [
 ];
 
 // ─── Shapes / frames library (unit-square polygons → SVG preview + canvas export) ──
+// All shapes/frames can be FILLED WITH AN IMAGE (layer.imageUrl): the image is
+// clipped inside the shape's borders, Canva-frame style.
 const SHAPES = [
-  { id: 'rect',     label: '■',  kind: 'poly', pts: [[0,0],[1,0],[1,1],[0,1]] },
-  { id: 'circle',   label: '●',  kind: 'ellipse' },
-  { id: 'triangle', label: '▲',  kind: 'poly', pts: [[0.5,0],[1,1],[0,1]] },
-  { id: 'diamond',  label: '◆',  kind: 'poly', pts: [[0.5,0],[1,0.5],[0.5,1],[0,0.5]] },
-  { id: 'hexagon',  label: '⬢',  kind: 'poly', pts: [[0.25,0],[0.75,0],[1,0.5],[0.75,1],[0.25,1],[0,0.5]] },
-  { id: 'star',     label: '★',  kind: 'poly', pts: [[0.5,0],[0.612,0.346],[0.975,0.345],[0.681,0.559],[0.794,0.905],[0.5,0.69],[0.206,0.905],[0.319,0.559],[0.025,0.345],[0.388,0.346]] },
-  { id: 'arrow',    label: '➤',  kind: 'poly', pts: [[0,0.3],[0.6,0.3],[0.6,0],[1,0.5],[0.6,1],[0.6,0.7],[0,0.7]] },
-  { id: 'line',     label: '—',  kind: 'poly', pts: [[0,0.44],[1,0.44],[1,0.56],[0,0.56]] },
-  { id: 'frame',        label: '▢', kind: 'frame', dash: null,   double: false },
-  { id: 'frame-dashed', label: '⬚', kind: 'frame', dash: [12,8], double: false },
-  { id: 'frame-double', label: '▣', kind: 'frame', dash: null,   double: true },
+  { id: 'rect',          label: '■',  kind: 'poly', pts: [[0,0],[1,0],[1,1],[0,1]] },
+  { id: 'circle',        label: '●',  kind: 'ellipse' },
+  { id: 'triangle',      label: '▲',  kind: 'poly', pts: [[0.5,0],[1,1],[0,1]] },
+  { id: 'triangle-down', label: '▼',  kind: 'poly', pts: [[0,0],[1,0],[0.5,1]] },
+  { id: 'diamond',       label: '◆',  kind: 'poly', pts: [[0.5,0],[1,0.5],[0.5,1],[0,0.5]] },
+  { id: 'pentagon',      label: '⬟',  kind: 'poly', pts: [[0.5,0],[1,0.38],[0.81,1],[0.19,1],[0,0.38]] },
+  { id: 'hexagon',       label: '⬢',  kind: 'poly', pts: [[0.25,0],[0.75,0],[1,0.5],[0.75,1],[0.25,1],[0,0.5]] },
+  { id: 'octagon',       label: '⯃',  kind: 'poly', pts: [[0.3,0],[0.7,0],[1,0.3],[1,0.7],[0.7,1],[0.3,1],[0,0.7],[0,0.3]] },
+  { id: 'star',          label: '★',  kind: 'poly', pts: [[0.5,0],[0.612,0.346],[0.975,0.345],[0.681,0.559],[0.794,0.905],[0.5,0.69],[0.206,0.905],[0.319,0.559],[0.025,0.345],[0.388,0.346]] },
+  { id: 'starburst',     label: '✹',  kind: 'poly', pts: [[0.5,0],[0.6,0.11],[0.75,0.07],[0.78,0.22],[0.93,0.25],[0.89,0.4],[1,0.5],[0.89,0.6],[0.93,0.75],[0.78,0.78],[0.75,0.93],[0.6,0.89],[0.5,1],[0.4,0.89],[0.25,0.93],[0.22,0.78],[0.07,0.75],[0.11,0.6],[0,0.5],[0.11,0.4],[0.07,0.25],[0.22,0.22],[0.25,0.07],[0.4,0.11]] },
+  { id: 'heart',         label: '♥',  kind: 'poly', pts: [[0.5,0.25],[0.42,0.14],[0.3,0.06],[0.18,0.06],[0.07,0.14],[0.02,0.28],[0.05,0.44],[0.16,0.6],[0.5,0.95],[0.84,0.6],[0.95,0.44],[0.98,0.28],[0.93,0.14],[0.82,0.06],[0.7,0.06],[0.58,0.14]] },
+  { id: 'arrow',         label: '➤',  kind: 'poly', pts: [[0,0.3],[0.6,0.3],[0.6,0],[1,0.5],[0.6,1],[0.6,0.7],[0,0.7]] },
+  { id: 'chevron',       label: '❯',  kind: 'poly', pts: [[0,0],[0.7,0],[1,0.5],[0.7,1],[0,1],[0.3,0.5]] },
+  { id: 'bolt',          label: '⚡', kind: 'poly', pts: [[0.6,0],[0.2,0.55],[0.45,0.55],[0.4,1],[0.8,0.45],[0.55,0.45]] },
+  { id: 'plus',          label: '✚',  kind: 'poly', pts: [[0.35,0],[0.65,0],[0.65,0.35],[1,0.35],[1,0.65],[0.65,0.65],[0.65,1],[0.35,1],[0.35,0.65],[0,0.65],[0,0.35],[0.35,0.35]] },
+  { id: 'parallelogram', label: '▱',  kind: 'poly', pts: [[0.25,0],[1,0],[0.75,1],[0,1]] },
+  { id: 'trapezoid',     label: '⏢',  kind: 'poly', pts: [[0.2,0],[0.8,0],[1,1],[0,1]] },
+  { id: 'bubble',        label: '💬', kind: 'poly', pts: [[0.05,0.05],[0.95,0.05],[0.95,0.7],[0.4,0.7],[0.2,0.95],[0.22,0.7],[0.05,0.7]] },
+  { id: 'line',          label: '—',  kind: 'poly', pts: [[0,0.44],[1,0.44],[1,0.56],[0,0.56]] },
+  { id: 'frame',         label: '▢', kind: 'frame', dash: null,   double: false },
+  { id: 'frame-dashed',  label: '⬚', kind: 'frame', dash: [12,8], double: false },
+  { id: 'frame-double',  label: '▣', kind: 'frame', dash: null,   double: true },
+  { id: 'frame-circle',  label: '◯', kind: 'frame', dash: null,   double: false, circle: true },
 ];
 
 // Icon library (emoji — render identically in preview and canvas export)
-const ICONS = ['⭐','❤️','🔥','💡','✅','➡️','📞','✉️','📍','🎯','🎁','💰','📈','🚀','👍','💬','🎉','⏰','🏆','✨','📸','🎵','☀️','🌙','🛒','🔒','🌍','⚡'];
+const ICONS = [
+  '⭐','❤️','🔥','💡','✅','➡️','📞','✉️','📍','🎯','🎁','💰','📈','🚀','👍','💬',
+  '🎉','⏰','🏆','✨','📸','🎵','☀️','🌙','🛒','🔒','🌍','⚡','😀','😍','🤔','👀',
+  '🙌','👏','💪','🧠','📣','🔔','⬅️','⬆️','⬇️','🔁','🏠','🏢','🛠️','⚙️','💳','🏷️',
+  '💎','🎬','🎨','🖌️','📅','📊','📋','✏️','🥇','🎖️','❓','❗','➕','🔗','🌐','♻️',
+];
 
 const BG_PRESETS = ['#111111', '#ffffff', '#38b6ff', '#3572b9', '#cb6ce6', '#22c55e', '#f59e0b', '#ef4444', '#0f172a', '#fdf6ec'];
 const FALLBACK_BRAND_COLORS = ['#3572b9', '#38b6ff', '#cb6ce6', '#0d0d0d', '#ffffff'];
@@ -116,7 +135,7 @@ let idCounter = 1;
 const nextId = () => `l${Date.now().toString(36)}${idCounter++}`;
 
 const newSlide = () => ({
-  background: { type: 'color', color: '#111111', imageUrl: null },
+  background: { type: 'color', color: '#111111', imageUrl: null, posX: 0.5, posY: 0.5, opacity: 1, flipH: false, flipV: false },
   layers: [],
 });
 
@@ -161,26 +180,35 @@ function withTransforms(ctx, { cx, cy, rotation, flipH, flipV, opacity }, draw) 
   ctx.restore();
 }
 
+// Draw an image "cover"-fitted and center-positioned into a box whose center is at (0,0).
+function drawCover(ctx, img, dw, dh) {
+  const scale = Math.max(dw / img.width, dh / img.height);
+  const iw = img.width * scale, ih = img.height * scale;
+  ctx.drawImage(img, -iw / 2, -ih / 2, iw, ih);
+}
+
 async function renderSlideToCanvas(slide, ratio) {
   const canvas = document.createElement('canvas');
   canvas.width = ratio.w;
   canvas.height = ratio.h;
   const ctx = canvas.getContext('2d');
 
-  // Background
-  if (slide.background.type !== 'color' && slide.background.imageUrl) {
+  // Background — color always fills first (shows through transparent images);
+  // an image background honors position (posX/posY), opacity and flips.
+  const bg = slide.background || {};
+  ctx.fillStyle = bg.color || '#111';
+  ctx.fillRect(0, 0, ratio.w, ratio.h);
+  if (bg.imageUrl) {
     try {
-      const img = await loadImg(slide.background.imageUrl);
+      const img = await loadImg(bg.imageUrl);
       const scale = Math.max(ratio.w / img.width, ratio.h / img.height);
       const dw = img.width * scale, dh = img.height * scale;
-      ctx.drawImage(img, (ratio.w - dw) / 2, (ratio.h - dh) / 2, dw, dh);
-    } catch {
-      ctx.fillStyle = slide.background.color || '#111';
-      ctx.fillRect(0, 0, ratio.w, ratio.h);
-    }
-  } else {
-    ctx.fillStyle = slide.background.color || '#111';
-    ctx.fillRect(0, 0, ratio.w, ratio.h);
+      const dx = (ratio.w - dw) * (bg.posX ?? 0.5);
+      const dy = (ratio.h - dh) * (bg.posY ?? 0.5);
+      withTransforms(ctx, { cx: ratio.w / 2, cy: ratio.h / 2, rotation: 0, flipH: bg.flipH, flipV: bg.flipV, opacity: bg.opacity ?? 1 }, () => {
+        ctx.drawImage(img, dx - ratio.w / 2, dy - ratio.h / 2, dw, dh);
+      });
+    } catch { /* keep the color fill */ }
   }
 
   await document.fonts.ready;
@@ -212,30 +240,21 @@ async function renderSlideToCanvas(slide, ratio) {
       const dw = layer.w * ratio.w;
       const dh = dw * (layer.hRel || 1);
       const dx = layer.x * ratio.w, dy = layer.y * ratio.h;
+      // Optional image fill (Canva-frame style): clip the image inside the shape.
+      let fillImg = null;
+      if (layer.imageUrl) { try { fillImg = await loadImg(layer.imageUrl); } catch { /* fill color instead */ } }
+
       withTransforms(ctx, { cx: dx + dw / 2, cy: dy + dh / 2, rotation, flipH, flipV, opacity }, () => {
         ctx.fillStyle = layer.fill || '#38b6ff';
         ctx.strokeStyle = layer.fill || '#38b6ff';
-        if (def.kind === 'ellipse') {
-          ctx.beginPath();
-          ctx.ellipse(0, 0, dw / 2, dh / 2, 0, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (def.kind === 'frame') {
-          const sw2 = Math.max(2, (layer.strokeW || 4) * (ratio.w / 1080));
-          ctx.lineWidth = sw2;
-          if (def.dash) ctx.setLineDash(def.dash.map(d => d * (ratio.w / 1080)));
-          const r = (layer.radius / 100) * Math.min(dw, dh) || 0;
-          roundedPath(ctx, -dw / 2 + sw2 / 2, -dh / 2 + sw2 / 2, dw - sw2, dh - sw2, r);
-          ctx.stroke();
-          if (def.double) {
-            const inset = sw2 * 2.5;
-            roundedPath(ctx, -dw / 2 + inset, -dh / 2 + inset, dw - inset * 2, dh - inset * 2, Math.max(0, r - inset));
-            ctx.stroke();
-          }
-          ctx.setLineDash([]);
-        } else {
-          if (layer.radius && layer.shape === 'rect') {
-            roundedPath(ctx, -dw / 2, -dh / 2, dw, dh, (layer.radius / 100) * Math.min(dw, dh));
-            ctx.fill();
+
+        const buildShapePath = () => {
+          if (def.kind === 'ellipse' || def.circle) {
+            ctx.beginPath();
+            ctx.ellipse(0, 0, dw / 2, dh / 2, 0, 0, Math.PI * 2);
+          } else if (def.kind === 'frame' || layer.shape === 'rect') {
+            const r = ((layer.radius || 0) / 100) * Math.min(dw, dh);
+            roundedPath(ctx, -dw / 2, -dh / 2, dw, dh, r);
           } else {
             ctx.beginPath();
             def.pts.forEach(([px, py], i) => {
@@ -243,8 +262,41 @@ async function renderSlideToCanvas(slide, ratio) {
               i === 0 ? ctx.moveTo(X, Y) : ctx.lineTo(X, Y);
             });
             ctx.closePath();
-            ctx.fill();
           }
+        };
+
+        // 1) interior: image fill (clipped) or color fill (frames have no interior fill)
+        if (fillImg) {
+          ctx.save();
+          buildShapePath();
+          ctx.clip();
+          drawCover(ctx, fillImg, dw, dh);
+          ctx.restore();
+        } else if (def.kind !== 'frame') {
+          buildShapePath();
+          ctx.fill();
+        }
+
+        // 2) frame borders drawn on top
+        if (def.kind === 'frame') {
+          const sw2 = Math.max(2, (layer.strokeW || 4) * (ratio.w / 1080));
+          ctx.lineWidth = sw2;
+          if (def.dash) ctx.setLineDash(def.dash.map(d => d * (ratio.w / 1080)));
+          if (def.circle) {
+            ctx.beginPath();
+            ctx.ellipse(0, 0, dw / 2 - sw2 / 2, dh / 2 - sw2 / 2, 0, 0, Math.PI * 2);
+            ctx.stroke();
+          } else {
+            const r = ((layer.radius || 0) / 100) * Math.min(dw, dh);
+            roundedPath(ctx, -dw / 2 + sw2 / 2, -dh / 2 + sw2 / 2, dw - sw2, dh - sw2, r);
+            ctx.stroke();
+            if (def.double) {
+              const inset = sw2 * 2.5;
+              roundedPath(ctx, -dw / 2 + inset, -dh / 2 + inset, dw - inset * 2, dh - inset * 2, Math.max(0, r - inset));
+              ctx.stroke();
+            }
+          }
+          ctx.setLineDash([]);
         }
       });
     } else if (layer.type === 'text') {
@@ -309,6 +361,7 @@ export default function Design() {
   const [showShapes, setShowShapes] = useState(false);
   const [showIcons, setShowIcons] = useState(false);
   const [croppingId, setCroppingId] = useState(null);
+  const [bgSelected, setBgSelected] = useState(false); // background is a selectable/draggable target
   const [busy, setBusy] = useState(null);
   const canvasWrapRef = useRef(null);
   const dragRef = useRef(null);
@@ -514,6 +567,56 @@ export default function Design() {
 
   const setBg = (patch) => updateSlide(s => ({ ...s, background: { ...s.background, ...patch } }));
 
+  // Detach the background image into a normal (fully editable) image layer.
+  const detachBackground = () => {
+    const b = slide.background;
+    if (!b.imageUrl) return;
+    updateSlide(s => ({
+      ...s,
+      background: { ...s.background, type: 'color', imageUrl: null },
+      layers: [
+        { id: nextId(), type: 'image', role: 'image', url: b.imageUrl, x: 0, y: 0, w: 1, opacity: b.opacity ?? 1, flipH: b.flipH, flipV: b.flipV },
+        ...s.layers,
+      ],
+    }));
+    setBgSelected(false);
+    toast.success(isPt ? 'Fundo destacado como camada' : 'Background detached as a layer');
+  };
+
+  // Promote an image layer to be the slide background.
+  const setLayerAsBackground = (l) => {
+    updateSlide(s => ({
+      ...s,
+      background: { ...s.background, type: 'image', imageUrl: l.url, posX: 0.5, posY: 0.5, opacity: l.opacity ?? 1, flipH: !!l.flipH, flipV: !!l.flipV },
+      layers: s.layers.filter(x => x.id !== l.id),
+    }));
+    setSelectedLayerId(null);
+    setBgSelected(true);
+  };
+
+  // Crop presets: set the crop window to the largest centered region of the
+  // given DISPLAY aspect (w:h). 'free' keeps the current window for hand-dragging.
+  const applyCropPreset = (l, r) => {
+    if (!l?.natAsp) { toast.error(isPt ? 'Aguarde a imagem carregar' : 'Wait for the image to load'); return; }
+    if (r === 'free') return;
+    const k = r * l.natAsp; // crop.w / crop.h needed for the display ratio
+    let w, h;
+    if (k >= 1) { w = 1; h = 1 / k; } else { w = k; h = 1; }
+    updateLayer(l.id, { crop: { x: (1 - w) / 2, y: (1 - h) / 2, w, h } });
+  };
+
+  // Reorder layers (array order = z-order everywhere: preview + export).
+  const moveLayer = (from, to) => {
+    if (to < 0 || to >= slide.layers.length || from === to) return;
+    updateSlide(s => {
+      const arr = [...s.layers];
+      const [it] = arr.splice(from, 1);
+      arr.splice(to, 0, it);
+      return { ...s, layers: arr };
+    });
+  };
+  const dragLayerIdx = useRef(null);
+
   const uploadBgImage = async (file) => {
     setBusy('upload');
     try {
@@ -535,6 +638,7 @@ export default function Design() {
           ? `${aiBgPrompt}. Style: clean marketing background image, no text, no words, no letters.${brandHint}`
           : `${aiBgPrompt}.${brandHint}`,
         size: ratio.w >= ratio.h ? '1792x1024' : '1024x1792',
+        quality: 'hd', // request the highest-quality output
       });
       if (!url) throw new Error('No image returned');
       const savedUrl = await persistDataUrl(url, 'ai-image');
@@ -604,12 +708,14 @@ export default function Design() {
   const startDrag = (e, layer, mode = 'move', extra = null) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedLayerId(layer.id);
+    if (mode !== 'bg') { setSelectedLayerId(layer.id); setBgSelected(false); }
     const rect = canvasWrapRef.current.getBoundingClientRect();
     dragRef.current = {
-      layerId: layer.id, mode, extra, rect,
+      layerId: layer?.id, mode, extra, rect,
       startX: e.clientX, startY: e.clientY,
-      orig: { x: layer.x, y: layer.y, w: layer.w, wFrac: layer.wFrac, size: layer.size, crop: layer.crop ? { ...layer.crop } : { x: 0, y: 0, w: 1, h: 1 }, natAsp: layer.natAsp },
+      orig: mode === 'bg'
+        ? { posX: slide.background.posX ?? 0.5, posY: slide.background.posY ?? 0.5 }
+        : { x: layer.x, y: layer.y, w: layer.w, wFrac: layer.wFrac, size: layer.size, crop: layer.crop ? { ...layer.crop } : { x: 0, y: 0, w: 1, h: 1 }, natAsp: layer.natAsp },
     };
     const onMove = (ev) => {
       const d = dragRef.current;
@@ -617,7 +723,18 @@ export default function Design() {
       const fx = (ev.clientX - d.startX) / d.rect.width;
       const fy = (ev.clientY - d.startY) / d.rect.height;
 
-      if (d.mode === 'move') {
+      if (d.mode === 'bg') {
+        // Reposition the background image (object-position semantics: higher %
+        // shifts the image left/up, so subtract the drag delta to follow the cursor).
+        setDesign(prev => ({
+          ...prev,
+          slides: prev.slides.map((s, i) => i === activeSlide
+            ? { ...s, background: { ...s.background,
+                posX: Math.min(1, Math.max(0, d.orig.posX - fx * 2)),
+                posY: Math.min(1, Math.max(0, d.orig.posY - fy * 2)) } }
+            : s),
+        }));
+      } else if (d.mode === 'move') {
         updateLayer(d.layerId, {
           x: Math.min(0.98, Math.max(-0.4, d.orig.x + fx)),
           y: Math.min(0.98, Math.max(-0.4, d.orig.y + fy)),
@@ -765,6 +882,52 @@ export default function Design() {
     const def = SHAPES.find(s => s.id === l.shape) || SHAPES[0];
     const wPct = l.w * 100;
     const hPx = l.w * previewW * (l.hRel || 1);
+    const isCircle = def.kind === 'ellipse' || def.circle;
+    const clip = def.kind === 'poly' && l.shape !== 'rect'
+      ? `polygon(${def.pts.map(([px, py]) => `${px * 100}% ${py * 100}%`).join(', ')})`
+      : undefined;
+    const fillImg = l.imageUrl ? (
+      <img src={l.imageUrl} alt="" draggable={false}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+    ) : null;
+
+    let body;
+    if (def.kind === 'frame') {
+      const bw = Math.max(1, (l.strokeW || 4) * (previewW / 1080));
+      const line = `${bw}px ${def.dash ? 'dashed' : 'solid'} ${l.fill}`;
+      const br = isCircle ? '50%' : `${l.radius || 0}%`;
+      body = (
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+          {fillImg && (
+            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: br }}>{fillImg}</div>
+          )}
+          <div style={{ position: 'absolute', inset: 0, border: line, borderRadius: br }} />
+          {def.double && !isCircle && (
+            <div style={{ position: 'absolute', inset: bw * 2.5, border: line, borderRadius: `${Math.max(0, (l.radius || 0) - 4)}%` }} />
+          )}
+        </div>
+      );
+    } else if (isCircle || l.shape === 'rect') {
+      const br = isCircle ? '50%' : `${l.radius || 0}%`;
+      body = (
+        <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', borderRadius: br, background: fillImg ? 'transparent' : l.fill }}>
+          {fillImg}
+        </div>
+      );
+    } else if (fillImg) {
+      body = (
+        <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', clipPath: clip }}>
+          {fillImg}
+        </div>
+      );
+    } else {
+      body = (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
+          <polygon points={def.pts.map(([px, py]) => `${px * 100},${py * 100}`).join(' ')} fill={l.fill} />
+        </svg>
+      );
+    }
+
     return (
       <div key={l.id}
         onMouseDown={(e) => startDrag(e, l)}
@@ -774,28 +937,7 @@ export default function Design() {
           width: `${wPct}%`, height: hPx,
           transform: layerTransform(l), opacity: l.opacity ?? 1,
         }}>
-        {def.kind === 'ellipse' ? (
-          <div style={{ width: '100%', height: '100%', background: l.fill, borderRadius: '50%' }} />
-        ) : def.kind === 'frame' ? (
-          (() => {
-            const bw = Math.max(1, (l.strokeW || 4) * (previewW / 1080));
-            const line = `${bw}px ${def.dash ? 'dashed' : 'solid'} ${l.fill}`;
-            return (
-              <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                <div style={{ position: 'absolute', inset: 0, border: line, borderRadius: `${l.radius || 0}%` }} />
-                {def.double && (
-                  <div style={{ position: 'absolute', inset: bw * 2.5, border: line, borderRadius: `${Math.max(0, (l.radius || 0) - 4)}%` }} />
-                )}
-              </div>
-            );
-          })()
-        ) : l.shape === 'rect' ? (
-          <div style={{ width: '100%', height: '100%', background: l.fill, borderRadius: `${l.radius || 0}%` }} />
-        ) : (
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
-            <polygon points={def.pts.map(([px, py]) => `${px * 100},${py * 100}`).join(' ')} fill={l.fill} />
-          </svg>
-        )}
+        {body}
         {isSel && renderResizeHandle(l)}
       </div>
     );
@@ -952,6 +1094,25 @@ export default function Design() {
             </div>
           </div>
 
+          {/* Shared AI design brief (sent from Social/Ads with one click) */}
+          {returnCtx?.brief && (
+            <div className="rounded-2xl bg-[#f59e0b]/5 border border-[#f59e0b]/25 p-4 space-y-2">
+              <p className="text-[#f59e0b] text-sm font-semibold">📋 {isPt ? 'Brief de design recebido' : 'Design brief received'}{returnCtx.brief.label ? ` (${returnCtx.brief.label})` : ''}</p>
+              <p className="text-gray-300 text-xs line-clamp-3">{returnCtx.brief.visual_concept || returnCtx.brief.concept}</p>
+              {returnCtx.brief.color_palette?.length > 0 && (
+                <div className="flex gap-1">
+                  {returnCtx.brief.color_palette.slice(0, 6).map((c, i) => (
+                    <span key={i} className="w-5 h-5 rounded border border-white/20" style={{ background: c }} title={c} />
+                  ))}
+                </div>
+              )}
+              <button onClick={() => { setAiBgPrompt(briefToPrompt(returnCtx.brief)); setAiMode('layer'); setShowAIBg(true); }}
+                className="w-full py-1.5 rounded-lg text-xs bg-[#f59e0b]/15 border border-[#f59e0b]/40 text-[#f59e0b] hover:bg-[#f59e0b]/25 transition-all">
+                <Wand2 size={11} className="inline mr-1" /> {isPt ? 'Gerar imagem com este brief' : 'Generate image from this brief'}
+              </button>
+            </div>
+          )}
+
           {/* Send to */}
           <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-2">
             <p className="text-white text-sm font-semibold flex items-center gap-2"><Send size={14} className="text-green-400" /> {isPt ? 'Enviar para' : 'Send to'}</p>
@@ -993,14 +1154,29 @@ export default function Design() {
 
           <div ref={stageRef} className="flex items-center justify-center rounded-2xl bg-black/40 border border-white/10 p-3 sm:p-6 overflow-auto">
             <div ref={canvasWrapRef}
-              className="relative overflow-hidden shadow-2xl flex-shrink-0"
-              style={{
-                width: previewW, height: previewH,
-                background: slide.background.type !== 'color' && slide.background.imageUrl
-                  ? `url(${slide.background.imageUrl}) center/cover`
-                  : slide.background.color,
-              }}
-              onMouseDown={() => { setSelectedLayerId(null); setCroppingId(null); }}>
+              className={`relative overflow-hidden shadow-2xl flex-shrink-0 ${bgSelected ? 'ring-2 ring-[#cb6ce6]' : ''}`}
+              style={{ width: previewW, height: previewH, background: slide.background.color }}
+              onMouseDown={() => {
+                setSelectedLayerId(null); setCroppingId(null);
+                // Clicking the canvas selects the background (if it has an image)
+                setBgSelected(!!slide.background.imageUrl);
+              }}>
+              {/* Background image — selectable + draggable like a layer */}
+              {slide.background.imageUrl && (
+                <img src={slide.background.imageUrl} alt="" draggable={false}
+                  onMouseDown={(e) => {
+                    if (bgSelected) { startDrag(e, null, 'bg'); }
+                    else { e.stopPropagation(); setSelectedLayerId(null); setCroppingId(null); setBgSelected(true); }
+                  }}
+                  className={bgSelected ? 'cursor-move' : ''}
+                  style={{
+                    position: 'absolute', inset: 0, width: '100%', height: '100%',
+                    objectFit: 'cover',
+                    objectPosition: `${(slide.background.posX ?? 0.5) * 100}% ${(slide.background.posY ?? 0.5) * 100}%`,
+                    opacity: slide.background.opacity ?? 1,
+                    transform: [slide.background.flipH ? 'scaleX(-1)' : '', slide.background.flipV ? 'scaleY(-1)' : ''].join(' ').trim() || undefined,
+                  }} />
+              )}
               {slide.layers.map(layer => {
                 const isSel = layer.id === selectedLayerId;
                 if (layer.type === 'image') return renderImagePreview(layer, isSel);
@@ -1130,6 +1306,43 @@ export default function Design() {
                 <Wand2 size={12} /> {isPt ? 'Fundo IA' : 'AI Background'}
               </button>
             </div>
+
+            {/* Image-background controls: position/opacity/flip/detach */}
+            {slide.background.imageUrl && (
+              <div className="space-y-2.5 pt-2 border-t border-white/10">
+                <p className="text-[10px] text-gray-500">
+                  {bgSelected
+                    ? (isPt ? '✦ Fundo selecionado — arraste no canvas para posicionar.' : '✦ Background selected — drag on the canvas to position it.')
+                    : (isPt ? 'Clique no fundo do canvas para selecioná-lo e arrastar.' : 'Click the canvas background to select and drag it.')}
+                </p>
+                <div>
+                  <Label className="text-gray-400 text-xs">{isPt ? 'Opacidade do fundo' : 'Background opacity'} ({Math.round((slide.background.opacity ?? 1) * 100)}%)</Label>
+                  <input type="range" min={10} max={100} value={(slide.background.opacity ?? 1) * 100}
+                    onChange={(e) => setBg({ opacity: Number(e.target.value) / 100 })}
+                    className="w-full mt-1 accent-[#cb6ce6]" />
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={() => setBg({ flipH: !slide.background.flipH })}
+                    className={`flex-1 py-1.5 rounded-lg text-xs border flex items-center justify-center gap-1 ${slide.background.flipH ? 'bg-[#cb6ce6]/15 border-[#cb6ce6]/40 text-[#cb6ce6]' : 'bg-black/20 border-white/10 text-gray-400'}`}>
+                    <FlipHorizontal size={12} /> {isPt ? 'Inverter H' : 'Flip H'}
+                  </button>
+                  <button onClick={() => setBg({ flipV: !slide.background.flipV })}
+                    className={`flex-1 py-1.5 rounded-lg text-xs border flex items-center justify-center gap-1 ${slide.background.flipV ? 'bg-[#cb6ce6]/15 border-[#cb6ce6]/40 text-[#cb6ce6]' : 'bg-black/20 border-white/10 text-gray-400'}`}>
+                    <FlipVertical size={12} /> {isPt ? 'Inverter V' : 'Flip V'}
+                  </button>
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={detachBackground}
+                    className="flex-1 py-1.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-300 hover:border-[#cb6ce6]/50">
+                    ⇱ {isPt ? 'Destacar como camada' : 'Detach as layer'}
+                  </button>
+                  <button onClick={() => { setBg({ type: 'color', imageUrl: null }); setBgSelected(false); }}
+                    className="py-1.5 px-2.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-400 hover:text-red-400">
+                    {isPt ? 'Remover' : 'Remove'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Selected layer */}
@@ -1195,8 +1408,29 @@ export default function Design() {
                       )}
                     </div>
                     {croppingId === selectedLayer.id && (
-                      <p className="text-[10px] text-[#f59e0b]/80">{isPt ? 'Arraste as alças nas bordas da imagem para cortar.' : 'Drag the handles on the image edges to crop.'}</p>
+                      <>
+                        <p className="text-[10px] text-[#f59e0b]/80">{isPt ? 'Arraste as alças nas bordas para corte livre, ou escolha uma proporção:' : 'Drag the edge handles to crop freely, or pick a ratio:'}</p>
+                        <div className="flex gap-1 flex-wrap">
+                          {[
+                            { k: 'free', label: isPt ? 'Livre' : 'Free' },
+                            { k: 1, label: '1:1' },
+                            { k: 4 / 5, label: '4:5' },
+                            { k: 3 / 4, label: '3:4' },
+                            { k: 16 / 9, label: '16:9' },
+                            { k: 9 / 16, label: '9:16' },
+                          ].map(({ k, label }) => (
+                            <button key={label} onClick={() => applyCropPreset(selectedLayer, k)}
+                              className="px-2 py-1 rounded-lg text-[10px] border bg-black/20 border-white/10 text-gray-300 hover:border-[#f59e0b]/50 hover:text-[#f59e0b]">
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
                     )}
+                    <button onClick={() => setLayerAsBackground(selectedLayer)}
+                      className="w-full py-1.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-300 hover:border-[#cb6ce6]/50">
+                      ⇲ {isPt ? 'Usar como fundo do slide' : 'Set as slide background'}
+                    </button>
                     <div className="flex gap-1.5">
                       <button onClick={() => aiEditImage('remove_bg')} disabled={!!busy}
                         className="flex-1 py-1.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-300 hover:border-[#cb6ce6]/50 flex items-center justify-center gap-1 disabled:opacity-50">
@@ -1250,6 +1484,29 @@ export default function Design() {
                           className="w-full mt-1 accent-[#38b6ff]" />
                       </div>
                     )}
+                    {/* Canva-style frame fill: an image clipped inside the shape */}
+                    <div className="flex gap-1.5">
+                      <label className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-300 hover:border-[#38b6ff]/50 cursor-pointer">
+                        <ImageIcon size={12} /> {selectedLayer.imageUrl ? (isPt ? 'Trocar imagem' : 'Change image') : (isPt ? 'Preencher com imagem' : 'Fill with image')}
+                        <input type="file" accept="image/*" className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setBusy('upload');
+                            try {
+                              const { url } = await UploadFile({ file, folder: 'designs' });
+                              updateLayer(selectedLayer.id, { imageUrl: url });
+                            } catch (err) { toast.error(err.message); }
+                            finally { setBusy(null); }
+                          }} />
+                      </label>
+                      {selectedLayer.imageUrl && (
+                        <button onClick={() => updateLayer(selectedLayer.id, { imageUrl: undefined })}
+                          className="py-1.5 px-2.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-400 hover:text-red-400">
+                          {isPt ? 'Limpar' : 'Clear'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -1306,21 +1563,38 @@ export default function Design() {
             )}
           </div>
 
-          {/* Layer list */}
+          {/* Layer list — drag to reorder (array order = stacking order, last = front) */}
           {slide.layers.length > 0 && (
             <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-              <p className="text-white text-sm font-semibold mb-2">{isPt ? 'Camadas' : 'Layers'}</p>
+              <p className="text-white text-sm font-semibold mb-1">{isPt ? 'Camadas' : 'Layers'}</p>
+              <p className="text-gray-600 text-[10px] mb-2">{isPt ? 'Arraste para reordenar — itens mais abaixo ficam na frente.' : 'Drag to reorder — items lower in the list sit in front.'}</p>
               <div className="space-y-1">
-                {slide.layers.map(l => (
-                  <button key={l.id} onClick={() => setSelectedLayerId(l.id)}
-                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-left transition-all ${l.id === selectedLayerId ? 'bg-[#38b6ff]/15 text-[#38b6ff]' : 'text-gray-400 hover:bg-white/5'}`}>
-                    {l.type === 'text' ? <Type size={11} /> : l.type === 'shape' ? <Shapes size={11} /> : <ImageIcon size={11} />}
-                    <span className="truncate">
-                      {l.type === 'text' ? l.text?.slice(0, 26)
-                        : l.type === 'shape' ? (SHAPES.find(s => s.id === l.shape)?.id || 'shape')
-                        : (l.role === 'logo' ? 'Logo' : (isPt ? 'Imagem' : 'Image'))}
-                    </span>
-                  </button>
+                {slide.layers.map((l, idx) => (
+                  <div key={l.id}
+                    draggable
+                    onDragStart={() => { dragLayerIdx.current = idx; }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => { e.preventDefault(); if (dragLayerIdx.current != null) moveLayer(dragLayerIdx.current, idx); dragLayerIdx.current = null; }}
+                    className={`flex items-center gap-1 rounded-lg transition-all ${l.id === selectedLayerId ? 'bg-[#38b6ff]/15' : 'hover:bg-white/5'}`}>
+                    <span className="cursor-grab active:cursor-grabbing text-gray-600 pl-1.5 select-none" title={isPt ? 'Arrastar' : 'Drag'}>⠿</span>
+                    <button onClick={() => setSelectedLayerId(l.id)}
+                      className={`flex-1 flex items-center gap-2 px-1 py-1.5 text-xs text-left min-w-0 ${l.id === selectedLayerId ? 'text-[#38b6ff]' : 'text-gray-400'}`}>
+                      {l.type === 'text' ? <Type size={11} /> : l.type === 'shape' ? <Shapes size={11} /> : <ImageIcon size={11} />}
+                      <span className="truncate">
+                        {l.type === 'text' ? l.text?.slice(0, 22)
+                          : l.type === 'shape' ? (SHAPES.find(s => s.id === l.shape)?.id || 'shape')
+                          : (l.role === 'logo' ? 'Logo' : (isPt ? 'Imagem' : 'Image'))}
+                      </span>
+                    </button>
+                    <div className="flex flex-col pr-1">
+                      <button onClick={() => moveLayer(idx, idx - 1)} disabled={idx === 0}
+                        title={isPt ? 'Enviar para trás' : 'Send backward'}
+                        className="text-gray-600 hover:text-white disabled:opacity-30 leading-none text-[10px]">▲</button>
+                      <button onClick={() => moveLayer(idx, idx + 1)} disabled={idx === slide.layers.length - 1}
+                        title={isPt ? 'Trazer para frente' : 'Bring forward'}
+                        className="text-gray-600 hover:text-white disabled:opacity-30 leading-none text-[10px]">▼</button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

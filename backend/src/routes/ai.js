@@ -1006,9 +1006,9 @@ router.post('/edit-image', requireAuth, async (req, res) => {
     if (buffer.length > 20 * 1024 * 1024) return res.status(413).json({ error: 'Image too large (max 20MB)' });
 
     const prompts = {
-      remove_bg: 'Remove the background completely. Keep ONLY the main subject, perfectly cut out, on a fully transparent background. Do not alter the subject itself.',
-      enhance: 'Enhance this image: increase sharpness, clarity, detail and lighting quality. Fix noise and compression artifacts. Keep the content, composition and colors identical — only improve quality.',
-      custom: userPrompt || 'Improve this image.',
+      remove_bg: 'Cut out the main subject and place it on a fully transparent background. CRITICAL: preserve the subject EXACTLY, pixel-for-pixel — do not repaint, restyle, recolor, move, crop, or regenerate the subject in any way. Only the background is removed; every detail, edge, texture and color of the subject stays identical to the source.',
+      enhance: 'Upscale and enhance this image to the highest quality: increase resolution, sharpness, fine detail, and lighting; remove noise and JPEG/compression artifacts. CRITICAL: keep the exact same subject, composition, framing, colors and content — this is a quality restoration, NOT a redesign. Do not add, remove, or move anything.',
+      custom: userPrompt || 'Improve this image while preserving its subject and composition.',
     };
     const prompt = prompts[operation] || prompts.custom;
 
@@ -1016,19 +1016,31 @@ router.post('/edit-image', requireAuth, async (req, res) => {
     const { toFile } = await import('openai');
     const file = await toFile(buffer, 'source.png', { type: 'image/png' });
 
-    const params = { model: 'gpt-image-1', image: file, prompt, size: 'auto' };
+    // Highest quality + high input fidelity so the source is preserved as closely
+    // as the model allows (input_fidelity is key to not "altering too much").
+    const params = { model: 'gpt-image-1', image: file, prompt, size: 'auto', quality: 'high', input_fidelity: 'high' };
     if (operation === 'remove_bg') params.background = 'transparent';
 
-    let result;
-    try {
-      result = await client.images.edit(params);
-    } catch (err) {
-      // Some accounts/models reject optional params — retry once without extras
-      if (params.background || params.size) {
-        delete params.background; delete params.size;
-        result = await client.images.edit(params);
-      } else throw err;
+    // Progressive fallback: drop the least-supported params first, so newer
+    // accounts get max quality and older ones still succeed.
+    const paramFallbacks = [
+      params,
+      { ...params, input_fidelity: undefined },
+      { ...params, input_fidelity: undefined, quality: undefined },
+      { ...params, input_fidelity: undefined, quality: undefined, background: undefined, size: undefined },
+    ].map(p => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)));
+
+    let result, lastErr;
+    for (const p of paramFallbacks) {
+      try { result = await client.images.edit(p); break; }
+      catch (err) {
+        lastErr = err;
+        // Only keep retrying on param-shape rejections; bail on auth/quota/etc.
+        const cat = categorizeProviderError(err, 'OpenAI');
+        if (cat.kind === 'AUTH' || cat.kind === 'QUOTA' || cat.kind === 'RATE_LIMIT') throw err;
+      }
     }
+    if (!result) throw lastErr || new Error('Image edit failed');
 
     const b64 = result.data?.[0]?.b64_json;
     if (!b64) throw new Error('Image edit returned no image');

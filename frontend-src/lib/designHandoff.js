@@ -42,10 +42,48 @@ export function consumeDesignHandoff(target) {
  * "Send back to your <section> draft" action; on send, the draft rides along
  * in the handoff so the origin page restores it with the images attached.
  */
-export function saveDesignReturn(source, draft, label) {
+export function saveDesignReturn(source, draft, label, brief) {
   try {
-    localStorage.setItem(RETURN_KEY, JSON.stringify({ source, draft: draft || null, label: label || null, at: Date.now() }));
+    localStorage.setItem(RETURN_KEY, JSON.stringify({ source, draft: draft || null, label: label || null, brief: brief || null, at: Date.now() }));
   } catch { /* non-fatal */ }
+}
+
+/**
+ * Normalize the different AI design-brief shapes (Social / Ads single / Ads A-B)
+ * into one flat payload the Design Studio can consume.
+ */
+export function normalizeBrief(raw, source) {
+  if (!raw) return null;
+  return {
+    source,
+    concept: raw.concept || raw.visual_concept || '',
+    headline: raw.headline || '',
+    subheadline: raw.subheadline || '',
+    visual_concept: raw.visual_concept || raw.concept || '',
+    color_palette: raw.color_palette || [],
+    typography: raw.typography || raw.typography_suggestion || '',
+    mood: raw.mood || '',
+    image_style: raw.image_style || '',
+    do_list: raw.do_list || [],
+    dont_list: raw.dont_list || [],
+    cta: raw.cta || '',
+    image_prompt: raw.ai_image_prompt || raw.image_prompt || '',
+    label: raw._label || null,
+  };
+}
+
+/** Turn a normalized brief into a ready-to-use AI image prompt. */
+export function briefToPrompt(b) {
+  if (!b) return '';
+  const parts = [
+    b.image_prompt || b.visual_concept || b.concept,
+    b.image_style ? `Style: ${b.image_style}` : null,
+    b.mood ? `Mood: ${b.mood}` : null,
+    b.color_palette?.length ? `Color palette: ${b.color_palette.join(', ')}` : null,
+    b.do_list?.length ? `Must include: ${b.do_list.slice(0, 4).join('; ')}` : null,
+    b.dont_list?.length ? `Avoid: ${b.dont_list.slice(0, 4).join('; ')}` : null,
+  ].filter(Boolean);
+  return parts.join('. ');
 }
 
 /** Design page: peek at the pending return context (without clearing). */
