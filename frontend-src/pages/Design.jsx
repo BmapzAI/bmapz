@@ -115,10 +115,16 @@ const SHAPES = [
   { id: 'bubble',        label: '💬', kind: 'poly', pts: [[0.05,0.05],[0.95,0.05],[0.95,0.7],[0.4,0.7],[0.2,0.95],[0.22,0.7],[0.05,0.7]] },
   { id: 'line',          label: '—',  kind: 'poly', pts: [[0,0.44],[1,0.44],[1,0.56],[0,0.56]] },
   { id: 'frame',         label: '▢', kind: 'frame', dash: null,   double: false },
+  { id: 'frame-rounded', label: '▢', kind: 'frame', dash: null,   double: false, rounded: true },
   { id: 'frame-dashed',  label: '⬚', kind: 'frame', dash: [12,8], double: false },
+  { id: 'frame-dotted',  label: '⣏', kind: 'frame', dash: [2,6],  double: false },
   { id: 'frame-double',  label: '▣', kind: 'frame', dash: null,   double: true },
   { id: 'frame-circle',  label: '◯', kind: 'frame', dash: null,   double: false, circle: true },
+  { id: 'frame-circle-dashed', label: '◌', kind: 'frame', dash: [10,7], double: false, circle: true },
 ];
+
+// Every shape can hold an image (Canva-style photo frame). These read best as frames:
+const FRAME_SHAPE_IDS = ['frame', 'frame-rounded', 'frame-dashed', 'frame-dotted', 'frame-double', 'frame-circle', 'frame-circle-dashed', 'circle', 'rect', 'hexagon', 'diamond', 'star', 'heart', 'pentagon', 'octagon'];
 
 // Icon library (emoji — render identically in preview and canvas export)
 const ICONS = [
@@ -180,11 +186,14 @@ function withTransforms(ctx, { cx, cy, rotation, flipH, flipV, opacity }, draw) 
   ctx.restore();
 }
 
-// Draw an image "cover"-fitted and center-positioned into a box whose center is at (0,0).
-function drawCover(ctx, img, dw, dh) {
+// Draw an image "cover"-fitted into a box centered at (0,0), honoring an
+// object-position (posX/posY in 0..1; 0.5 = centered).
+function drawCover(ctx, img, dw, dh, posX = 0.5, posY = 0.5) {
   const scale = Math.max(dw / img.width, dh / img.height);
   const iw = img.width * scale, ih = img.height * scale;
-  ctx.drawImage(img, -iw / 2, -ih / 2, iw, ih);
+  const ox = (iw - dw) * (posX - 0.5);
+  const oy = (ih - dh) * (posY - 0.5);
+  ctx.drawImage(img, -iw / 2 - ox, -ih / 2 - oy, iw, ih);
 }
 
 async function renderSlideToCanvas(slide, ratio) {
@@ -270,7 +279,7 @@ async function renderSlideToCanvas(slide, ratio) {
           ctx.save();
           buildShapePath();
           ctx.clip();
-          drawCover(ctx, fillImg, dw, dh);
+          drawCover(ctx, fillImg, dw, dh, layer.fillPosX ?? 0.5, layer.fillPosY ?? 0.5);
           ctx.restore();
         } else if (def.kind !== 'frame') {
           buildShapePath();
@@ -361,9 +370,13 @@ export default function Design() {
   const [showShapes, setShowShapes] = useState(false);
   const [showIcons, setShowIcons] = useState(false);
   const [croppingId, setCroppingId] = useState(null);
+  const [adjustFillId, setAdjustFillId] = useState(null); // reposition an image inside a frame
+  const [hoverFrameId, setHoverFrameId] = useState(null); // frame being hovered while dragging an image onto it
   const [bgSelected, setBgSelected] = useState(false); // background is a selectable/draggable target
   const [showCanva, setShowCanva] = useState(false);
   const [busy, setBusy] = useState(null);
+  const draggingImgRef = useRef(null); // { url } of the image layer currently being moved
+  const dropTargetRef = useRef(null);  // frame id under the cursor at drop time
   const canvasWrapRef = useRef(null);
   const dragRef = useRef(null);
   const [returnCtx] = useState(peekDesignReturn);
@@ -389,6 +402,7 @@ export default function Design() {
     setActiveSlide(i => Math.min(i, target.slides.length - 1));
     setSelectedLayerId(null);
     setCroppingId(null);
+    setAdjustFillId(null);
   };
 
   const undo = useCallback(() => {
@@ -542,6 +556,7 @@ export default function Design() {
       hRel: isFrame ? (ratio.h / ratio.w) * 0.9 / 0.9 : (shapeId === 'line' ? 0.04 : 1),
       x: isFrame ? 0.05 : 0.375, y: isFrame ? 0.05 * (ratio.w / ratio.h) : 0.375,
       strokeW: 6, opacity: 1,
+      ...(shapeId === 'frame-rounded' ? { radius: 20 } : {}),
     };
     updateSlide(s => ({ ...s, layers: [...s.layers, layer] }));
     setSelectedLayerId(layer.id);
@@ -705,13 +720,16 @@ export default function Design() {
     e.preventDefault();
     e.stopPropagation();
     if (mode !== 'bg') { setSelectedLayerId(layer.id); setBgSelected(false); }
+    // Track an image being moved so it can be dropped INTO a frame.
+    draggingImgRef.current = (mode === 'move' && layer?.type === 'image') ? { url: layer.url, id: layer.id } : null;
+    dropTargetRef.current = null;
     const rect = canvasWrapRef.current.getBoundingClientRect();
     dragRef.current = {
       layerId: layer?.id, mode, extra, rect,
       startX: e.clientX, startY: e.clientY,
       orig: mode === 'bg'
         ? { posX: slide.background.posX ?? 0.5, posY: slide.background.posY ?? 0.5 }
-        : { x: layer.x, y: layer.y, w: layer.w, wFrac: layer.wFrac, size: layer.size, crop: layer.crop ? { ...layer.crop } : { x: 0, y: 0, w: 1, h: 1 }, natAsp: layer.natAsp },
+        : { x: layer.x, y: layer.y, w: layer.w, wFrac: layer.wFrac, size: layer.size, crop: layer.crop ? { ...layer.crop } : { x: 0, y: 0, w: 1, h: 1 }, natAsp: layer.natAsp || 1, fillPosX: layer.fillPosX ?? 0.5, fillPosY: layer.fillPosY ?? 0.5 },
     };
     const onMove = (ev) => {
       const d = dragRef.current;
@@ -735,6 +753,15 @@ export default function Design() {
           x: Math.min(0.98, Math.max(-0.4, d.orig.x + fx)),
           y: Math.min(0.98, Math.max(-0.4, d.orig.y + fy)),
         });
+        // If moving an image, highlight a frame/shape under the cursor as a drop target.
+        if (draggingImgRef.current) {
+          const cx = (ev.clientX - d.rect.left) / d.rect.width;
+          const cy = (ev.clientY - d.rect.top) / d.rect.height;
+          const target = (slide.layers || []).find(s => s.type === 'shape' && s.id !== d.layerId
+            && cx >= s.x && cx <= s.x + s.w && cy >= s.y && cy <= s.y + s.w * (s.hRel || 1));
+          dropTargetRef.current = target?.id || null;
+          setHoverFrameId(target?.id || null);
+        }
       } else if (d.mode === 'resize') {
         // corner handle: drag right/down to grow
         const grow = fx; // horizontal movement drives size
@@ -749,21 +776,53 @@ export default function Design() {
           updateLayer(d.layerId, { w: Math.min(1.5, Math.max(0.03, d.orig.w + grow)) });
         }
       } else if (d.mode === 'crop') {
-        // edge handles trim the CURRENT crop window
-        const c = { ...d.orig.crop };
-        const layerW = d.orig.w; // fraction of canvas width
-        const dispW = layerW * d.rect.width;
-        const dispH = dispW * (c.h / c.w) * (d.orig.natAsp || 1);
-        const dxFrac = (ev.clientX - d.startX) / dispW; // fraction of displayed crop
-        const dyFrac = (ev.clientY - d.startY) / dispH;
-        if (d.extra === 'left')   { const t = Math.min(0.9 * c.w, Math.max(0, dxFrac * c.w));  c.x = d.orig.crop.x + t; c.w = d.orig.crop.w - t; }
-        if (d.extra === 'right')  { const t = Math.min(0.9 * c.w, Math.max(0, -dxFrac * c.w)); c.w = d.orig.crop.w - t; }
-        if (d.extra === 'top')    { const t = Math.min(0.9 * c.h, Math.max(0, dyFrac * c.h));  c.y = d.orig.crop.y + t; c.h = d.orig.crop.h - t; }
-        if (d.extra === 'bottom') { const t = Math.min(0.9 * c.h, Math.max(0, -dyFrac * c.h)); c.h = d.orig.crop.h - t; }
-        updateLayer(d.layerId, { crop: c });
+        // The FULL image is displayed fixed at (layer.w × canvasW) × natAsp.
+        // fx/fy are fractions of that full image, so only the dragged crop edge
+        // moves — the image never shifts.
+        const o = d.orig.crop;
+        const dispW = d.orig.w * d.rect.width;
+        const dispH = dispW * (d.orig.natAsp || 1);
+        const gx = (ev.clientX - d.startX) / dispW;
+        const gy = (ev.clientY - d.startY) / dispH;
+        const MIN = 0.05;
+        let { x, y, w, h } = o;
+        const K = d.extra;
+        if (K === 'move') {
+          x = Math.min(1 - o.w, Math.max(0, o.x + gx));
+          y = Math.min(1 - o.h, Math.max(0, o.y + gy));
+        } else {
+          if (K.includes('w')) { x = Math.min(o.x + o.w - MIN, Math.max(0, o.x + gx)); w = o.x + o.w - x; }
+          if (K.includes('e')) { w = Math.min(1 - o.x, Math.max(MIN, o.w + gx)); }
+          if (K.includes('n')) { y = Math.min(o.y + o.h - MIN, Math.max(0, o.y + gy)); h = o.y + o.h - y; }
+          if (K.includes('s')) { h = Math.min(1 - o.y, Math.max(MIN, o.h + gy)); }
+        }
+        updateLayer(d.layerId, { crop: { x, y, w, h } });
+      } else if (d.mode === 'fillpos') {
+        // Reposition an image FILL inside a shape/frame (object-position).
+        updateLayer(d.layerId, {
+          fillPosX: Math.min(1, Math.max(0, d.orig.fillPosX - fx * 1.5)),
+          fillPosY: Math.min(1, Math.max(0, d.orig.fillPosY - fy * 1.5)),
+        });
       }
     };
     const onUp = () => {
+      // Dropped an image onto a frame → fill the frame with it and remove the
+      // standalone image layer (only when released INSIDE the frame).
+      const targetId = dropTargetRef.current;
+      const dragged = draggingImgRef.current;
+      if (targetId && dragged) {
+        updateSlide(s => ({
+          ...s,
+          layers: s.layers
+            .map(x => x.id === targetId ? { ...x, imageUrl: dragged.url, fillPosX: 0.5, fillPosY: 0.5 } : x)
+            .filter(x => x.id !== dragged.id),
+        }));
+        setSelectedLayerId(targetId);
+        toast.success(isPt ? 'Imagem colocada na moldura' : 'Image placed in the frame');
+      }
+      draggingImgRef.current = null;
+      dropTargetRef.current = null;
+      setHoverFrameId(null);
       dragRef.current = null;
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
@@ -910,9 +969,13 @@ export default function Design() {
     const clip = def.kind === 'poly' && l.shape !== 'rect'
       ? `polygon(${def.pts.map(([px, py]) => `${px * 100}% ${py * 100}%`).join(', ')})`
       : undefined;
-    const fillImg = l.imageUrl ? (
-      <img src={l.imageUrl} alt="" draggable={false}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+    // Show a temporary preview of an image being dragged onto this frame.
+    const previewUrl = (hoverFrameId === l.id && draggingImgRef.current?.url) ? draggingImgRef.current.url : l.imageUrl;
+    const fillImg = previewUrl ? (
+      <img src={previewUrl} alt="" draggable={false}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+          objectPosition: `${(l.fillPosX ?? 0.5) * 100}% ${(l.fillPosY ?? 0.5) * 100}%`,
+          opacity: (hoverFrameId === l.id && !l.imageUrl) ? 0.7 : 1 }} />
     ) : null;
 
     let body;
@@ -952,17 +1015,25 @@ export default function Design() {
       );
     }
 
+    const adjusting = adjustFillId === l.id && l.imageUrl;
+    const hovering = hoverFrameId === l.id;
     return (
       <div key={l.id}
-        onMouseDown={(e) => startDrag(e, l)}
-        className={`absolute cursor-move select-none ${isSel ? 'ring-2 ring-[#38b6ff]' : ''}`}
+        onMouseDown={(e) => { if (adjusting) startDrag(e, l, 'fillpos'); else startDrag(e, l); }}
+        onDoubleClick={() => { if (l.imageUrl) { setSelectedLayerId(l.id); setAdjustFillId(adjusting ? null : l.id); } }}
+        className={`absolute select-none ${adjusting ? 'cursor-move ring-2 ring-[#f59e0b]' : hovering ? 'ring-2 ring-[#22c55e] cursor-copy' : isSel ? 'ring-2 ring-[#38b6ff] cursor-move' : 'cursor-move'}`}
         style={{
           left: `${l.x * 100}%`, top: `${l.y * 100}%`,
           width: `${wPct}%`, height: hPx,
           transform: layerTransform(l), opacity: l.opacity ?? 1,
         }}>
         {body}
-        {isSel && renderResizeHandle(l)}
+        {adjusting && (
+          <div className="absolute -top-6 left-0 text-[10px] px-1.5 py-0.5 rounded bg-[#f59e0b] text-black whitespace-nowrap">
+            {isPt ? 'Arraste a imagem • dê 2 cliques p/ sair' : 'Drag image • double-click to exit'}
+          </div>
+        )}
+        {isSel && !adjusting && renderResizeHandle(l)}
       </div>
     );
   };
@@ -976,30 +1047,61 @@ export default function Design() {
     />
   );
 
+  // 8 crop handles positioned relative to the CROP RECTANGLE (not the image).
   const CROP_HANDLES = [
-    { k: 'left',   style: { left: -6, top: '50%', marginTop: -12, width: 12, height: 24, cursor: 'ew-resize' } },
-    { k: 'right',  style: { right: -6, top: '50%', marginTop: -12, width: 12, height: 24, cursor: 'ew-resize' } },
-    { k: 'top',    style: { top: -6, left: '50%', marginLeft: -12, width: 24, height: 12, cursor: 'ns-resize' } },
-    { k: 'bottom', style: { bottom: -6, left: '50%', marginLeft: -12, width: 24, height: 12, cursor: 'ns-resize' } },
+    { k: 'nw', style: { left: -6, top: -6 }, cur: 'nwse-resize' },
+    { k: 'n',  style: { left: '50%', top: -6, marginLeft: -8 }, cur: 'ns-resize' },
+    { k: 'ne', style: { right: -6, top: -6 }, cur: 'nesw-resize' },
+    { k: 'e',  style: { right: -6, top: '50%', marginTop: -8 }, cur: 'ew-resize' },
+    { k: 'se', style: { right: -6, bottom: -6 }, cur: 'nwse-resize' },
+    { k: 's',  style: { left: '50%', bottom: -6, marginLeft: -8 }, cur: 'ns-resize' },
+    { k: 'sw', style: { left: -6, bottom: -6 }, cur: 'nesw-resize' },
+    { k: 'w',  style: { left: -6, top: '50%', marginTop: -8 }, cur: 'ew-resize' },
   ];
 
   const renderImagePreview = (l, isSel) => {
     const crop = l.crop;
     const isCropping = croppingId === l.id;
+
+    // ── CROP MODE ── show the FULL image fixed; overlay a movable crop rectangle.
+    if (isCropping) {
+      const c = crop || { x: 0, y: 0, w: 1, h: 1 };
+      return (
+        <div key={l.id}
+          className="absolute select-none ring-2 ring-[#f59e0b]"
+          style={{ left: `${l.x * 100}%`, top: `${l.y * 100}%`, width: `${l.w * 100}%`, aspectRatio: l.natAsp ? `${1 / l.natAsp}` : '1', transform: layerTransform(l), opacity: l.opacity ?? 1 }}>
+          {/* full image, dimmed */}
+          <img src={l.url} alt="" draggable={false}
+            style={{ width: '100%', height: '100%', display: 'block', objectFit: 'fill', opacity: 0.4 }}
+            onLoad={(e) => { if (!l.natAsp) updateLayerSilent(l.id, { natAsp: e.target.naturalHeight / e.target.naturalWidth }); }} />
+          {/* bright crop window + move-by-drag */}
+          <div onMouseDown={(e) => startDrag(e, l, 'crop', 'move')}
+            className="absolute overflow-hidden cursor-move border border-white/80"
+            style={{ left: `${c.x * 100}%`, top: `${c.y * 100}%`, width: `${c.w * 100}%`, height: `${c.h * 100}%` }}>
+            <img src={l.url} alt="" draggable={false}
+              style={{ position: 'absolute', width: `${100 / c.w}%`, height: `${100 / c.h}%`, left: `${-(c.x / c.w) * 100}%`, top: `${-(c.y / c.h) * 100}%`, maxWidth: 'none' }} />
+          </div>
+          {CROP_HANDLES.map(h => (
+            <div key={h.k}
+              onMouseDown={(e) => startDrag(e, l, 'crop', h.k)}
+              className="absolute w-3 h-3 bg-[#f59e0b] border border-white rounded-sm shadow z-10"
+              style={{ ...cropHandlePos(h.k, c), cursor: h.cur }} />
+          ))}
+        </div>
+      );
+    }
+
+    // ── NORMAL MODE ──
     const common = {
-      onMouseDown: (e) => (isCropping ? null : startDrag(e, l)),
-      className: `absolute select-none ${isCropping ? '' : 'cursor-move'} ${isSel ? 'ring-2 ring-[#38b6ff]' : ''}`,
-      style: {
-        left: `${l.x * 100}%`, top: `${l.y * 100}%`,
-        width: `${l.w * 100}%`,
-        transform: layerTransform(l),
-        opacity: l.opacity ?? 1,
-      },
+      onMouseDown: (e) => startDrag(e, l),
+      onDoubleClick: () => { setSelectedLayerId(l.id); setCroppingId(l.id); },
+      className: `absolute select-none cursor-move ${isSel ? 'ring-2 ring-[#38b6ff]' : ''}`,
+      style: { left: `${l.x * 100}%`, top: `${l.y * 100}%`, width: `${l.w * 100}%`, transform: layerTransform(l), opacity: l.opacity ?? 1 },
     };
     const imgInner = crop && l.natAsp ? (
       <div style={{ width: '100%', overflow: 'hidden', aspectRatio: `${crop.w / (crop.h * l.natAsp)}`, borderRadius: `${l.radius || 0}%` }}>
         <img src={l.url} alt="" draggable={false}
-          style={{ width: `${100 / crop.w}%`, transform: `translate(-${crop.x * 100}%, -${crop.y * 100}%)`, display: 'block' }}
+          style={{ width: `${100 / crop.w}%`, transform: `translate(-${(crop.x / crop.w) * 100}%, -${(crop.y / crop.h) * 100}%)`, display: 'block' }}
           onLoad={(e) => { if (!l.natAsp) updateLayerSilent(l.id, { natAsp: e.target.naturalHeight / e.target.naturalWidth }); }} />
       </div>
     ) : (
@@ -1010,15 +1112,20 @@ export default function Design() {
     return (
       <div key={l.id} {...common}>
         {imgInner}
-        {isSel && !isCropping && renderResizeHandle(l)}
-        {isCropping && CROP_HANDLES.map(h => (
-          <div key={h.k}
-            onMouseDown={(e) => startDrag(e, l, 'crop', h.k)}
-            className="absolute bg-[#38b6ff] border border-white rounded-sm shadow"
-            style={{ ...h.style, position: 'absolute', zIndex: 6 }} />
-        ))}
+        {isSel && renderResizeHandle(l)}
       </div>
     );
+  };
+
+  // Position a crop handle at the corner/edge of the crop rectangle.
+  const cropHandlePos = (k, c) => {
+    const cx = (c.x + c.w / 2) * 100, cy = (c.y + c.h / 2) * 100;
+    const l = c.x * 100, r = (c.x + c.w) * 100, t = c.y * 100, b = (c.y + c.h) * 100;
+    const map = {
+      nw: [l, t], n: [cx, t], ne: [r, t], e: [r, cy], se: [r, b], s: [cx, b], sw: [l, b], w: [l, cy],
+    };
+    const [px, py] = map[k];
+    return { left: `${px}%`, top: `${py}%`, transform: 'translate(-50%, -50%)' };
   };
 
   return (
@@ -1181,7 +1288,7 @@ export default function Design() {
               className={`relative overflow-hidden shadow-2xl flex-shrink-0 ${bgSelected ? 'ring-2 ring-[#cb6ce6]' : ''}`}
               style={{ width: previewW, height: previewH, background: slide.background.color }}
               onMouseDown={() => {
-                setSelectedLayerId(null); setCroppingId(null);
+                setSelectedLayerId(null); setCroppingId(null); setAdjustFillId(null);
                 // Clicking the canvas selects the background (if it has an image)
                 setBgSelected(!!slide.background.imageUrl);
               }}>
@@ -1282,11 +1389,11 @@ export default function Design() {
           {/* Shapes library */}
           {showShapes && (
             <div className="flex justify-center">
-              <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5 p-3 rounded-2xl bg-[#151515] border border-white/10">
+              <div className="flex flex-wrap gap-1.5 p-3 rounded-2xl bg-[#151515] border border-white/10 max-w-[520px] justify-center">
                 {SHAPES.map(s => (
                   <button key={s.id} onClick={() => addShapeLayer(s.id)}
-                    title={s.id}
-                    className="w-10 h-10 rounded-lg bg-white/5 hover:bg-[#38b6ff]/20 border border-white/10 hover:border-[#38b6ff]/40 text-white text-lg transition-all">
+                    title={s.id.startsWith('frame') ? `${s.id} (${isPt ? 'moldura — pode receber imagem' : 'frame — can hold an image'})` : s.id}
+                    className="w-10 h-10 rounded-lg bg-white/5 hover:bg-[#38b6ff]/20 border border-white/10 hover:border-[#38b6ff]/40 text-white text-lg transition-all flex items-center justify-center">
                     {s.label}
                   </button>
                 ))}
