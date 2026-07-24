@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { consumeDesignHandoff, saveDesignReturn } from '@/lib/designHandoff';
+import CanvaPicker from '@/components/integrations/CanvaPicker';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import IntegrationGate from '@/components/ui/IntegrationGate';
@@ -43,6 +44,7 @@ export default function Blog() {
   const [editing, setEditing] = useState(null);
   const [post, setPost] = useState(emptyPost);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showCanva, setShowCanva] = useState(false);
   const [view, setView] = useState('list');
   const [aiContext, setAiContext] = useState('');
 
@@ -315,6 +317,10 @@ Return JSON with: content (full article in markdown), meta_description (155 char
                       className="h-7 px-3 text-xs border-[#38b6ff]/40 bg-[#38b6ff]/10 text-[#38b6ff] hover:bg-[#38b6ff]/20 gap-1">
                       🎨 {isPt ? 'Design' : 'Design Studio'}
                     </Button>
+                    <Button size="sm" variant="outline" onClick={() => setShowCanva(true)}
+                      className="h-7 px-3 text-xs border-[#00c4cc]/40 bg-[#00c4cc]/10 text-[#00c4cc] hover:bg-[#00c4cc]/20 gap-1">
+                      🎨 Canva
+                    </Button>
                     <Button size="sm" onClick={generateWithAI} disabled={isGenerating}
                       className="h-7 px-3 text-xs bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-1">
                       {isGenerating ? <div className="w-3 h-3 rounded-full border border-white border-t-transparent animate-spin" /> : <Sparkles size={12} />}
@@ -429,6 +435,16 @@ Return JSON with: content (full article in markdown), meta_description (155 char
           </div>
         </div>
       )}
+
+      <CanvaPicker
+        open={showCanva}
+        onClose={() => setShowCanva(false)}
+        onSelect={({ url, name }) => {
+          const md = `![${name || 'Canva design'}](${url})`;
+          setPost(p => ({ ...p, content: p.content ? `${p.content}\n\n${md}` : md }));
+          toast.success(isPt ? 'Imagem do Canva inserida' : 'Canva image inserted');
+        }}
+      />
     </div>
   );
 }

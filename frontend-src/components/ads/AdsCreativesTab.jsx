@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { consumeDesignHandoff, saveDesignReturn } from '@/lib/designHandoff';
+import { consumeDesignHandoff, saveDesignReturn, normalizeBrief } from '@/lib/designHandoff';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { Upload, Wand2, X, ExternalLink, Image, Video, Sparkles, Loader2, Download, FileImage } from 'lucide-react';
 import GoogleDriveImagePicker from '@/components/integrations/GoogleDriveImagePicker';
+import CanvaPicker from '@/components/integrations/CanvaPicker';
 import { InvokeLLM, GenerateImage, UploadFile } from '@/api/integrations';
 
 const DESIGN_TOOLS = [
@@ -59,6 +60,7 @@ export default function AdsCreativesTab({ company }) {
   const [imagePrompt, setImagePrompt] = useState('');
   const [abTestEnabled, setAbTestEnabled] = useState(false);
   const [showGoogleDrivePicker, setShowGoogleDrivePicker] = useState(false);
+  const [showCanva, setShowCanva] = useState(false);
 
   const navigate = useNavigate();
 
@@ -78,9 +80,10 @@ export default function AdsCreativesTab({ company }) {
   }, []);
 
   // Leaving for the Design Studio: keep the current creatives so they're
-  // still here when the new design comes back.
-  const goToDesignStudio = () => {
-    saveDesignReturn('ads', { uploadedCreatives }, 'your ad creatives');
+  // still here when the new design comes back. Optionally carry an AI brief.
+  const goToDesignStudio = (brief) => {
+    saveDesignReturn('ads', { uploadedCreatives }, 'your ad creatives',
+      brief ? normalizeBrief(brief, 'ads') : null);
     navigate('/Design');
   };
 
@@ -259,6 +262,12 @@ Return a comprehensive creative brief in JSON.`,
               <FileImage size={16} />
               Select from Google Drive
             </button>
+            <button
+              onClick={() => setShowCanva(true)}
+              className="flex-1 min-w-[180px] flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-[#00c4cc]/40 bg-[#00c4cc]/10 hover:bg-[#00c4cc]/20 text-[#00c4cc] text-sm font-medium transition-all"
+            >
+              🎨 Import from Canva
+            </button>
           </div>
 
           {uploadedCreatives.length > 0 && (
@@ -398,6 +407,10 @@ Return a comprehensive creative brief in JSON.`,
                       {generatedAbImages[idx] && <img src={generatedAbImages[idx]} alt={`Variation ${brief._label}`} className="w-full rounded-lg object-cover border border-white/10 mt-1" style={{ maxHeight: 120 }} />}
                     </div>
                   )}
+                  <button onClick={() => goToDesignStudio(brief)}
+                    className={`w-full mt-1 py-1.5 rounded-lg text-[11px] border transition-all ${idx === 0 ? 'border-[#38b6ff]/40 text-[#38b6ff] hover:bg-[#38b6ff]/10' : 'border-[#cb6ce6]/40 text-[#cb6ce6] hover:bg-[#cb6ce6]/10'}`}>
+                    🎨 Open Variation {brief._label} in Design Studio
+                  </button>
                 </div>
               ))}
             </div>
@@ -462,11 +475,17 @@ Return a comprehensive creative brief in JSON.`,
               <p className="text-[#38b6ff] text-xs font-semibold flex items-center gap-1"><Image size={12} /> Generate AI Image from Brief</p>
               <Textarea value={imagePrompt} onChange={e => setImagePrompt(e.target.value)}
                 className="min-h-[60px] text-xs bg-black/30 border-white/10 text-white resize-none" placeholder="AI image prompt (auto-filled from brief)..." />
-              <Button onClick={generateAIImage} disabled={isGeneratingImage || !imagePrompt.trim()}
-                size="sm" className="bg-[#38b6ff] text-black gap-1.5 text-xs">
-                {isGeneratingImage ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                {isGeneratingImage ? 'Generating...' : 'Generate Image'}
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button onClick={generateAIImage} disabled={isGeneratingImage || !imagePrompt.trim()}
+                  size="sm" className="bg-[#38b6ff] text-black gap-1.5 text-xs">
+                  {isGeneratingImage ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  {isGeneratingImage ? 'Generating...' : 'Generate Image'}
+                </Button>
+                <Button onClick={() => goToDesignStudio({ ...designBrief, ai_image_prompt: imagePrompt })}
+                  size="sm" variant="outline" className="border-[#cb6ce6]/40 text-[#cb6ce6] hover:bg-[#cb6ce6]/10 gap-1.5 text-xs">
+                  🎨 Open in Design Studio
+                </Button>
+              </div>
               {generatedImage && (
                 <div className="flex gap-3 items-start mt-2">
                   <img src={generatedImage} alt="AI Generated" className="w-32 h-32 rounded-xl object-cover border border-[#38b6ff]/30" />
@@ -493,6 +512,11 @@ Return a comprehensive creative brief in JSON.`,
           setUploadedCreatives(prev => [...prev, { url: image.url, name: image.name, type: 'image/jpeg' }]);
           setShowGoogleDrivePicker(false);
         }}
+      />
+      <CanvaPicker
+        open={showCanva}
+        onClose={() => setShowCanva(false)}
+        onSelect={({ url, name }) => setUploadedCreatives(prev => [...prev, { url, name: name || 'Canva design', type: 'image/png' }])}
       />
     </div>
   );

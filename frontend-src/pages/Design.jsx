@@ -19,9 +19,10 @@ import {
   Star, Scissors,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Company, DesignTemplate } from '@/api/entities';
+import { Company, DesignTemplate, Canva } from '@/api/entities';
 import { GenerateImage, UploadFile } from '@/api/integrations';
 import { api } from '@/api/apiClient';
+import CanvaPicker from '@/components/integrations/CanvaPicker';
 import { setDesignHandoff, peekDesignReturn, clearDesignReturn, briefToPrompt } from '@/lib/designHandoff';
 
 // ─── Aspect ratios (export resolution) ───────────────────────────────────────
@@ -362,6 +363,7 @@ export default function Design() {
   const [showIcons, setShowIcons] = useState(false);
   const [croppingId, setCroppingId] = useState(null);
   const [bgSelected, setBgSelected] = useState(false); // background is a selectable/draggable target
+  const [showCanva, setShowCanva] = useState(false);
   const [busy, setBusy] = useState(null);
   const canvasWrapRef = useRef(null);
   const dragRef = useRef(null);
@@ -822,6 +824,34 @@ export default function Design() {
     } finally { setBusy(null); }
   };
 
+  // Canva: import a design as an image layer
+  const addCanvaImage = async ({ url }) => {
+    setBusy('upload');
+    try {
+      // Persist Canva's export URL into our storage (their URLs expire)
+      const savedUrl = await persistDataUrl(url, 'canva-import').catch(() => url);
+      const layer = { id: nextId(), type: 'image', role: 'image', url: savedUrl, x: 0.1, y: 0.1, w: 0.5, opacity: 1 };
+      updateSlide(s => ({ ...s, layers: [...s.layers, layer] }));
+      setSelectedLayerId(layer.id);
+    } catch (e) { toast.error(e.message); } finally { setBusy(null); }
+  };
+
+  // Canva: export the current design and open it in Canva for editing
+  const editInCanva = async () => {
+    setBusy('canva-export');
+    try {
+      const files = await exportSlides();
+      const { url } = await UploadFile({ file: files[0], folder: 'designs' });
+      const { edit_url } = await Canva.import(url, templateName || 'Bmapz Design');
+      if (edit_url) { window.open(edit_url, '_blank'); toast.success(isPt ? 'Aberto no Canva!' : 'Opened in Canva!'); }
+      else throw new Error('No edit URL returned');
+    } catch (e) {
+      toast.error(e.code === 'NOT_CONNECTED'
+        ? (isPt ? 'Conecte o Canva primeiro (Importar do Canva → Conectar).' : 'Connect Canva first (Import from Canva → Connect).')
+        : (isPt ? 'Falha ao enviar ao Canva: ' : 'Send to Canva failed: ') + e.message);
+    } finally { setBusy(null); }
+  };
+
   const loadTemplate = (t) => {
     try {
       const cfg = t.config || {};
@@ -1245,6 +1275,14 @@ export default function Design() {
                 {isPt ? 'Logo da empresa' : 'Company logo'}
               </Button>
             )}
+            <button onClick={() => setShowCanva(true)}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-lg border border-[#00c4cc]/40 bg-[#00c4cc]/10 hover:bg-[#00c4cc]/20 text-[#00c4cc] text-sm transition-all">
+              🎨 {isPt ? 'Do Canva' : 'From Canva'}
+            </button>
+            <button onClick={editInCanva} disabled={!!busy}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-lg border border-[#00c4cc]/40 bg-[#00c4cc]/10 hover:bg-[#00c4cc]/20 text-[#00c4cc] text-sm transition-all">
+              {busyIs('canva-export') ? <Loader2 size={13} className="animate-spin" /> : '↗'} {isPt ? 'Editar no Canva' : 'Edit in Canva'}
+            </button>
           </div>
 
           {/* Shapes library */}
@@ -1663,6 +1701,8 @@ export default function Design() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <CanvaPicker open={showCanva} onClose={() => setShowCanva(false)} onSelect={addCanvaImage} />
     </div>
   );
 }

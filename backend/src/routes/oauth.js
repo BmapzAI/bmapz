@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -570,6 +571,98 @@ router.post('/disconnect', requireAuth, async (req, res) => {
 });
 
 // ─── Helper: popup HTML page ──────────────────────────────────────────────────
+
+// ─── Canva OAuth (Canva Connect API, OAuth 2.0 + PKCE S256) ───────────────────
+// Requires a Canva developer app: set CANVA_CLIENT_ID + CANVA_CLIENT_SECRET in
+// Railway (or per-company api_keys.canva_client_id/secret). Redirect URI in the
+// Canva app must be `${API_URL}/api/oauth/canva/callback`.
+const CANVA_SCOPES = 'design:content:read design:content:write asset:read asset:write profile:read';
+
+router.get(['/canva/initiate', '/canva/initiate-url'], requireAuth, async (req, res) => {
+  try {
+    const { type = 'canva', origin } = req.query;
+    const { apiKeys } = await getCompanyKeys(req.companyId);
+    const clientId = apiKeys.canva_client_id || process.env.CANVA_CLIENT_ID;
+    if (!clientId) return res.status(400).json({ error: 'Canva Client ID not configured', code: 'NOT_CONFIGURED' });
+
+    const codeVerifier = crypto.randomBytes(48).toString('base64url');
+    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+    const state = Buffer.from(JSON.stringify({
+      companyId: req.companyId, codeVerifier, integrationType: type, origin: origin || FRONTEND_URL,
+    })).toString('base64url');
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: `${API_URL}/api/oauth/canva/callback`,
+      scope: CANVA_SCOPES,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+      state,
+    });
+    const authUrl = `https://www.canva.com/api/oauth/authorize?${params}`;
+    if (req.path.endsWith('/initiate-url')) return res.json({ authUrl });
+    res.redirect(authUrl);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/canva/callback', async (req, res) => {
+  try {
+    const { code, state, error: oauthError } = req.query;
+    if (oauthError) return res.send(popupHtml('error', 'Canva', oauthError));
+    const { companyId, codeVerifier, integrationType = 'canva' } = JSON.parse(Buffer.from(state, 'base64url').toString());
+    const { apiKeys } = await getCompanyKeys(companyId);
+    const clientId = apiKeys.canva_client_id || process.env.CANVA_CLIENT_ID;
+    const clientSecret = apiKeys.canva_client_secret || process.env.CANVA_CLIENT_SECRET;
+
+    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    const r = await fetch('https://api.canva.com/rest/v1/oauth/token', {
+      method: 'POST',
+      headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: codeVerifier,
+        redirect_uri: `${API_URL}/api/oauth/canva/callback`,
+      }),
+    });
+    const tokens = await r.json();
+    if (tokens.error || !tokens.access_token) throw new Error(tokens.error_description || tokens.error || 'Canva token exchange failed');
+
+    await saveOAuthTokens(companyId, {
+      canva_access_token: tokens.access_token,
+      canva_refresh_token: tokens.refresh_token || null,
+      canva_token_expires_at: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null,
+    }, integrationType);
+    res.send(popupHtml('success', 'Canva', null, integrationType));
+  } catch (err) {
+    res.send(popupHtml('error', 'Canva', err.message));
+  }
+});
+
+// Refresh an expired Canva access token (Canva access tokens are short-lived).
+export async function refreshCanvaToken(companyId) {
+  const { apiKeys } = await getCompanyKeys(companyId);
+  if (!apiKeys.canva_refresh_token) throw new Error('Canva not connected');
+  const clientId = apiKeys.canva_client_id || process.env.CANVA_CLIENT_ID;
+  const clientSecret = apiKeys.canva_client_secret || process.env.CANVA_CLIENT_SECRET;
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const r = await fetch('https://api.canva.com/rest/v1/oauth/token', {
+    method: 'POST',
+    headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: apiKeys.canva_refresh_token }),
+  });
+  const tokens = await r.json();
+  if (!tokens.access_token) throw new Error('Canva token refresh failed');
+  await saveOAuthTokens(companyId, {
+    canva_access_token: tokens.access_token,
+    canva_refresh_token: tokens.refresh_token || apiKeys.canva_refresh_token,
+    canva_token_expires_at: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null,
+  }, 'canva');
+  return tokens.access_token;
+}
 
 function popupHtml(status, provider, errorMsg = null, integrationType = null) {
   if (status === 'success') {

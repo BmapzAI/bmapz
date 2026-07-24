@@ -27,6 +27,7 @@ const INTERNALIZED_OAUTH_MAP = {
   gmail: true,
   tiktok_ads: true,
   tiktok_social: true,
+  canva: true,
 };
 
 // OAuth-capable but NOT in Base44 connectors — need user's own client credentials
@@ -275,7 +276,7 @@ const STATUS_KEY_MAP = {
   intercom: 'intercom',
   mixpanel: 'mixpanel', segment: 'segment', hotjar: 'hotjar',
   perplexity: 'perplexity', jasper: 'jasper', loom: 'loom', demio: 'demio',
-  shopify: 'shopify', webflow: 'webflow', zoom: 'zoom',
+  shopify: 'shopify', webflow: 'webflow', zoom: 'zoom', canva: 'canva',
 };
 
 // Step indicators
@@ -326,6 +327,8 @@ export default function ConnectIntegrationModal({ integration, company, user, is
       oauthPath = '/api/oauth/twitter/initiate';
     } else if (integration.type === 'tiktok_social' || integration.type === 'tiktok_ads' || integration.type === 'tiktok') {
       oauthPath = '/api/oauth/tiktok/initiate';
+    } else if (integration.type === 'canva') {
+      oauthPath = '/api/oauth/canva/initiate';
     }
 
     let handledByMessage = false;

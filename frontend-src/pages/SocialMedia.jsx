@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { consumeDesignHandoff, saveDesignReturn } from '@/lib/designHandoff';
+import { consumeDesignHandoff, saveDesignReturn, normalizeBrief } from '@/lib/designHandoff';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
@@ -19,6 +19,7 @@ import SocialPerformanceTab from '@/components/social/SocialPerformanceTab';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
 import AIContextField from '@/components/ui/AIContextField';
 import GoogleDriveImagePicker from '@/components/integrations/GoogleDriveImagePicker';
+import CanvaPicker from '@/components/integrations/CanvaPicker';
 import { toast } from 'sonner';
 import { Company, SocialPost } from '@/api/entities';
 import { InvokeLLM, GenerateImage, UploadFile } from '@/api/integrations';
@@ -65,6 +66,7 @@ export default function SocialMedia() {
   const [optimizationInsights, setOptimizationInsights] = useState(null);
   const [generatedContent, setGeneratedContent] = useState(null);
   const [showGoogleDrivePicker, setShowGoogleDrivePicker] = useState(false);
+  const [showCanva, setShowCanva] = useState(false);
   const navigate = useNavigate();
 
   // Design Studio → Social handoff: restore the draft the user was writing
@@ -86,9 +88,11 @@ export default function SocialMedia() {
   }, []);
 
   // Leaving for the Design Studio: save the in-progress post so it survives
-  // the round-trip and the exported images come back to THIS draft.
-  const goToDesignStudio = () => {
-    saveDesignReturn('social', { newPost, uploadedMedia }, isPt ? 'seu rascunho de post' : 'your post draft');
+  // the round-trip and the exported images come back to THIS draft. Optionally
+  // carry the AI design brief so Design can generate from it in one click.
+  const goToDesignStudio = (brief) => {
+    saveDesignReturn('social', { newPost, uploadedMedia }, isPt ? 'seu rascunho de post' : 'your post draft',
+      brief ? normalizeBrief(brief, 'social') : null);
     navigate('/Design');
   };
 
@@ -696,6 +700,12 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                     <FileImage size={14} />
                     Google Drive
                   </button>
+                  <button
+                    onClick={() => setShowCanva(true)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#00c4cc]/40 bg-[#00c4cc]/10 hover:bg-[#00c4cc]/20 text-[#00c4cc] text-sm transition-all"
+                  >
+                    🎨 Canva
+                  </button>
                 </div>
                 {showAiImageInput && (
                   <div className="mt-2 flex gap-2">
@@ -743,6 +753,10 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                         {designBrief.color_palette.map((c, i) => <div key={i} className="w-5 h-5 rounded-full border border-white/20" style={{backgroundColor: c}} title={c} />)}
                       </div>
                     )}
+                    <button onClick={() => goToDesignStudio(designBrief)}
+                      className="w-full mt-1 py-1.5 rounded-lg text-xs bg-[#38b6ff]/15 border border-[#38b6ff]/40 text-[#38b6ff] hover:bg-[#38b6ff]/25 transition-all">
+                      🎨 {isPt ? 'Criar imagem no Design com este brief' : 'Create image in Design from this brief'}
+                    </button>
                     {designBrief.do_list?.length > 0 && <div className="text-xs text-green-400"> {designBrief.do_list.slice(0,2).join(' → ')}</div>}
                     {designBrief.dont_list?.length > 0 && <div className="text-xs text-red-400">L {designBrief.dont_list.slice(0,2).join(' → ')}</div>}
                   </div>
@@ -988,6 +1002,11 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
           setUploadedMedia(prev => [...prev, { url: image.url, name: image.name, type: 'image/jpeg' }]);
           setShowGoogleDrivePicker(false);
         }}
+      />
+      <CanvaPicker
+        open={showCanva}
+        onClose={() => setShowCanva(false)}
+        onSelect={({ url, name }) => setUploadedMedia(prev => [...prev, { url, name: name || 'Canva design', type: 'image/png' }])}
       />
     </div>
   );

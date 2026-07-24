@@ -209,6 +209,15 @@ export const SDR = {
   inbound: (data) => api.post('/api/sdr/inbound', data),
 };
 
+// ─── Canva integration ────────────────────────────────────────────────────────
+
+export const Canva = {
+  status: () => api.get('/api/canva/status'),
+  designs: () => api.get('/api/canva/designs'),
+  export: (design_id) => api.post('/api/canva/export', { design_id }),
+  import: (image_url, title) => api.post('/api/canva/import', { image_url, title }),
+};
+
 // ─── Dashboard Configs ────────────────────────────────────────────────────────
 
 export const DashboardConfig = {
