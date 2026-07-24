@@ -1201,3 +1201,67 @@ Canva integration (Design, Ads, Social, Blog):
   sizing. Export polling capped at ~30s.
 - The legacy FlowchartBuilder.jsx still carries the old redo work but is dead
   code (Workflows renders WorkflowBuilderModal). Consider deleting it.
+
+### 2026-07-24 - Claude (Session 20: 12-item audit & fix)
+
+Migration 007 (updated with user_id + allowed_outcomes + human_takeover) APPLIED
+to production Supabase ("Success. No rows returned"). All 12 items done + pushed.
+
+1. **Notification dropdown clipping** â€” NotificationBell now fixed-positioned via
+   the button's bounding rect + viewport-clamped, so it never gets cut by the
+   sidebar. z-[60/61].
+2. **qualify condition vs action** â€” Answered + aligned. The `qualified`/
+   `disqualified` CONDITION now reads the lead's real CRM state (funnel_stage â‰¥ MQL
+   or status='qualified'; disqualified/lost) in evalCondition â€” the SAME fields the
+   Lead-Qualification ACTION, the Sales board, and the SDR write. Condition =
+   read/branch; qualify action = write/move. Not redundant; fully connected.
+3. **Lead Qualification template** â€” Added to WorkflowBuilderModal TEMPLATES:
+   new-lead trigger â†’ SDR â†’ wait â†’ Qualified? â†’ (yes) set SQL + hand-over /
+   (no) nurture.
+4. **SDR name save / per-user** â€” sdr_agents got user_id; getSdrAgent(companyId,
+   userId) is per-user (name defaults to company.personal_agent_name); inbound uses
+   getCompanySdrAgent (any enabled). Root 'table not found' was the un-applied
+   migration â†’ now applied, saving works.
+5. **Free-drag crop** â€” Rewritten: full image shown fixed + a movable crop-rectangle
+   overlay with 8 handles; dragging an edge moves ONLY that edge (image never
+   shifts); drag inside to pan the window. Double-click image also crops.
+6. **Frame image position + drag-to-fill** â€” Double-click a filled frame â†’ adjust
+   mode, drag the image inside to reposition (fillPosX/Y, object-position, honored
+   in preview + export). Drag an image layer onto a frame â†’ becomes the fill ONLY
+   when dropped inside; green ring + live in-frame preview while hovering.
+7. **Removed enhance + remove-bg** â€” Backend /api/ai/edit-image now only free-form
+   'custom' edits; both UI buttons + Scissors/Star imports deleted.
+8. **More frames** â€” Added frame-rounded/dotted/circle-dashed; ALL shapes (circle,
+   hexagon, star, heart, diamond, pentagon, octagon, rect) are now image frames.
+9. **SDR â†” Inbox** â€” SDR logs BOTH sides of every conversation to `messages`
+   (logToInbox) so the Inbox shows the full thread + history. Fixed the Inbox reply
+   path (email/send now handles {message_id, reply_content} â€” was broken) for email
+   + whatsapp. Human reply from Inbox â†’ sdr_conversations.human_takeover=true â†’ SDR
+   stops auto-replying.
+10. **Acceptable-outcomes guardrail** â€” sdr_agents.allowed_outcomes; the SDR prompt
+    lists ONLY allowed outcomes and sdrRespond hard-clamps any disallowed outcome to
+    'none'. (Settings UI checkboxes still TODO â€” see below.)
+11. **Where do saved posts/ads/images go?** â€” Audited, nothing lost:
+    - Social posts (draft/scheduled/published): SocialMedia â†’ **Posts** tab (Drafts
+      count) + Content tab + Calendar.
+    - Ads (strategies/copies/creatives): Ads â†’ **Saved (N)** button â†’ AdsSavedRecords.
+    - Design: **Save as Template** (Brand Templates) persists the whole design;
+      images can also be Downloaded or Sent to Social/Ads/Blog. AI Outputs section
+      holds AI-generated content from chat/automations.
+    - Gap (minor): a Design that's neither saved-as-template nor sent/downloaded is
+      not auto-persisted (intermediate canvas state). Acceptable; templates cover it.
+12. **Migration applied** âœ“.
+
+**Commits:** `2fd6ecf` (pt1: #1,#4,#7,#9,#10), `7063219` (pt3: #5,#6,#8),
+`3535fd2` (#2,#3). All pushed + CI.
+
+#### Follow-ups (next Claude)
+- SDR Settings UI: add checkboxes for `allowed_outcomes` (backend + guardrail done;
+  the field just needs a UI control in SDR.jsx Settings). Currently defaults to all.
+- SDR name field: verify it persists per-user end-to-end in the live app (migration
+  now applied).
+- Inbox: could add an explicit "SDR is handling / Take over" badge per thread using
+  sdr_conversations.human_takeover (backend flag exists).
+- Design known-minor: rotated-image crop axes still shift (documented Session 18).
+- Codex left docs/CODEX_AUDIT_2026-07-13.md + CLAUDE_PICKUP_PROMPT_2026-07-13.md â€”
+  review next session.
