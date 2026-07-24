@@ -15,7 +15,7 @@ import {
 import {
   Palette, Download, Save, Send, Plus, Trash2, Type, Image as ImageIcon,
   Layers, Loader2, Sparkles, ChevronLeft, ChevronRight, Copy, LayoutTemplate,
-  Upload, Wand2, Shapes, Smile, Crop, RotateCw, FlipHorizontal, FlipVertical,
+  Upload, Wand2, Shapes, Smile, Crop, RotateCw, FlipHorizontal, FlipVertical, Scissors,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Company, DesignTemplate, Canva } from '@/api/entities';
@@ -608,6 +608,23 @@ export default function Design() {
     }));
     setSelectedLayerId(null);
     setBgSelected(true);
+  };
+
+  // Pop the image out of a frame back into its own independent image layer,
+  // leaving the frame empty (reverse of dragging an image onto a frame).
+  const detachImageFromFrame = (l) => {
+    if (!l?.imageUrl) return;
+    const newId = nextId();
+    updateSlide(s => ({
+      ...s,
+      layers: [
+        ...s.layers.map(x => x.id === l.id ? { ...x, imageUrl: undefined, fillPosX: undefined, fillPosY: undefined } : x),
+        { id: newId, type: 'image', role: 'image', url: l.imageUrl, x: l.x, y: l.y, w: l.w ?? 0.4, opacity: l.opacity ?? 1, flipH: !!l.flipH, flipV: !!l.flipV },
+      ],
+    }));
+    setAdjustFillId(null);
+    setSelectedLayerId(newId);
+    toast.success(isPt ? 'Imagem destacada da moldura' : 'Image detached from frame');
   };
 
   // Crop presets: set the crop window to the largest centered region of the
@@ -1628,12 +1645,26 @@ export default function Design() {
                           }} />
                       </label>
                       {selectedLayer.imageUrl && (
+                        <button onClick={() => detachImageFromFrame(selectedLayer)}
+                          title={isPt ? 'Soltar a imagem como camada independente' : 'Pop the image out as its own layer'}
+                          className="py-1.5 px-2.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-300 hover:text-[#38b6ff] hover:border-[#38b6ff]/50 flex items-center gap-1">
+                          <Scissors size={12} /> {isPt ? 'Soltar' : 'Detach'}
+                        </button>
+                      )}
+                      {selectedLayer.imageUrl && (
                         <button onClick={() => updateLayer(selectedLayer.id, { imageUrl: undefined })}
                           className="py-1.5 px-2.5 rounded-lg text-xs border bg-black/20 border-white/10 text-gray-400 hover:text-red-400">
                           {isPt ? 'Limpar' : 'Clear'}
                         </button>
                       )}
                     </div>
+                    {selectedLayer.imageUrl && (
+                      <p className="text-gray-500 text-[10px]">
+                        {isPt
+                          ? 'Duplo-clique na moldura para reposicionar a imagem dentro dela. "Soltar" tira a imagem da moldura como camada livre.'
+                          : 'Double-click the frame to reposition the image inside it. "Detach" pops the image out as a free layer.'}
+                      </p>
+                    )}
                   </div>
                 )}
 

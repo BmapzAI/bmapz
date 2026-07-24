@@ -20,6 +20,20 @@ import { createNotification } from './notify.js';
 export const FUNNEL_STAGES = ['prospect', 'awareness', 'consideration', 'mql', 'sql', 'opportunity', 'customer', 'retention', 'advocacy'];
 export const ALL_OUTCOMES = ['offer_product', 'handover', 'qualified', 'not_qualified', 'support'];
 
+// Metadata for the built-in outcomes (label + when-to-use description), shared by
+// the SDR prompt and surfaced to users in the SDR Settings "Acceptable outcomes" UI.
+export const PREDEFINED_OUTCOMES = [
+  { key: 'qualified',     label: 'Mark lead as qualified', description: 'The prospect clearly fits and is interested — mark them qualified and advance the funnel stage.' },
+  { key: 'handover',      label: 'Hand over to sales',     description: 'The lead is hot/ready — move them to SQL and notify the human sales team.' },
+  { key: 'offer_product', label: 'Offer a product/service', description: 'Recommend a specific product or service that fits the prospect.' },
+  { key: 'not_qualified', label: 'Mark as not qualified',   description: 'The prospect is clearly out of scope / not a fit.' },
+  { key: 'support',       label: 'Route to support',        description: 'This is a support or help request, not a sales conversation.' },
+];
+
+// Slug an arbitrary label into a stable machine key the SDR can emit.
+const outcomeSlug = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+const RESERVED_OUTCOME_KEYS = new Set([...ALL_OUTCOMES, 'none']);
+
 async function defaultSdrName(companyId) {
   const { data } = await supabaseAdmin.from('companies').select('personal_agent_name').eq('id', companyId).single();
   return data?.personal_agent_name || 'Sales Assistant';
@@ -51,9 +65,52 @@ export async function getCompanySdrAgent(companyId) {
   return getSdrAgent(companyId, null);
 }
 
+// Which built-in outcomes are enabled. An UNSET value (never configured) defaults
+// to all; an explicit [] means the user turned them all off (only custom/none remain).
 const allowedOutcomesOf = (agent) => {
-  const a = Array.isArray(agent?.allowed_outcomes) && agent.allowed_outcomes.length ? agent.allowed_outcomes : ALL_OUTCOMES;
+  const a = agent?.allowed_outcomes;
+  if (!Array.isArray(a)) return [...ALL_OUTCOMES];
   return a.filter(o => ALL_OUTCOMES.includes(o));
+};
+
+// Normalize the user-defined custom outcomes into { key, label, description, effects }.
+// Keys are slugged, de-duplicated, and never collide with the built-in keys, so the
+// key the SDR emits is stable and unambiguous.
+export function customOutcomesOf(agent) {
+  const arr = Array.isArray(agent?.custom_outcomes) ? agent.custom_outcomes : [];
+  const seen = new Set();
+  const out = [];
+  for (const o of arr) {
+    if (!o || (!o.label && !o.key)) continue;
+    let base = outcomeSlug(o.key || o.label) || 'outcome';
+    if (RESERVED_OUTCOME_KEYS.has(base)) base = `custom_${base}`;
+    let key = base, n = 2;
+    while (seen.has(key)) key = `${base}_${n++}`;
+    seen.add(key);
+    const e = o.effects || {};
+    out.push({
+      key,
+      label: o.label || o.key,
+      description: o.description || '',
+      effects: {
+        mark_qualified: !!e.mark_qualified,
+        set_stage: (FUNNEL_STAGES.includes(e.set_stage) || e.set_stage === 'next') ? e.set_stage : null,
+        handover: !!e.handover,
+        redirect_url: (typeof e.redirect_url === 'string' && e.redirect_url.trim()) ? e.redirect_url.trim() : null,
+      },
+    });
+  }
+  return out;
+}
+
+// Every outcome key the SDR is allowed to emit this turn (built-in enabled + custom).
+export function allOutcomeKeys(agent) {
+  return [...allowedOutcomesOf(agent), ...customOutcomesOf(agent).map(o => o.key)];
+}
+
+const nextFunnelStage = (current) => {
+  const i = FUNNEL_STAGES.indexOf(current);
+  return i >= 0 && i < FUNNEL_STAGES.length - 1 ? FUNNEL_STAGES[i + 1] : (current || 'mql');
 };
 
 async function getCompanyFacts(companyId) {
@@ -69,6 +126,23 @@ const trunc = (s, n) => (s && s.length > n ? s.slice(0, n) + '…' : s || '');
 /** Build the client-safe system prompt from config + company facts. */
 export function buildSdrSystemPrompt(agent, facts) {
   const allowed = allowedOutcomesOf(agent);
+  const customOutcomes = customOutcomesOf(agent);
+  const allKeys = [...allowed, ...customOutcomes.map(o => o.key)];
+  const outcomeDescLines = [
+    ...allowed.map(k => {
+      const m = PREDEFINED_OUTCOMES.find(o => o.key === k);
+      return `- "${k}": ${m?.description || k}`;
+    }),
+    ...customOutcomes.map(o => {
+      const eff = [];
+      if (o.effects.mark_qualified) eff.push('marks the lead as qualified');
+      if (o.effects.set_stage) eff.push(o.effects.set_stage === 'next' ? 'advances them one funnel stage' : `moves them to the "${o.effects.set_stage}" stage`);
+      if (o.effects.handover) eff.push('hands the lead to the human sales team');
+      if (o.effects.redirect_url) eff.push(`you MUST share this link in your reply: ${o.effects.redirect_url}`);
+      const effStr = eff.length ? ` — when you choose this, the system ${eff.join(', ')}` : '';
+      return `- "${o.key}": ${o.description || o.label}${effStr}`;
+    }),
+  ];
   const icp = facts.icp || {};
   const briefing = facts.briefing || {};
   const name = agent.name || facts.personal_agent_name || 'Sales Assistant';
@@ -97,14 +171,10 @@ export function buildSdrSystemPrompt(agent, facts) {
     `\nConversation flow to follow: ${flow.map(f => (typeof f === 'string' ? f : f.step)).join(' → ')}.`,
     agent.guardrails ? `\nGuardrails: ${trunc(agent.guardrails, 400)}` : '',
     `\nHARD RULES: Never reveal internal metrics, pipeline numbers, or other customers. Never invent products, prices, or promises. Stay strictly on topics about ${facts.name || 'the company'} and its offering.`,
-    `\nALLOWED OUTCOMES — you may ONLY ever choose from this exact list, nothing else: ${allowed.join(', ')}, or "none". If a situation seems to call for an outcome that is NOT in this list, choose "none" and keep helping or ask a clarifying question. This is a strict business rule.`,
+    `\nALLOWED OUTCOMES — the "outcome" field may ONLY ever be one of the keys listed below, or "none". These are the ONLY outcomes that have been defined for you; you cannot invent, rename, or combine outcomes. If a situation calls for an outcome that is not listed, choose "none" and keep helping or ask a clarifying question. This is a strict business rule.\n${outcomeDescLines.join('\n') || '- (no outcomes are configured — always use "none")'}`,
     `\nYou MUST reply with a JSON object ONLY, no prose around it, shaped exactly:`,
-    `{"reply": "<the message to send to the prospect>", "outcome": "none|${allowed.join('|')}", "recommended_product": "<product name or null>", "qualification": {"<question or attribute>": "<their answer/observation>"}, "internal_note": "<one sentence: which flow step you're on and why this outcome>", "stage": "prospect|awareness|consideration|mql|sql|opportunity|null"}`,
-    allowed.includes('handover') ? `Set "handover" only when it's time for a human.` : '',
-    allowed.includes('qualified') ? `Set "qualified" when they clearly fit and are interested.` : '',
-    allowed.includes('not_qualified') ? `Set "not_qualified" when they're clearly out of scope.` : '',
-    allowed.includes('support') ? `Set "support" for support requests.` : '',
-    `Otherwise "none". Keep "reply" natural and channel-appropriate (short for chat/WhatsApp).`,
+    `{"reply": "<the message to send to the prospect>", "outcome": "${['none', ...allKeys].join('|')}", "recommended_product": "<product name or null>", "qualification": {"<question or attribute>": "<their answer/observation>"}, "internal_note": "<one sentence: which flow step you're on and why this outcome>", "stage": "prospect|awareness|consideration|mql|sql|opportunity|null"}`,
+    `The "outcome" value MUST be exactly one of: ${['none', ...allKeys].join(', ')} — nothing else. Keep "reply" natural and channel-appropriate (short for chat/WhatsApp).`,
   ].filter(Boolean).join('\n');
 }
 
@@ -129,9 +199,10 @@ export async function sdrRespond({ companyId, agent, facts, conversationMessages
   let parsed;
   try { parsed = JSON.parse(result.content); }
   catch { parsed = { reply: result.content, outcome: 'none', qualification: {}, internal_note: 'unstructured reply', stage: null }; }
-  // Hard guardrail: clamp the outcome to the allowed set, no matter what the model returned.
-  const allowed = allowedOutcomesOf(agent);
-  if (parsed.outcome && parsed.outcome !== 'none' && !allowed.includes(parsed.outcome)) {
+  // Hard guardrail: clamp the outcome to the allowed set (built-in enabled + custom),
+  // no matter what the model returned.
+  const allowedKeys = allOutcomeKeys(agent);
+  if (parsed.outcome && parsed.outcome !== 'none' && !allowedKeys.includes(parsed.outcome)) {
     parsed.internal_note = `${parsed.internal_note || ''} [outcome "${parsed.outcome}" not allowed → forced to none]`.trim();
     parsed.outcome = 'none';
   }
@@ -324,6 +395,29 @@ async function applySdrOutcome({ companyId, agent, convo, leadId, decision, cont
   } else if (outcome === 'offer_product' && decision.recommended_product) {
     await createNotification({ companyId, type: 'sdr', icon: '🎯', priority: 'low', leadId,
       title: `SDR offered "${decision.recommended_product}" to ${who}`, body: decision.internal_note || '', link: '/SDR' });
+  } else if (outcome && outcome !== 'none') {
+    // Custom, user-defined outcome — run its configured effects (mark qualified,
+    // move funnel stage, hand over, share a link) and notify the team.
+    const custom = customOutcomesOf(agent).find(o => o.key === outcome);
+    if (custom) {
+      const eff = custom.effects || {};
+      if (leadId && (eff.mark_qualified || eff.set_stage)) {
+        const patch = {};
+        if (eff.mark_qualified) patch.status = 'qualified';
+        if (eff.set_stage === 'next') {
+          const { data: lead } = await supabaseAdmin.from('leads').select('funnel_stage').eq('id', leadId).eq('company_id', companyId).maybeSingle();
+          patch.funnel_stage = nextFunnelStage(lead?.funnel_stage);
+        } else if (eff.set_stage) {
+          patch.funnel_stage = eff.set_stage;
+        }
+        if (Object.keys(patch).length) await supabaseAdmin.from('leads').update(patch).eq('id', leadId).eq('company_id', companyId);
+      }
+      if (eff.handover) await notifyHandover({ companyId, agent, who, leadId, note: decision.internal_note });
+      await createNotification({ companyId, type: 'sdr', icon: '🎯', priority: 'normal', leadId,
+        title: `SDR: ${custom.label} — ${who}`,
+        body: `${decision.internal_note || custom.description || ''}${eff.redirect_url ? `\nShared link: ${eff.redirect_url}` : ''}`.trim(),
+        link: '/SDR' });
+    }
   }
 }
 

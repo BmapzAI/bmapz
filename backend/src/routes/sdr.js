@@ -9,6 +9,23 @@ import { getSdrAgent, autofillSdrConfig, handleInboundForSdr, sdrRespond } from 
 
 const router = Router();
 
+// Update the agent row, tolerating the case where migration 008 (custom_outcomes)
+// has not been applied yet — so SDR saves never hard-fail on a missing column.
+async function updateAgentRow(companyId, userId, patch) {
+  const run = (p) => {
+    let q = supabaseAdmin.from('sdr_agents').update(p).eq('company_id', companyId);
+    q = userId ? q.eq('user_id', userId) : q.is('user_id', null);
+    return q.select().single();
+  };
+  let { data, error } = await run(patch);
+  if (error && 'custom_outcomes' in patch && /custom_outcomes/i.test(error.message || '')) {
+    const { custom_outcomes, ...rest } = patch; // eslint-disable-line no-unused-vars
+    ({ data, error } = await run(rest));
+  }
+  if (error) throw error;
+  return data;
+}
+
 // GET /api/sdr/agent — this USER's SDR config (per-user; created disabled if missing)
 router.get('/agent', requireAuth, async (req, res) => {
   try {
@@ -25,14 +42,11 @@ router.patch('/agent', requireAuth, async (req, res) => {
     await getSdrAgent(req.companyId, userId); // ensure the user's row exists
     const allowed = ['enabled', 'name', 'greeting', 'goal', 'persona', 'guardrails', 'show_prices',
       'products', 'qualifying_questions', 'conversation_flow', 'handoff_conditions',
-      'handoff_channels', 'handoff_recipients', 'outcomes', 'allowed_outcomes', 'channels', 'ai_configured'];
+      'handoff_channels', 'handoff_recipients', 'outcomes', 'allowed_outcomes', 'custom_outcomes', 'channels', 'ai_configured'];
     const patch = {};
     for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
     patch.updated_at = new Date().toISOString();
-    let q = supabaseAdmin.from('sdr_agents').update(patch).eq('company_id', req.companyId);
-    q = userId ? q.eq('user_id', userId) : q.is('user_id', null);
-    const { data, error } = await q.select().single();
-    if (error) throw error;
+    const data = await updateAgentRow(req.companyId, userId, patch);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

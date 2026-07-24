@@ -1265,3 +1265,62 @@ to production Supabase ("Success. No rows returned"). All 12 items done + pushed
 - Design known-minor: rotated-image crop axes still shift (documented Session 18).
 - Codex left docs/CODEX_AUDIT_2026-07-13.md + CLAUDE_PICKUP_PROMPT_2026-07-13.md â€”
   review next session.
+
+### 2026-07-24 - Claude (Session 21: template unification, frame detach, SDR outcomes)
+
+Three requests, all built + verified (`npm run build`, `node --check`, `eslint`
+all clean). No auth/billing/OAuth changes. ONE schema change (migration 008).
+
+1. **Workflow templates unified into one real library.** There used to be two
+   disconnected surfaces: the Workflows-page "Templates" tab showed pretty cards
+   that created BLANK workflows (`steps:[]`), while the builder modal's popover
+   had the only templates that actually built node graphs. Fixed by extracting a
+   single source of truth: `frontend-src/components/workflows/workflowTemplates.js`
+   (`WORKFLOW_TEMPLATES` + `WORKFLOW_TEMPLATE_LIST`, 9 complete templates with
+   category/description). Both surfaces now read it. The gallery's "Use Template"
+   opens the builder pre-loaded via a new `initialTemplate` prop on
+   `WorkflowBuilderModal` (seeds nodes/connections/name/type, starts `unsaved`
+   so it auto-persists a real draft). Removed the dead `getStarterTemplates`/
+   `STARTER_WORKFLOW_TEMPLATES` blank-creators from `Workflows.jsx`.
+
+2. **Frame-filled images are now detachable.** `Design.jsx` gained
+   `detachImageFromFrame(l)` (mirrors `detachBackground`): pops the frame's fill
+   back out as an independent image layer (at the frame's x/y/w, appended → top of
+   z-order) and clears `imageUrl/fillPosX/fillPosY` off the shape. New "Detach"
+   button (Scissors icon, re-added to imports) sits next to "Clear" in the shape
+   fill panel, with helper text.
+
+3. **SDR "Acceptable outcomes" + custom outcomes.** The SDR can now ONLY choose
+   from outcomes the user enables/defines (prompt + hard clamp both enforce it).
+   - **Schema (MIGRATION 008 — Derek must run `008_sdr_custom_outcomes.sql` in the
+     Supabase SQL editor):** adds `sdr_agents.custom_outcomes JSONB DEFAULT '[]'`.
+   - Backend `sdrEngine.js`: `PREDEFINED_OUTCOMES` metadata; `customOutcomesOf`
+     (slug + dedup, never collides with built-ins), `allOutcomeKeys`,
+     `nextFunnelStage`; `allowedOutcomesOf` now treats `[]` = none vs unset = all;
+     `buildSdrSystemPrompt` lists built-in + custom outcomes with their effects and
+     a strict "only these keys" rule; `sdrRespond` clamps to `allOutcomeKeys`;
+     `applySdrOutcome` executes custom-outcome effects (mark_qualified / set_stage
+     [a stage or 'next'] / handover / redirect_url) + notifies.
+   - Backend `routes/sdr.js`: `custom_outcomes` added to patchable fields;
+     **`updateAgentRow` helper retries the PATCH without `custom_outcomes` if the
+     column is missing**, so SDR saves DO NOT break in the window before migration
+     008 is applied.
+   - Frontend `SDR.jsx`: "Acceptable outcomes" Settings section — built-in
+     checkboxes (`form.allowed_outcomes`) + a custom-outcome editor
+     (`form.custom_outcomes`: label, when-to-use description, effect toggles, stage
+     select, link). `normalize`/`cleanForm` round-trip both.
+
+**Verification note:** ran a self-authored adversarial-review workflow, but its
+agents errored on the account monthly spend limit before producing findings —
+verification was done manually + by static checks (build/lint/node-check, template
+graph node-ref audit, layer z-order, outcome-key stability).
+
+#### Follow-ups (next agent)
+- **Derek action:** run `supabase/migrations/008_sdr_custom_outcomes.sql` in
+  Supabase (SQL editor). Until then, custom outcomes silently no-op on save (the
+  PATCH strips the column gracefully); built-in allowed_outcomes still work.
+- Optional: reflect custom-outcome handover/qualified effects in the
+  `sdr_conversations.status` mapping inside `handleInboundForSdr` (currently only
+  built-in outcomes update status; custom effects still fire + notify).
+- Optional i18n: the 9 built-in workflow templates have English names/descriptions
+  (the old starter cards used translation keys `wfT*Name/Desc`, now unused).

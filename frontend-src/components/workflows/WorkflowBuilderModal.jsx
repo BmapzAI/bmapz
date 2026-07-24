@@ -11,182 +11,25 @@ import WorkflowCanvas, { NODE_TYPES } from './WorkflowCanvas';
 import WorkflowNodePanel from './WorkflowNodePanel';
 import WorkflowAIPanel from './WorkflowAIPanel';
 import { Company, Lead, Workflow } from '@/api/entities';
+import { WORKFLOW_TEMPLATES } from './workflowTemplates';
 
-const TEMPLATES = {
-  lead_qualification: {
-    name: 'Inbound Lead Qualification (SDR)', type: 'qualification',
-    trigger_type: 'new_lead',
-    nodes: [
-      { id: 't',  type: 'trigger',  name: 'New inbound lead', x: 380, y: 40, trigger_type: 'new_lead' },
-      { id: 'sdr',type: 'sdr',      name: 'SDR greets & qualifies', x: 380, y: 170, channel: 'email' },
-      { id: 'w1', type: 'wait',     name: 'Give the lead time', x: 380, y: 300, delay_days: 2 },
-      { id: 'c1', type: 'condition',name: 'Qualified?', x: 380, y: 430, condition: 'qualified' },
-      { id: 'q',  type: 'qualify',  name: 'Move to SQL', x: 200, y: 560, qualify_action: 'set', qualify_stage: 'sql' },
-      { id: 'h',  type: 'handover', name: 'Hand to sales', x: 200, y: 690, handover_channels: { notification: true, email: true }, set_stage_on_handover: true },
-      { id: 'nq', type: 'qualify',  name: 'Nurture (Awareness)', x: 560, y: 560, qualify_action: 'set', qualify_stage: 'awareness' },
-      { id: 'ok', type: 'end_success', name: 'Done', x: 200, y: 820 },
-      { id: 'end2', type: 'end_success', name: 'Nurturing', x: 560, y: 690 },
-    ],
-    connections: [
-      { from: { nodeId: 't', port: 'default' }, to: 'sdr' },
-      { from: { nodeId: 'sdr', port: 'default' }, to: 'w1' },
-      { from: { nodeId: 'w1', port: 'default' }, to: 'c1' },
-      { from: { nodeId: 'c1', port: 'yes' }, to: 'q' },
-      { from: { nodeId: 'q', port: 'default' }, to: 'h' },
-      { from: { nodeId: 'h', port: 'default' }, to: 'ok' },
-      { from: { nodeId: 'c1', port: 'no' }, to: 'nq' },
-      { from: { nodeId: 'nq', port: 'default' }, to: 'end2' },
-    ]
-  },
-  email_sequence: {
-    name: 'Email Outreach Sequence', type: 'sales_outreach',
-    nodes: [
-      { id: 't', type: 'trigger', name: 'Start', x: 380, y: 40 },
-      { id: 'e1', type: 'send_message', name: 'Initial Email', x: 380, y: 170, channel: 'email' },
-      { id: 'w1', type: 'wait', name: 'Wait 3 days', x: 380, y: 300, delay_days: 3 },
-      { id: 'e2', type: 'send_message', name: 'Follow-up', x: 380, y: 430, channel: 'email' },
-      { id: 'w2', type: 'wait', name: 'Wait 5 days', x: 380, y: 560, delay_days: 5 },
-      { id: 'e3', type: 'send_message', name: 'Final Touch', x: 380, y: 690, channel: 'email' },
-      { id: 'ok', type: 'end_success', name: 'Success', x: 380, y: 820 },
-    ],
-    connections: [
-      { from: { nodeId: 't', port: 'default' }, to: 'e1' }, { from: { nodeId: 'e1', port: 'default' }, to: 'w1' },
-      { from: { nodeId: 'w1', port: 'default' }, to: 'e2' }, { from: { nodeId: 'e2', port: 'default' }, to: 'w2' },
-      { from: { nodeId: 'w2', port: 'default' }, to: 'e3' }, { from: { nodeId: 'e3', port: 'default' }, to: 'ok' },
-    ]
-  },
-  multi_channel: {
-    name: 'Multi-Channel Outreach', type: 'sales_outreach',
-    nodes: [
-      { id: 't', type: 'trigger', name: 'Start', x: 380, y: 40 },
-      { id: 'li', type: 'send_message', name: 'LinkedIn Connect', x: 380, y: 170, channel: 'linkedin' },
-      { id: 'w1', type: 'wait', name: 'Wait 2 days', x: 380, y: 300, delay_days: 2 },
-      { id: 'e1', type: 'send_message', name: 'Email Intro', x: 380, y: 430, channel: 'email' },
-      { id: 'w2', type: 'wait', name: 'Wait 3 days', x: 380, y: 560, delay_days: 3 },
-      { id: 'c1', type: 'condition', name: 'Email Opened?', x: 380, y: 690, condition: 'opened' },
-      { id: 'wa', type: 'send_message', name: 'WhatsApp Follow-up', x: 200, y: 820, channel: 'whatsapp' },
-      { id: 'li2', type: 'send_message', name: 'LinkedIn DM', x: 560, y: 820, channel: 'linkedin' },
-      { id: 'ok', type: 'end_success', name: 'Success', x: 380, y: 950 },
-    ],
-    connections: [
-      { from: { nodeId: 't', port: 'default' }, to: 'li' }, { from: { nodeId: 'li', port: 'default' }, to: 'w1' },
-      { from: { nodeId: 'w1', port: 'default' }, to: 'e1' }, { from: { nodeId: 'e1', port: 'default' }, to: 'w2' },
-      { from: { nodeId: 'w2', port: 'default' }, to: 'c1' },
-      { from: { nodeId: 'c1', port: 'yes' }, to: 'li2' }, { from: { nodeId: 'c1', port: 'no' }, to: 'wa' },
-      { from: { nodeId: 'wa', port: 'default' }, to: 'ok' }, { from: { nodeId: 'li2', port: 'default' }, to: 'ok' },
-    ]
-  },
-  social_warming: {
-    name: 'Social Warming + Outreach', type: 'sales_outreach',
-    nodes: [
-      { id: 't',   type: 'trigger',       name: 'Start',                        x: 380, y: 40  },
-      { id: 'e1',  type: 'enrich_lead',   name: 'Enrich Lead Data',             x: 380, y: 170, enrich_provider: 'apollo', enrich_fields: ['email','linkedin_profile','phone'] },
-      { id: 'w0',  type: 'wait',          name: 'Wait 1 day',                   x: 380, y: 300, delay_days: 1 },
-      { id: 's1',  type: 'social_action', name: 'LinkedIn Connect',             x: 380, y: 430, social_platform: 'linkedin', social_action_type: 'connect', timing_mode: 'business_hours', skip_if_done: true },
-      { id: 'w1',  type: 'wait',          name: 'Wait 2 days',                  x: 380, y: 560, delay_days: 2 },
-      { id: 's2',  type: 'social_action', name: 'Like LinkedIn Post',           x: 380, y: 690, social_platform: 'linkedin', social_action_type: 'like_post', post_target: 'most_recent', timing_mode: 'business_hours' },
-      { id: 'w2',  type: 'wait',          name: 'Wait 1 day',                   x: 380, y: 820, delay_days: 1 },
-      { id: 's3',  type: 'social_action', name: 'Comment on LinkedIn Post',     x: 380, y: 950, social_platform: 'linkedin', social_action_type: 'comment_post', post_target: 'most_recent', timing_mode: 'business_hours' },
-      { id: 'w3',  type: 'wait',          name: 'Wait 2 days',                  x: 380, y: 1080, delay_days: 2 },
-      { id: 'c1',  type: 'condition',     name: 'Connection Accepted?',         x: 380, y: 1210, condition: 'connected_linkedin' },
-      { id: 'li1', type: 'send_message',  name: 'LinkedIn DM (warm)',           x: 200, y: 1340, channel: 'linkedin' },
-      { id: 'em1', type: 'send_message',  name: 'Email Intro',                  x: 560, y: 1340, channel: 'email' },
-      { id: 'ok',  type: 'end_success',   name: 'Success',                      x: 380, y: 1470 },
-    ],
-    connections: [
-      { from: { nodeId: 't',   port: 'default' }, to: 'e1'  },
-      { from: { nodeId: 'e1',  port: 'default' }, to: 'w0'  },
-      { from: { nodeId: 'w0',  port: 'default' }, to: 's1'  },
-      { from: { nodeId: 's1',  port: 'default' }, to: 'w1'  },
-      { from: { nodeId: 'w1',  port: 'default' }, to: 's2'  },
-      { from: { nodeId: 's2',  port: 'default' }, to: 'w2'  },
-      { from: { nodeId: 'w2',  port: 'default' }, to: 's3'  },
-      { from: { nodeId: 's3',  port: 'default' }, to: 'w3'  },
-      { from: { nodeId: 'w3',  port: 'default' }, to: 'c1'  },
-      { from: { nodeId: 'c1',  port: 'yes'     }, to: 'li1' },
-      { from: { nodeId: 'c1',  port: 'no'      }, to: 'em1' },
-      { from: { nodeId: 'li1', port: 'default' }, to: 'ok'  },
-      { from: { nodeId: 'em1', port: 'default' }, to: 'ok'  },
-    ]
-  },
-  instagram_warm: {
-    name: 'Instagram Warm → DM', type: 'sales_outreach',
-    nodes: [
-      { id: 't',  type: 'trigger',       name: 'Start',                    x: 380, y: 40  },
-      { id: 's1', type: 'social_action', name: 'Follow on Instagram',      x: 380, y: 170, social_platform: 'instagram', social_action_type: 'follow', timing_mode: 'business_hours' },
-      { id: 'w1', type: 'wait',          name: 'Wait 2 days',              x: 380, y: 300, delay_days: 2 },
-      { id: 's2', type: 'social_action', name: 'Like Recent Post',         x: 380, y: 430, social_platform: 'instagram', social_action_type: 'like_post', post_target: 'most_recent' },
-      { id: 'w2', type: 'wait',          name: 'Wait 1 day',               x: 380, y: 560, delay_days: 1 },
-      { id: 's3', type: 'social_action', name: 'Like Another Post',        x: 380, y: 690, social_platform: 'instagram', social_action_type: 'like_post', post_target: 'last_7_days_2' },
-      { id: 'w3', type: 'wait',          name: 'Wait 3 days',              x: 380, y: 820, delay_days: 3 },
-      { id: 'm1', type: 'send_message',  name: 'Send Initial DM',          x: 380, y: 950, channel: 'whatsapp' },
-      { id: 'ok', type: 'end_success',   name: 'Success',                  x: 380, y: 1080 },
-    ],
-    connections: [
-      { from: { nodeId: 't',  port: 'default' }, to: 's1' },
-      { from: { nodeId: 's1', port: 'default' }, to: 'w1' },
-      { from: { nodeId: 'w1', port: 'default' }, to: 's2' },
-      { from: { nodeId: 's2', port: 'default' }, to: 'w2' },
-      { from: { nodeId: 'w2', port: 'default' }, to: 's3' },
-      { from: { nodeId: 's3', port: 'default' }, to: 'w3' },
-      { from: { nodeId: 'w3', port: 'default' }, to: 'm1' },
-      { from: { nodeId: 'm1', port: 'default' }, to: 'ok' },
-    ]
-  },
-  meeting_scheduler: {
-    name: 'Meeting Scheduler', type: 'sales_outreach',
-    nodes: [
-      { id: 't', type: 'trigger', name: 'Start', x: 380, y: 40 },
-      { id: 'e1', type: 'send_message', name: 'Meeting Invite', x: 380, y: 170, channel: 'email' },
-      { id: 'w1', type: 'wait', name: 'Wait 3 days', x: 380, y: 300, delay_days: 3 },
-      { id: 'c1', type: 'condition', name: 'Booked?', x: 380, y: 430, condition: 'meeting_booked' },
-      { id: 'sm', type: 'schedule_meeting', name: 'Schedule Meeting', x: 200, y: 560 },
-      { id: 'e2', type: 'send_message', name: 'Reminder Email', x: 560, y: 560, channel: 'email' },
-      { id: 'ok', type: 'end_success', name: 'Success', x: 200, y: 690 },
-      { id: 'fail', type: 'end_failed', name: 'No Show', x: 560, y: 690 },
-    ],
-    connections: [
-      { from: { nodeId: 't', port: 'default' }, to: 'e1' }, { from: { nodeId: 'e1', port: 'default' }, to: 'w1' },
-      { from: { nodeId: 'w1', port: 'default' }, to: 'c1' },
-      { from: { nodeId: 'c1', port: 'yes' }, to: 'sm' }, { from: { nodeId: 'c1', port: 'no' }, to: 'e2' },
-      { from: { nodeId: 'sm', port: 'default' }, to: 'ok' }, { from: { nodeId: 'e2', port: 'default' }, to: 'fail' },
-    ]
-  },
-  nurturing: {
-    name: 'Lead Nurturing Campaign', type: 'nurturing',
-    nodes: [
-      { id: 't', type: 'trigger', name: 'Start', x: 380, y: 40 },
-      { id: 'e1', type: 'send_message', name: 'Welcome Email', x: 380, y: 170, channel: 'email' },
-      { id: 'w1', type: 'wait', name: 'Wait 3 days', x: 380, y: 300, delay_days: 3 },
-      { id: 'e2', type: 'send_message', name: 'Value Content', x: 380, y: 430, channel: 'email' },
-      { id: 'w2', type: 'wait', name: 'Wait 4 days', x: 380, y: 560, delay_days: 4 },
-      { id: 'c1', type: 'condition', name: 'Engaged?', x: 380, y: 690, condition: 'clicked' },
-      { id: 'e3', type: 'send_message', name: 'Case Study', x: 200, y: 820, channel: 'email' },
-      { id: 'wa', type: 'send_message', name: 'Personal Touch', x: 560, y: 820, channel: 'whatsapp' },
-      { id: 'ok', type: 'end_success', name: 'Success', x: 380, y: 950 },
-    ],
-    connections: [
-      { from: { nodeId: 't', port: 'default' }, to: 'e1' }, { from: { nodeId: 'e1', port: 'default' }, to: 'w1' },
-      { from: { nodeId: 'w1', port: 'default' }, to: 'e2' }, { from: { nodeId: 'e2', port: 'default' }, to: 'w2' },
-      { from: { nodeId: 'w2', port: 'default' }, to: 'c1' },
-      { from: { nodeId: 'c1', port: 'yes' }, to: 'e3' }, { from: { nodeId: 'c1', port: 'no' }, to: 'wa' },
-      { from: { nodeId: 'e3', port: 'default' }, to: 'ok' }, { from: { nodeId: 'wa', port: 'default' }, to: 'ok' },
-    ]
-  },
-};
-
-export default function WorkflowBuilderModal({ workflow, company: companyProp, onClose }) {
+export default function WorkflowBuilderModal({ workflow, company: companyProp, initialTemplate = null, onClose }) {
   const queryClient = useQueryClient();
-  const [name, setName] = useState(workflow?.name || '');
-  const [type, setType] = useState(workflow?.type || 'sales_outreach');
+  const [name, setName] = useState(workflow?.name || initialTemplate?.name || '');
+  const [type, setType] = useState(workflow?.type || initialTemplate?.type || 'sales_outreach');
   const parseArr = (arr) => Array.isArray(arr) ? arr.map(item => typeof item === 'string' ? JSON.parse(item) : item) : [];
   const [nodes, setNodes] = useState(() => {
     if (workflow?.nodes?.length) return parseArr(workflow.nodes);
+    if (initialTemplate?.nodes?.length) return initialTemplate.nodes.map(n => ({ ...n }));
     return [{ id: 'trigger', type: 'trigger', name: 'Start', x: 380, y: 40 }];
   });
-  const [connections, setConnections] = useState(() => workflow?.connections?.length ? parseArr(workflow.connections) : []);
+  const [connections, setConnections] = useState(() =>
+    workflow?.connections?.length ? parseArr(workflow.connections)
+      : initialTemplate?.connections?.length ? initialTemplate.connections.map(c => ({ ...c }))
+        : []);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
-  const [unsaved, setUnsaved] = useState(false);
+  // A template pre-load starts "unsaved" so it auto-saves into a real draft workflow.
+  const [unsaved, setUnsaved] = useState(!!initialTemplate);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showTemplates, setShowTemplates] = useState(false);
@@ -465,17 +308,21 @@ export default function WorkflowBuilderModal({ workflow, company: companyProp, o
                 <BookOpen size={14} /> Templates
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-72 bg-[#1a1a1a] border-white/10 p-3">
-              <p className="text-white font-medium text-sm mb-2">Quick Start Templates</p>
+            <PopoverContent className="w-80 max-h-[70vh] overflow-y-auto bg-[#1a1a1a] border-white/10 p-3">
+              <p className="text-white font-medium text-sm mb-2">Template Library</p>
               <div className="space-y-1.5">
-                {Object.entries(TEMPLATES).map(([key, t]) => (
+                {Object.entries(WORKFLOW_TEMPLATES).map(([key, t]) => (
                   <button key={key} onClick={() => {
-                    setNodes(t.nodes); setConnections(t.connections);
+                    setNodes(t.nodes.map(n => ({ ...n }))); setConnections(t.connections.map(c => ({ ...c })));
                     setName(t.name); setType(t.type);
                     setShowTemplates(false); markUnsaved(); toast.success('Template loaded');
                   }} className="w-full text-left p-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#38b6ff]/30 transition-all">
-                    <p className="text-white text-xs font-medium">{t.name}</p>
-                    <p className="text-gray-500 text-[10px]">{t.nodes.length} steps</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-white text-xs font-medium">{t.name}</p>
+                      {t.category && <span className="text-[9px] text-[#cb6ce6] bg-[#cb6ce6]/10 px-1.5 py-0.5 rounded-full flex-shrink-0">{t.category}</span>}
+                    </div>
+                    {t.description && <p className="text-gray-400 text-[10px] mt-0.5 leading-snug">{t.description}</p>}
+                    <p className="text-gray-600 text-[10px] mt-0.5">{t.nodes.length} steps</p>
                   </button>
                 ))}
               </div>

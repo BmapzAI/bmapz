@@ -10,25 +10,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from 'sonner';
 import WorkflowBuilderModal from '@/components/workflows/WorkflowBuilderModal';
+import { WORKFLOW_TEMPLATE_LIST } from '@/components/workflows/workflowTemplates';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
 import { Company, Workflow, Lead } from '@/api/entities';
 import { api } from '@/api/apiClient';
 
-const getStarterTemplates = (t) => [
-  { id: 'st1', name: t('wfT1Name'), description: t('wfT1Desc'), steps: 5, category: 'Outreach' },
-  { id: 'st2', name: t('wfT2Name'), description: t('wfT2Desc'), steps: 4, category: 'Social Selling' },
-  { id: 'st3', name: t('wfT3Name'), description: t('wfT3Desc'), steps: 3, category: 'WhatsApp' },
-  { id: 'st4', name: t('wfT4Name'), description: t('wfT4Desc'), steps: 3, category: 'Automation' },
-  { id: 'st5', name: t('wfT5Name'), description: t('wfT5Desc'), steps: 3, category: 'Retention' },
-  { id: 'st6', name: t('wfT6Name'), description: t('wfT6Desc'), steps: 2, category: 'Onboarding' },
-];
-
 export default function Workflows() {
   const queryClient = useQueryClient();
   const { t, isPt } = useLanguage();
-  const STARTER_WORKFLOW_TEMPLATES = getStarterTemplates(t);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingWorkflow, setEditingWorkflow] = useState(null);
+  const [templateSeed, setTemplateSeed] = useState(null); // template to pre-load into a new builder
   const [showBuilder, setShowBuilder] = useState(false);
   const [enrollWorkflow, setEnrollWorkflow] = useState(null); // workflow being enrolled into
   const [enrollSelected, setEnrollSelected] = useState([]);   // selected lead ids
@@ -81,6 +73,14 @@ export default function Workflows() {
 
   const openBuilder = (workflow = null) => {
     setEditingWorkflow(workflow);
+    setTemplateSeed(null);
+    setShowBuilder(true);
+  };
+
+  // Open the builder pre-loaded with a complete template (real nodes + connections).
+  const openBuilderWithTemplate = (tmpl) => {
+    setEditingWorkflow(null);
+    setTemplateSeed(tmpl);
     setShowBuilder(true);
   };
 
@@ -222,7 +222,7 @@ export default function Workflows() {
           <TabsTrigger value="draft" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">{t('draftsCount')} ({drafts.length})</TabsTrigger>
           <TabsTrigger value="inactive" className="data-[state=active]:bg-gray-500/20 data-[state=active]:text-gray-400">{t('inactiveCount')} ({inactive.length})</TabsTrigger>
           <TabsTrigger value="templates" className="data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
-            <LayoutTemplate size={14} className="mr-1" />{t('templatesCount')} ({workflowTemplates.length})
+            <LayoutTemplate size={14} className="mr-1" />{t('templatesCount')} ({WORKFLOW_TEMPLATE_LIST.length + workflowTemplates.length})
           </TabsTrigger>
         </TabsList>
 
@@ -249,22 +249,24 @@ export default function Workflows() {
             </TabsContent>
             <TabsContent value="templates">
               <div className="mb-4 p-3 rounded-xl bg-[#cb6ce6]/10 border border-[#cb6ce6]/20 text-xs text-[#cb6ce6]">
-                {t('appWideTemplates')}
+                {isPt
+                  ? 'Escolha um modelo para abrir o construtor já montado com todos os passos — pronto para revisar, ajustar e ativar.'
+                  : 'Pick a template to open the builder already assembled with every step — ready to review, tweak and activate.'}
               </div>
               {(
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {STARTER_WORKFLOW_TEMPLATES.map(tmpl => (
-                    <div key={tmpl.id} className="group p-5 rounded-2xl bg-[#cb6ce6]/5 border border-[#cb6ce6]/20 hover:border-[#cb6ce6]/40 transition-all">
+                  {WORKFLOW_TEMPLATE_LIST.map(tmpl => (
+                    <div key={tmpl.key} className="group p-5 rounded-2xl bg-[#cb6ce6]/5 border border-[#cb6ce6]/20 hover:border-[#cb6ce6]/40 transition-all flex flex-col">
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <span className="text-[10px] font-semibold text-[#cb6ce6]/60 uppercase tracking-wider">{tmpl.category}</span>
                           <p className="font-semibold text-white mt-0.5">{tmpl.name}</p>
                         </div>
-                        <span className="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded-full">{tmpl.steps} {t('steps')}</span>
+                        <span className="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded-full whitespace-nowrap">{tmpl.steps} {t('steps')}</span>
                       </div>
-                      <p className="text-sm text-gray-400 mb-4">{tmpl.description}</p>
+                      <p className="text-sm text-gray-400 mb-4 flex-1">{tmpl.description}</p>
                       <button
-                        onClick={async () => { await Workflow.create({ name: tmpl.name, description: tmpl.description, status: 'draft', steps: [], company_id: company?.id }); queryClient.invalidateQueries({ queryKey: ['workflows'] }); toast.success(t('workflowCreated')); }}
+                        onClick={() => openBuilderWithTemplate(tmpl)}
                         className="w-full py-2 rounded-lg bg-[#cb6ce6]/15 text-[#cb6ce6] text-sm font-medium hover:bg-[#cb6ce6]/25 transition-colors"
                       >
                         {t('useTemplate')}
@@ -300,7 +302,8 @@ export default function Workflows() {
         <WorkflowBuilderModal
           workflow={editingWorkflow}
           company={company}
-          onClose={() => { setShowBuilder(false); setEditingWorkflow(null); queryClient.invalidateQueries({ queryKey: ['workflows'] }); }}
+          initialTemplate={templateSeed}
+          onClose={() => { setShowBuilder(false); setEditingWorkflow(null); setTemplateSeed(null); queryClient.invalidateQueries({ queryKey: ['workflows'] }); }}
         />
       )}
 

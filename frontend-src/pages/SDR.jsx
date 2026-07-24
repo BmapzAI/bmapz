@@ -25,6 +25,19 @@ const STATUS_STYLE = {
 
 const CHANNELS = ['whatsapp', 'email', 'instagram', 'web'];
 
+const FUNNEL_STAGES = ['prospect', 'awareness', 'consideration', 'mql', 'sql', 'opportunity', 'customer', 'retention', 'advocacy'];
+
+// Built-in outcomes the SDR can be allowed to choose from (mirror of the backend).
+const PREDEFINED_OUTCOMES = [
+  { key: 'qualified',     en: 'Mark lead as qualified',    pt: 'Marcar lead como qualificado', enD: 'The prospect clearly fits and is interested — mark qualified and advance the funnel.', ptD: 'O prospecto se encaixa e tem interesse — marca como qualificado e avança no funil.' },
+  { key: 'handover',      en: 'Hand over to sales',        pt: 'Encaminhar para vendas',       enD: 'Hot/ready lead — move to SQL and notify the human sales team.', ptD: 'Lead quente/pronto — move para SQL e avisa o time de vendas.' },
+  { key: 'offer_product', en: 'Offer a product/service',   pt: 'Oferecer produto/serviço',     enD: 'Recommend a specific product or service that fits the prospect.', ptD: 'Recomendar um produto ou serviço específico que se encaixe.' },
+  { key: 'not_qualified', en: 'Mark as not qualified',     pt: 'Marcar como não qualificado',  enD: 'The prospect is clearly out of scope / not a fit.', ptD: 'O prospecto está claramente fora do escopo / sem fit.' },
+  { key: 'support',       en: 'Route to support',          pt: 'Encaminhar para suporte',      enD: 'A support or help request, not a sales conversation.', ptD: 'Um pedido de suporte/ajuda, não de vendas.' },
+];
+const DEFAULT_ALLOWED_OUTCOMES = PREDEFINED_OUTCOMES.map(o => o.key);
+const outcomeSlug = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+
 export default function SDRPage() {
   const { isPt } = useLanguage();
   const queryClient = useQueryClient();
@@ -248,6 +261,8 @@ function SettingsTab({ isPt, agent, company, onSaved }) {
 
   const updateProduct = (i, k, v) => setForm(p => ({ ...p, products: p.products.map((pr, j) => j === i ? { ...pr, [k]: v } : pr) }));
   const updateQuestion = (i, v) => setForm(p => ({ ...p, qualifying_questions: p.qualifying_questions.map((q, j) => j === i ? { ...q, question: v } : q) }));
+  const updateOutcome = (i, k, v) => setForm(p => ({ ...p, custom_outcomes: p.custom_outcomes.map((o, j) => j === i ? { ...o, [k]: v } : o) }));
+  const updateOutcomeEffect = (i, k, v) => setForm(p => ({ ...p, custom_outcomes: p.custom_outcomes.map((o, j) => j === i ? { ...o, effects: { ...o.effects, [k]: v } } : o) }));
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-5 mt-4">
@@ -319,6 +334,78 @@ function SettingsTab({ isPt, agent, company, onSaved }) {
           <Textarea value={(form.conversation_flow || []).map(s => (typeof s === 'string' ? s : s.step)).join('\n')}
             onChange={e => F('conversation_flow')(e.target.value.split('\n').map(s => s.trim()).filter(Boolean))}
             className="in min-h-[90px]" placeholder={"greeting\nask reason for contact\nask qualifying questions\nhand over to sales"} />
+        </Section>
+
+        <Section title={isPt ? 'Resultados aceitáveis (o que o SDR pode decidir)' : 'Acceptable outcomes (what the SDR may decide)'}>
+          <div className="flex items-start gap-2 p-2.5 rounded-xl bg-[#38b6ff]/10 border border-[#38b6ff]/20">
+            <AlertTriangle size={14} className="text-[#38b6ff] flex-shrink-0 mt-0.5" />
+            <p className="text-gray-300 text-xs">
+              {isPt
+                ? 'O SDR só pode escolher entre os resultados ativados aqui. Ele nunca inventa resultados próprios — cada resultado precisa estar definido para que o agente possa sugeri-lo ou agir sobre ele.'
+                : 'The SDR can ONLY choose from the outcomes enabled here. It never invents its own — each outcome must be defined for the agent to be able to suggest or act on it.'}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-gray-400 text-xs">{isPt ? 'Resultados prontos' : 'Built-in outcomes'}</Label>
+            {PREDEFINED_OUTCOMES.map(o => {
+              const on = (form.allowed_outcomes || []).includes(o.key);
+              return (
+                <label key={o.key} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-black/20 border border-white/10 cursor-pointer hover:border-white/20">
+                  <input type="checkbox" checked={on} onChange={e => {
+                    const set = new Set(form.allowed_outcomes || []);
+                    if (e.target.checked) set.add(o.key); else set.delete(o.key);
+                    F('allowed_outcomes')([...set]);
+                  }} className="w-4 h-4 accent-[#38b6ff] mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="text-white text-sm">{isPt ? o.pt : o.en}</span>
+                    <p className="text-gray-500 text-xs">{isPt ? o.ptD : o.enD}</p>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+
+          <div className="space-y-2 pt-1">
+            <div>
+              <Label className="text-gray-400 text-xs">{isPt ? 'Resultados personalizados' : 'Custom outcomes'}</Label>
+              <p className="text-gray-600 text-[11px]">{isPt ? 'Ex.: "Redirecionar para a página de preços" ou "Marcar qualificado + avançar etapa + encaminhar".' : 'e.g. "Redirect to the pricing page" or "Mark qualified + advance stage + hand over".'}</p>
+            </div>
+            {(form.custom_outcomes || []).map((o, i) => (
+              <div key={i} className="p-3 rounded-xl bg-black/20 border border-white/10 space-y-2 relative">
+                <button onClick={() => setForm(f => ({ ...f, custom_outcomes: f.custom_outcomes.filter((_, j) => j !== i) }))} className="absolute top-2 right-2 text-red-400/70 hover:text-red-400"><Trash2 size={13} /></button>
+                <Input value={o.label} onChange={e => updateOutcome(i, 'label', e.target.value)} placeholder={isPt ? 'Nome do resultado (ex.: Redirecionar para preços)' : 'Outcome name (e.g. Redirect to pricing)'} className="in text-sm pr-7" />
+                <Textarea value={o.description} onChange={e => updateOutcome(i, 'description', e.target.value)} placeholder={isPt ? 'Quando o SDR deve escolher este resultado?' : 'When should the SDR choose this outcome?'} className="in text-xs min-h-[46px]" />
+                <p className="text-gray-500 text-[10px]">{isPt ? 'O que acontece quando o SDR escolhe isto:' : 'What happens when the SDR picks this:'}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={!!o.effects?.mark_qualified} onChange={e => updateOutcomeEffect(i, 'mark_qualified', e.target.checked)} className="w-4 h-4 accent-[#38b6ff]" />
+                    {isPt ? 'Marcar qualificado' : 'Mark qualified'}
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={!!o.effects?.handover} onChange={e => updateOutcomeEffect(i, 'handover', e.target.checked)} className="w-4 h-4 accent-[#38b6ff]" />
+                    {isPt ? 'Encaminhar p/ vendas' : 'Hand to sales'}
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-gray-500 text-[10px]">{isPt ? 'Mover para etapa' : 'Move to stage'}</Label>
+                    <select value={o.effects?.set_stage || ''} onChange={e => updateOutcomeEffect(i, 'set_stage', e.target.value)}
+                      className="in w-full text-xs rounded-md h-8 px-2 mt-0.5 border">
+                      <option value="">{isPt ? '— não mover —' : "— don't move —"}</option>
+                      <option value="next">{isPt ? 'Próxima etapa' : 'Next stage'}</option>
+                      {FUNNEL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-gray-500 text-[10px]">{isPt ? 'Link para compartilhar' : 'Link to share'}</Label>
+                    <Input value={o.effects?.redirect_url || ''} onChange={e => updateOutcomeEffect(i, 'redirect_url', e.target.value)} placeholder="https://…" className="in text-xs mt-0.5" />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <Button variant="outline" size="sm" onClick={() => setForm(f => ({ ...f, custom_outcomes: [...(f.custom_outcomes || []), { label: '', description: '', effects: { mark_qualified: false, set_stage: '', handover: false, redirect_url: '' } }] }))} className="border-white/10 text-white gap-1"><Plus size={13} /> {isPt ? 'Resultado personalizado' : 'Custom outcome'}</Button>
+          </div>
         </Section>
 
         <Section title={isPt ? 'Hand-over para vendas' : 'Hand-over to sales'}>
@@ -454,6 +541,19 @@ function normalize(agent, company) {
     handoff_channels: a.handoff_channels || { notification: true },
     handoff_recipients: a.handoff_recipients || '',
     channels: Array.isArray(a.channels) ? a.channels : ['whatsapp', 'email', 'instagram'],
+    allowed_outcomes: Array.isArray(a.allowed_outcomes) ? a.allowed_outcomes : [...DEFAULT_ALLOWED_OUTCOMES],
+    custom_outcomes: Array.isArray(a.custom_outcomes)
+      ? a.custom_outcomes.map(o => ({
+        label: o.label || '',
+        description: o.description || '',
+        effects: {
+          mark_qualified: !!o.effects?.mark_qualified,
+          set_stage: o.effects?.set_stage || '',
+          handover: !!o.effects?.handover,
+          redirect_url: o.effects?.redirect_url || '',
+        },
+      }))
+      : [],
   };
 }
 function cleanForm(f) {
@@ -461,5 +561,19 @@ function cleanForm(f) {
     ...f,
     products: f.products.filter(p => p.name?.trim()),
     qualifying_questions: f.qualifying_questions.filter(q => q.question?.trim()),
+    allowed_outcomes: Array.isArray(f.allowed_outcomes) ? f.allowed_outcomes : [],
+    custom_outcomes: (f.custom_outcomes || [])
+      .filter(o => o.label?.trim())
+      .map(o => ({
+        key: outcomeSlug(o.label),
+        label: o.label.trim(),
+        description: (o.description || '').trim(),
+        effects: {
+          mark_qualified: !!o.effects?.mark_qualified,
+          set_stage: o.effects?.set_stage || null,
+          handover: !!o.effects?.handover,
+          redirect_url: (o.effects?.redirect_url || '').trim() || null,
+        },
+      })),
   };
 }
