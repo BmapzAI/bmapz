@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import { useNavigate } from 'react-router-dom';
 import { Activity as ActivityEntity, Company, Lead, Message, Workflow, WorkflowRun } from '@/api/entities';
+import LeadOwnerHistory from '@/components/sales/LeadOwnerHistory';
 
 
 const FUNNEL_STAGES = [
@@ -271,6 +272,9 @@ export default function LeadDetails() {
 
         {/* Details Tab */}
         <TabsContent value="details" className="space-y-6">
+          {/* Who owns this lead + everything that has happened to it */}
+          <LeadOwnerHistory lead={lead} onChanged={() => queryClient.invalidateQueries({ queryKey: ['lead', leadId] })} />
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Contact Info */}
             <div className="rounded-2xl bg-white/5 border border-white/10 p-6 space-y-4">

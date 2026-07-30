@@ -20,6 +20,7 @@ import { supabaseAdmin } from './supabase.js';
 import { sendCompanyEmail } from './emailSender.js';
 import { createNotification } from './notify.js';
 import { startSdrConversation, notifyHandover, handleInboundForSdr, FUNNEL_STAGES } from './sdrEngine.js';
+import { logLeadActivity, LEAD_ACTIVITY_TYPES } from './leadActivity.js';
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 const TICK_MS = 60 * 1000;
@@ -324,6 +325,13 @@ async function advanceRun(run, wf, companyKeys) {
         await supabaseAdmin.from('leads').update({ funnel_stage: 'sql', status: 'qualified' })
           .eq('id', run.lead_id).eq('company_id', run.company_id);
       }
+      await logLeadActivity({
+        companyId: run.company_id, leadId: run.lead_id,
+        activityType: LEAD_ACTIVITY_TYPES.HANDOVER,
+        summary: `Workflow "${wf.name}" handed the lead to the sales team`,
+        details: { workflow_id: run.workflow_id, run_id: run.id, node_id: node.id },
+        actorType: 'workflow', actorLabel: wf.name,
+      });
       steps += 1;
       currentId = nextNodeId(wf, node.id, 'default');
       continue;
@@ -345,6 +353,13 @@ async function advanceRun(run, wf, companyKeys) {
             company_id: run.company_id, lead_id: run.lead_id, type: 'stage_change',
             title: `Moved to ${target}`, description: `Workflow "${wf.name}" set funnel stage → ${target}`,
             metadata: { workflow_id: run.workflow_id, run_id: run.id, node_id: node.id, from: cur, to: target },
+          });
+          await logLeadActivity({
+            companyId: run.company_id, leadId: run.lead_id,
+            activityType: LEAD_ACTIVITY_TYPES.STAGE_CHANGED,
+            summary: `Workflow "${wf.name}" moved the lead from "${cur}" to "${target}"`,
+            details: { from: cur, to: target, workflow_id: run.workflow_id, run_id: run.id },
+            actorType: 'workflow', actorLabel: wf.name,
           });
           await createNotification({
             companyId: run.company_id, type: 'qualification', icon: '📈', leadId: run.lead_id,

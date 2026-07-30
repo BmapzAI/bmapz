@@ -16,6 +16,7 @@ import { supabaseAdmin } from './supabase.js';
 import { runAIChat } from '../routes/ai.js';
 import { sendCompanyEmail } from './emailSender.js';
 import { createNotification } from './notify.js';
+import { logLeadActivity, LEAD_ACTIVITY_TYPES } from './leadActivity.js';
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 export const FUNNEL_STAGES = ['prospect', 'awareness', 'consideration', 'mql', 'sql', 'opportunity', 'customer', 'retention', 'advocacy'];
@@ -351,6 +352,18 @@ export async function startSdrConversation({ companyId, leadId, lead, channel = 
 // Log an SDR message into the unified `messages` table so the Inbox shows the
 // full client thread (both directions), lets sales pick it up, and keeps history.
 async function logToInbox({ companyId, leadId, channel, direction, content, from, to, convoId, human, status, error }) {
+  // Mirror the message onto the lead's history so the timeline shows the whole
+  // conversation, not just CRM state changes.
+  if (leadId) {
+    logLeadActivity({
+      companyId, leadId,
+      activityType: direction === 'inbound' ? LEAD_ACTIVITY_TYPES.MESSAGE_RECEIVED : LEAD_ACTIVITY_TYPES.MESSAGE_SENT,
+      summary: `${direction === 'inbound' ? 'Received' : 'Sent'} a ${channel} message${status === 'failed' ? ' (delivery failed)' : ''}: ${String(content || '').slice(0, 120)}`,
+      details: { channel, status: status || null, error: error || null, sdr_conversation_id: convoId || null },
+      actorType: human ? 'user' : 'sdr',
+      actorLabel: human ? null : 'SDR',
+    }).catch(() => {});
+  }
   try {
     await supabaseAdmin.from('messages').insert({
       company_id: companyId, lead_id: leadId || null,
@@ -412,16 +425,26 @@ async function sendSdrReply({ companyId, channel, contactHandle, leadId, reply, 
 async function applySdrOutcome({ companyId, agent, convo, leadId, decision, contactName }) {
   const outcome = decision.outcome;
   const who = contactName || 'A prospect';
+  // Everything the SDR does to a lead is recorded on the lead's timeline, so the
+  // sales team can see the automated handling alongside their own.
+  const sdrLabel = `SDR${agent?.name ? `: ${agent.name}` : ''}`;
+  const trace = (activityType, summary, details = {}) => leadId && logLeadActivity({
+    companyId, leadId, activityType, summary, details,
+    actorType: 'sdr', actorLabel: sdrLabel,
+  });
 
   // Move the lead's funnel stage if the SDR recommended one
   if (leadId && decision.stage && FUNNEL_STAGES.includes(decision.stage)) {
     await supabaseAdmin.from('leads').update({ funnel_stage: decision.stage }).eq('id', leadId).eq('company_id', companyId);
+    await trace(LEAD_ACTIVITY_TYPES.STAGE_CHANGED, `SDR moved the lead to "${decision.stage}"`, { to: decision.stage });
   }
 
   if (outcome === 'handover') {
     if (leadId) await supabaseAdmin.from('leads').update({ funnel_stage: 'sql', status: 'qualified' }).eq('id', leadId).eq('company_id', companyId);
+    await trace(LEAD_ACTIVITY_TYPES.HANDOVER, 'SDR handed the lead over to the sales team', { note: decision.internal_note || null });
     await notifyHandover({ companyId, agent, who, leadId, note: decision.internal_note });
   } else if (outcome === 'qualified') {
+    await trace(LEAD_ACTIVITY_TYPES.QUALIFIED, 'SDR marked the lead as qualified', { note: decision.internal_note || null });
     if (leadId) await supabaseAdmin.from('leads').update({ funnel_stage: decision.stage && FUNNEL_STAGES.includes(decision.stage) ? decision.stage : 'mql' }).eq('id', leadId).eq('company_id', companyId);
     await createNotification({ companyId, type: 'qualification', icon: '✅', priority: 'normal', leadId,
       title: `SDR qualified ${who}`, body: decision.internal_note || 'Marked as qualified by the SDR.', link: '/SDR' });
