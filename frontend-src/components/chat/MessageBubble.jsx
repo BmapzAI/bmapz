@@ -109,6 +109,24 @@ export default function MessageBubble({ message }) {
       )}
       
       <div className={`max-w-[80%] ${isUser ? 'flex flex-col items-end' : ''}`}>
+        {isUser && message.attachments?.length > 0 && (
+          <div className="flex flex-wrap justify-end gap-2 mb-2">
+            {message.attachments.map((file, index) => (
+              <a
+                key={`${file.url}-${index}`}
+                href={file.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-2.5 py-1.5 text-xs text-white hover:bg-white/15"
+              >
+                {file.type?.startsWith('image/') && (
+                  <img src={file.url} alt="" className="h-8 w-8 rounded object-cover" />
+                )}
+                <span className="max-w-40 truncate">{file.name || 'Attachment'}</span>
+              </a>
+            ))}
+          </div>
+        )}
         {message.content && (
           <div className={`group relative rounded-2xl px-4 py-3 ${
             isUser 

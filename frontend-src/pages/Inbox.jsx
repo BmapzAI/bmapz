@@ -50,6 +50,18 @@ function formatDate(dateStr) {
   return d.toLocaleDateString();
 }
 
+function conversationHandle(message) {
+  return String(
+    message?.metadata?.from_email
+      || message?.metadata?.from_phone
+      || message?.metadata?.ig_sender_id
+      || message?.from_address
+      || message?.thread_id
+      || message?.id
+      || 'unknown'
+  ).trim().toLowerCase();
+}
+
 function MessageThread({ messages, lead, onReply, isSending }) {
   const [replyText, setReplyText] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -220,7 +232,7 @@ export default function Inbox() {
     for (const msg of allMessages) {
       const key = msg.lead_id
         ? `${msg.lead_id}::${msg.channel}`
-        : `unmatched::${msg.channel}::${msg.metadata?.ig_sender_id || msg.metadata?.from_phone || msg.id}`;
+        : `unmatched::${msg.channel}::${conversationHandle(msg)}`;
       if (!groups[key]) {
         groups[key] = { lead_id: msg.lead_id || null, channel: msg.channel, messages: [], last_message: null, has_unread: false, unmatched: !msg.lead_id, sender_name: msg.metadata?.ig_sender_name || msg.metadata?.from_name || 'Unknown sender' };
       }
@@ -252,7 +264,7 @@ export default function Inbox() {
     ? conversations.find(c => {
         const key = c.lead_id
           ? `${c.lead_id}::${c.channel}`
-          : `unmatched::${c.channel}::${c.last_message?.metadata?.ig_sender_id || c.last_message?.metadata?.from_phone || ''}`;
+          : `unmatched::${c.channel}::${conversationHandle(c.last_message)}`;
         return key === selectedConvKey;
       })
     : null;
@@ -261,7 +273,7 @@ export default function Inbox() {
 
   const getConvKey = (c) => c.lead_id
     ? `${c.lead_id}::${c.channel}`
-    : `unmatched::${c.channel}::${c.last_message?.metadata?.ig_sender_id || c.last_message?.metadata?.from_phone || ''}`;
+    : `unmatched::${c.channel}::${conversationHandle(c.last_message)}`;
 
   const threadMessages = selectedConv
     ? [...selectedConv.messages].sort((a, b) => new Date(a.sent_at || a.created_date) - new Date(b.sent_at || b.created_date))
@@ -273,8 +285,17 @@ export default function Inbox() {
       const payload = { limit: 30 };
       if (channel && channel !== 'all') payload.channel = channel;
       const result = await api.post('/api/messaging/sync', payload);
+      const channelResults = Object.entries(result.results || {});
+      const blocked = channelResults.filter(([, value]) =>
+        ['error', 'not_configured', 'restricted'].includes(value?.status)
+      );
       if (result.imported > 0) {
         toast.success(result.message || `Synced ${result.imported} new message(s).`);
+        if (blocked.length) {
+          toast.warning(blocked.map(([name, value]) => `${name}: ${value.message}`).join('\n'));
+        }
+      } else if (blocked.length) {
+        toast.warning(result.message || blocked.map(([, value]) => value.message).join('\n'));
       } else {
         toast.info(result.message || 'Inbox checked; no new messages found.');
       }
@@ -323,7 +344,7 @@ export default function Inbox() {
             Inbox
           </h1>
           <p className="text-gray-400 mt-1 text-sm">
-            Unified inbox — Email, WhatsApp, LinkedIn & Instagram DMs with AI sentiment analysis
+            Gmail and Instagram sync, plus WhatsApp webhook messages. LinkedIn DMs require approved API access.
           </p>
         </div>
         <Button onClick={(e) => { e.preventDefault(); syncInbox(channelFilter); }} disabled={syncing} variant="outline" className="gap-2 border-white/10">

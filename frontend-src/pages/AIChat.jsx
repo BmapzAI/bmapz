@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import MessageBubble from '@/components/chat/MessageBubble';
 import { useAuth } from '@/lib/AuthContext';
 import { api } from '@/api/apiClient';
-import { TranscribeAudio } from '@/api/integrations';
+import { TranscribeAudio, UploadFile } from '@/api/integrations';
 import { DashboardConfig, Company } from '@/api/entities';
 
 const QUICK_ACTIONS = [
@@ -139,10 +139,15 @@ export default function AIChat() {
   const loadConversations = async () => {
     try {
       const res = await api.get('/api/ai/outputs', { type: 'conversation' });
-      const convos = (Array.isArray(res) ? res : []).map(r => ({
-        id: r.id,
+      const rows = Array.isArray(res) ? res : (res?.data || []);
+      const convos = rows.map(r => ({
+        id: r.client_id || r.id,
+        dbId: r.id,
         messages: r.content?.messages || [],
-        metadata: r.metadata || { name: r.title || 'Conversation', pinned: false },
+        metadata: {
+          name: r.name || r.title || 'Conversation',
+          pinned: !!r.pinned,
+        },
         created_at: r.created_at,
       }));
       setConversations(convos);
@@ -152,7 +157,7 @@ export default function AIChat() {
   const createNewConversation = async (initialPrompt = null) => {
     try {
       const newId = crypto.randomUUID();
-      const convo = { id: newId, messages: [], metadata: { name: 'New Conversation', pinned: false }, created_at: new Date().toISOString() };
+      const convo = { id: newId, dbId: null, messages: [], metadata: { name: 'New Conversation', pinned: false }, created_at: new Date().toISOString() };
       setConversations(prev => [convo, ...prev]);
       setActiveConversation(convo);
       setMessages([]);
@@ -170,14 +175,48 @@ export default function AIChat() {
   // No subscription needed — state is updated directly after each message
 
   const updateConvoTitle = async (id, name) => {
+    const convo = conversations.find(c => c.id === id);
     setConversations(prev => prev.map(c => c.id === id ? { ...c, metadata: { ...c.metadata, name } } : c));
+    setActiveConversation(prev => prev?.id === id ? { ...prev, metadata: { ...prev.metadata, name } } : prev);
+    if (convo?.dbId) {
+      await api.patch(`/api/ai/outputs/${convo.dbId}`, {
+        name,
+        title: name,
+        pinned: !!convo.metadata?.pinned,
+        client_id: convo.id,
+      });
+    }
   };
 
   const togglePin = async (convo, e) => {
     e.stopPropagation();
     const newPinned = !convo.metadata?.pinned;
     setConversations(prev => prev.map(c => c.id === convo.id ? { ...c, metadata: { ...c.metadata, pinned: newPinned } } : c));
+    setActiveConversation(prev => prev?.id === convo.id ? { ...prev, metadata: { ...prev.metadata, pinned: newPinned } } : prev);
+    if (convo.dbId) {
+      await api.patch(`/api/ai/outputs/${convo.dbId}`, {
+        name: convo.metadata?.name || 'Conversation',
+        title: convo.metadata?.name || 'Conversation',
+        pinned: newPinned,
+        client_id: convo.id,
+      });
+    }
     toast.success(newPinned ? 'Conversation pinned' : 'Conversation unpinned');
+  };
+
+  const deleteConversation = async (convo, e) => {
+    e.stopPropagation();
+    try {
+      if (convo.dbId) await api.delete(`/api/ai/outputs/${convo.dbId}`);
+      setConversations(prev => prev.filter(c => c.id !== convo.id));
+      if (activeConversation?.id === convo.id) {
+        setActiveConversation(null);
+        setMessages([]);
+      }
+      toast.success('Conversation deleted');
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete conversation');
+    }
   };
 
   const startEditTitle = (convo, e) => {
@@ -199,17 +238,20 @@ export default function AIChat() {
     try {
       const uploaded = await Promise.all(files.map(async (file) => {
         const { url: file_url } = await UploadFile({ file });
-        return { url: file_url, name: file.name, type: file.type };
+        const canReadAsText = file.type.startsWith('text/')
+          || /\.(txt|csv|vtt|srt)$/i.test(file.name);
+        const text = canReadAsText ? (await file.text()).slice(0, 100000) : null;
+        return { url: file_url, name: file.name, type: file.type, text };
       }));
       setAttachedFiles(prev => [...prev, ...uploaded]);
     } catch (e) { toast.error('Failed to upload file'); }
     finally { setUploadingFiles(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
-  const sendMessageToConvo = async (convo, content, fileUrls = []) => {
+  const sendMessageToConvo = async (convo, content, attachments = []) => {
     setIsLoading(true);
     const userMsg = { role: 'user', content: content || 'Please analyze the attached file(s).', created_at: new Date().toISOString() };
-    if (fileUrls.length > 0) userMsg.file_urls = fileUrls;
+    if (attachments.length > 0) userMsg.attachments = attachments;
 
     // Optimistically add user message
     const updatedMessages = [...(convo.messages || []), userMsg];
@@ -217,7 +259,24 @@ export default function AIChat() {
 
     try {
       // Build message history for the AI
-      const historyMsgs = updatedMessages.map(m => ({ role: m.role, content: m.content }));
+      const historyMsgs = updatedMessages.map(m => {
+        if (m.role !== 'user' || !m.attachments?.length) return { role: m.role, content: m.content };
+        const textParts = [m.content || 'Please analyze the attachments.'];
+        const imageParts = [];
+        for (const file of m.attachments) {
+          if (file.text) {
+            textParts.push(`\n\nAttached file "${file.name}":\n${file.text}`);
+          } else if (file.type?.startsWith('image/')) {
+            imageParts.push({ type: 'image_url', image_url: { url: file.url, detail: 'auto' } });
+          } else {
+            textParts.push(`\n\nAttached file "${file.name}" is stored at ${file.url}. Its binary contents are not included in this chat request.`);
+          }
+        }
+        return {
+          role: m.role,
+          content: [{ type: 'text', text: textParts.join('') }, ...imageParts],
+        };
+      });
 
       // Get company context for the system prompt
       const systemPrompt = `You are Bmapz AI, an expert B2B sales and marketing automation assistant.
@@ -234,26 +293,36 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
       setMessages(finalMessages);
 
       // Update convo in state
-      const updatedConvo = { ...convo, messages: finalMessages };
+      // Auto-title on first exchange
+      let conversationName = convo.metadata?.name || 'Conversation';
+      if (updatedMessages.length === 1 && convo.metadata?.name === 'New Conversation') {
+        conversationName = (content || attachments[0]?.name || 'Conversation').slice(0, 60);
+        if ((content || '').length > 60) conversationName += '...';
+      }
+
+      const savePayload = {
+        type: 'conversation',
+        title: conversationName,
+        name: conversationName,
+        pinned: !!convo.metadata?.pinned,
+        client_id: convo.id,
+        content: { messages: finalMessages },
+      };
+      const saved = convo.dbId
+        ? await api.patch(`/api/ai/outputs/${convo.dbId}`, savePayload)
+        : await api.post('/api/ai/outputs', savePayload);
+
+      const updatedConvo = {
+        ...convo,
+        dbId: saved.id || convo.dbId,
+        messages: finalMessages,
+        metadata: { ...convo.metadata, name: conversationName },
+      };
       setActiveConversation(updatedConvo);
       setConversations(prev => prev.map(c => c.id === convo.id ? updatedConvo : c));
 
-      // Auto-title on first exchange
-      if (updatedMessages.length === 1 && convo.metadata?.name === 'New Conversation') {
-        const title = content.slice(0, 60) + (content.length > 60 ? '...' : '');
-        updateConvoTitle(convo.id, title);
-      }
-
       // Auto-create dashboard if the user asked for one
       if (content) tryCreateDashboardFromMessage(content).catch(() => {});
-
-      // Persist conversation to DB
-      api.post('/api/ai/outputs', {
-        type: 'conversation',
-        title: convo.metadata?.name || 'Conversation',
-        content: { messages: finalMessages },
-        metadata: convo.metadata,
-      }).catch(() => {});
     } catch (e) {
       const msg = e?.message || '';
       // Only show the banner when there's literally no API key configured
@@ -271,7 +340,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
   const sendMessage = async () => {
     if ((!input.trim() && attachedFiles.length === 0) || isLoading) return;
     const content = input;
-    const fileUrls = attachedFiles.map(f => f.url);
+    const attachments = attachedFiles;
     setInput('');
     setAttachedFiles([]);
     setIsLoading(true);
@@ -279,11 +348,11 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
       let convo = activeConversation;
       if (!convo) {
         const newId = crypto.randomUUID();
-        convo = { id: newId, messages: [], metadata: { name: 'New Conversation', pinned: false }, created_at: new Date().toISOString() };
+        convo = { id: newId, dbId: null, messages: [], metadata: { name: 'New Conversation', pinned: false }, created_at: new Date().toISOString() };
         setConversations(prev => [convo, ...prev]);
         setActiveConversation(convo);
       }
-      await sendMessageToConvo(convo, content, fileUrls);
+      await sendMessageToConvo(convo, content, attachments);
     } catch (e) {
       toast.error(e?.message || 'Failed to send message');
     } finally { setIsLoading(false); }
@@ -422,6 +491,9 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
           </button>
           <button onClick={(e) => togglePin(convo, e)} className="p-1 rounded hover:bg-white/10 text-gray-500 hover:text-[#38b6ff]">
             {convo.metadata?.pinned ? <PinOff size={11} /> : <Pin size={11} />}
+          </button>
+          <button onClick={(e) => deleteConversation(convo, e)} className="p-1 rounded hover:bg-red-500/10 text-gray-500 hover:text-red-400">
+            <Trash2 size={11} />
           </button>
         </div>
       )}
@@ -585,7 +657,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
             </div>
           )}
           <div className="flex items-end gap-2 md:gap-3">
-            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*,video/*,.pdf,.csv,.xlsx,.xls,.doc,.docx,.vtt,.txt,.srt" multiple className="hidden" />
+            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*,.csv,.vtt,.txt,.srt" multiple className="hidden" />
             <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadingFiles}
               className="h-[52px] px-3 md:px-4 border-white/10 text-gray-400 hover:text-white hover:bg-white/5 shrink-0">
               {uploadingFiles ? <Loader2 size={20} className="animate-spin" /> : <Paperclip size={20} />}

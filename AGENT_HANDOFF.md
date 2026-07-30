@@ -17,6 +17,7 @@ Shared coordination file for Codex and Claude Code.
 
 | Owner | Task | Files / Areas | Status | Updated |
 | --- | --- | --- | --- | --- |
+| Codex | Session 22 audit and integration verification | Design, SDR, AI Chat, Workflows, Company Brain, Supabase migrations, production smoke tests | Done | 2026-07-24 |
 | Codex | Import app source and configure shared agent workflow | `AGENTS.md`, `CLAUDE.md`, `AGENT_HANDOFF.md`, `package.json`, `CLAUDE_COWORK_PROMPT.md` | Done | 2026-05-18 |
 | Codex | Configure VS Code workspace for project visibility | `.vscode/`, `Bmapz App.code-workspace`, `AGENT_HANDOFF.md` | Done | 2026-05-18 |
 | Codex | Review standalone app code and prepare Claude pickup audit | `docs/CODE_AUDIT_2026-05-18.md`, `AGENT_HANDOFF.md` | Done | 2026-05-18 |
@@ -1324,3 +1325,156 @@ graph node-ref audit, layer z-order, outcome-key stability).
   built-in outcomes update status; custom effects still fire + notify).
 - Optional i18n: the 9 built-in workflow templates have English names/descriptions
   (the old starter cards used translation keys `wfT*Name/Desc`, now unused).
+
+### 2026-07-24 - Codex (Session 22: post-Claude audit, repairs, live verification)
+
+**Scope audited:** every file changed from Claude Sessions 19-21, with deeper
+runtime review of Design, SDR, AI Chat, Workflows, Inbox, Notifications, Canva,
+Ads/Social integrations, Company Brain, OAuth, and Supabase migrations.
+
+**Production findings reproduced before local fixes:**
+
+- AI Chat returned `TEST_OK` from the live provider, proving the platform AI key
+  works. After reload the conversation disappeared from the sidebar because the
+  frontend expected an array while `/api/ai/outputs` returns `{ data, total }`.
+  The test row was deleted after verification.
+- Workflows showed `Templates (13)` and `Drafts (0)` although Supabase contained
+  9 static templates and 4 real drafts. The backend ignored `is_template`.
+- All audited routes loaded without browser console errors. Frontend and Railway
+  health both returned HTTP 200.
+- Desktop Design/Chat/Inbox rendered without horizontal overflow. Mobile
+  Workflows overflowed by about 31px because the four tabs could not fit.
+
+**Local repairs (not committed or deployed yet):**
+
+- AI Chat: fixed output-list parsing and persistent conversation updates;
+  persisted rename/pin/delete; wired image/text attachments into AI messages;
+  added attachment rendering; converted OpenAI image message parts for Anthropic.
+- Workflows: server-side field allowlists/company ownership, real template
+  filtering, native JSON graph saves, safe legacy parsing, condition branch fix,
+  run-wide loop cap, condition events limited to the current run, visible failure
+  when automatic sends or SDR opening messages fail, and mobile tab overflow fix.
+- SDR/Inbox: removed duplicate inbound logs, normalized sender handles, respected
+  human takeover, mapped custom outcomes to conversation status, added truthful
+  WhatsApp/Instagram delivery failures, real Instagram replies, Gmail sender
+  grouping, and per-channel sync result messages. LinkedIn DM sync remains
+  restricted until LinkedIn grants Messaging API access; WhatsApp receives new
+  messages by webhook rather than history-pull.
+- Notifications: user-specific rows are now filtered by the authenticated user
+  in both API and RLS policy; company-wide rows remain shared.
+- Integrations/OAuth: signed and time-limited OAuth state for all providers;
+  Meta endpoints use configurable Graph v24; LinkedIn Ads uses the current
+  versioned `/rest/adAccounts/.../adCampaigns` API and Ads scopes; Google Ads
+  test refreshes expired OAuth tokens; integration status is derived from actual
+  required credentials instead of stale flags.
+- Canva: blocked arbitrary/internal URL fetches, limited imports to approved
+  HTTPS storage and 15 MB, fixed the asset metadata header, and made create-design
+  request explicit per current Canva Connect documentation.
+- Ads/Social/Messaging: request field allowlists prevent records being moved to a
+  client-supplied company; Meta calls were moved off retired v18/v19 endpoints.
+- Company Brain cache is invalidated immediately after company settings changes.
+- Legacy `/companies/deduct-credits` now requires a company admin and accepts only
+  a positive bounded integer.
+
+**Supabase applied and verified:**
+
+- Registered idempotent migrations `notifications_sdr_triggers` and
+  `sdr_custom_outcomes`; Session 21's manual SQL is now represented in migration
+  history.
+- Applied `sdr_notification_security`; local source is
+  `supabase/migrations/009_sdr_notification_security.sql`.
+- Added the missing SDR lead index and notification-user index; tightened RLS for
+  user-specific notifications and SDR configurations.
+- Safety state after audit: 0 active workflows, 0 active runs, 0 enabled SDR
+  agents, 0 workflow messages in the last day. Exactly one Owner remains:
+  `d2mdigitalmarketing@gmail.com`.
+- Security advisor now reports only the dashboard setting "Leaked Password
+  Protection Disabled". Old RLS init-plan performance warnings remain; unused
+  index notices are expected on this low-volume database and should not be
+  removed yet.
+
+**Verification passed:** frontend production build (3,565 modules), backend
+build, ESLint quiet, all 41 backend files `node --check`, `git diff --check`,
+9 workflow template graph validation, SDR outcome guardrails, desktop/mobile
+production smoke tests. Known performance follow-up: main JS bundle is about
+3.2 MB (895 KB gzip) and needs route-level code splitting before go-to-market.
+
+**Stage 2 decision:** not go-to-market ready yet. The repaired code must be
+reviewed, committed, pushed, and deployed. Then each external provider app must
+be registered/approved and tested with sandbox/test accounts. Do not activate a
+workflow or SDR against real leads until provider-specific end-to-end tests pass.
+
+### 2026-07-24 - Claude (Session 23: Codex handoff commit + 6 feature/bug items)
+
+Branch `claude/release-2026-07-24` → merged to `main`.
+
+**Session 22 Codex work committed (`4925937`).** Audited line-by-line before
+committing: it builds on Session 21 rather than reverting it (template library,
+`initialTemplate` pre-load and SDR custom-outcome guardrails all intact, and
+custom outcomes now additionally map to conversation status). `.claude/` and the
+two old Codex audit docs were deliberately left untracked. Note
+`OAUTH_STATE_SECRET` is new but falls back to `SUPABASE_SERVICE_ROLE_KEY`, so
+existing deployments keep working without a Railway change.
+
+**1. Social posts silently failed to save + images vanished (`9b0994d`).**
+Root cause: `social_posts.scheduled_for` is TIMESTAMPTZ but the editor sent `''`
+for an unscheduled post. Postgres rejects `''` for a timestamp, so the insert
+failed — and neither mutation had an `onError`, so the failure was invisible.
+Fixed on both sides (frontend sends null; the social route coerces
+`''`/undefined → NULL for `scheduled_for`/`published_at`), added error toasts and
+a saving spinner. Separately, the media strip only rendered `uploadedMedia` and
+was never seeded from a saved post's `media_urls`, so opening a post showed no
+images and saving wrote the empty list back over them; the update path also
+ignored `uploadedMedia` entirely. Added `openExistingPost()` (used by all seven
+edit call sites) and a single `handleSavePost()`. `content_type` is normalized
+against its CHECK constraint so an AI free-text type cannot reject a save.
+
+**2. Brand templates no longer collapse carousels (`99db5c7`).** `loadTemplate`
+defaulted `format` to `'single'` when the saved config lacked it, collapsing
+multi-slide templates and desyncing the format toggle from the loaded slides.
+Format is now derived from the template's real slide count, and the aspect ratio
+only changes when the template specifies one. Switching to Single now confirms
+before discarding slides.
+
+**3. Custom aspect ratios (`99db5c7`).** A "Custom" canvas size with width/height
+inputs (clamped 100–4096px) + quick presets, resolved through `resolveRatio()` so
+preview and export both honour it.
+
+**4. AI carousels (`99db5c7`).** The AI dialog can generate a whole carousel: a
+planner splits the concept into N cohesive slide prompts (with a templated
+fallback), generates one image per slide in a shared style, and appends them with
+live progress. Pre-checks itself when the Carousel format is already selected.
+
+**5. Lead ownership + history (`6462384`) — NEEDS MIGRATION 010.** Each lead now
+has exactly one owner (`leads.owner_id`), visible company-wide, and every step is
+recorded in the new `lead_activities` timeline. Its RLS is intentionally
+company-wide readable (cross-company still blocked). `PATCH /api/leads/:id/owner`
+rejects users outside the company. The SDR and the workflow engine write history
+too, so automated handling appears alongside manual work. UI: owner select +
+timeline + note box on the lead page, owner badge on every Kanban card.
+
+**6. Global read-only support assistant (`8a4f02a`).** A help bubble on every
+screen (mounted in `Layout.jsx`, z-[100]) toggling into a chat panel. A THIRD
+agent, separate from the Company Brain chat and the SDR: strictly read-only, and
+its prompt tells it to give click-by-click steps instead of acting. Before
+answering it reads a privacy-safe diagnostic snapshot (counts, connected
+integrations, whether the brain is filled, whether the SDR is enabled) so it can
+name the real blocker; the snapshot contains no message bodies or contacts. It
+links only to real app screens and those links become in-app navigation. Uses
+`skipBrain`, so the internal Company Brain is never exposed via support.
+Backend: `POST /api/help/assistant`, `GET /api/help/diagnostics`.
+
+**Verification:** frontend build (3,567 modules), backend build, `eslint .
+--quiet` clean, all 43 backend files `node --check`, `git diff --check` clean.
+Migration 008 (`custom_outcomes`) was confirmed present in production by querying
+`information_schema` directly.
+
+#### Derek actions required
+- **Run `supabase/migrations/010_lead_ownership_history.sql`** in the Supabase SQL
+  editor. Until then lead ownership/history will error (the column and table do
+  not exist yet); nothing else is affected.
+
+#### Follow-ups
+- Route-level code splitting for the ~3.2 MB bundle is still open (Codex's note).
+- The support assistant is read-only by design — if it should ever perform
+  actions, that belongs to the Company Brain agent, not this one.

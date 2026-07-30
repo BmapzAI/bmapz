@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { createPageUrl } from '@/utils';
+import { LeadOwnerBadge } from '@/components/sales/LeadOwnerHistory';
 
 export default function LeadKanban({ leads, stages, onStageChange, onDisqualify }) {
   const { t } = useLanguage();
@@ -92,6 +93,8 @@ export default function LeadKanban({ leads, stages, onStageChange, onDisqualify 
                                       )}
                                     </p>
                                   )}
+                                  {/* Who is responsible — visible to the whole company */}
+                                  <LeadOwnerBadge owner={lead.owner} className="mt-1" />
                                 </div>
                               </div>
                               

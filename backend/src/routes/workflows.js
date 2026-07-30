@@ -5,6 +5,26 @@ import { enrollLead } from '../lib/workflowEngine.js';
 
 const router = Router();
 
+const WORKFLOW_FIELDS = new Set([
+  'name', 'description', 'type', 'status', 'nodes', 'connections', 'steps',
+  'triggers', 'trigger_type', 'trigger_config',
+]);
+
+function workflowPatch(body = {}) {
+  const patch = {};
+  for (const [key, value] of Object.entries(body)) {
+    if (WORKFLOW_FIELDS.has(key)) patch[key] = value;
+  }
+  for (const key of ['nodes', 'connections', 'steps']) {
+    if (key in patch && (!Array.isArray(patch[key]) || patch[key].length > 500)) {
+      const err = new Error(`${key} must be an array with at most 500 items`);
+      err.status = 400;
+      throw err;
+    }
+  }
+  return patch;
+}
+
 router.get('/', requireAuth, async (req, res) => {
   try {
     const { status, limit = 50, offset = 0 } = req.query;
@@ -16,6 +36,8 @@ router.get('/', requireAuth, async (req, res) => {
       .range(Number(offset), Number(offset) + Number(limit) - 1);
 
     if (status) query = query.eq('status', status);
+    if (req.query.is_template === 'true') query = query.eq('is_template', true);
+    if (req.query.is_template === 'false') query = query.eq('is_template', false);
     const { data, error, count } = await query;
     if (error) throw error;
     res.json({ data, total: count });
@@ -26,15 +48,16 @@ router.get('/', requireAuth, async (req, res) => {
 
 router.post('/', requireAuth, async (req, res) => {
   try {
+    const patch = workflowPatch(req.body);
     const { data, error } = await supabaseAdmin
       .from('workflows')
-      .insert({ ...req.body, company_id: req.companyId })
+      .insert({ ...patch, company_id: req.companyId, is_template: false })
       .select()
       .single();
     if (error) throw error;
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -69,9 +92,10 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 router.patch('/:id', requireAuth, async (req, res) => {
   try {
+    const patch = workflowPatch(req.body);
     const { data, error } = await supabaseAdmin
       .from('workflows')
-      .update(req.body)
+      .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .select()
@@ -79,7 +103,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -177,13 +201,14 @@ workflowRunsRouter.get('/:id', requireAuth, async (req, res) => {
 
 workflowRunsRouter.post('/', requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('workflow_runs')
-      .insert({ ...req.body, company_id: req.companyId })
-      .select()
-      .single();
-    if (error) throw error;
-    res.json(data);
+    if (!req.body?.workflow_id) return res.status(400).json({ error: 'workflow_id is required' });
+    const run = await enrollLead({
+      workflowId: req.body.workflow_id,
+      companyId: req.companyId,
+      leadId: req.body.lead_id || null,
+      context: req.body.context || {},
+    });
+    res.json(run);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -191,9 +216,18 @@ workflowRunsRouter.post('/', requireAuth, async (req, res) => {
 
 workflowRunsRouter.patch('/:id', requireAuth, async (req, res) => {
   try {
+    const allowedStatus = new Set(['active', 'paused', 'canceled']);
+    if (!allowedStatus.has(req.body?.status)) {
+      return res.status(400).json({ error: 'Only active, paused, or canceled status changes are allowed' });
+    }
+    const fields = {
+      status: req.body.status,
+      updated_at: new Date().toISOString(),
+      ...(req.body.status === 'active' ? { next_action_at: new Date().toISOString() } : {}),
+    };
     const { data, error } = await supabaseAdmin
       .from('workflow_runs')
-      .update(req.body)
+      .update(fields)
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .select()

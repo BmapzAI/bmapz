@@ -52,7 +52,27 @@ export default function SocialMedia() {
   const [editingPost, setEditingPost] = useState(null);
   const [newPost, setNewPost] = useState({ title: '', content: '', platforms: [], type: 'text', scheduled_for: '' });
   const EMPTY_POST = { title: '', content: '', platforms: [], type: 'text', scheduled_for: '' };
-  const openNewPost = (defaults = {}) => { setEditingPost({ ...EMPTY_POST, ...defaults, _isNew: true }); setNewPost({ ...EMPTY_POST, ...defaults }); };
+  const openNewPost = (defaults = {}) => {
+    setEditingPost({ ...EMPTY_POST, ...defaults, _isNew: true });
+    setNewPost({ ...EMPTY_POST, ...defaults });
+    setUploadedMedia(mediaFromUrls(defaults.media_urls));
+  };
+  // Rebuild the media strip from a saved post's media_urls. Without this, opening
+  // a saved post showed an empty media strip (images looked lost) and saving then
+  // wrote that empty list back over the real images.
+  const mediaFromUrls = (urls) => (Array.isArray(urls) ? urls : []).map((url, i) => ({
+    url,
+    name: `media-${i + 1}`,
+    type: /\.(mp4|mov|webm|avi)(\?|$)/i.test(url) ? 'video/mp4' : 'image/png',
+  }));
+  // Single entry point for editing an existing post, so every call site keeps the
+  // images, the schedule and the editor in sync.
+  const openExistingPost = (post, { goToContent = false } = {}) => {
+    setEditingPost(post);
+    setNewPost({ ...post, type: post.type || post.content_type || 'text' });
+    setUploadedMedia(mediaFromUrls(post.media_urls));
+    if (goToContent) setActiveTab('content');
+  };
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [uploadedMedia, setUploadedMedia] = useState([]);
@@ -111,12 +131,26 @@ export default function SocialMedia() {
 
   const createMutation = useMutation({
     mutationFn: (data) => SocialPost.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['socialPosts'] }); toast.success(isPt ? 'Post salvo!' : 'Post saved!'); setEditingPost(null); setNewPost({ title: '', content: '', platforms: [], type: 'text', scheduled_for: '' }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['socialPosts'] });
+      toast.success(isPt ? 'Post salvo!' : 'Post saved!');
+      setEditingPost(null);
+      setNewPost({ ...EMPTY_POST });
+      setUploadedMedia([]);
+    },
+    // Without this a failed save did nothing visible — the post silently vanished.
+    onError: (e) => toast.error((isPt ? 'Falha ao salvar o post: ' : 'Could not save the post: ') + (e?.message || 'unknown error')),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => SocialPost.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['socialPosts'] }); toast.success(isPt ? 'Post atualizado!' : 'Post updated!'); setEditingPost(null); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['socialPosts'] });
+      toast.success(isPt ? 'Post atualizado!' : 'Post updated!');
+      setEditingPost(null);
+      setUploadedMedia([]);
+    },
+    onError: (e) => toast.error((isPt ? 'Falha ao atualizar o post: ' : 'Could not update the post: ') + (e?.message || 'unknown error')),
   });
 
   const deleteMutation = useMutation({
@@ -322,20 +356,64 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
     facebook: { image: '1.91:1 (1200×630)', story: '9:16 (1080×1920)', video: 'MP4, max 240min' },
   };
 
-  const savePost = () => {
-    if (!newPost.title) { toast.error('Add a title'); return; }
-    if (!company?.id) { toast.error('No company found'); return; }
-    createMutation.mutate({
-      ...newPost,
-      company_id: company.id,
-      status: newPost.scheduled_for ? 'scheduled' : 'draft',
-      ai_generated: !!generatedContent,
-      media_urls: uploadedMedia.map(m => m.url),
-    });
+  // social_posts.content_type is CHECK-constrained to these four values, so an
+  // AI-suggested free-text type must be normalized or the whole save is rejected.
+  const CONTENT_TYPES = ['text', 'carousel', 'video', 'image'];
+  const safeContentType = (...candidates) => {
+    for (const c of candidates) {
+      const v = String(c || '').toLowerCase().trim();
+      if (CONTENT_TYPES.includes(v)) return v;
+    }
+    return 'text';
+  };
+
+  // The media strip is the single source of truth while the editor is open; it is
+  // seeded from the post's saved media_urls, so this never wipes existing images.
+  const currentMediaUrls = () => {
+    const fromStrip = uploadedMedia.map(m => m.url).filter(Boolean);
+    if (fromStrip.length) return fromStrip;
+    return Array.isArray(newPost.media_urls) ? newPost.media_urls : [];
+  };
+
+  // One save path for both new and existing posts.
+  const handleSavePost = () => {
+    if (!newPost.title?.trim()) { toast.error(isPt ? 'Adicione um título' : 'Add a title'); return; }
+    if (!company?.id) { toast.error(isPt ? 'Empresa não encontrada' : 'No company found'); return; }
+    const media_urls = currentMediaUrls();
+    const isNew = !!editingPost?._isNew || !editingPost?.id;
+    // scheduled_for is a TIMESTAMPTZ: an empty string from the date input makes
+    // Postgres reject the whole row, which is why saves silently did nothing.
+    const scheduled_for = newPost.scheduled_for?.trim() ? newPost.scheduled_for : null;
+
+    if (isNew) {
+      createMutation.mutate({
+        ...newPost,
+        company_id: company.id,
+        scheduled_for,
+        status: scheduled_for ? 'scheduled' : 'draft',
+        content_type: safeContentType(newPost.type, newPost.content_type),
+        ai_generated: !!generatedContent,
+        media_urls,
+      });
+    } else {
+      updateMutation.mutate({
+        id: editingPost.id,
+        data: {
+          ...newPost,
+          scheduled_for,
+          // Keep a published post published; otherwise reflect the schedule field.
+          status: newPost.status === 'published'
+            ? 'published'
+            : (scheduled_for ? 'scheduled' : 'draft'),
+          content_type: safeContentType(newPost.type, newPost.content_type),
+          media_urls,
+        },
+      });
+    }
     setGeneratedContent(null);
-    setUploadedMedia([]);
     setDesignBrief(null);
   };
+  const savePost = handleSavePost;
 
   const heatColor = (score, best) => {
     if (best && score > 60) return 'bg-[#38b6ff] opacity-90';
@@ -355,11 +433,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
       false
     );
     const handleDoubleClick = () => {
-      if (post.status !== 'published') {
-        setEditingPost(post);
-        setNewPost(post);
-        setActiveTab('content');
-      }
+      if (post.status !== 'published') openExistingPost(post, { goToContent: true });
     };
     return (
     <div className="rounded-2xl bg-white/5 border border-white/10 p-4 hover:border-white/20 transition-all group cursor-pointer"
@@ -396,7 +470,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
       )}
       <div className="flex gap-2 mt-3">
         <Button size="sm" variant="outline" className="flex-1 border-white/10 text-white hover:bg-white/5 text-xs"
-          onClick={() => { setEditingPost(post); setNewPost(post); }}>
+          onClick={() => openExistingPost(post)}>
           {t('edit')}
         </Button>
         <Button size="sm" variant="outline" className="border-red-500/20 text-red-400 hover:bg-red-500/10"
@@ -525,16 +599,9 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               onDayClick={(day) => {
                 openNewPost({ scheduled_for: day.toISOString().slice(0, 16) });
               }}
-              onPostClick={(post) => {
-                setEditingPost(post);
-                setNewPost(post);
-              }}
+              onPostClick={(post) => openExistingPost(post)}
               onPostDoubleClick={(post) => {
-                if (post.status !== 'published') {
-                  setEditingPost(post);
-                  setNewPost(post);
-                  setActiveTab('content');
-                }
+                if (post.status !== 'published') openExistingPost(post, { goToContent: true });
               }}
             />
           </div>
@@ -551,7 +618,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               {scheduledPosts.map(post => (
                 <div key={post.id}
                   className="flex items-center gap-4 p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:border-[#38b6ff]/30 transition-all"
-                  onDoubleClick={() => { setEditingPost(post); setNewPost(post); setActiveTab('content'); }}
+                  onDoubleClick={() => openExistingPost(post, { goToContent: true })}
                   title="Double-click to edit"
                 >
                   <div className="flex gap-1">{(post.platforms || []).map(p => <span key={p} className="text-lg">{PLATFORMS.find(pl => pl.value === p)?.icon}</span>)}</div>
@@ -771,11 +838,14 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               </div>
 
               <div className="flex gap-3">
-                <Button onClick={() => { if (!editingPost._isNew) { updateMutation.mutate({ id: editingPost.id, data: newPost }); } else { savePost(); } }}
+                <Button onClick={handleSavePost} disabled={createMutation.isPending || updateMutation.isPending}
                   className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-                  <Check size={16} /> {editingPost._isNew ? (isPt ? 'Salvar Post' : 'Save Post') : t('updatePost')}
+                  {(createMutation.isPending || updateMutation.isPending)
+                    ? <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    : <Check size={16} />}
+                  {editingPost._isNew ? (isPt ? 'Salvar Post' : 'Save Post') : t('updatePost')}
                 </Button>
-                <Button variant="outline" onClick={() => { setEditingPost(null); setGeneratedContent(null); }}
+                <Button variant="outline" onClick={() => { setEditingPost(null); setGeneratedContent(null); setUploadedMedia([]); }}
                   className="border-white/10 text-white hover:bg-white/5">{t('cancel')}</Button>
               </div>
             </div>
@@ -856,7 +926,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                     </div>
                     <div className="flex gap-2 flex-col items-end">
                       {post.published_at && <p className="text-gray-500 text-xs">{new Date(post.published_at).toLocaleDateString()}</p>}
-                      <Button size="sm" variant="outline" onClick={() => { setEditingPost(post); setNewPost(post); setActiveTab('content'); }}
+                      <Button size="sm" variant="outline" onClick={() => openExistingPost(post, { goToContent: true })}
                         className="border-white/10 text-white hover:bg-white/5 text-xs gap-1">
                         <Edit3 size={12} /> Repost
                       </Button>
@@ -966,7 +1036,7 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                           {pending.map(post => (
                             <div key={post.id}
                               className="flex items-center gap-3 p-3 rounded-xl bg-black/30 border border-white/10 hover:border-[#38b6ff]/40 transition-all group cursor-pointer"
-                              onClick={() => { setEditingPost(post); setNewPost(post); setActiveTab('content'); }}>
+                              onClick={() => openExistingPost(post, { goToContent: true })}>
                               <span className={`text-[10px] px-2 py-0.5 rounded-full border flex-shrink-0 ${post.status === 'scheduled' ? 'text-[#38b6ff] bg-[#38b6ff]/10 border-[#38b6ff]/20' : 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20'}`}>
                                 {post.status === 'scheduled' ? (isPt ? 'Agendado' : 'Scheduled') : (isPt ? 'Rascunho' : 'Draft')}
                               </span>

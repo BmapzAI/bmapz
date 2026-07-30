@@ -13,6 +13,61 @@ import { refreshCanvaToken } from './oauth.js';
 
 const router = Router();
 const CANVA_API = 'https://api.canva.com/rest/v1';
+const MAX_IMPORT_BYTES = 15 * 1024 * 1024;
+
+function validatedImportUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    const error = new Error('image_url must be a valid URL');
+    error.code = 'INVALID_IMAGE_URL';
+    throw error;
+  }
+  const storageHost = process.env.SUPABASE_URL ? new URL(process.env.SUPABASE_URL).hostname : null;
+  const configuredHosts = String(process.env.CANVA_IMPORT_ALLOWED_HOSTS || '')
+    .split(',')
+    .map(host => host.trim().toLowerCase())
+    .filter(Boolean);
+  const allowedHosts = new Set([storageHost, ...configuredHosts].filter(Boolean));
+  if (url.protocol !== 'https:' || !allowedHosts.has(url.hostname.toLowerCase())) {
+    const error = new Error('image_url must point to approved Bmapz storage');
+    error.code = 'INVALID_IMAGE_URL';
+    throw error;
+  }
+  return url;
+}
+
+async function readImageWithLimit(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().startsWith('image/')) {
+    const error = new Error('The selected URL did not return an image');
+    error.code = 'INVALID_IMAGE_URL';
+    throw error;
+  }
+  const declaredSize = Number(response.headers.get('content-length') || 0);
+  if (declaredSize > MAX_IMPORT_BYTES) {
+    const error = new Error('The image is larger than 15 MB');
+    error.code = 'IMAGE_TOO_LARGE';
+    throw error;
+  }
+  const chunks = [];
+  let size = 0;
+  const reader = response.body.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_IMPORT_BYTES) {
+      await reader.cancel();
+      const error = new Error('The image is larger than 15 MB');
+      error.code = 'IMAGE_TOO_LARGE';
+      throw error;
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks);
+}
 
 async function getValidToken(companyId) {
   const { data } = await supabaseAdmin.from('companies').select('api_keys').eq('id', companyId).single();
@@ -100,12 +155,14 @@ router.post('/import', requireAuth, async (req, res) => {
     if (!image_url) return res.status(400).json({ error: 'image_url is required' });
     const token = await getValidToken(req.companyId);
 
-    const imgRes = await fetch(image_url);
+    const sourceUrl = validatedImportUrl(image_url);
+    const imgRes = await fetch(sourceUrl, { redirect: 'error' });
     if (!imgRes.ok) throw new Error('Could not load the image to upload');
-    const buffer = Buffer.from(await imgRes.arrayBuffer());
+    const buffer = await readImageWithLimit(imgRes);
 
     // Asset upload uses a metadata header + binary body
-    const metadata = Buffer.from(JSON.stringify({ name_base64: Buffer.from(title).toString('base64') })).toString('base64');
+    const assetName = String(title || 'Bmapz Design').slice(0, 50);
+    const metadata = JSON.stringify({ name_base64: Buffer.from(assetName).toString('base64') });
     const upRes = await fetch(`${CANVA_API}/asset-uploads`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream', 'Asset-Upload-Metadata': metadata },
@@ -127,13 +184,22 @@ router.post('/import', requireAuth, async (req, res) => {
 
     const designRes = await fetch(`${CANVA_API}/designs`, {
       method: 'POST', headers: authHeaders(token),
-      body: JSON.stringify({ design_type: { type: 'preset', name: 'presentation' }, asset_id: assetId, title }),
+      body: JSON.stringify({
+        type: 'type_and_asset',
+        design_type: { type: 'preset', name: 'presentation' },
+        asset_id: assetId,
+        title: String(title || 'Bmapz Design').slice(0, 255),
+      }),
     });
     const design = await designRes.json();
     if (!designRes.ok) throw new Error(design.message || 'Canva design creation failed');
     res.json({ edit_url: design.design?.urls?.edit_url || null, design_id: design.design?.id || null });
   } catch (err) {
-    res.status(err.code === 'NOT_CONNECTED' ? 409 : 500).json({ error: err.message, code: err.code });
+    const status = err.code === 'NOT_CONNECTED' ? 409
+      : err.code === 'INVALID_IMAGE_URL' ? 400
+        : err.code === 'IMAGE_TOO_LARGE' ? 413
+          : 500;
+    res.status(status).json({ error: err.message, code: err.code });
   }
 });
 

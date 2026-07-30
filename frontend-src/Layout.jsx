@@ -3,6 +3,7 @@ import { LanguageProvider } from '@/components/ui/LanguageContext';
 import { ThemeProvider } from '@/components/ui/ThemeContext';
 import Sidebar from '@/components/layout/Sidebar';
 import MobileBottomNav from '@/components/layout/MobileBottomNav';
+import SupportAssistant from '@/components/layout/SupportAssistant';
 import NotificationBell from '@/components/layout/NotificationBell';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import { useAuth } from '@/lib/AuthContext';
@@ -97,6 +98,8 @@ function LayoutContent({ children }) {
 
         <MobileBottomNav />
         <OnboardingWizard />
+        {/* Read-only help agent — reachable from every screen */}
+        <SupportAssistant />
         <Toaster position="top-right" richColors />
       </div>
     </div>

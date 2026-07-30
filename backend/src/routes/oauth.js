@@ -4,9 +4,38 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const API_URL = process.env.API_URL || 'http://localhost:3001';
+const OAUTH_STATE_MAX_AGE_MS = 15 * 60 * 1000;
+
+function oauthStateSecret() {
+  const secret = process.env.OAUTH_STATE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!secret) throw new Error('OAUTH_STATE_SECRET is not configured');
+  return secret;
+}
+
+function encodeOAuthState(payload) {
+  const body = Buffer.from(JSON.stringify({ ...payload, issuedAt: Date.now() })).toString('base64url');
+  const signature = crypto.createHmac('sha256', oauthStateSecret()).update(body).digest('base64url');
+  return `${body}.${signature}`;
+}
+
+function decodeOAuthState(state) {
+  const [body, suppliedSignature] = String(state || '').split('.');
+  if (!body || !suppliedSignature) throw new Error('Invalid OAuth state');
+  const expectedSignature = crypto.createHmac('sha256', oauthStateSecret()).update(body).digest();
+  const supplied = Buffer.from(suppliedSignature, 'base64url');
+  if (supplied.length !== expectedSignature.length || !crypto.timingSafeEqual(supplied, expectedSignature)) {
+    throw new Error('Invalid OAuth state signature');
+  }
+  const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
+  if (!payload.issuedAt || Date.now() - payload.issuedAt > OAUTH_STATE_MAX_AGE_MS) {
+    throw new Error('OAuth session expired. Please connect again.');
+  }
+  return payload;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -109,12 +138,12 @@ router.get(['/google/initiate', '/google/initiate-url'], requireAuth, async (req
     if (!clientId) return res.status(400).json({ error: 'Google Client ID not configured' });
 
     const scopes = GOOGLE_SCOPES_MAP[type] || GOOGLE_SCOPES_MAP.gmail;
-    const state = Buffer.from(JSON.stringify({
+    const state = encodeOAuthState({
       userId: req.dbUser.id,
       companyId: req.companyId,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    })).toString('base64url');
+    });
 
     const redirectUri = `${API_URL}/api/oauth/google/callback`;
     const params = new URLSearchParams({
@@ -144,7 +173,7 @@ router.get('/google/callback', async (req, res) => {
       return res.send(popupHtml('error', 'Google', oauthError));
     }
 
-    const stateData = JSON.parse(Buffer.from(state, 'base64url').toString());
+    const stateData = decodeOAuthState(state);
     const { companyId, integrationType } = stateData;
 
     // Get company credentials from api_keys JSONB
@@ -197,12 +226,12 @@ router.get(['/meta/initiate', '/meta/initiate-url'], requireAuth, async (req, re
     const appId = apiKeys.meta_app_id || process.env.META_APP_ID;
     if (!appId) return res.status(400).json({ error: 'Meta App ID not configured' });
 
-    const state = Buffer.from(JSON.stringify({
+    const state = encodeOAuthState({
       userId: req.dbUser.id,
       companyId: req.companyId,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    })).toString('base64url');
+    });
 
     const scopes = 'email,pages_show_list,pages_read_engagement,pages_manage_posts,pages_messaging,instagram_basic,instagram_content_publish,instagram_manage_messages,ads_management,ads_read,business_management';
     const redirectUri = `${API_URL}/api/oauth/meta/callback`;
@@ -214,7 +243,7 @@ router.get(['/meta/initiate', '/meta/initiate-url'], requireAuth, async (req, re
       state,
     });
 
-    const authUrl = `https://www.facebook.com/v19.0/dialog/oauth?${params}`;
+    const authUrl = `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${params}`;
     if (req.path.endsWith('/initiate-url')) return res.json({ authUrl });
     res.redirect(authUrl);
   } catch (err) {
@@ -227,7 +256,7 @@ router.get('/meta/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Meta', oauthError));
 
-    const stateData = JSON.parse(Buffer.from(state, 'base64url').toString());
+    const stateData = decodeOAuthState(state);
     const { companyId, integrationType = 'meta' } = stateData;
 
     const { apiKeys } = await getCompanyKeys(companyId);
@@ -238,21 +267,21 @@ router.get('/meta/callback', async (req, res) => {
 
     // Exchange code for token
     const tokenResp = await fetch(
-      `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`
     );
     const tokens = await tokenResp.json();
     if (tokens.error) return res.send(popupHtml('error', 'Meta', tokens.error.message));
 
     // Get long-lived token
     const llResp = await fetch(
-      `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${tokens.access_token}`
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${tokens.access_token}`
     );
     const llTokens = await llResp.json();
     const accessToken = llTokens.access_token || tokens.access_token;
     const expiresIn = llTokens.expires_in || tokens.expires_in || 5184000;
 
     // Fetch FB pages
-    const pagesResp = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${accessToken}`);
+    const pagesResp = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts?access_token=${accessToken}`);
     const pagesData = await pagesResp.json();
     const page = pagesData.data?.[0];
 
@@ -260,7 +289,7 @@ router.get('/meta/callback', async (req, res) => {
     let igAccountId = null;
     if (page) {
       const igResp = await fetch(
-        `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
       );
       const igData = await igResp.json();
       igAccountId = igData.instagram_business_account?.id;
@@ -307,18 +336,21 @@ router.get(['/linkedin/initiate', '/linkedin/initiate-url'], requireAuth, async 
     const clientId = apiKeys.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'LinkedIn Client ID not configured' });
 
-    const state = Buffer.from(JSON.stringify({
+    const state = encodeOAuthState({
       companyId: req.companyId,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    })).toString('base64url');
+    });
     const redirectUri = `${API_URL}/api/oauth/linkedin/callback`;
+    const linkedinScopes = type === 'linkedin_ads'
+      ? 'openid profile email r_ads r_ads_reporting'
+      : 'openid profile email w_member_social';
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: clientId,
       redirect_uri: redirectUri,
       state,
-      scope: 'openid profile email w_member_social r_liteprofile r_emailaddress',
+      scope: linkedinScopes,
     });
 
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params}`;
@@ -334,7 +366,7 @@ router.get('/linkedin/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'LinkedIn', oauthError));
 
-    const { companyId, integrationType = 'linkedin' } = JSON.parse(Buffer.from(state, 'base64url').toString());
+    const { companyId, integrationType = 'linkedin' } = decodeOAuthState(state);
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientId = apiKeys.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
@@ -372,12 +404,12 @@ router.get(['/twitter/initiate', '/twitter/initiate-url'], requireAuth, async (r
     if (!clientId) return res.status(400).json({ error: 'Twitter Client ID not configured' });
 
     const codeVerifier = Buffer.from(crypto.randomUUID()).toString('base64url');
-    const state = Buffer.from(JSON.stringify({
+    const state = encodeOAuthState({
       companyId: req.companyId,
       codeVerifier,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    })).toString('base64url');
+    });
 
     const redirectUri = `${API_URL}/api/oauth/twitter/callback`;
     const params = new URLSearchParams({
@@ -403,7 +435,7 @@ router.get('/twitter/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Twitter/X', oauthError));
 
-    const { companyId, codeVerifier, integrationType = 'twitter' } = JSON.parse(Buffer.from(state, 'base64url').toString());
+    const { companyId, codeVerifier, integrationType = 'twitter' } = decodeOAuthState(state);
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientId = apiKeys.twitter_client_id || process.env.TWITTER_CLIENT_ID;
@@ -444,11 +476,11 @@ router.get(['/tiktok/initiate', '/tiktok/initiate-url'], requireAuth, async (req
     const clientKey = apiKeys.tiktok_client_key || process.env.TIKTOK_CLIENT_KEY;
     if (!clientKey) return res.status(400).json({ error: 'TikTok Client Key not configured' });
 
-    const state = Buffer.from(JSON.stringify({
+    const state = encodeOAuthState({
       companyId: req.companyId,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    })).toString('base64url');
+    });
     const redirectUri = `${API_URL}/api/oauth/tiktok/callback`;
     const params = new URLSearchParams({
       client_key: clientKey,
@@ -471,7 +503,7 @@ router.get('/tiktok/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'TikTok', oauthError));
 
-    const { companyId, integrationType = 'tiktok' } = JSON.parse(Buffer.from(state, 'base64url').toString());
+    const { companyId, integrationType = 'tiktok' } = decodeOAuthState(state);
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientKey = apiKeys.tiktok_client_key || process.env.TIKTOK_CLIENT_KEY;
@@ -587,9 +619,9 @@ router.get(['/canva/initiate', '/canva/initiate-url'], requireAuth, async (req, 
 
     const codeVerifier = crypto.randomBytes(48).toString('base64url');
     const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
-    const state = Buffer.from(JSON.stringify({
+    const state = encodeOAuthState({
       companyId: req.companyId, codeVerifier, integrationType: type, origin: origin || FRONTEND_URL,
-    })).toString('base64url');
+    });
 
     const params = new URLSearchParams({
       response_type: 'code',
@@ -612,7 +644,7 @@ router.get('/canva/callback', async (req, res) => {
   try {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Canva', oauthError));
-    const { companyId, codeVerifier, integrationType = 'canva' } = JSON.parse(Buffer.from(state, 'base64url').toString());
+    const { companyId, codeVerifier, integrationType = 'canva' } = decodeOAuthState(state);
     const { apiKeys } = await getCompanyKeys(companyId);
     const clientId = apiKeys.canva_client_id || process.env.CANVA_CLIENT_ID;
     const clientSecret = apiKeys.canva_client_secret || process.env.CANVA_CLIENT_SECRET;

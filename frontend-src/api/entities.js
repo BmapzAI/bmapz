@@ -45,6 +45,11 @@ export const Lead = {
   delete: (id) => api.delete(`/api/leads/${id}`),
   score: (id) => api.post(`/api/leads/${id}/score`),
   bulkCreate: (leads) => api.post('/api/leads/bulk', { leads }),
+  // Ownership: a lead belongs to exactly one teammate. Pass null to unassign.
+  assign: (id, ownerId) => api.patch(`/api/leads/${id}/owner`, { owner_id: ownerId || null }),
+  // History: the full handling timeline, visible to the whole company.
+  activities: (id, params) => api.get(`/api/leads/${id}/activities`, params),
+  addNote: (id, summary, details) => api.post(`/api/leads/${id}/activities`, { summary, details }),
 };
 
 export const LeadList = createEntity('/api/leads/lists');

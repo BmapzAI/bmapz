@@ -20,9 +20,12 @@ import { supabaseAdmin } from './supabase.js';
 import { sendCompanyEmail } from './emailSender.js';
 import { createNotification } from './notify.js';
 import { startSdrConversation, notifyHandover, handleInboundForSdr, FUNNEL_STAGES } from './sdrEngine.js';
+import { logLeadActivity, LEAD_ACTIVITY_TYPES } from './leadActivity.js';
 
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 const TICK_MS = 60 * 1000;
 const MAX_STEPS_PER_TICK = 12; // guard against loops within one run per tick
+const MAX_TOTAL_STEPS = 250; // fail malformed cyclic graphs instead of running forever
 let running = false;
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -42,11 +45,15 @@ function nodeById(wf, id) {
 
 function nextNodeId(wf, fromId, port = 'default') {
   const conns = connsOf(wf);
-  // exact port match first, then fall back to a default/only edge
+  // Exact port first. A conditional branch must never silently take the
+  // opposite branch when its requested edge is missing.
   const exact = conns.find(c => c.from?.nodeId === fromId && (c.from?.port || 'default') === port);
   if (exact) return exact.to;
-  const any = conns.find(c => c.from?.nodeId === fromId);
-  return any ? any.to : null;
+  if (port !== 'default') {
+    const fallback = conns.find(c => c.from?.nodeId === fromId && (c.from?.port || 'default') === 'default');
+    return fallback?.to || null;
+  }
+  return null;
 }
 
 function triggerNodeId(wf) {
@@ -94,7 +101,7 @@ async function evalCondition(node, run) {
     .eq('lead_id', run.lead_id);
 
   const inbound = (msgs || []).filter(m => m.direction === 'inbound' && (!since || new Date(m.created_at) >= new Date(since)));
-  const outbound = (msgs || []).filter(m => m.direction === 'outbound');
+  const outbound = (msgs || []).filter(m => m.direction === 'outbound' && (!since || new Date(m.created_at) >= new Date(since)));
 
   // Qualified/disqualified CHECK the lead's real CRM state — the same fields the
   // Lead-Qualification action, the Sales board, and the SDR all write. So the
@@ -156,7 +163,7 @@ async function executeSend(node, run, lead, companyKeys) {
       const token = companyKeys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
       const phoneId = companyKeys.whatsapp_phone_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
       if (token && phoneId && lead?.phone) {
-        const r = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
+        const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}/messages`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ messaging_product: 'whatsapp', to: lead.phone.replace(/\D/g, ''), type: 'text', text: { body } }),
@@ -165,11 +172,10 @@ async function executeSend(node, run, lead, companyKeys) {
         if (d.error) throw new Error(d.error.message || 'WhatsApp send failed');
         status = 'sent';
       } else {
-        status = 'queued'; // not configured — queue for manual send
+        throw new Error('WhatsApp is not configured or the lead has no phone number');
       }
     } else {
-      // linkedin / other: no server-side send API — queue for manual action
-      status = 'queued';
+      throw new Error(`Automatic workflow sends are not supported for ${channel}`);
     }
   } catch (e) {
     status = 'failed';
@@ -208,6 +214,10 @@ async function advanceRun(run, wf, companyKeys) {
 
   let currentId = run.current_node_id || nextNodeId(wf, triggerNodeId(wf)) || triggerNodeId(wf);
   let steps = run.steps_completed || 0;
+  if (steps >= MAX_TOTAL_STEPS) {
+    await updateRun(run.id, { status: 'failed', error: `workflow exceeded ${MAX_TOTAL_STEPS} steps (possible loop)` });
+    return;
+  }
   let lead = null;
   if (run.lead_id) {
     const { data } = await supabaseAdmin.from('leads').select('*').eq('id', run.lead_id).single();
@@ -215,6 +225,10 @@ async function advanceRun(run, wf, companyKeys) {
   }
 
   for (let i = 0; i < MAX_STEPS_PER_TICK; i++) {
+    if (steps >= MAX_TOTAL_STEPS) {
+      await updateRun(run.id, { status: 'failed', current_node_id: currentId, steps_completed: steps, error: `workflow exceeded ${MAX_TOTAL_STEPS} steps (possible loop)` });
+      return;
+    }
     const node = currentId ? nodeById(wf, currentId) : null;
     if (!node) {
       await updateRun(run.id, { status: 'completed', current_node_id: null, completed_at: new Date().toISOString(), steps_completed: steps });
@@ -250,7 +264,10 @@ async function advanceRun(run, wf, companyKeys) {
     }
 
     if (node.type === 'send_message') {
-      await executeSend(node, run, lead, companyKeys);
+      const sendResult = await executeSend(node, run, lead, companyKeys);
+      if (sendResult.status === 'failed') {
+        throw new Error(sendResult.error || `The ${node.channel || 'email'} message failed`);
+      }
       steps += 1;
       currentId = nextNodeId(wf, node.id, 'default');
       continue;
@@ -308,6 +325,13 @@ async function advanceRun(run, wf, companyKeys) {
         await supabaseAdmin.from('leads').update({ funnel_stage: 'sql', status: 'qualified' })
           .eq('id', run.lead_id).eq('company_id', run.company_id);
       }
+      await logLeadActivity({
+        companyId: run.company_id, leadId: run.lead_id,
+        activityType: LEAD_ACTIVITY_TYPES.HANDOVER,
+        summary: `Workflow "${wf.name}" handed the lead to the sales team`,
+        details: { workflow_id: run.workflow_id, run_id: run.id, node_id: node.id },
+        actorType: 'workflow', actorLabel: wf.name,
+      });
       steps += 1;
       currentId = nextNodeId(wf, node.id, 'default');
       continue;
@@ -329,6 +353,13 @@ async function advanceRun(run, wf, companyKeys) {
             company_id: run.company_id, lead_id: run.lead_id, type: 'stage_change',
             title: `Moved to ${target}`, description: `Workflow "${wf.name}" set funnel stage → ${target}`,
             metadata: { workflow_id: run.workflow_id, run_id: run.id, node_id: node.id, from: cur, to: target },
+          });
+          await logLeadActivity({
+            companyId: run.company_id, leadId: run.lead_id,
+            activityType: LEAD_ACTIVITY_TYPES.STAGE_CHANGED,
+            summary: `Workflow "${wf.name}" moved the lead from "${cur}" to "${target}"`,
+            details: { from: cur, to: target, workflow_id: run.workflow_id, run_id: run.id },
+            actorType: 'workflow', actorLabel: wf.name,
           });
           await createNotification({
             companyId: run.company_id, type: 'qualification', icon: '📈', leadId: run.lead_id,
@@ -440,7 +471,7 @@ export async function enrollByTrigger({ companyId, event, leadId, context = {} }
  * `isNewLead` / `isNewConversation` are computed by the caller where cheap, but
  * this function will resolve the lead if only a handle is supplied.
  */
-export async function handleInboundEvent({ companyId, channel, contactHandle, contactName, text, leadId, isNewConversation }) {
+export async function handleInboundEvent({ companyId, channel, contactHandle, contactName, text, leadId, isNewConversation, alreadyLogged = false }) {
   if (!companyId) return;
   try {
     let lead = null;
@@ -491,7 +522,7 @@ export async function handleInboundEvent({ companyId, channel, contactHandle, co
 
     // Let the SDR answer (if enabled for this channel)
     if (text) {
-      await handleInboundForSdr({ companyId, channel, contactHandle, contactName, leadId: lead?.id, text }).catch(e =>
+      await handleInboundForSdr({ companyId, channel, contactHandle, contactName, leadId: lead?.id, text, alreadyLogged }).catch(e =>
         console.error('[workflowEngine] SDR inbound failed:', e.message));
     }
   } catch (err) {
