@@ -1403,3 +1403,78 @@ production smoke tests. Known performance follow-up: main JS bundle is about
 reviewed, committed, pushed, and deployed. Then each external provider app must
 be registered/approved and tested with sandbox/test accounts. Do not activate a
 workflow or SDR against real leads until provider-specific end-to-end tests pass.
+
+### 2026-07-24 - Claude (Session 23: Codex handoff commit + 6 feature/bug items)
+
+Branch `claude/release-2026-07-24` → merged to `main`.
+
+**Session 22 Codex work committed (`4925937`).** Audited line-by-line before
+committing: it builds on Session 21 rather than reverting it (template library,
+`initialTemplate` pre-load and SDR custom-outcome guardrails all intact, and
+custom outcomes now additionally map to conversation status). `.claude/` and the
+two old Codex audit docs were deliberately left untracked. Note
+`OAUTH_STATE_SECRET` is new but falls back to `SUPABASE_SERVICE_ROLE_KEY`, so
+existing deployments keep working without a Railway change.
+
+**1. Social posts silently failed to save + images vanished (`9b0994d`).**
+Root cause: `social_posts.scheduled_for` is TIMESTAMPTZ but the editor sent `''`
+for an unscheduled post. Postgres rejects `''` for a timestamp, so the insert
+failed — and neither mutation had an `onError`, so the failure was invisible.
+Fixed on both sides (frontend sends null; the social route coerces
+`''`/undefined → NULL for `scheduled_for`/`published_at`), added error toasts and
+a saving spinner. Separately, the media strip only rendered `uploadedMedia` and
+was never seeded from a saved post's `media_urls`, so opening a post showed no
+images and saving wrote the empty list back over them; the update path also
+ignored `uploadedMedia` entirely. Added `openExistingPost()` (used by all seven
+edit call sites) and a single `handleSavePost()`. `content_type` is normalized
+against its CHECK constraint so an AI free-text type cannot reject a save.
+
+**2. Brand templates no longer collapse carousels (`99db5c7`).** `loadTemplate`
+defaulted `format` to `'single'` when the saved config lacked it, collapsing
+multi-slide templates and desyncing the format toggle from the loaded slides.
+Format is now derived from the template's real slide count, and the aspect ratio
+only changes when the template specifies one. Switching to Single now confirms
+before discarding slides.
+
+**3. Custom aspect ratios (`99db5c7`).** A "Custom" canvas size with width/height
+inputs (clamped 100–4096px) + quick presets, resolved through `resolveRatio()` so
+preview and export both honour it.
+
+**4. AI carousels (`99db5c7`).** The AI dialog can generate a whole carousel: a
+planner splits the concept into N cohesive slide prompts (with a templated
+fallback), generates one image per slide in a shared style, and appends them with
+live progress. Pre-checks itself when the Carousel format is already selected.
+
+**5. Lead ownership + history (`6462384`) — NEEDS MIGRATION 010.** Each lead now
+has exactly one owner (`leads.owner_id`), visible company-wide, and every step is
+recorded in the new `lead_activities` timeline. Its RLS is intentionally
+company-wide readable (cross-company still blocked). `PATCH /api/leads/:id/owner`
+rejects users outside the company. The SDR and the workflow engine write history
+too, so automated handling appears alongside manual work. UI: owner select +
+timeline + note box on the lead page, owner badge on every Kanban card.
+
+**6. Global read-only support assistant (`8a4f02a`).** A help bubble on every
+screen (mounted in `Layout.jsx`, z-[100]) toggling into a chat panel. A THIRD
+agent, separate from the Company Brain chat and the SDR: strictly read-only, and
+its prompt tells it to give click-by-click steps instead of acting. Before
+answering it reads a privacy-safe diagnostic snapshot (counts, connected
+integrations, whether the brain is filled, whether the SDR is enabled) so it can
+name the real blocker; the snapshot contains no message bodies or contacts. It
+links only to real app screens and those links become in-app navigation. Uses
+`skipBrain`, so the internal Company Brain is never exposed via support.
+Backend: `POST /api/help/assistant`, `GET /api/help/diagnostics`.
+
+**Verification:** frontend build (3,567 modules), backend build, `eslint .
+--quiet` clean, all 43 backend files `node --check`, `git diff --check` clean.
+Migration 008 (`custom_outcomes`) was confirmed present in production by querying
+`information_schema` directly.
+
+#### Derek actions required
+- **Run `supabase/migrations/010_lead_ownership_history.sql`** in the Supabase SQL
+  editor. Until then lead ownership/history will error (the column and table do
+  not exist yet); nothing else is affected.
+
+#### Follow-ups
+- Route-level code splitting for the ~3.2 MB bundle is still open (Codex's note).
+- The support assistant is read-only by design — if it should ever perform
+  actions, that belongs to the Company Brain agent, not this one.
