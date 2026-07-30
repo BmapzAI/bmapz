@@ -217,11 +217,11 @@ export default function Workflows() {
       </div>
 
       <Tabs defaultValue="active">
-        <TabsList className="bg-white/5 border border-white/10">
-          <TabsTrigger value="active" className="data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400">{t('activeCount')} ({active.length})</TabsTrigger>
-          <TabsTrigger value="draft" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">{t('draftsCount')} ({drafts.length})</TabsTrigger>
-          <TabsTrigger value="inactive" className="data-[state=active]:bg-gray-500/20 data-[state=active]:text-gray-400">{t('inactiveCount')} ({inactive.length})</TabsTrigger>
-          <TabsTrigger value="templates" className="data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
+        <TabsList className="w-full justify-start overflow-x-auto bg-white/5 border border-white/10">
+          <TabsTrigger value="active" className="shrink-0 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400">{t('activeCount')} ({active.length})</TabsTrigger>
+          <TabsTrigger value="draft" className="shrink-0 data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">{t('draftsCount')} ({drafts.length})</TabsTrigger>
+          <TabsTrigger value="inactive" className="shrink-0 data-[state=active]:bg-gray-500/20 data-[state=active]:text-gray-400">{t('inactiveCount')} ({inactive.length})</TabsTrigger>
+          <TabsTrigger value="templates" className="shrink-0 data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
             <LayoutTemplate size={14} className="mr-1" />{t('templatesCount')} ({WORKFLOW_TEMPLATE_LIST.length + workflowTemplates.length})
           </TabsTrigger>
         </TabsList>

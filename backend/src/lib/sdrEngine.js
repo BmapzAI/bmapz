@@ -17,6 +17,7 @@ import { runAIChat } from '../routes/ai.js';
 import { sendCompanyEmail } from './emailSender.js';
 import { createNotification } from './notify.js';
 
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 export const FUNNEL_STAGES = ['prospect', 'awareness', 'consideration', 'mql', 'sql', 'opportunity', 'customer', 'retention', 'advocacy'];
 export const ALL_OUTCOMES = ['offer_product', 'handover', 'qualified', 'not_qualified', 'support'];
 
@@ -215,7 +216,7 @@ export async function sdrRespond({ companyId, agent, facts, conversationMessages
  * side-effects (notifications + CRM stage moves).
  * Returns { conversation, reply, outcome } or null if the SDR is disabled.
  */
-export async function handleInboundForSdr({ companyId, channel = 'web', contactHandle, contactName, leadId, text }) {
+export async function handleInboundForSdr({ companyId, channel = 'web', contactHandle, contactName, leadId, text, alreadyLogged = false }) {
   const agent = await getCompanySdrAgent(companyId);
   if (!agent?.enabled) return null;
   const channels = Array.isArray(agent.channels) ? agent.channels : [];
@@ -227,13 +228,13 @@ export async function handleInboundForSdr({ companyId, channel = 'web', contactH
   let convo = null;
   if (leadId) {
     const { data } = await supabaseAdmin.from('sdr_conversations').select('*')
-      .eq('company_id', companyId).eq('lead_id', leadId).in('status', ['active', 'qualified'])
+      .eq('company_id', companyId).eq('lead_id', leadId).in('status', ['active', 'qualified', 'handed_over', 'support'])
       .order('last_message_at', { ascending: false }).limit(1).maybeSingle();
     convo = data;
   }
   if (!convo && contactHandle) {
     const { data } = await supabaseAdmin.from('sdr_conversations').select('*')
-      .eq('company_id', companyId).eq('contact_handle', contactHandle).in('status', ['active', 'qualified'])
+      .eq('company_id', companyId).eq('contact_handle', contactHandle).in('status', ['active', 'qualified', 'handed_over', 'support'])
       .order('last_message_at', { ascending: false }).limit(1).maybeSingle();
     convo = data;
   }
@@ -249,7 +250,9 @@ export async function handleInboundForSdr({ companyId, channel = 'web', contactH
   const messages = [...(convo.messages || []), { role: 'client', content: text, at: new Date().toISOString() }];
 
   // Always log the client's inbound message to the unified Inbox thread.
-  await logToInbox({ companyId, leadId: convo.lead_id || leadId, channel, direction: 'inbound', content: text, from: contactHandle, convoId: convo.id });
+  if (!alreadyLogged) {
+    await logToInbox({ companyId, leadId: convo.lead_id || leadId, channel, direction: 'inbound', content: text, from: contactHandle, convoId: convo.id });
+  }
 
   // If a human has taken over (replied from the Inbox), the SDR stands down —
   // it records the message but does NOT auto-reply.
@@ -275,6 +278,11 @@ export async function handleInboundForSdr({ companyId, channel = 'web', contactH
   else if (decision.outcome === 'not_qualified') status = 'not_qualified';
   else if (decision.outcome === 'handover') status = 'handed_over';
   else if (decision.outcome === 'support') status = 'support';
+  else if (decision.outcome && decision.outcome !== 'none') {
+    const custom = customOutcomesOf(agent).find(o => o.key === decision.outcome);
+    if (custom?.effects?.handover) status = 'handed_over';
+    else if (custom?.effects?.mark_qualified) status = 'qualified';
+  }
 
   await supabaseAdmin.from('sdr_conversations').update({
     messages, qualification, notes, status,
@@ -298,7 +306,7 @@ export async function handleInboundForSdr({ companyId, channel = 'web', contactH
  */
 export async function startSdrConversation({ companyId, leadId, lead, channel = 'email', openingText }) {
   const agent = await getCompanySdrAgent(companyId);
-  if (!agent?.enabled) return null;
+  if (!agent?.enabled) throw new Error('The SDR agent is disabled');
   const facts = await getCompanyFacts(companyId);
 
   const contactHandle = channel === 'whatsapp' ? (lead?.phone || null) : (lead?.email || null);
@@ -327,47 +335,78 @@ export async function startSdrConversation({ companyId, leadId, lead, channel = 
     qualification: {}, notes: [{ at: new Date().toISOString(), note: 'SDR conversation started by workflow' }],
   }).select().single();
 
-  await sendSdrReply({ companyId, channel, contactHandle, leadId, reply: opener, convoId: convo.id });
+  try {
+    await sendSdrReply({ companyId, channel, contactHandle, leadId, reply: opener, convoId: convo.id });
+  } catch (error) {
+    await supabaseAdmin.from('sdr_conversations').update({
+      status: 'closed',
+      notes: [...(convo.notes || []), { at: new Date().toISOString(), note: `Opening message failed: ${error.message}` }],
+      updated_at: new Date().toISOString(),
+    }).eq('id', convo.id);
+    throw error;
+  }
   return convo;
 }
 
 // Log an SDR message into the unified `messages` table so the Inbox shows the
 // full client thread (both directions), lets sales pick it up, and keeps history.
-async function logToInbox({ companyId, leadId, channel, direction, content, from, to, convoId, human }) {
+async function logToInbox({ companyId, leadId, channel, direction, content, from, to, convoId, human, status, error }) {
   try {
     await supabaseAdmin.from('messages').insert({
       company_id: companyId, lead_id: leadId || null,
       direction, channel: channel === 'web' ? 'internal' : channel,
-      content, status: direction === 'inbound' ? 'received' : 'sent',
-      sent_at: new Date().toISOString(),
+      content, status: status || (direction === 'inbound' ? 'received' : 'sent'),
+      sent_at: status === 'failed' ? null : new Date().toISOString(),
       from_address: from || null, to_address: to || null,
-      metadata: { sdr: !human, human: !!human, sdr_conversation_id: convoId || null },
+      metadata: { sdr: !human, human: !!human, sdr_conversation_id: convoId || null, error: error || null },
     });
   } catch (err) { console.error('[sdr] logToInbox failed:', err.message); }
 }
 
 async function sendSdrReply({ companyId, channel, contactHandle, leadId, reply, convoId }) {
+  let error = null;
   try {
-    await logToInbox({ companyId, leadId, channel, direction: 'outbound', content: reply, to: contactHandle, convoId });
     if (channel === 'email' && contactHandle) {
       const { data: c } = await supabaseAdmin.from('companies').select('api_keys').eq('id', companyId).single();
       await sendCompanyEmail(c?.api_keys || {}, { to: contactHandle, subject: 'Re: your enquiry', html: reply.replace(/\n/g, '<br>'), text: reply });
-    } else if (channel === 'whatsapp' && contactHandle) {
+    } else if (channel === 'whatsapp') {
       const { data: c } = await supabaseAdmin.from('companies').select('api_keys').eq('id', companyId).single();
       const keys = c?.api_keys || {};
       const token = keys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
       const phoneId = keys.whatsapp_phone_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
-      if (token && phoneId) {
-        await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
-          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messaging_product: 'whatsapp', to: contactHandle.replace(/\D/g, ''), type: 'text', text: { body: reply } }),
-        });
-      }
+      if (!token || !phoneId || !contactHandle) throw new Error('WhatsApp is not configured or the contact has no phone number');
+      const response = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}/messages`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: contactHandle.replace(/\D/g, ''), type: 'text', text: { body: reply } }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.error) throw new Error(result.error?.message || `WhatsApp send failed (${response.status})`);
+    } else if (channel === 'instagram') {
+      const { data: c } = await supabaseAdmin.from('companies').select('api_keys').eq('id', companyId).single();
+      const keys = c?.api_keys || {};
+      const token = keys.facebook_page_access_token || keys.meta_access_token;
+      const accountId = keys.instagram_business_account_id || keys.instagram_account_id;
+      if (!token || !accountId || !contactHandle) throw new Error('Instagram messaging is not configured or the sender ID is missing');
+      const response = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${accountId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient: { id: contactHandle }, message: { text: reply } }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.error) throw new Error(result.error?.message || `Instagram send failed (${response.status})`);
+    } else if (channel !== 'web') {
+      throw new Error(`Automatic SDR replies are not supported for ${channel}`);
     }
     // web channel: reply is returned to the caller (widget) — no external send
   } catch (err) {
+    error = err;
     console.error('[sdr] sendReply failed:', err.message);
   }
+  await logToInbox({
+    companyId, leadId, channel, direction: 'outbound', content: reply,
+    to: contactHandle, convoId, status: error ? 'failed' : 'sent', error: error?.message,
+  });
+  if (error) throw error;
 }
 
 async function applySdrOutcome({ companyId, agent, convo, leadId, decision, contactName }) {
@@ -444,7 +483,7 @@ export async function notifyHandover({ companyId, agent, who, leadId, note, chan
       const phones = to.split(',').map(s => s.replace(/\D/g, '')).filter(p => p.length >= 8);
       if (token && phoneId) {
         for (const ph of phones) {
-          await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
+          await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}/messages`, {
             method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ messaging_product: 'whatsapp', to: ph, type: 'text', text: { body: `${title}\n${body}` } }),
           }).catch(() => {});

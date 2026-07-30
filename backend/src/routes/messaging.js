@@ -6,6 +6,12 @@ import { handleInboundEvent } from '../lib/workflowEngine.js';
 const router = Router();
 
 const SYNC_CHANNELS = ['gmail', 'instagram', 'whatsapp', 'linkedin'];
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const TEMPLATE_FIELDS = ['name', 'channel', 'subject', 'content', 'html_content', 'variables', 'category', 'is_global'];
+const ACTIVITY_FIELDS = ['lead_id', 'user_email', 'type', 'title', 'description', 'metadata'];
+const MESSAGE_FIELDS = ['lead_id', 'direction', 'channel', 'subject', 'content', 'html_content', 'status',
+  'sent_at', 'read_at', 'from_address', 'to_address', 'platform_message_id', 'thread_id', 'metadata'];
+const pickFields = (body, fields) => Object.fromEntries(fields.filter(field => field in (body || {})).map(field => [field, body[field]]));
 
 // ─── Message Templates (must be before /:id) ─────────────────────────────────
 
@@ -27,7 +33,7 @@ router.post('/templates', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('message_templates')
-      .insert({ ...req.body, company_id: req.companyId })
+      .insert({ ...pickFields(req.body, TEMPLATE_FIELDS), company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -41,7 +47,7 @@ router.patch('/templates/:id', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('message_templates')
-      .update(req.body)
+      .update(pickFields(req.body, TEMPLATE_FIELDS))
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .select()
@@ -94,7 +100,7 @@ router.post('/activities', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('activities')
-      .insert({ ...req.body, company_id: req.companyId })
+      .insert({ ...pickFields(req.body, ACTIVITY_FIELDS), company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -109,6 +115,9 @@ router.post('/activities', requireAuth, async (req, res) => {
 router.post('/sync', requireAuth, async (req, res) => {
   try {
     const requestedChannel = normalizeSyncChannel(req.body?.channel);
+    if (requestedChannel === 'invalid') {
+      return res.status(400).json({ error: 'Unsupported inbox sync channel' });
+    }
     const channels = requestedChannel ? [requestedChannel] : SYNC_CHANNELS;
     const limit = Math.min(Number(req.body?.limit) || 25, 50);
 
@@ -173,7 +182,7 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('messages')
-      .insert({ ...req.body, company_id: req.companyId })
+      .insert({ ...pickFields(req.body, MESSAGE_FIELDS), company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -204,7 +213,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('messages')
-      .update(req.body)
+      .update(pickFields(req.body, MESSAGE_FIELDS))
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .select()
@@ -228,7 +237,7 @@ function normalizeSyncChannel(channel) {
     whatsapp: 'whatsapp',
     linkedin: 'linkedin',
   };
-  return map[value] || null;
+  return map[value] || 'invalid';
 }
 
 async function syncGmail(companyId, company, limit) {
@@ -280,7 +289,7 @@ async function syncInstagram(companyId, company, limit) {
     };
   }
 
-  const conversationsUrl = new URL(`https://graph.facebook.com/v19.0/${pageId}/conversations`);
+  const conversationsUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/conversations`);
   conversationsUrl.searchParams.set('platform', 'instagram');
   conversationsUrl.searchParams.set('fields', 'id,updated_time,participants');
   conversationsUrl.searchParams.set('limit', String(Math.min(limit, 25)));
@@ -291,7 +300,7 @@ async function syncInstagram(companyId, company, limit) {
   let checked = 0;
 
   for (const conversation of conversationsData.data || []) {
-    const messagesUrl = new URL(`https://graph.facebook.com/v19.0/${conversation.id}/messages`);
+    const messagesUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${conversation.id}/messages`);
     messagesUrl.searchParams.set('fields', 'id,created_time,from,to,message');
     messagesUrl.searchParams.set('limit', '10');
     messagesUrl.searchParams.set('access_token', pageToken);
@@ -478,9 +487,10 @@ async function insertMessageIfNew(record) {
   // Real prospect message arrived → fire workflow triggers + let the SDR answer.
   // Fire-and-forget so a slow AI turn never blocks the sync.
   if (record.direction === 'inbound') {
-    const contactHandle = record.from_address
+    const contactHandle = record.metadata?.from_email
       || record.metadata?.from_phone
       || record.metadata?.ig_sender_id
+      || record.from_address
       || null;
     const contactName = record.metadata?.from_name || record.metadata?.ig_sender_name || null;
     // A message with no thread_id (or a novel thread) is treated as a new conversation.
@@ -492,6 +502,7 @@ async function insertMessageIfNew(record) {
       text: record.content || '',
       leadId: record.lead_id || null,
       isNewConversation: !record.thread_id,
+      alreadyLogged: true,
     }).catch(err => console.error('[messaging] inbound trigger failed:', err.message));
   }
   return true;
@@ -538,7 +549,9 @@ function isExpired(isoDate) {
 }
 
 function buildSyncMessage(results, imported) {
-  if (imported > 0) return `Imported ${imported} new message(s).`;
-  const statuses = Object.values(results).map(r => r.message).filter(Boolean);
-  return statuses[0] || 'Inbox checked; no new messages found.';
+  const statuses = Object.entries(results)
+    .map(([channel, result]) => result?.message ? `${channel}: ${result.message}` : null)
+    .filter(Boolean);
+  const prefix = imported > 0 ? `Imported ${imported} new message(s).` : 'Inbox checked.';
+  return statuses.length ? `${prefix} ${statuses.join(' ')}` : `${prefix} No new messages found.`;
 }

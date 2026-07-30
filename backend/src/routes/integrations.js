@@ -3,6 +3,8 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202606';
 
 // GET /api/integrations/status — full integration status for the company
 router.get('/status', requireAuth, async (req, res) => {
@@ -31,15 +33,16 @@ router.get('/status', requireAuth, async (req, res) => {
       youtube: !!(k.google_access_token),
       // Meta
       meta: !!(k.meta_access_token),
-      meta_ads: !!(k.meta_access_token),
+      meta_ads: !!(k.meta_access_token && (k.meta_ads_account_id || k.meta_ad_account_id)),
       facebook: !!(k.meta_access_token && k.facebook_page_id),
       instagram: !!(k.meta_access_token && k.instagram_business_account_id),
       // Social
       linkedin: !!(k.linkedin_access_token),
-      linkedin_ads: !!(k.linkedin_ads_access_token || k.linkedin_access_token),
+      linkedin_ads: !!((k.linkedin_ads_access_token || k.linkedin_access_token) && k.linkedin_ads_account_id),
       twitter: !!(k.twitter_access_token),
       tiktok: !!(k.tiktok_access_token),
       tiktok_ads: !!(k.tiktok_access_token && k.tiktok_advertiser_id),
+      canva: !!(k.canva_access_token),
       // Messaging
       whatsapp: !!(k.whatsapp_api_token && k.whatsapp_phone_id),
       // Email
@@ -64,8 +67,9 @@ router.get('/status', requireAuth, async (req, res) => {
       stripe: !!(k.stripe_connected),
     };
 
-    // Merge: auto-detected takes precedence for presence, stored status for OAuth-confirmed ones
-    const merged = { ...detected, ...status };
+    // Credentials are the ground truth. A stale saved status must not claim an
+    // integration is connected when its required token/account is missing.
+    const merged = { ...status, ...detected };
 
     res.json({
       status: merged,
@@ -191,7 +195,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         if (!whatsapp_api_token || !whatsapp_phone_id) {
           return res.json({ success: false, message: 'WhatsApp API token and Phone Number ID required' });
         }
-        const r = await fetch(`https://graph.facebook.com/v19.0/${whatsapp_phone_id}`, {
+        const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${whatsapp_phone_id}`, {
           headers: { Authorization: `Bearer ${whatsapp_api_token}` },
         });
         if (r.ok) return res.json({ success: true, message: 'WhatsApp Business connected' });
@@ -211,7 +215,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         const token = k.meta_access_token;
         const accountId = k.meta_ads_account_id || k.meta_ad_account_id;
         if (!token || !accountId) return res.json({ success: false, message: 'Meta Ads requires OAuth and an Ad Account ID' });
-        const r = await fetch(`https://graph.facebook.com/v19.0/act_${accountId}?fields=id,name&access_token=${token}`);
+        const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}?fields=id,name&access_token=${token}`);
         const d = await r.json();
         if (r.ok && !d.error) return res.json({ success: true, message: `Meta Ads connected${d.name ? `: ${d.name}` : ''}` });
         return res.json({ success: false, message: d.error?.message || 'Meta token or ad account is invalid. Please reconnect.' });
@@ -220,7 +224,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       case 'google_ads': {
         const developerToken = k.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
         const customerId = String(k.google_ads_customer_id || '').replace(/-/g, '');
-        const token = k.google_access_token;
+        const token = await getGoogleAccessToken(req.companyId, k);
         if (!developerToken || !customerId || !token) {
           return res.json({ success: false, message: 'Google Ads requires Developer Token, Customer ID, and a connected OAuth token' });
         }
@@ -242,8 +246,12 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         const token = k.linkedin_ads_access_token || k.linkedin_access_token;
         const accountId = k.linkedin_ads_account_id;
         if (!token || !accountId) return res.json({ success: false, message: 'LinkedIn Ads requires OAuth and an Ad Account ID' });
-        const r = await fetch(`https://api.linkedin.com/v2/adCampaignsV2?q=search&search.account.values[0]=urn:li:sponsoredAccount:${accountId}&count=1`, {
-          headers: { Authorization: `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' },
+        const r = await fetch(`https://api.linkedin.com/rest/adAccounts/${accountId}/adCampaigns?q=search&search=(test:False)&pageSize=1`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Linkedin-Version': LINKEDIN_API_VERSION,
+            'X-Restli-Protocol-Version': '2.0.0',
+          },
         });
         const d = await r.json();
         if (r.ok && !d.message) return res.json({ success: true, message: 'LinkedIn Ads live API connection confirmed' });
@@ -465,3 +473,35 @@ router.post('/hunter/find-email', requireAuth, async (req, res) => {
 });
 
 export default router;
+
+async function getGoogleAccessToken(companyId, keys) {
+  const expiresAt = keys.google_token_expires_at ? new Date(keys.google_token_expires_at).getTime() : 0;
+  if (keys.google_access_token && expiresAt > Date.now() + 60000) return keys.google_access_token;
+
+  const refreshToken = keys.google_ads_refresh_token || keys.google_refresh_token;
+  const clientId = keys.google_ads_client_id || keys.google_client_id || process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = keys.google_ads_client_secret || keys.google_client_secret || process.env.GOOGLE_CLIENT_SECRET;
+  if (!refreshToken || !clientId || !clientSecret) return keys.google_access_token || null;
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+  });
+  const tokens = await response.json();
+  if (!response.ok || tokens.error || !tokens.access_token) {
+    throw new Error(tokens.error_description || tokens.error || 'Google OAuth refresh failed');
+  }
+  const updatedKeys = {
+    ...keys,
+    google_access_token: tokens.access_token,
+    google_token_expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
+  };
+  await supabaseAdmin.from('companies').update({ api_keys: updatedKeys }).eq('id', companyId);
+  return tokens.access_token;
+}

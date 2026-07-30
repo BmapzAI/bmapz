@@ -3,6 +3,11 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const SOCIAL_POST_FIELDS = ['title', 'content', 'platform_contents', 'platforms', 'content_type',
+  'status', 'scheduled_for', 'published_at', 'external_post_id', 'platform_post_ids', 'hashtags',
+  'media_urls', 'performance', 'ai_generated', 'ai_optimized'];
+const pickFields = (body, fields) => Object.fromEntries(fields.filter(field => field in (body || {})).map(field => [field, body[field]]));
 
 // ─── Social Posts CRUD ────────────────────────────────────────────────────────
 
@@ -31,7 +36,7 @@ router.post('/posts', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('social_posts')
-      .insert({ ...req.body, company_id: req.companyId })
+      .insert({ ...pickFields(req.body, SOCIAL_POST_FIELDS), company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -60,7 +65,7 @@ router.patch('/posts/:id', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('social_posts')
-      .update(req.body)
+      .update(pickFields(req.body, SOCIAL_POST_FIELDS))
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .select()
@@ -164,7 +169,7 @@ router.get('/feed', requireAuth, async (req, res) => {
       if (company.facebook_page_access_token && company.facebook_page_id) {
         try {
           const r = await fetch(
-            `https://graph.facebook.com/v19.0/${company.facebook_page_id}/posts?fields=id,message,created_time,full_picture,permalink_url,likes.summary(true),comments.summary(true),shares&limit=20&access_token=${company.facebook_page_access_token}`
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/${company.facebook_page_id}/posts?fields=id,message,created_time,full_picture,permalink_url,likes.summary(true),comments.summary(true),shares&limit=20&access_token=${company.facebook_page_access_token}`
           );
           const d = await r.json();
           (d.data || []).forEach(p => feed.push({
@@ -182,7 +187,7 @@ router.get('/feed', requireAuth, async (req, res) => {
       if (company.meta_access_token && company.instagram_business_account_id) {
         try {
           const r = await fetch(
-            `https://graph.facebook.com/v19.0/${company.instagram_business_account_id}/media?fields=id,caption,timestamp,media_type,media_url,permalink,like_count,comments_count&limit=20&access_token=${company.meta_access_token}`
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/${company.instagram_business_account_id}/media?fields=id,caption,timestamp,media_type,media_url,permalink,like_count,comments_count&limit=20&access_token=${company.meta_access_token}`
           );
           const d = await r.json();
           (d.data || []).forEach(p => feed.push({
@@ -264,7 +269,7 @@ router.get('/analytics', requireAuth, async (req, res) => {
         try {
           const metrics = 'page_impressions,page_engaged_users,page_post_engagements,page_fans';
           const r = await fetch(
-            `https://graph.facebook.com/v19.0/${company.facebook_page_id}/insights?metric=${metrics}&period=day&limit=30&access_token=${company.facebook_page_access_token}`
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/${company.facebook_page_id}/insights?metric=${metrics}&period=day&limit=30&access_token=${company.facebook_page_access_token}`
           );
           const d = await r.json();
           analytics.facebook = d.data || [];
@@ -279,7 +284,7 @@ router.get('/analytics', requireAuth, async (req, res) => {
         try {
           const metrics = 'impressions,reach,profile_views,follower_count';
           const r = await fetch(
-            `https://graph.facebook.com/v19.0/${company.instagram_business_account_id}/insights?metric=${metrics}&period=day&limit=30&access_token=${company.meta_access_token}`
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/${company.instagram_business_account_id}/insights?metric=${metrics}&period=day&limit=30&access_token=${company.meta_access_token}`
           );
           const d = await r.json();
           analytics.instagram = d.data || [];
@@ -305,7 +310,7 @@ async function publishToFacebook(company, content, mediaUrls) {
   const body = { message: content, access_token: pageToken };
   if (mediaUrls?.length) body.link = mediaUrls[0];
 
-  const r = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, {
+  const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${pageId}/feed`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -323,7 +328,7 @@ async function publishToInstagram(company, content, mediaUrls) {
   if (!mediaUrls?.length) throw new Error('Instagram requires an image URL');
 
   // Step 1: Create media container
-  const containerResp = await fetch(`https://graph.facebook.com/v19.0/${igId}/media`, {
+  const containerResp = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${igId}/media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image_url: mediaUrls[0], caption: content, access_token: token }),
@@ -332,7 +337,7 @@ async function publishToInstagram(company, content, mediaUrls) {
   if (container.error) throw new Error(container.error.message);
 
   // Step 2: Publish container
-  const publishResp = await fetch(`https://graph.facebook.com/v19.0/${igId}/media_publish`, {
+  const publishResp = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${igId}/media_publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ creation_id: container.id, access_token: token }),

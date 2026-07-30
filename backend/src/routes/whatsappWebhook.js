@@ -25,6 +25,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { runAIChat } from './ai.js';
 
 const router = Router();
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || '';
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';
@@ -51,7 +52,7 @@ async function sendWhatsAppMessage(toPhone, text) {
     console.warn('[whatsapp] cannot send — WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID not set');
     return false;
   }
-  const url = `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`;
+  const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${PHONE_NUMBER_ID}/messages`;
   const body = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',

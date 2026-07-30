@@ -374,7 +374,20 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
   const requested = model && model.startsWith('claude') ? model : (settings.anthropic_model || null);
   const anthropicModel = resolveAnthropicModel(requested);
 
-  const anthropicMessages = (messages || []).filter(m => m.role !== 'system');
+  const anthropicMessages = (messages || [])
+    .filter(m => m.role !== 'system')
+    .map(m => {
+      if (!Array.isArray(m.content)) return m;
+      return {
+        ...m,
+        content: m.content.map(part => {
+          if (part?.type === 'image_url' && part.image_url?.url) {
+            return { type: 'image', source: { type: 'url', url: part.image_url.url } };
+          }
+          return part;
+        }),
+      };
+    });
   let systemPrompt = system || (messages || []).find(m => m.role === 'system')?.content;
 
   // Anthropic doesn't have OpenAI-style response_format: json_object.
@@ -1075,6 +1088,7 @@ function flattenAIOutput(row) {
   return {
     ...rest,
     ...(metadata || {}),
+    metadata: metadata || {},
     // Map schema columns to frontend-expected aliases
     status: (metadata || {}).status || (row.approved ? 'approved' : row.applied ? 'applied' : 'pending'),
     created_date: row.created_at,

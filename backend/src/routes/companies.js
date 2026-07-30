@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
+import { invalidateCompanyBrain } from '../lib/companyBrain.js';
 
 const router = Router();
 
@@ -165,6 +166,7 @@ router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
       .single();
 
     if (error) throw error;
+    invalidateCompanyBrain(req.companyId);
     res.json(flattenCompany(data));
   } catch (err) {
     console.error('[companies/patch]', err.message);
@@ -238,9 +240,13 @@ router.get('/credits', requireAuth, async (req, res) => {
 });
 
 // POST /api/companies/deduct-credits
-router.post('/deduct-credits', requireAuth, async (req, res) => {
+router.post('/deduct-credits', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
-    const { amount = 1, feature = 'ai_call' } = req.body;
+    const amount = Number(req.body?.amount ?? 1);
+    const feature = req.body?.feature || 'ai_call';
+    if (!Number.isInteger(amount) || amount < 1 || amount > 1000) {
+      return res.status(400).json({ error: 'amount must be an integer between 1 and 1000' });
+    }
 
     const { data: sub, error: subErr } = await supabaseAdmin
       .from('subscriptions')

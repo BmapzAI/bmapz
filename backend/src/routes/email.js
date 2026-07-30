@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { sendCompanyEmail } from '../lib/emailSender.js';
 
 const router = Router();
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 
 // When a human replies to a lead from the Inbox, any active SDR conversation for
 // that lead is handed to the human — the SDR stops auto-replying. The human
@@ -50,12 +51,27 @@ router.post('/send', requireAuth, async (req, res) => {
         const token = keys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
         const phoneId = keys.whatsapp_phone_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
         const phone = (recipient || original.metadata?.from_phone || '').replace(/\D/g, '');
-        if (token && phoneId && phone) {
-          await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
-            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messaging_product: 'whatsapp', to: phone, type: 'text', text: { body: reply_content } }),
-          });
-        }
+        if (!token || !phoneId || !phone) return res.status(400).json({ error: 'WhatsApp is not configured or the recipient phone is missing' });
+        const response = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}/messages`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messaging_product: 'whatsapp', to: phone, type: 'text', text: { body: reply_content } }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.error) throw new Error(result.error?.message || `WhatsApp send failed (${response.status})`);
+      } else if (channel === 'instagram') {
+        const token = keys.facebook_page_access_token || keys.meta_access_token;
+        const accountId = keys.instagram_business_account_id || keys.instagram_account_id;
+        const senderId = original.metadata?.ig_sender_id;
+        if (!token || !accountId || !senderId) return res.status(400).json({ error: 'Instagram messaging is not configured or the sender ID is missing' });
+        const response = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${accountId}/messages`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipient: { id: senderId }, message: { text: reply_content } }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.error) throw new Error(result.error?.message || `Instagram send failed (${response.status})`);
+      } else {
+        return res.status(400).json({ error: `Replies are not supported for ${channel}` });
       }
       // Log the human reply + hand the SDR conversation to the human
       await humanTakeoverForLead(req.companyId, original.lead_id, channel, reply_content, recipient);

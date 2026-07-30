@@ -17,7 +17,12 @@ export default function WorkflowBuilderModal({ workflow, company: companyProp, i
   const queryClient = useQueryClient();
   const [name, setName] = useState(workflow?.name || initialTemplate?.name || '');
   const [type, setType] = useState(workflow?.type || initialTemplate?.type || 'sales_outreach');
-  const parseArr = (arr) => Array.isArray(arr) ? arr.map(item => typeof item === 'string' ? JSON.parse(item) : item) : [];
+  const parseArr = (arr) => Array.isArray(arr)
+    ? arr.map(item => {
+      if (typeof item !== 'string') return item;
+      try { return JSON.parse(item); } catch { return null; }
+    }).filter(Boolean)
+    : [];
   const [nodes, setNodes] = useState(() => {
     if (workflow?.nodes?.length) return parseArr(workflow.nodes);
     if (initialTemplate?.nodes?.length) return initialTemplate.nodes.map(n => ({ ...n }));
@@ -72,8 +77,8 @@ export default function WorkflowBuilderModal({ workflow, company: companyProp, i
     // Entry point lives on the Start node in the UI; persist it at workflow
     // level so the backend trigger matcher (enrollByTrigger) can query it.
     trigger_type: nodes.find(n => n.type === 'trigger')?.trigger_type || 'manual',
-    nodes: nodes.map(n => JSON.stringify(n)),
-    connections: connections.map(c => JSON.stringify(c)),
+    nodes,
+    connections,
     triggers: (workflow?.triggers && typeof workflow.triggers === 'object' && !Array.isArray(workflow.triggers))
       ? workflow.triggers
       : {},

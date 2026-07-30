@@ -3,6 +3,12 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202606';
+const AD_RECORD_FIELDS = ['type', 'platform', 'title', 'status', 'external_id', 'ad_account_id',
+  'campaign_id', 'ad_set_id', 'budget', 'budget_type', 'objective', 'audience', 'creative',
+  'performance', 'strategy', 'copy_data', 'published_at'];
+const pickFields = (body, fields) => Object.fromEntries(fields.filter(field => field in (body || {})).map(field => [field, body[field]]));
 
 // ─── Ad Records (saved campaigns/creatives) ───────────────────────────────────
 
@@ -31,7 +37,7 @@ router.post('/records', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('ad_records')
-      .insert({ ...req.body, company_id: req.companyId })
+      .insert({ ...pickFields(req.body, AD_RECORD_FIELDS), company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
@@ -60,7 +66,7 @@ router.patch('/records/:id', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('ad_records')
-      .update(req.body)
+      .update(pickFields(req.body, AD_RECORD_FIELDS))
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .select()
@@ -185,7 +191,7 @@ router.get('/campaigns', requireAuth, async (req, res) => {
         try {
           const fields = 'campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,conversions,reach';
           const r = await fetch(
-            `https://graph.facebook.com/v19.0/act_${company.meta_ads_account_id}/insights?level=campaign&date_preset=last_30d&fields=${fields}&access_token=${company.meta_access_token}`
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${company.meta_ads_account_id}/insights?level=campaign&date_preset=last_30d&fields=${fields}&access_token=${company.meta_access_token}`
           );
           const d = await r.json();
           if (!r.ok || d.error) {
@@ -211,11 +217,18 @@ router.get('/campaigns', requireAuth, async (req, res) => {
     }
 
     if (normalizedPlatform === 'linkedin_ads') {
-      if (company.linkedin_access_token && company.linkedin_ads_account_id) {
+      const linkedinToken = company.linkedin_ads_access_token || company.linkedin_access_token;
+      if (linkedinToken && company.linkedin_ads_account_id) {
         try {
           const r = await fetch(
-            `https://api.linkedin.com/v2/adCampaignsV2?q=search&search.account.values[0]=urn:li:sponsoredAccount:${company.linkedin_ads_account_id}&count=25`,
-            { headers: { Authorization: `Bearer ${company.linkedin_access_token}` } }
+            `https://api.linkedin.com/rest/adAccounts/${company.linkedin_ads_account_id}/adCampaigns?q=search&search=(test:False)&pageSize=25`,
+            {
+              headers: {
+                Authorization: `Bearer ${linkedinToken}`,
+                'Linkedin-Version': LINKEDIN_API_VERSION,
+                'X-Restli-Protocol-Version': '2.0.0',
+              },
+            }
           );
           const d = await r.json();
           if (!r.ok || d.message) {
@@ -266,12 +279,12 @@ router.get('/platform-leads', requireAuth, async (req, res) => {
       if (company.meta_access_token && company.meta_ads_account_id) {
         try {
           const formsResp = await fetch(
-            `https://graph.facebook.com/v19.0/act_${company.meta_ads_account_id}/leadgen_forms?access_token=${company.meta_access_token}`
+            `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${company.meta_ads_account_id}/leadgen_forms?access_token=${company.meta_access_token}`
           );
           const formsData = await formsResp.json();
           for (const form of (formsData.data || []).slice(0, 3)) {
             const leadsResp = await fetch(
-              `https://graph.facebook.com/v19.0/${form.id}/leads?fields=id,created_time,field_data&limit=50&access_token=${company.meta_access_token}`
+              `https://graph.facebook.com/${META_GRAPH_VERSION}/${form.id}/leads?fields=id,created_time,field_data&limit=50&access_token=${company.meta_access_token}`
             );
             const leadsData = await leadsResp.json();
             for (const lead of (leadsData.data || [])) {
