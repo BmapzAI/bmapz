@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { LanguageProvider } from '@/components/ui/LanguageContext';
 import { ThemeProvider } from '@/components/ui/ThemeContext';
 import Sidebar from '@/components/layout/Sidebar';
 import MobileBottomNav from '@/components/layout/MobileBottomNav';
@@ -107,11 +106,10 @@ function LayoutContent({ children }) {
 }
 
 export default function Layout({ children }) {
+  // LanguageProvider is mounted once in App.jsx so public pages get it too.
   return (
-    <LanguageProvider>
-      <ThemeProvider>
-        <LayoutContent>{children}</LayoutContent>
-      </ThemeProvider>
-    </LanguageProvider>
+    <ThemeProvider>
+      <LayoutContent>{children}</LayoutContent>
+    </ThemeProvider>
   );
 }

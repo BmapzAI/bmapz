@@ -1,4 +1,5 @@
 import './App.css';
+import { Suspense, lazy } from 'react';
 import { Toaster } from 'sonner';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client';
@@ -6,21 +7,33 @@ import NavigationTracker from '@/lib/NavigationTracker';
 import { pagesConfig } from './pages.config';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
-import PrivacyPolicy from './pages/PrivacyPolicy';
-import DataDeletion from './pages/DataDeletion';
-import AdminPanel from './pages/AdminPanel';
-import CompanyAdminPanel from './pages/CompanyAdminPanel';
-import Documentation from './pages/Documentation';
-import VideoTutorials from './pages/VideoTutorials';
-import TermsOfService from './pages/TermsOfService';
-import Pricing from './pages/Pricing';
+// Login/Signup are the first thing an unauthenticated visitor needs, so they
+// stay eager. Everything else is split into its own chunk and fetched on demand.
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import AuthCallback from './pages/AuthCallback';
+
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const DataDeletion = lazy(() => import('./pages/DataDeletion'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const CompanyAdminPanel = lazy(() => import('./pages/CompanyAdminPanel'));
+const Documentation = lazy(() => import('./pages/Documentation'));
+const VideoTutorials = lazy(() => import('./pages/VideoTutorials'));
+const TermsOfService = lazy(() => import('./pages/TermsOfService'));
+const Pricing = lazy(() => import('./pages/Pricing'));
+
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { LanguageProvider } from '@/components/ui/LanguageContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
 const { Pages, Layout, mainPage } = pagesConfig;
+
+/** Shown while a route's chunk is being fetched. */
+const RouteFallback = () => (
+  <div className="flex items-center justify-center min-h-[60vh]">
+    <div className="w-8 h-8 border-4 border-white/20 border-t-[#38b6ff] rounded-full animate-spin" />
+  </div>
+);
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : () => null;
 
@@ -28,21 +41,24 @@ const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
 
 const PublicRoutes = () => (
-  <Routes>
-    <Route path="/login" element={<Login />} />
-    <Route path="/signup" element={<Signup />} />
-    <Route path="/auth/callback" element={<AuthCallback />} />
-    <Route path="/Pricing" element={<Pricing />} />
-    <Route path="/pricing" element={<Pricing />} />
-    <Route path="/PrivacyPolicy" element={<PrivacyPolicy />} />
-    <Route path="/DataDeletion" element={<DataDeletion />} />
-    <Route path="/TermsOfService" element={<TermsOfService />} />
-    <Route path="*" element={<Navigate to="/login" replace />} />
-  </Routes>
+  <Suspense fallback={<RouteFallback />}>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/Pricing" element={<Pricing />} />
+      <Route path="/pricing" element={<Pricing />} />
+      <Route path="/PrivacyPolicy" element={<PrivacyPolicy />} />
+      <Route path="/DataDeletion" element={<DataDeletion />} />
+      <Route path="/TermsOfService" element={<TermsOfService />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  </Suspense>
 );
 
 const AuthenticatedRoutes = () => (
-  <Routes>
+  <Suspense fallback={<RouteFallback />}>
+    <Routes>
     <Route path="/" element={
       <LayoutWrapper currentPageName={mainPageKey}>
         <MainPage />
@@ -67,10 +83,11 @@ const AuthenticatedRoutes = () => (
     <Route path="/Documentation" element={<LayoutWrapper currentPageName="Documentation"><Documentation /></LayoutWrapper>} />
     <Route path="/VideoTutorials" element={<LayoutWrapper currentPageName="VideoTutorials"><VideoTutorials /></LayoutWrapper>} />
     <Route path="/TermsOfService" element={<TermsOfService />} />
-    <Route path="/Pricing" element={<Pricing />} />
-    <Route path="/pricing" element={<Pricing />} />
-    <Route path="*" element={<PageNotFound />} />
-  </Routes>
+      <Route path="/Pricing" element={<Pricing />} />
+      <Route path="/pricing" element={<Pricing />} />
+      <Route path="*" element={<PageNotFound />} />
+    </Routes>
+  </Suspense>
 );
 
 const AppRoutes = () => {
@@ -103,13 +120,20 @@ const AppRoutes = () => {
 export default function App() {
   return (
     <QueryClientProvider client={queryClientInstance}>
-      <Router>
-        <AuthProvider>
-          <NavigationTracker />
-          <AppRoutes />
-          <Toaster position="top-right" richColors />
-        </AuthProvider>
-      </Router>
+      {/* One language provider for the whole app. It used to live only inside
+          Layout, which wraps authenticated pages — so public pages that call
+          useLanguage (Pricing) crashed to a blank screen for logged-out
+          visitors, and for logged-in ones too since /Pricing renders outside
+          the Layout. */}
+      <LanguageProvider>
+        <Router>
+          <AuthProvider>
+            <NavigationTracker />
+            <AppRoutes />
+            <Toaster position="top-right" richColors />
+          </AuthProvider>
+        </Router>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }
