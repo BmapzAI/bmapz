@@ -7,7 +7,18 @@ const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 const SOCIAL_POST_FIELDS = ['title', 'content', 'platform_contents', 'platforms', 'content_type',
   'status', 'scheduled_for', 'published_at', 'external_post_id', 'platform_post_ids', 'hashtags',
   'media_urls', 'performance', 'ai_generated', 'ai_optimized'];
-const pickFields = (body, fields) => Object.fromEntries(fields.filter(field => field in (body || {})).map(field => [field, body[field]]));
+// Timestamp columns reject '' (the browser date input's empty value) — coerce the
+// empty string to NULL so an unscheduled post saves instead of failing the insert.
+const NULLABLE_TIMESTAMPS = ['scheduled_for', 'published_at'];
+const pickFields = (body, fields) => Object.fromEntries(
+  fields
+    .filter(field => field in (body || {}))
+    .map(field => {
+      const value = body[field];
+      if (NULLABLE_TIMESTAMPS.includes(field) && (value === '' || value === undefined)) return [field, null];
+      return [field, value];
+    })
+);
 
 // ─── Social Posts CRUD ────────────────────────────────────────────────────────
 
