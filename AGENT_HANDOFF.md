@@ -1478,3 +1478,34 @@ Migration 008 (`custom_outcomes`) was confirmed present in production by queryin
 - Route-level code splitting for the ~3.2 MB bundle is still open (Codex's note).
 - The support assistant is read-only by design — if it should ever perform
   actions, that belongs to the Company Brain agent, not this one.
+
+### 2026-07-30 - Claude (Session 24: Ads audit + code splitting)
+
+**Ads audited against every Social Media failure mode (`de1392d`).** Same class
+of bug, one part worse: the UI saves `strategy_data`/`copies_data`/`form_data`
+but the columns are `strategy`/`copy_data` and there was no `form_data` column,
+and none of those names were in the backend allowlist — so strategy, copy and
+campaign content was silently discarded and saved records reopened empty.
+Campaigns live entirely in `form_data`, so every campaign setting was lost and
+pause/resume never persisted. Fixed with alias mapping + migration 012, echoing
+the UI's field names back on read. Also hardened `published_at` (TIMESTAMPTZ)
+and `budget` (NUMERIC) against `''`, and clamped `status` to its CHECK values.
+
+**Systemic:** a survey showed most pages define only `onSuccess` (AdminPanel 9,
+Blog 4, Dashboards 4, Notifications 4 — zero error handling), so silent write
+failures were app-wide. Added a MutationCache handler on the shared QueryClient
+that reports any mutation error not handled locally.
+
+**Route-level code splitting (`44912ef`).** Pages are now `React.lazy()` behind a
+Suspense boundary. Note: giving recharts/jspdf/html2canvas their own
+`manualChunks` entries made things WORSE — it pulled them into the entry graph
+and modulepreloaded them on first paint; only react/router/query are manually
+chunked now. **Measured in production: 3,170 kB -> 619 kB initial JS.**
+
+**Pre-existing crash found while smoke-testing:** `LanguageProvider` was mounted
+inside `Layout` (authenticated pages only), but `/Pricing` is public and calls
+`useLanguage`, so the pricing page rendered BLANK for every logged-out visitor.
+Provider hoisted to `App.jsx`; verified rendering on production.
+
+#### Derek actions required (Supabase SQL editor)
+Run migrations 010, 011 and 012 — all additive and safe to re-run.
