@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Company, DesignTemplate, Canva } from '@/api/entities';
-import { GenerateImage, UploadFile } from '@/api/integrations';
+import { GenerateImage, UploadFile, InvokeLLM } from '@/api/integrations';
 import { api } from '@/api/apiClient';
 import CanvaPicker from '@/components/integrations/CanvaPicker';
 import { setDesignHandoff, peekDesignReturn, clearDesignReturn, briefToPrompt } from '@/lib/designHandoff';
@@ -37,6 +37,27 @@ const ASPECT_RATIOS = [
   { id: 'pinterest',   label: '2:3 — Pinterest Pin', w: 1000, h: 1500 },
   { id: 'leaderboard', label: '8.1:1 — Display Ad Leaderboard', w: 728, h: 90 },
 ];
+
+// A user-defined canvas size. Kept out of ASPECT_RATIOS because its dimensions
+// live on the design document (design.customRatio), not in this static list.
+const CUSTOM_RATIO_ID = 'custom';
+const CUSTOM_RATIO_MIN = 100;
+const CUSTOM_RATIO_MAX = 4096;
+const DEFAULT_CUSTOM_RATIO = { w: 1080, h: 1080 };
+const clampRatioSide = (v, fallback) => {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(CUSTOM_RATIO_MAX, Math.max(CUSTOM_RATIO_MIN, n));
+};
+const resolveRatio = (design) => {
+  if (design?.aspectRatio === CUSTOM_RATIO_ID) {
+    const c = design.customRatio || DEFAULT_CUSTOM_RATIO;
+    const w = clampRatioSide(c.w, DEFAULT_CUSTOM_RATIO.w);
+    const h = clampRatioSide(c.h, DEFAULT_CUSTOM_RATIO.h);
+    return { id: CUSTOM_RATIO_ID, label: `${w}×${h}`, w, h };
+  }
+  return ASPECT_RATIOS.find(r => r.id === design?.aspectRatio) || ASPECT_RATIOS[0];
+};
 
 // ─── Font library (system + Google Fonts, loaded on demand) ─────────────────
 const FONTS = [
@@ -366,6 +387,12 @@ export default function Design() {
   const [showAIBg, setShowAIBg] = useState(false);
   const [aiMode, setAiMode] = useState('bg'); // 'bg' → background, 'layer' → new image layer
   const [aiBgPrompt, setAiBgPrompt] = useState('');
+  // Carousel generation: how many slides the AI should produce in one go.
+  // Defaults ON when the user already chose the Carousel format, so "generate an
+  // image" in a carousel actually produces a carousel.
+  const [aiCarousel, setAiCarousel] = useState(false);
+  const [aiSlideCount, setAiSlideCount] = useState(3);
+  const [aiProgress, setAiProgress] = useState(null); // { done, total }
   const [aiEditPrompt, setAiEditPrompt] = useState('');
   const [showShapes, setShowShapes] = useState(false);
   const [showIcons, setShowIcons] = useState(false);
@@ -474,7 +501,7 @@ export default function Design() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['designTemplates'] }),
   });
 
-  const ratio = ASPECT_RATIOS.find(r => r.id === design.aspectRatio) || ASPECT_RATIOS[0];
+  const ratio = resolveRatio(design);
   const slide = design.slides[activeSlide] || design.slides[0];
   const selectedLayer = slide?.layers.find(l => l.id === selectedLayerId) || null;
 
@@ -660,9 +687,92 @@ export default function Design() {
     } finally { setBusy(null); }
   };
 
+  // Ask the writing model to split one concept into N cohesive slide prompts, so
+  // the carousel tells a story instead of being N unrelated images. Falls back to
+  // a templated per-slide prompt if the planner is unavailable.
+  const planCarouselScenes = async (concept, n) => {
+    const fallback = () => Array.from({ length: n }, (_, i) =>
+      `${concept}. Slide ${i + 1} of ${n} in a cohesive carousel series — keep the same art style, color palette and composition across all slides.`);
+    try {
+      const plan = await InvokeLLM({
+        prompt: `Split this social media carousel concept into exactly ${n} sequential slides: "${concept}".
+For each slide write an image-generation prompt that continues the same visual story.
+All slides must share one consistent art style, colour palette and composition language.
+Do not include any text, words or letters in the images.`,
+        systemPrompt: 'You are an art director planning a social media image carousel. Return JSON only.',
+        response_json_schema: {
+          type: 'object',
+          properties: {
+            slides: {
+              type: 'array',
+              items: { type: 'object', properties: { image_prompt: { type: 'string' } }, required: ['image_prompt'] },
+            },
+          },
+          required: ['slides'],
+        },
+        action: 'design_carousel_plan',
+      });
+      const prompts = (plan?.slides || []).map(s => s?.image_prompt).filter(p => typeof p === 'string' && p.trim());
+      if (prompts.length >= n) return prompts.slice(0, n);
+      // Partial plan: keep what we got and pad the rest.
+      return [...prompts, ...fallback().slice(prompts.length)].slice(0, n);
+    } catch {
+      return fallback();
+    }
+  };
+
+  // Generate a whole carousel: one AI image per slide, appended as new slides
+  // (or replacing the canvas when it is still an untouched blank slide).
+  const generateAICarousel = async () => {
+    const n = Math.min(10, Math.max(2, Number(aiSlideCount) || 3));
+    const brandHint = brandMode ? ` Use the brand color palette: ${brandColors.join(', ')}.` : '';
+    setBusy('aibg');
+    setAiProgress({ done: 0, total: n });
+    try {
+      const scenes = await planCarouselScenes(aiBgPrompt.trim(), n);
+      const urls = [];
+      for (let i = 0; i < n; i++) {
+        const url = await GenerateImage({
+          prompt: `${scenes[i]} Clean marketing image, no text, no words, no letters.${brandHint}`,
+          size: ratio.w >= ratio.h ? '1792x1024' : '1024x1792',
+          quality: 'hd',
+        });
+        if (!url) throw new Error(`No image returned for slide ${i + 1}`);
+        urls.push(await persistDataUrl(url, `ai-carousel-${i + 1}`));
+        setAiProgress({ done: i + 1, total: n });
+      }
+
+      pushHistory();
+      setDesign(prev => {
+        const built = urls.map(url => {
+          const s = newSlide();
+          s.background = { ...s.background, type: 'ai', imageUrl: url };
+          if (brandMode && company?.logo_url) {
+            s.layers.push({ id: nextId(), type: 'image', role: 'logo', url: company.logo_url, x: 0.78, y: 0.05, w: 0.16, opacity: 1 });
+          }
+          return s;
+        });
+        // Replace only a pristine blank canvas; otherwise keep the user's work.
+        const onlyBlank = prev.slides.length === 1
+          && !(prev.slides[0].layers || []).length
+          && !prev.slides[0].background?.imageUrl;
+        const slides = onlyBlank ? built : [...prev.slides, ...built];
+        return { ...prev, format: 'carousel', slides };
+      });
+      setActiveSlide(0);
+      setSelectedLayerId(null);
+      setShowAIBg(false);
+      setAiBgPrompt('');
+      toast.success(isPt ? `Carrossel de ${n} slides gerado!` : `${n}-slide carousel generated!`);
+    } catch (e) {
+      toast.error((isPt ? 'Falha ao gerar carrossel: ' : 'Carousel generation failed: ') + e.message);
+    } finally { setBusy(null); setAiProgress(null); }
+  };
+
   // ── AI: generate (background or layer) ──────────────────────────────────
   const generateAI = async () => {
     if (!aiBgPrompt.trim()) return;
+    if (aiCarousel) return generateAICarousel();
     setBusy('aibg');
     try {
       const brandHint = brandMode ? ` Use the brand color palette: ${brandColors.join(', ')}.` : '';
@@ -927,7 +1037,18 @@ export default function Design() {
       const cfg = t.config || {};
       if (!cfg.slides?.length) throw new Error('empty');
       pushHistory();
-      setDesign({ format: cfg.format || 'single', aspectRatio: cfg.aspectRatio || 'square', brandMode: !!cfg.brandMode, slides: cfg.slides });
+      setDesign(prev => ({
+        // Derive the format from the template's REAL slide count. Defaulting to
+        // 'single' collapsed multi-slide templates (and any template saved before
+        // `format` existed) into a single image the user never asked for, and left
+        // the format toggle out of sync with the slides actually loaded.
+        format: cfg.slides.length > 1 ? 'carousel' : (cfg.format || 'single'),
+        // Only change the canvas size if the template actually specifies one;
+        // otherwise keep whatever the user is currently working in.
+        aspectRatio: cfg.aspectRatio || prev.aspectRatio || 'square',
+        brandMode: !!cfg.brandMode,
+        slides: cfg.slides,
+      }));
       setActiveSlide(0);
       setSelectedLayerId(null);
       cfg.slides.forEach(s => s.layers?.forEach(l => l.font && ensureFontLoaded(l.font)));
@@ -938,6 +1059,13 @@ export default function Design() {
   };
 
   useEffect(() => { ensureFontLoaded('Inter'); ensureFontLoaded('Bebas Neue'); }, []);
+
+  // Opening the AI dialog while the Carousel format is selected pre-checks
+  // carousel generation, so "generate an image" in a carousel builds a carousel.
+  useEffect(() => {
+    if (showAIBg && design.format === 'carousel') setAiCarousel(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAIBg]);
 
   // Preview sizing — fit viewport height AND container width
   const stageRef = useRef(null);
@@ -1199,7 +1327,13 @@ export default function Design() {
           <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-3">
             <p className="text-white text-sm font-semibold flex items-center gap-2"><LayoutTemplate size={14} className="text-[#38b6ff]" /> {isPt ? 'Formato' : 'Format'}</p>
             <div className="flex gap-2">
-              <button onClick={() => { pushHistory(); setDesign(p => ({ ...p, format: 'single', slides: [p.slides[activeSlide] || p.slides[0]] })); setActiveSlide(0); }}
+              <button onClick={() => {
+                // Switching to Single throws away every other slide — never do that silently.
+                if (design.slides.length > 1 && !window.confirm(isPt
+                  ? `Mudar para "Única" vai descartar ${design.slides.length - 1} slide(s) do carrossel. Continuar?`
+                  : `Switching to "Single" will discard ${design.slides.length - 1} carousel slide(s). Continue?`)) return;
+                pushHistory(); setDesign(p => ({ ...p, format: 'single', slides: [p.slides[activeSlide] || p.slides[0]] })); setActiveSlide(0);
+              }}
                 className={`flex-1 px-3 py-2 rounded-xl text-sm border transition-all ${design.format === 'single' ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40 text-[#38b6ff]' : 'bg-black/20 border-white/10 text-gray-400'}`}>
                 {isPt ? 'Única' : 'Single'}
               </button>
@@ -1210,12 +1344,57 @@ export default function Design() {
             </div>
             <div>
               <Label className="text-gray-400 text-xs">{isPt ? 'Proporção' : 'Aspect ratio'}</Label>
-              <Select value={design.aspectRatio} onValueChange={(v) => { pushHistory(); setDesign(p => ({ ...p, aspectRatio: v })); }}>
+              <Select value={design.aspectRatio} onValueChange={(v) => {
+                pushHistory();
+                setDesign(p => ({
+                  ...p,
+                  aspectRatio: v,
+                  // Seed the custom size from whatever the user was already using,
+                  // so choosing "Custom" doesn't jump the canvas to a new shape.
+                  customRatio: v === CUSTOM_RATIO_ID
+                    ? (p.customRatio || { w: resolveRatio(p).w, h: resolveRatio(p).h })
+                    : p.customRatio,
+                }));
+              }}>
                 <SelectTrigger className="bg-black/30 border-white/10 text-white mt-1 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {ASPECT_RATIOS.map(r => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)}
+                  <SelectItem value={CUSTOM_RATIO_ID}>{isPt ? '⚙ Personalizado…' : '⚙ Custom…'}</SelectItem>
                 </SelectContent>
               </Select>
+              {design.aspectRatio === CUSTOM_RATIO_ID && (
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1">
+                      <Label className="text-gray-500 text-[10px]">{isPt ? 'Largura (px)' : 'Width (px)'}</Label>
+                      <Input type="number" min={CUSTOM_RATIO_MIN} max={CUSTOM_RATIO_MAX}
+                        value={design.customRatio?.w ?? DEFAULT_CUSTOM_RATIO.w}
+                        onChange={(e) => setDesign(p => ({ ...p, customRatio: { ...(p.customRatio || DEFAULT_CUSTOM_RATIO), w: e.target.value } }))}
+                        onBlur={(e) => { pushHistory(); setDesign(p => ({ ...p, customRatio: { ...(p.customRatio || DEFAULT_CUSTOM_RATIO), w: clampRatioSide(e.target.value, DEFAULT_CUSTOM_RATIO.w) } })); }}
+                        className="bg-black/30 border-white/10 text-white text-xs h-8 mt-0.5" />
+                    </div>
+                    <span className="text-gray-600 text-xs pt-4">×</span>
+                    <div className="flex-1">
+                      <Label className="text-gray-500 text-[10px]">{isPt ? 'Altura (px)' : 'Height (px)'}</Label>
+                      <Input type="number" min={CUSTOM_RATIO_MIN} max={CUSTOM_RATIO_MAX}
+                        value={design.customRatio?.h ?? DEFAULT_CUSTOM_RATIO.h}
+                        onChange={(e) => setDesign(p => ({ ...p, customRatio: { ...(p.customRatio || DEFAULT_CUSTOM_RATIO), h: e.target.value } }))}
+                        onBlur={(e) => { pushHistory(); setDesign(p => ({ ...p, customRatio: { ...(p.customRatio || DEFAULT_CUSTOM_RATIO), h: clampRatioSide(e.target.value, DEFAULT_CUSTOM_RATIO.h) } })); }}
+                        className="bg-black/30 border-white/10 text-white text-xs h-8 mt-0.5" />
+                    </div>
+                  </div>
+                  <div className="flex gap-1 flex-wrap">
+                    {[[1080, 1080], [1080, 1350], [1200, 1200], [2048, 2048]].map(([w, h]) => (
+                      <button key={`${w}x${h}`}
+                        onClick={() => { pushHistory(); setDesign(p => ({ ...p, customRatio: { w, h } })); }}
+                        className="px-1.5 py-0.5 rounded-md text-[10px] bg-black/20 border border-white/10 text-gray-400 hover:text-[#38b6ff] hover:border-[#38b6ff]/40">
+                        {w}×{h}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-gray-600 text-[10px]">{isPt ? `Entre ${CUSTOM_RATIO_MIN} e ${CUSTOM_RATIO_MAX}px.` : `Between ${CUSTOM_RATIO_MIN} and ${CUSTOM_RATIO_MAX}px.`}</p>
+                </div>
+              )}
               <p className="text-gray-600 text-[10px] mt-1">{ratio.w}×{ratio.h}px</p>
             </div>
           </div>
@@ -1814,12 +1993,52 @@ export default function Design() {
                 {isPt ? '🎨 Modo marca: a paleta da empresa será aplicada.' : '🎨 Brand mode: company palette will be applied.'}
               </p>
             )}
+
+            {/* Carousel generation — one cohesive AI image per slide */}
+            <div className="rounded-xl bg-black/20 border border-white/10 p-3 space-y-2">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" checked={aiCarousel} onChange={(e) => setAiCarousel(e.target.checked)}
+                  className="w-4 h-4 accent-[#38b6ff] mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="text-white text-sm">{isPt ? 'Gerar um carrossel' : 'Generate a carousel'}</span>
+                  <p className="text-gray-500 text-xs">
+                    {isPt
+                      ? 'Cria vários slides ligados entre si, com o mesmo estilo visual.'
+                      : 'Creates several connected slides that share one visual style.'}
+                  </p>
+                </div>
+              </label>
+              {aiCarousel && (
+                <div className="flex items-center gap-2 pl-6">
+                  <Label className="text-gray-400 text-xs">{isPt ? 'Slides' : 'Slides'}</Label>
+                  <Input type="number" min={2} max={10} value={aiSlideCount}
+                    onChange={(e) => setAiSlideCount(Math.min(10, Math.max(2, Number(e.target.value) || 2)))}
+                    className="bg-black/30 border-white/10 text-white text-xs h-8 w-20" />
+                  <span className="text-gray-600 text-[10px]">{isPt ? 'entre 2 e 10' : '2 to 10'}</span>
+                </div>
+              )}
+            </div>
+
+            {aiProgress && (
+              <div className="space-y-1">
+                <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] transition-all"
+                    style={{ width: `${(aiProgress.done / aiProgress.total) * 100}%` }} />
+                </div>
+                <p className="text-gray-400 text-[11px]">
+                  {isPt ? `Gerando slide ${Math.min(aiProgress.done + 1, aiProgress.total)} de ${aiProgress.total}…` : `Generating slide ${Math.min(aiProgress.done + 1, aiProgress.total)} of ${aiProgress.total}…`}
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowAIBg(false)} className="border-white/10 text-white">{isPt ? 'Cancelar' : 'Cancel'}</Button>
               <Button disabled={!aiBgPrompt.trim() || busyIs('aibg')} onClick={generateAI}
                 className="bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-2">
                 {busyIs('aibg') ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />}
-                {isPt ? 'Gerar' : 'Generate'}
+                {aiCarousel
+                  ? (isPt ? `Gerar ${aiSlideCount} slides` : `Generate ${aiSlideCount} slides`)
+                  : (isPt ? 'Gerar' : 'Generate')}
               </Button>
             </div>
           </div>
