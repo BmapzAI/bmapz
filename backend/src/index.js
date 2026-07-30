@@ -34,6 +34,7 @@ import automationsRoutes from './routes/automations.js';
 import designTemplatesRoutes from './routes/designTemplates.js';
 import notificationsRoutes from './routes/notifications.js';
 import sdrRoutes from './routes/sdr.js';
+import helpRoutes from './routes/help.js';
 import canvaRoutes from './routes/canva.js';
 import { runAIChat } from './routes/ai.js';
 import { startAutomationScheduler } from './lib/automationScheduler.js';
@@ -118,6 +119,7 @@ app.use('/api/automations', automationsRoutes);
 app.use('/api/design-templates', designTemplatesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/sdr', sdrRoutes);
+app.use('/api/help', helpRoutes);
 app.use('/api/canva', canvaRoutes);
 
 // ─── Global error handler ─────────────────────────────────────────────────────
