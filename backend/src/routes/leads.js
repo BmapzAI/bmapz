@@ -88,21 +88,29 @@ router.get('/', requireAuth, async (req, res) => {
   try {
     const { list_id, status, stage, search, limit = 100, offset = 0 } = req.query;
 
-    // Embed the owner so the whole company can see who handles each lead.
-    let query = supabaseAdmin
-      .from('leads')
-      .select('*, owner:owner_id (id, full_name, email, profile_picture)', { count: 'exact' })
-      .eq('company_id', req.companyId)
-      .order('created_at', { ascending: false })
-      .range(Number(offset), Number(offset) + Number(limit) - 1);
+    // Embed the owner so the whole company can see who handles each lead. The
+    // embed (and owner filter) only work once migration 010 has been applied, so
+    // fall back to a plain select rather than breaking the Sales board.
+    const build = (withOwner) => {
+      let q = supabaseAdmin
+        .from('leads')
+        .select(withOwner ? '*, owner:owner_id (id, full_name, email, profile_picture)' : '*', { count: 'exact' })
+        .eq('company_id', req.companyId)
+        .order('created_at', { ascending: false })
+        .range(Number(offset), Number(offset) + Number(limit) - 1);
 
-    if (list_id) query = query.eq('list_id', list_id);
-    if (req.query.owner_id) query = query.eq('owner_id', req.query.owner_id);
-    if (status) query = query.eq('status', status);
-    if (stage) query = query.eq('pipeline_stage', stage);
-    if (search) query = query.or(`lead_name.ilike.%${search}%,email.ilike.%${search}%,lead_company_name.ilike.%${search}%`);
+      if (list_id) q = q.eq('list_id', list_id);
+      if (withOwner && req.query.owner_id) q = q.eq('owner_id', req.query.owner_id);
+      if (status) q = q.eq('status', status);
+      if (stage) q = q.eq('pipeline_stage', stage);
+      if (search) q = q.or(`lead_name.ilike.%${search}%,email.ilike.%${search}%,lead_company_name.ilike.%${search}%`);
+      return q;
+    };
 
-    const { data, error, count } = await query;
+    let { data, error, count } = await build(true);
+    if (error && /owner_id|owner/i.test(error.message || '')) {
+      ({ data, error, count } = await build(false));
+    }
     if (error) throw error;
     res.json({ data, total: count });
   } catch (err) {
@@ -247,7 +255,13 @@ router.patch('/:id/owner', requireAuth, async (req, res) => {
       .eq('company_id', req.companyId)
       .select('*, owner:owner_id (id, full_name, email, profile_picture)')
       .single();
-    if (error) throw error;
+    if (error) {
+      // Migration 010 not applied yet — say so plainly instead of a raw DB error.
+      if (/owner_id|owner_assigned_at|owner/i.test(error.message || '')) {
+        return res.status(503).json({ error: 'Lead ownership is not enabled yet — the database update (migration 010) still needs to be applied.' });
+      }
+      throw error;
+    }
 
     await logLeadChanges({
       companyId: req.companyId,
@@ -277,7 +291,12 @@ router.get('/:id/activities', requireAuth, async (req, res) => {
       .eq('company_id', req.companyId)
       .order('created_at', { ascending: false })
       .limit(Math.min(300, Number(req.query.limit) || 100));
-    if (error) throw error;
+    // Before migration 010 the table does not exist — show an empty timeline
+    // rather than an error page.
+    if (error) {
+      if (/lead_activities|relation|does not exist/i.test(error.message || '')) return res.json([]);
+      throw error;
+    }
     res.json(data || []);
   } catch (err) {
     res.status(500).json({ error: err.message });
