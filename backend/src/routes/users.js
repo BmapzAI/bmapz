@@ -4,15 +4,89 @@ import { requireAuth, requireCompanyAdmin, requireAdmin } from '../middleware/au
 
 const router = Router();
 
+export const SALES_STATUSES = ['online', 'standby', 'offline'];
+
 // GET /api/users — all users in current company
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
+    const withSales = 'id, email, full_name, role, created_at, profile_picture, is_sales_team, sales_status, sales_status_updated_at';
+    const run = (cols) => supabaseAdmin
       .from('users')
-      .select('id, email, full_name, role, created_at')
+      .select(cols)
       .eq('company_id', req.companyId)
       .order('created_at', { ascending: false });
+
+    let { data, error } = await run(withSales);
+    // Before migration 011 the sales columns do not exist — still return users.
+    if (error && /is_sales_team|sales_status|profile_picture/i.test(error.message || '')) {
+      ({ data, error } = await run('id, email, full_name, role, created_at'));
+    }
     if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Sales team ──────────────────────────────────────────────────────────────
+// Membership is decided by a company admin; availability is set by the member.
+
+// PATCH /api/users/:id/sales-team — add/remove someone from the sales team.
+// Body: { is_sales_team: boolean }
+router.patch('/:id/sales-team', requireAuth, requireCompanyAdmin, async (req, res) => {
+  try {
+    const isMember = !!req.body?.is_sales_team;
+    const updates = { is_sales_team: isMember };
+    // Someone removed from the team should not stay "available" for leads.
+    if (!isMember) {
+      updates.sales_status = 'offline';
+      updates.sales_status_updated_at = new Date().toISOString();
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .update(updates)
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId) // never touch another company's users
+      .select('id, email, full_name, role, is_sales_team, sales_status')
+      .single();
+    if (error) {
+      if (/is_sales_team|sales_status/i.test(error.message || '')) {
+        return res.status(503).json({ error: 'The sales team feature is not enabled yet — the database update (migration 011) still needs to be applied.' });
+      }
+      throw error;
+    }
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/users/me/sales-status — a sales team member sets their OWN status.
+// Body: { sales_status: 'online' | 'standby' | 'offline' }
+router.patch('/me/sales-status', requireAuth, async (req, res) => {
+  try {
+    const status = String(req.body?.sales_status || '').toLowerCase();
+    if (!SALES_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `sales_status must be one of: ${SALES_STATUSES.join(', ')}` });
+    }
+    // Only actual sales team members have an availability to set.
+    if (req.dbUser?.is_sales_team === false) {
+      return res.status(403).json({ error: 'Only sales team members can set an availability status. Ask a company admin to add you to the sales team.' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .update({ sales_status: status, sales_status_updated_at: new Date().toISOString() })
+      .eq('id', req.dbUser.id)
+      .select('id, full_name, email, is_sales_team, sales_status, sales_status_updated_at')
+      .single();
+    if (error) {
+      if (/is_sales_team|sales_status/i.test(error.message || '')) {
+        return res.status(503).json({ error: 'The sales team feature is not enabled yet — the database update (migration 011) still needs to be applied.' });
+      }
+      throw error;
+    }
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

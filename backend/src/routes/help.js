@@ -15,6 +15,7 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { runAIChat } from './ai.js';
+import { describeRouting } from '../lib/leadAssignment.js';
 
 const router = Router();
 
@@ -79,6 +80,9 @@ async function buildDiagnostics(companyId, userId) {
     ai_model: company?.ai_model || 'default',
     counts: { leads, active_workflows: activeWorkflows, draft_workflows: draftWorkflows, social_posts: posts, social_drafts: drafts, unread_notifications: unreadNotifs },
     sdr: sdrAgent ? { enabled: !!sdrAgent.enabled, name: sdrAgent.name || null, channels: sdrAgent.channels || [] } : { enabled: false, configured: false },
+    // Who is on the sales team and available, so the assistant can explain why a
+    // lead was (or was not) assigned to someone.
+    lead_routing: await describeRouting(companyId).catch(() => null),
     integrations_connected: connected,
     integrations_missing: ['meta', 'google', 'linkedin', 'whatsapp', 'canva'].filter(k => !connected.includes(k)),
   };

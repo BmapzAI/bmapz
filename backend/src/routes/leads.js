@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { runAIChat } from './ai.js';
 import { logLeadActivity, logLeadChanges, LEAD_ACTIVITY_TYPES } from '../lib/leadActivity.js';
+import { pickNextOwner } from '../lib/leadAssignment.js';
 
 const router = Router();
 
@@ -121,6 +122,14 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   try {
     const payload = { ...req.body, company_id: req.companyId };
+    // No explicit owner? Route it to an ONLINE sales team member. If nobody is
+    // online (everyone standby/offline) the lead stays unassigned so the SDR
+    // agent works it — that is what "stand by" means.
+    let autoAssigned = false;
+    if (!payload.owner_id) {
+      const next = await pickNextOwner(req.companyId);
+      if (next) { payload.owner_id = next.id; autoAssigned = true; }
+    }
     if (payload.owner_id) payload.owner_assigned_at = new Date().toISOString();
     const { data, error } = await supabaseAdmin
       .from('leads')
@@ -144,8 +153,17 @@ router.post('/', requireAuth, async (req, res) => {
       await logLeadChanges({
         companyId: req.companyId, leadId: data.id,
         before: { owner_id: null }, after: { owner_id: data.owner_id },
-        actorUserId: req.dbUser?.id || null, actorType: 'user',
-        actorLabel: req.dbUser?.full_name || req.dbUser?.email || null,
+        // Auto-routing is the system acting, not the person who created the lead.
+        actorUserId: autoAssigned ? null : (req.dbUser?.id || null),
+        actorType: autoAssigned ? 'system' : 'user',
+        actorLabel: autoAssigned ? 'Lead routing' : (req.dbUser?.full_name || req.dbUser?.email || null),
+      });
+    } else {
+      await logLeadActivity({
+        companyId: req.companyId, leadId: data.id,
+        activityType: LEAD_ACTIVITY_TYPES.NOTE,
+        summary: 'No sales team member is online — left unassigned for the SDR agent to handle',
+        actorType: 'system', actorLabel: 'Lead routing',
       });
     }
 

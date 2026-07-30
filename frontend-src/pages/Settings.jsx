@@ -12,11 +12,12 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from 'react-router-dom';
-import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, Plus, X, FileText, ArrowRight, Zap, ScanLine, KeyRound, Sparkles } from 'lucide-react';
+import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, Plus, X, FileText, ArrowRight, Zap, ScanLine, KeyRound, Sparkles, Users } from 'lucide-react';
 // KeyRound used in TabsTrigger
 import { toast } from 'sonner';
 import ApiKeysTab from '@/components/settings/ApiKeysTab';
 import UsageTab from '@/components/settings/UsageTab';
+import SalesTeamTab from '@/components/settings/SalesTeamTab';
 import { Company } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -136,6 +137,7 @@ export default function Settings() {
           <TabsTrigger value="icp" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Target size={14} className="mr-1.5" />{t('icpTab')}</TabsTrigger>
           <TabsTrigger value="api-keys" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><KeyRound size={14} className="mr-1.5" />{t('apiKeysTab')}</TabsTrigger>
           <TabsTrigger value="ai-settings" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Sparkles size={14} className="mr-1.5" />{t('aiSettingsTab')}</TabsTrigger>
+          <TabsTrigger value="sales-team" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Users size={14} className="mr-1.5" />{isPt ? 'Time de Vendas' : 'Sales Team'}</TabsTrigger>
           <TabsTrigger value="usage" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Zap size={14} className="mr-1.5" />{t('usageTab')}</TabsTrigger>
           <TabsTrigger value="subscription" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><CreditCard size={14} className="mr-1.5" />{t('subscriptionTab')}</TabsTrigger>
         </TabsList>
@@ -375,6 +377,11 @@ export default function Settings() {
             user={dbUser}
             onSave={(data) => updateMutation.mutateAsync(data)}
           />
+        </TabsContent>
+
+        {/* Sales team — membership (admin) + own availability */}
+        <TabsContent value="sales-team" className="space-y-6">
+          <SalesTeamTab currentUser={dbUser} />
         </TabsContent>
 
         {/* Usage */}

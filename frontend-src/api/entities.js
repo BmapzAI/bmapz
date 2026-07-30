@@ -32,6 +32,9 @@ export const Company = {
 export const User = {
   ...createEntity('/api/users'),
   me: () => api.get('/api/users/me'),
+  // Sales team membership is admin-controlled; availability is self-controlled.
+  setSalesTeam: (id, isMember) => api.patch(`/api/users/${id}/sales-team`, { is_sales_team: !!isMember }),
+  setSalesStatus: (status) => api.patch('/api/users/me/sales-status', { sales_status: status }),
 };
 
 // ─── Leads ────────────────────────────────────────────────────────────────────

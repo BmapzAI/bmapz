@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { UserCircle2, History, Send, Loader2, Bot, GitBranch, Settings2, User as UserIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Lead, User } from '@/api/entities';
+import { SalesStatusChip } from '@/components/settings/SalesTeamTab';
 
 const UNASSIGNED = '__unassigned__';
 
@@ -84,6 +85,12 @@ export default function LeadOwnerHistory({ lead, onChanged }) {
 
   if (!lead?.id) return null;
   const ownerId = lead.owner_id || lead.owner?.id || null;
+  // Prefer the sales team; fall back to everyone if no team has been set up yet
+  // (or before migration 011). The current owner always stays selectable.
+  const salesTeam = teammates.filter(u => u.is_sales_team);
+  const assignable = salesTeam.length
+    ? [...salesTeam, ...teammates.filter(u => !u.is_sales_team && u.id === ownerId)]
+    : teammates;
 
   return (
     <div className="space-y-4">
@@ -107,11 +114,23 @@ export default function LeadOwnerHistory({ lead, onChanged }) {
           </SelectTrigger>
           <SelectContent className="bg-[#1a1a1a] border-white/10">
             <SelectItem value={UNASSIGNED}>{isPt ? '— Sem responsável —' : '— Unassigned —'}</SelectItem>
-            {teammates.map(u => (
-              <SelectItem key={u.id} value={u.id}>{u.full_name || u.email}</SelectItem>
+            {assignable.map(u => (
+              <SelectItem key={u.id} value={u.id}>
+                <span className="flex items-center gap-2">
+                  {u.full_name || u.email}
+                  {u.is_sales_team && <SalesStatusChip status={u.sales_status} />}
+                </span>
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {salesTeam.length > 0 && (
+          <p className="text-gray-600 text-[10px]">
+            {isPt
+              ? 'Mostrando o time de vendas. Quem está "Em espera" ou "Offline" não recebe leads automaticamente, mas ainda pode ser atribuído manualmente.'
+              : 'Showing the sales team. People on "Stand by" or "Offline" are skipped by automatic routing, but you can still assign them by hand.'}
+          </p>
+        )}
         {lead.owner_assigned_at && (
           <p className="text-gray-600 text-[10px]">
             {isPt ? 'Atribuído em ' : 'Assigned '}{new Date(lead.owner_assigned_at).toLocaleString()}
