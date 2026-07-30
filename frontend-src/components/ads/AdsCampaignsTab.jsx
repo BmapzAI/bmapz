@@ -21,6 +21,10 @@ export default function AdsCampaignsTab({ companyId }) {
     enabled: !!companyId,
   });
 
+  // Every mutation reports failures: a silent save looked like the campaign had
+  // been stored when nothing had actually been written.
+  const failed = (verb) => (e) => toast.error(`Could not ${verb} the campaign: ${e?.message || 'unknown error'}`);
+
   const createMutation = useMutation({
     mutationFn: (data) => AdRecord.create({ ...data, company_id: companyId, type: 'campaign' }),
     onSuccess: () => {
@@ -28,6 +32,7 @@ export default function AdsCampaignsTab({ companyId }) {
       setCreateOpen(false);
       toast.success('Campaign created');
     },
+    onError: failed('create'),
   });
 
   const updateMutation = useMutation({
@@ -37,6 +42,7 @@ export default function AdsCampaignsTab({ companyId }) {
       setEditingCampaign(null);
       toast.success('Campaign updated');
     },
+    onError: failed('update'),
   });
 
   const deleteMutation = useMutation({
@@ -45,6 +51,7 @@ export default function AdsCampaignsTab({ companyId }) {
       queryClient.invalidateQueries({ queryKey: ['adCampaigns', companyId] });
       toast.success('Campaign deleted');
     },
+    onError: failed('delete'),
   });
 
   const handleToggleStatus = (campaign) => {

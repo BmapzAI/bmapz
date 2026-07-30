@@ -7,8 +7,50 @@ const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202606';
 const AD_RECORD_FIELDS = ['type', 'platform', 'title', 'status', 'external_id', 'ad_account_id',
   'campaign_id', 'ad_set_id', 'budget', 'budget_type', 'objective', 'audience', 'creative',
-  'performance', 'strategy', 'copy_data', 'published_at'];
-const pickFields = (body, fields) => Object.fromEntries(fields.filter(field => field in (body || {})).map(field => [field, body[field]]));
+  'performance', 'strategy', 'copy_data', 'form_data', 'published_at'];
+
+// The Ads UI has always spoken in `strategy_data` / `copies_data`, but the
+// columns are `strategy` / `copy_data`. Those names were not in the allowlist,
+// so the actual strategy, copy and campaign content was silently dropped on save
+// and came back empty on load. Accept both spellings and map to the real columns.
+const AD_FIELD_ALIASES = { strategy_data: 'strategy', copies_data: 'copy_data' };
+
+// Empty strings from form inputs are invalid for these column types and make
+// Postgres reject the whole row, which reads to the user as "nothing saved".
+const AD_NULLABLE_TIMESTAMPS = ['published_at'];
+const AD_NULLABLE_NUMBERS = ['budget'];
+const AD_STATUSES = ['draft', 'active', 'paused', 'completed', 'failed'];
+
+const pickFields = (body, fields) => {
+  const src = { ...(body || {}) };
+  for (const [alias, column] of Object.entries(AD_FIELD_ALIASES)) {
+    if (alias in src && !(column in src)) src[column] = src[alias];
+  }
+  return Object.fromEntries(
+    fields
+      .filter(field => field in src)
+      .map(field => {
+        let value = src[field];
+        if (AD_NULLABLE_TIMESTAMPS.includes(field) && (value === '' || value === undefined)) value = null;
+        if (AD_NULLABLE_NUMBERS.includes(field)) {
+          if (value === '' || value === undefined || value === null) value = null;
+          else {
+            // Accept "R$ 1.500" / "1,500" style input without failing the insert.
+            const n = Number(String(value).replace(/[^0-9.-]/g, ''));
+            value = Number.isFinite(n) ? n : null;
+          }
+        }
+        // status is CHECK-constrained — never let a stray value reject the row.
+        if (field === 'status' && !AD_STATUSES.includes(String(value || '').toLowerCase())) value = 'draft';
+        return [field, value];
+      })
+  );
+};
+
+// Echo the UI's field names back so saved records load correctly.
+const withAdAliases = (row) => (row && typeof row === 'object')
+  ? { ...row, strategy_data: row.strategy ?? null, copies_data: row.copy_data ?? null }
+  : row;
 
 // ─── Ad Records (saved campaigns/creatives) ───────────────────────────────────
 
@@ -27,7 +69,7 @@ router.get('/records', requireAuth, async (req, res) => {
 
     const { data, error, count } = await query;
     if (error) throw error;
-    res.json({ data, total: count });
+    res.json({ data: (data || []).map(withAdAliases), total: count });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -35,13 +77,22 @@ router.get('/records', requireAuth, async (req, res) => {
 
 router.post('/records', requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
+    const payload = pickFields(req.body, AD_RECORD_FIELDS);
+    const insert = (body) => supabaseAdmin
       .from('ad_records')
-      .insert({ ...pickFields(req.body, AD_RECORD_FIELDS), company_id: req.companyId })
+      .insert({ ...body, company_id: req.companyId })
       .select()
       .single();
+
+    let { data, error } = await insert(payload);
+    // form_data only exists after migration 012 — save the rest rather than
+    // failing the whole record.
+    if (error && /form_data/i.test(error.message || '')) {
+      const { form_data, ...rest } = payload; // eslint-disable-line no-unused-vars
+      ({ data, error } = await insert(rest));
+    }
     if (error) throw error;
-    res.json(data);
+    res.json(withAdAliases(data));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -56,7 +107,7 @@ router.get('/records/:id', requireAuth, async (req, res) => {
       .eq('company_id', req.companyId)
       .single();
     if (error) throw error;
-    res.json(data);
+    res.json(withAdAliases(data));
   } catch (err) {
     res.status(404).json({ error: 'Ad record not found' });
   }
@@ -64,15 +115,22 @@ router.get('/records/:id', requireAuth, async (req, res) => {
 
 router.patch('/records/:id', requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
+    const payload = pickFields(req.body, AD_RECORD_FIELDS);
+    const run = (body) => supabaseAdmin
       .from('ad_records')
-      .update(pickFields(req.body, AD_RECORD_FIELDS))
+      .update(body)
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .select()
       .single();
+
+    let { data, error } = await run(payload);
+    if (error && /form_data/i.test(error.message || '')) {
+      const { form_data, ...rest } = payload; // eslint-disable-line no-unused-vars
+      ({ data, error } = await run(rest));
+    }
     if (error) throw error;
-    res.json(data);
+    res.json(withAdAliases(data));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

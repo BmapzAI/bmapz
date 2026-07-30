@@ -89,11 +89,14 @@ export default function Ads() {
   const saveMutation = useMutation({
     mutationFn: (data) => AdRecord.create(data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['adRecords'] }); toast.success(isPt ? 'Salvo!' : 'Saved!'); },
+    // Without this a failed save showed nothing at all — the record just vanished.
+    onError: (e) => toast.error((isPt ? 'Falha ao salvar: ' : 'Could not save: ') + (e?.message || 'unknown error')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => AdRecord.delete(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['adRecords'] }); toast.success(t('deleted')); },
+    onError: (e) => toast.error((isPt ? 'Falha ao excluir: ' : 'Could not delete: ') + (e?.message || 'unknown error')),
   });
 
   const buildStrategyPrompt = () => {
