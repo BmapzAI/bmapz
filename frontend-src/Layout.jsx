@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { ThemeProvider } from '@/components/ui/ThemeContext';
 import Sidebar from '@/components/layout/Sidebar';
 import MobileBottomNav from '@/components/layout/MobileBottomNav';
-import SupportAssistant from '@/components/layout/SupportAssistant';
 import NotificationBell from '@/components/layout/NotificationBell';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import { useAuth } from '@/lib/AuthContext';
@@ -97,8 +96,9 @@ function LayoutContent({ children }) {
 
         <MobileBottomNav />
         <OnboardingWizard />
-        {/* Read-only help agent — reachable from every screen */}
-        <SupportAssistant />
+        {/* The support assistant is mounted once in App.jsx, ABOVE the router:
+            rendering it here unmounted it on every navigation, which wiped the
+            conversation and made users re-ask the same question. */}
         <Toaster position="top-right" richColors />
       </div>
     </div>

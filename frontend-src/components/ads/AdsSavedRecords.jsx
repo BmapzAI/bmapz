@@ -19,7 +19,12 @@ export default function AdsSavedRecords({ adRecords, onLoad, onDelete, isDeletin
                   </span>
                   <span className="text-white text-sm font-medium truncate">{record.title}</span>
                 </div>
-                <p className="text-gray-500 text-xs">{new Date(record.created_date).toLocaleDateString()}</p>
+                {/* The column is created_at; created_date rendered "Invalid Date". */}
+                <p className="text-gray-500 text-xs">
+                  {record.created_at || record.created_date
+                    ? new Date(record.created_at || record.created_date).toLocaleDateString()
+                    : '—'}
+                </p>
               </div>
               <div className="flex gap-1 ml-3">
                 <Button size="sm" onClick={() => onLoad(record)} className="h-7 px-3 text-xs bg-[#38b6ff]/20 text-[#38b6ff] hover:bg-[#38b6ff]/30">Load</Button>

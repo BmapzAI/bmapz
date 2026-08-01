@@ -23,6 +23,16 @@ export const InvokeLLM = async ({ prompt, systemPrompt, response_json_schema, in
 
   if (response_json_schema) {
     params.response_format = { type: 'json_object' };
+    // The schema used to be used as a mere on/off flag, so the model was never
+    // told which KEY NAMES to return. It invented its own (businessAnalysis vs
+    // business_analysis), every lookup in the UI came back undefined, and the
+    // screen rendered blank. Send the schema and demand those exact keys.
+    params.response_schema = response_json_schema;
+    params.system = [
+      systemPrompt || '',
+      'Return ONLY a JSON object that matches this exact JSON Schema. Use these EXACT key names — do not rename, camelCase, translate or omit any key. Every key in the schema must be present:',
+      JSON.stringify(response_json_schema),
+    ].filter(Boolean).join('\n\n');
   }
   if (action) {
     // action drives plan-gated features (e.g. brand_scan blocked on trial)

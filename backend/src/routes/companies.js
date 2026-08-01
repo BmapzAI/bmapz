@@ -11,6 +11,9 @@ const router = Router();
 const DIRECT_COLUMNS = new Set([
   'name', 'website', 'industry', 'description', 'services_description',
   'logo_url', 'icp', 'briefing', 'value_propositions', 'integration_status',
+  // How new leads are shared across available sales team members
+  // (random | balanced | queued) — see lib/leadAssignment.js.
+  'lead_routing_method',
 ]);
 
 /**

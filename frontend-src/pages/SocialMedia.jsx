@@ -10,8 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Calendar, Plus, Clock, Sparkles, Edit3, Trash2, Check, X,
-  ChevronLeft, ChevronRight, TrendingUp, BarChart3, Zap, 
-  RefreshCw, Eye, Heart, Share2, MessageCircle, Upload, FileImage, Wand2
+  ChevronLeft, ChevronRight, TrendingUp, BarChart3, Zap,
+  RefreshCw, Eye, Heart, Share2, MessageCircle, Upload, FileImage, Wand2,
+  FileText, CalendarClock, CheckCircle2, PencilLine
 } from 'lucide-react';
 import SocialCalendar from '@/components/social/SocialCalendar';
 import SocialPerformanceTab from '@/components/social/SocialPerformanceTab';
@@ -23,14 +24,15 @@ import CanvaPicker from '@/components/integrations/CanvaPicker';
 import { toast } from 'sonner';
 import { Company, SocialPost } from '@/api/entities';
 import { InvokeLLM, GenerateImage, UploadFile } from '@/api/integrations';
+import PlatformIcon from '@/components/ui/PlatformIcon';
 
 const PLATFORMS = [
-  { value: 'instagram', label: 'Instagram', color: '#E1306C', icon: '=' },
-  { value: 'linkedin', label: 'LinkedIn', color: '#0077b5', icon: '=' },
-  { value: 'tiktok', label: 'TikTok', color: '#000000', icon: '<' },
-  { value: 'twitter', label: 'X (Twitter)', color: '#1DA1F2', icon: '5' },
-  { value: 'youtube', label: 'YouTube', color: '#FF0000', icon: '•' },
-  { value: 'facebook', label: 'Facebook', color: '#1877F2', icon: '=' },
+  { value: 'instagram', label: 'Instagram', color: '#E1306C', icon: <PlatformIcon platform="instagram" /> },
+  { value: 'linkedin', label: 'LinkedIn', color: '#0A66C2', icon: <PlatformIcon platform="linkedin" /> },
+  { value: 'tiktok', label: 'TikTok', color: '#FF0050', icon: <PlatformIcon platform="tiktok" /> },
+  { value: 'twitter', label: 'X (Twitter)', color: '#FFFFFF', icon: <PlatformIcon platform="twitter" /> },
+  { value: 'youtube', label: 'YouTube', color: '#FF0000', icon: <PlatformIcon platform="youtube" /> },
+  { value: 'facebook', label: 'Facebook', color: '#1877F2', icon: <PlatformIcon platform="facebook" /> },
 ];
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -999,13 +1001,13 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { label: 'Total Posts', value: filtered.length, icon: '=' },
-                    { label: 'Scheduled', value: filteredScheduled.length, icon: '=' },
-                    { label: 'Published', value: filteredPublished.length, icon: '' },
-                    { label: 'Drafts', value: filteredDraft.length, icon: '=' },
+                    { label: isPt ? 'Total de Posts' : 'Total Posts', value: filtered.length, Icon: FileText, tone: 'text-[#38b6ff]' },
+                    { label: isPt ? 'Agendados' : 'Scheduled', value: filteredScheduled.length, Icon: CalendarClock, tone: 'text-[#cb6ce6]' },
+                    { label: isPt ? 'Publicados' : 'Published', value: filteredPublished.length, Icon: CheckCircle2, tone: 'text-green-400' },
+                    { label: 'Drafts', value: filteredDraft.length, Icon: PencilLine, tone: 'text-yellow-400' },
                   ].map(stat => (
                     <div key={stat.label} className="rounded-2xl bg-white/5 border border-white/10 p-4 text-center">
-                      <p className="text-2xl mb-1">{stat.icon}</p>
+                      <stat.Icon size={22} className={`mx-auto mb-1.5 ${stat.tone}`} />
                       <p className="text-2xl font-bold text-white">{stat.value}</p>
                       <p className="text-gray-400 text-sm">{stat.label}</p>
                     </div>

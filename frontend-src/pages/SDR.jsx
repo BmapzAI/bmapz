@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SDR, Company } from '@/api/entities';
+import SalesStatusSwitcher from '@/components/sales/SalesStatusSwitcher';
 
 const STATUS_STYLE = {
   active: { label: 'Active', pt: 'Ativa', color: 'text-[#38b6ff] bg-[#38b6ff]/10 border-[#38b6ff]/20' },
@@ -62,8 +63,13 @@ export default function SDRPage() {
               : 'Your AI Sales Development Rep — greets, qualifies and routes leads automatically.'}
           </p>
         </div>
-        <div className={`px-3 py-1.5 rounded-full text-sm border ${agent?.enabled ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-gray-400 bg-white/5 border-white/10'}`}>
-          {agent?.enabled ? (isPt ? '● Ativo' : '● Active') : (isPt ? '○ Desativado' : '○ Off')}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Shortcut so a rep can change their own availability without
+              leaving the SDR section. Hidden for non-sales-team users. */}
+          <SalesStatusSwitcher />
+          <div className={`px-3 py-1.5 rounded-full text-sm border ${agent?.enabled ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-gray-400 bg-white/5 border-white/10'}`}>
+            {agent?.enabled ? (isPt ? '● Ativo' : '● Active') : (isPt ? '○ Desativado' : '○ Off')}
+          </div>
         </div>
       </div>
 

@@ -75,12 +75,25 @@ router.patch('/me/sales-status', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Only sales team members can set an availability status. Ask a company admin to add you to the sales team.' });
     }
 
-    const { data, error } = await supabaseAdmin
+    const updates = { sales_status: status, sales_status_updated_at: new Date().toISOString() };
+    // Becoming available puts you at the BACK of the queue, so the queued
+    // routing method serves whoever has been waiting longest.
+    if (status === 'online' && req.dbUser?.sales_status !== 'online') {
+      updates.lead_queue_position = new Date().toISOString();
+    }
+
+    const runUpdate = (body) => supabaseAdmin
       .from('users')
-      .update({ sales_status: status, sales_status_updated_at: new Date().toISOString() })
+      .update(body)
       .eq('id', req.dbUser.id)
       .select('id, full_name, email, is_sales_team, sales_status, sales_status_updated_at')
       .single();
+
+    let { data, error } = await runUpdate(updates);
+    if (error && /lead_queue_position/i.test(error.message || '')) {
+      const { lead_queue_position, ...rest } = updates; // eslint-disable-line no-unused-vars
+      ({ data, error } = await runUpdate(rest));
+    }
     if (error) {
       if (/is_sales_team|sales_status/i.test(error.message || '')) {
         return res.status(503).json({ error: 'The sales team feature is not enabled yet — the database update (migration 011) still needs to be applied.' });
@@ -109,6 +122,45 @@ router.patch('/me', requireAuth, async (req, res) => {
       .select()
       .single();
     if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/users/me/presence — automatic availability on sign-in / sign-out.
+// Body: { connected: boolean }
+//
+// Signing in puts a sales member back Online; signing out (or closing the app)
+// drops them to Stand by, so leads stop being routed to someone who is not
+// there while the SDR agent keeps handling them. Someone who deliberately chose
+// Offline is left alone — that is an explicit "do not route to me".
+router.patch('/me/presence', requireAuth, async (req, res) => {
+  try {
+    if (!req.dbUser?.is_sales_team) return res.json({ skipped: 'not a sales team member' });
+    const connected = !!req.body?.connected;
+    const current = req.dbUser.sales_status || 'offline';
+
+    if (!connected && current === 'offline') return res.json({ sales_status: current, unchanged: true });
+    if (connected && current === 'offline') return res.json({ sales_status: current, unchanged: true, reason: 'explicitly offline' });
+
+    const next = connected ? 'online' : 'standby';
+    if (next === current) return res.json({ sales_status: current, unchanged: true });
+
+    const updates = { sales_status: next, sales_status_updated_at: new Date().toISOString() };
+    if (next === 'online') updates.lead_queue_position = new Date().toISOString();
+
+    const run = (body) => supabaseAdmin.from('users').update(body)
+      .eq('id', req.dbUser.id).select('id, sales_status').single();
+    let { data, error } = await run(updates);
+    if (error && /lead_queue_position/i.test(error.message || '')) {
+      const { lead_queue_position, ...rest } = updates; // eslint-disable-line no-unused-vars
+      ({ data, error } = await run(rest));
+    }
+    if (error) {
+      if (/is_sales_team|sales_status/i.test(error.message || '')) return res.json({ skipped: 'sales team feature not enabled yet' });
+      throw error;
+    }
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/components/ui/LanguageContext';
-import { LifeBuoy, X, Send, Loader2, Minus, Sparkles } from 'lucide-react';
+import { LifeBuoy, X, Send, Loader2, Minus, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '@/api/apiClient';
 
 /**
@@ -13,15 +13,29 @@ import { api } from '@/api/apiClient';
  * edit anything — those permissions belong to the Company Brain agent and the
  * SDR agent.
  */
+const HISTORY_KEY = 'bmapz_support_chat';
+
 export default function SupportAssistant() {
   const { isPt } = useLanguage();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
+  // Keep the conversation for the whole browser session so a reload (or coming
+  // back later in the same session) doesn't force the user to re-ask.
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(HISTORY_KEY);
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  });
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(HISTORY_KEY, JSON.stringify(messages.slice(-40))); } catch { /* storage full or blocked */ }
+  }, [messages]);
 
   const greeting = isPt
     ? 'Oi! Sou o assistente de suporte do Bmapz. Posso explicar como usar o app, verificar sua conta e te levar até a tela certa. Não consigo criar nem editar nada — mas te mostro exatamente como fazer.'
@@ -69,7 +83,9 @@ export default function SupportAssistant() {
       const [, label, href] = m;
       const internal = href.startsWith('/');
       return internal ? (
-        <button key={i} onClick={() => { navigate(href); setOpen(false); }}
+        // Navigate but keep the panel open — the user usually wants to read the
+        // steps while looking at the screen the assistant sent them to.
+        <button key={i} type="button" onClick={(e) => { e.preventDefault(); navigate(href); }}
           className="text-[#38b6ff] underline underline-offset-2 hover:text-[#5cc5ff]">{label}</button>
       ) : (
         <a key={i} href={href} target="_blank" rel="noopener noreferrer"
@@ -83,7 +99,8 @@ export default function SupportAssistant() {
       {/* Bubble — always visible, above everything else */}
       {!open && (
         <button
-          onClick={() => setOpen(true)}
+          type="button"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true); }}
           aria-label={isPt ? 'Abrir assistente de suporte' : 'Open support assistant'}
           className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[100] w-14 h-14 rounded-full
             bg-gradient-to-br from-[#3572b9] to-[#38b6ff] shadow-2xl shadow-[#38b6ff]/25
@@ -110,9 +127,16 @@ export default function SupportAssistant() {
               </div>
             </div>
             <div className="flex items-center gap-0.5 flex-shrink-0">
-              <button onClick={() => setOpen(false)} title={isPt ? 'Minimizar' : 'Minimize'}
+              {/* Minimise keeps the conversation; only "Clear" throws it away. */}
+              <button type="button" onClick={() => setOpen(false)} title={isPt ? 'Minimizar' : 'Minimize'}
                 className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10"><Minus size={15} /></button>
-              <button onClick={() => { setOpen(false); setMessages([]); }} title={isPt ? 'Fechar' : 'Close'}
+              {messages.length > 0 && (
+                <button type="button"
+                  onClick={() => { setMessages([]); try { sessionStorage.removeItem(HISTORY_KEY); } catch { /* ignore */ } }}
+                  title={isPt ? 'Limpar conversa' : 'Clear conversation'}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10"><Trash2 size={14} /></button>
+              )}
+              <button type="button" onClick={() => setOpen(false)} title={isPt ? 'Fechar' : 'Close'}
                 className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10"><X size={15} /></button>
             </div>
           </div>

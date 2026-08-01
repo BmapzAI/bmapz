@@ -24,6 +24,7 @@ const Pricing = lazy(() => import('./pages/Pricing'));
 
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { LanguageProvider } from '@/components/ui/LanguageContext';
+import SupportAssistant from '@/components/layout/SupportAssistant';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -114,7 +115,14 @@ const AppRoutes = () => {
     );
   }
   if (!isAuthenticated) return <PublicRoutes />;
-  return <AuthenticatedRoutes />;
+  // The assistant sits OUTSIDE <Routes> so it survives navigation with its
+  // conversation intact — inside the Layout it remounted on every page change.
+  return (
+    <>
+      <AuthenticatedRoutes />
+      <SupportAssistant />
+    </>
+  );
 };
 
 export default function App() {

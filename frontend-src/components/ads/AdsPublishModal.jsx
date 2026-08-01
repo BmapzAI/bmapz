@@ -91,6 +91,12 @@ export default function AdsPublishModal({ isOpen, onClose, onConfirm, platform, 
                   <p className="text-gray-300 text-sm">
                     Before publishing this ad, please make sure you have reviewed your available budget in your {platform || 'ad'} account to avoid unexpected charges.
                   </p>
+                  {/* Currency is decided by the ad account, not by this form. */}
+                  <p className="text-gray-300 text-sm mt-2">
+                    <span className="text-yellow-400 font-medium">Currency:</span> the amount you set is applied as a number only —
+                    it will be charged in whatever currency your {platform || 'ad'} account is already set to.
+                    Bmapz does not convert it, so 100 means 100 in your account&apos;s own currency.
+                  </p>
                   {platform && (
                     <a href={
                       platform === 'meta' ? 'https://adsmanager.facebook.com/' :

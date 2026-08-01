@@ -7,6 +7,51 @@ import { pickNextOwner } from '../lib/leadAssignment.js';
 
 const router = Router();
 
+// Columns a client may write. Anything else is ignored rather than allowed to
+// blow up the insert — an unknown field used to fail the whole request with a
+// bare "Failed to add lead".
+const LEAD_FIELDS = [
+  'lead_name', 'lead_company_name', 'email', 'phone', 'role', 'website',
+  'company_website', 'company_linkedin', 'linkedin_url', 'company_instagram',
+  'company_facebook', 'company_tiktok', 'source', 'status', 'funnel_stage',
+  'icp_score', 'icp_reasoning', 'icp_recommendation', 'estimated_value', 'tags',
+  'notes', 'is_decision_maker', 'digital_presence_analysis', 'outreach_messages',
+  'last_contacted_at', 'enriched_at', 'ad_platform', 'ad_form_id', 'ad_campaign_id',
+  'disqualification_reason', 'disqualification_notes', 'owner_id',
+];
+// The UI calls the LinkedIn field `linkedin_profile`; the column is `linkedin_url`.
+const LEAD_FIELD_ALIASES = { linkedin_profile: 'linkedin_url' };
+// Empty strings are invalid for these types and reject the whole row.
+const LEAD_NULLABLE_NUMBERS = ['estimated_value', 'icp_score'];
+const LEAD_NULLABLE_TIMESTAMPS = ['last_contacted_at', 'enriched_at'];
+
+function pickLeadFields(body) {
+  const src = { ...(body || {}) };
+  for (const [alias, column] of Object.entries(LEAD_FIELD_ALIASES)) {
+    if (alias in src && !(column in src)) src[column] = src[alias];
+  }
+  const out = {};
+  for (const field of LEAD_FIELDS) {
+    if (!(field in src)) continue;
+    let value = src[field];
+    if (LEAD_NULLABLE_TIMESTAMPS.includes(field) && (value === '' || value === undefined)) value = null;
+    if (LEAD_NULLABLE_NUMBERS.includes(field)) {
+      if (value === '' || value === undefined || value === null) value = null;
+      else {
+        const n = Number(String(value).replace(/[^0-9.-]/g, ''));
+        value = Number.isFinite(n) ? n : null;
+      }
+    }
+    out[field] = value;
+  }
+  return out;
+}
+
+// Echo the UI's field name back so existing screens keep working.
+const withLeadAliases = (row) => (row && typeof row === 'object')
+  ? { ...row, linkedin_profile: row.linkedin_url ?? null }
+  : row;
+
 // ─── Lead Lists ──────────────────────────────────────────────────────────────
 
 router.get('/lists', requireAuth, async (req, res) => {
@@ -113,7 +158,7 @@ router.get('/', requireAuth, async (req, res) => {
       ({ data, error, count } = await build(false));
     }
     if (error) throw error;
-    res.json({ data, total: count });
+    res.json({ data: (data || []).map(withLeadAliases), total: count });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -121,7 +166,7 @@ router.get('/', requireAuth, async (req, res) => {
 
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const payload = { ...req.body, company_id: req.companyId };
+    const payload = { ...pickLeadFields(req.body), company_id: req.companyId };
     // No explicit owner? Route it to an ONLINE sales team member. If nobody is
     // online (everyone standby/offline) the lead stays unassigned so the SDR
     // agent works it — that is what "stand by" means.
@@ -131,11 +176,17 @@ router.post('/', requireAuth, async (req, res) => {
       if (next) { payload.owner_id = next.id; autoAssigned = true; }
     }
     if (payload.owner_id) payload.owner_assigned_at = new Date().toISOString();
-    const { data, error } = await supabaseAdmin
-      .from('leads')
-      .insert(payload)
-      .select()
-      .single();
+
+    const insert = (body) => supabaseAdmin.from('leads').insert(body).select().single();
+    let { data, error } = await insert(payload);
+    // Drop columns that only exist after a migration rather than failing the add.
+    if (error && /company_instagram|company_facebook|company_tiktok|owner_id|owner_assigned_at/i.test(error.message || '')) {
+      const retry = { ...payload };
+      for (const c of ['company_instagram', 'company_facebook', 'company_tiktok', 'owner_id', 'owner_assigned_at']) {
+        if (new RegExp(c, 'i').test(error.message || '')) delete retry[c];
+      }
+      ({ data, error } = await insert(retry));
+    }
     if (error) throw error;
 
     // Open the lead's history with how it entered the system.
@@ -179,7 +230,7 @@ router.post('/bulk', requireAuth, async (req, res) => {
     if (!Array.isArray(leads)) return res.status(400).json({ error: 'leads must be an array' });
 
     const rows = leads.map(l => ({
-      ...l,
+      ...pickLeadFields(l),
       company_id: req.companyId,
     }));
 
@@ -213,7 +264,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
       .from('leads').select('*')
       .eq('id', req.params.id).eq('company_id', req.companyId).maybeSingle();
 
-    const patch = { ...req.body };
+    const patch = pickLeadFields(req.body);
     // A lead has exactly one owner; stamp when that ownership changed.
     if ('owner_id' in patch && patch.owner_id !== before?.owner_id) {
       patch.owner_assigned_at = patch.owner_id ? new Date().toISOString() : null;

@@ -17,13 +17,17 @@ import { supabaseAdmin } from './supabase.js';
 /** Sales team members of a company, optionally filtered by availability. */
 export async function getSalesTeam(companyId, { status } = {}) {
   try {
-    let q = supabaseAdmin
-      .from('users')
-      .select('id, full_name, email, profile_picture, sales_status, is_sales_team')
-      .eq('company_id', companyId)
-      .eq('is_sales_team', true);
-    if (status) q = q.eq('sales_status', status);
-    const { data, error } = await q;
+    const run = (cols) => {
+      let q = supabaseAdmin.from('users').select(cols)
+        .eq('company_id', companyId).eq('is_sales_team', true);
+      if (status) q = q.eq('sales_status', status);
+      return q;
+    };
+    let { data, error } = await run('id, full_name, email, profile_picture, sales_status, is_sales_team, lead_queue_position');
+    // lead_queue_position only exists after migration 014.
+    if (error && /lead_queue_position/i.test(error.message || '')) {
+      ({ data, error } = await run('id, full_name, email, profile_picture, sales_status, is_sales_team'));
+    }
     if (error) throw error;
     return data || [];
   } catch (err) {
@@ -33,18 +37,25 @@ export async function getSalesTeam(companyId, { status } = {}) {
   }
 }
 
-/**
- * Choose the next owner for a new lead: the ONLINE sales member currently
- * holding the fewest open leads (a simple, fair round-robin that self-balances).
- * Returns null when nobody is online — the caller should then let the SDR work
- * the lead and leave it unassigned.
- */
-export async function pickNextOwner(companyId) {
-  const available = await getSalesTeam(companyId, { status: 'online' });
-  if (!available.length) return null;
+export const ROUTING_METHODS = ['random', 'balanced', 'queued'];
+export const DEFAULT_ROUTING_METHOD = 'balanced';
 
-  // Count each member's open (not won/lost/disqualified) leads.
-  let counts = {};
+/** The company's chosen routing method (falls back to balanced). */
+export async function getRoutingMethod(companyId) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('companies').select('lead_routing_method').eq('id', companyId).maybeSingle();
+    if (error) throw error;
+    const m = data?.lead_routing_method;
+    return ROUTING_METHODS.includes(m) ? m : DEFAULT_ROUTING_METHOD;
+  } catch {
+    // Column missing (before migration 014) — keep the previous behaviour.
+    return DEFAULT_ROUTING_METHOD;
+  }
+}
+
+/** Open-lead count per owner (won/lost/disqualified don't count as workload). */
+async function openLeadCounts(companyId) {
   try {
     const { data, error } = await supabaseAdmin
       .from('leads')
@@ -53,16 +64,59 @@ export async function pickNextOwner(companyId) {
       .not('owner_id', 'is', null);
     if (error) throw error;
     const closed = new Set(['won', 'lost', 'disqualified']);
-    counts = (data || []).reduce((acc, l) => {
+    return (data || []).reduce((acc, l) => {
       if (closed.has(l.status)) return acc;
       acc[l.owner_id] = (acc[l.owner_id] || 0) + 1;
       return acc;
     }, {});
   } catch (err) {
-    // If the count fails, still assign — just without load balancing.
     console.error('[leadAssignment] load count failed:', err.message);
+    return {};
+  }
+}
+
+/**
+ * Choose the next owner for a new lead from the members who are ONLINE, using
+ * the company's routing method. Returns null when nobody is online — the caller
+ * then leaves the lead unassigned for the SDR agent (that is what "stand by"
+ * means), so a lead is never silently dropped.
+ */
+export async function pickNextOwner(companyId, { method } = {}) {
+  const available = await getSalesTeam(companyId, { status: 'online' });
+  if (!available.length) return null;
+  if (available.length === 1) return available[0];
+
+  const chosen = method || await getRoutingMethod(companyId);
+
+  if (chosen === 'random') {
+    // Deliberately uniform: no memory, every online member equally likely.
+    return available[Math.floor(Math.random() * available.length)];
   }
 
+  if (chosen === 'queued') {
+    // Strict round-robin: whoever has been waiting longest since they became
+    // available (or since they were last handed a lead) goes next. A member with
+    // no stamp yet has never been served, so they take priority.
+    const sorted = [...available].sort((a, b) => {
+      const ta = a.lead_queue_position ? Date.parse(a.lead_queue_position) : 0;
+      const tb = b.lead_queue_position ? Date.parse(b.lead_queue_position) : 0;
+      if (ta !== tb) return ta - tb;
+      return String(a.id).localeCompare(String(b.id)); // stable tie-break
+    });
+    const next = sorted[0];
+    // Move them to the back of the queue.
+    try {
+      await supabaseAdmin.from('users')
+        .update({ lead_queue_position: new Date().toISOString() })
+        .eq('id', next.id).eq('company_id', companyId);
+    } catch (err) {
+      console.error('[leadAssignment] queue advance failed:', err.message);
+    }
+    return next;
+  }
+
+  // balanced (default): fewest open leads wins.
+  const counts = await openLeadCounts(companyId);
   let best = available[0];
   let bestCount = counts[best.id] || 0;
   for (const member of available.slice(1)) {

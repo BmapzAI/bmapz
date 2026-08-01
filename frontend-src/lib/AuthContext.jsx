@@ -23,6 +23,11 @@ export function AuthProvider({ children }) {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       setDbUser(dbU); setCompany(co); setAuthError(null);
+      // A sales team member who signs in becomes available for leads again
+      // (unless they deliberately set themselves Offline).
+      if (dbU?.is_sales_team) {
+        api.patch('/api/users/me/presence', { connected: true }).catch(() => {});
+      }
     } catch (err) {
       console.error('[AuthContext] loadProfile error:', err);
       const msg = err.message || '';
@@ -76,6 +81,12 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async (shouldRedirect = true) => {
+    // Drop to Stand by BEFORE signing out (the request needs a valid token), so
+    // new leads stop being routed to someone who has left and the SDR picks them
+    // up instead.
+    if (dbUser?.is_sales_team) {
+      await api.patch('/api/users/me/presence', { connected: false }).catch(() => {});
+    }
     await supabase.auth.signOut();
     api.post('/api/auth/logout').catch(() => {});
     setUser(null); setDbUser(null); setCompany(null);

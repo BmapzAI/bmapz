@@ -2,8 +2,9 @@ import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Users, Circle, Loader2, Info, Bot } from 'lucide-react';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { User } from '@/api/entities';
+import { User, Company } from '@/api/entities';
 
 /**
  * Availability options. These are not cosmetic — they decide whether a new lead
@@ -30,6 +31,25 @@ export const SALES_STATUSES = [
     enDesc: 'Not available for lead assignment.',
     ptDesc: 'Indisponível para atribuição de leads.',
     dot: 'text-gray-500', chip: 'text-gray-400 bg-white/5 border-white/10',
+  },
+];
+
+/** How new leads are shared out between the members who are Online. */
+export const ROUTING_METHODS = [
+  {
+    key: 'balanced', en: 'Balanced', pt: 'Equilibrado',
+    enDesc: 'Goes to whoever currently has the fewest open leads.',
+    ptDesc: 'Vai para quem tem menos leads em aberto no momento.',
+  },
+  {
+    key: 'queued', en: 'Queued', pt: 'Fila',
+    enDesc: 'Strict turn-taking: first available takes the next lead, then the next person.',
+    ptDesc: 'Rodízio: o primeiro disponível recebe o próximo lead, depois o seguinte.',
+  },
+  {
+    key: 'random', en: 'Random', pt: 'Aleatório',
+    enDesc: 'Picked at random from everyone who is online.',
+    ptDesc: 'Escolhido aleatoriamente entre quem está online.',
   },
 ];
 
@@ -61,10 +81,21 @@ export default function SalesTeamTab({ currentUser }) {
     queryFn: () => User.list(),
   });
 
+  const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
+  const company = companies[0];
+  const routingMethod = company?.lead_routing_method || 'balanced';
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['companyUsers'] });
     queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+    queryClient.invalidateQueries({ queryKey: ['me'] });
   };
+
+  const routingMutation = useMutation({
+    mutationFn: (method) => Company.update(company.id, { lead_routing_method: method }),
+    onSuccess: () => { toast.success(isPt ? 'Distribuição atualizada' : 'Lead sharing updated'); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
+    onError: (e) => toast.error((isPt ? 'Falha: ' : 'Failed: ') + e.message),
+  });
 
   const membershipMutation = useMutation({
     mutationFn: ({ id, isMember }) => User.setSalesTeam(id, isMember),
@@ -149,6 +180,27 @@ export default function SalesTeamTab({ currentUser }) {
             {salesTeam.length} {isPt ? 'no time' : 'on team'} · {onlineCount} {isPt ? 'online' : 'online'}
           </span>
         </div>
+
+        {/* How leads are shared out */}
+        {isAdmin && (
+          <div className="p-3 rounded-xl bg-black/20 border border-white/10 space-y-2">
+            <Label className="text-gray-300 text-xs font-medium">{isPt ? 'Como distribuir os leads' : 'How to share out leads'}</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {ROUTING_METHODS.map(m => {
+                const active = routingMethod === m.key;
+                return (
+                  <button key={m.key} onClick={() => routingMutation.mutate(m.key)} disabled={routingMutation.isPending}
+                    className={`text-left p-2.5 rounded-xl border transition-all ${active
+                      ? 'bg-[#cb6ce6]/10 border-[#cb6ce6]/40'
+                      : 'bg-black/20 border-white/10 hover:border-white/25'}`}>
+                    <span className="text-white text-sm font-medium">{isPt ? m.pt : m.en}</span>
+                    <p className="text-gray-500 text-xs mt-0.5 leading-snug">{isPt ? m.ptDesc : m.enDesc}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* What happens when nobody is online */}
         <div className="flex items-start gap-2 p-3 rounded-xl bg-[#38b6ff]/10 border border-[#38b6ff]/20">

@@ -39,14 +39,13 @@ export default function Ads() {
   const [publishTarget, setPublishTarget] = useState(null); // { title, platform, isUpdate }
   const NEVER_SHOW_KEY = 'bmapz_never_show_budget_warning';
 
+  // NEVER report success here. This used to short-circuit to a green
+  // "published!" toast without making any network call at all — so updates
+  // always lied, and once a user ticked "never show this again" every publish
+  // lied too. Only a real result from the modal may report success.
   const handlePublish = (title, platform, isUpdate = false) => {
-    const neverShow = localStorage.getItem(NEVER_SHOW_KEY) === 'true';
-    if (neverShow || isUpdate) {
-      // Skip warning for updates or if user opted out
-      toast.success(isUpdate ? `Ad "${title}" updated!` : `Ad "${title}" published to ${platform}!`);
-      return;
-    }
-    setPublishTarget({ title, platform, isUpdate });
+    const skipBudgetWarning = localStorage.getItem(NEVER_SHOW_KEY) === 'true';
+    setPublishTarget({ title, platform, isUpdate, skipBudgetWarning });
     setShowPublishModal(true);
   };
 
@@ -361,7 +360,32 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
         <AdsPublishModal
           isOpen={showPublishModal}
           onClose={() => { setShowPublishModal(false); setPublishTarget(null); }}
-          onConfirm={() => toast.success(`${publishTarget.isUpdate ? 'Updated' : 'Published'}: "${publishTarget.title}"`)}
+          onConfirm={async () => {
+            // Persist a REAL record and report the REAL outcome. Live delivery to
+            // the ad platform is a separate, not-yet-available step (it needs the
+            // provider app approved), so we never claim the ad went live.
+            try {
+              await saveMutation.mutateAsync({
+                company_id: company.id,
+                type: 'campaign',
+                title: publishTarget.title,
+                platform: publishTarget.platform,
+                objective: strategyForm.objective || 'LINK_CLICKS',
+                budget: strategyForm.budget || null,
+                status: 'draft',
+                strategy_data: strategy,
+                copies_data: copies,
+                form_data: { ...strategyForm, ...copyForm },
+              });
+              setShowPublishModal(false);
+              setPublishTarget(null);
+              toast.success(isPt
+                ? 'Campanha salva no Bmapz. A publicação ao vivo na plataforma de anúncios ainda não está liberada.'
+                : 'Campaign saved in Bmapz. Live delivery to the ad platform is not enabled yet.');
+            } catch (e) {
+              toast.error((isPt ? 'Falha ao salvar a campanha: ' : 'Could not save the campaign: ') + (e?.message || 'unknown error'));
+            }
+          }}
           platform={publishTarget.platform}
           adTitle={publishTarget.title}
           isUpdate={publishTarget.isUpdate}

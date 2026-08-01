@@ -166,11 +166,15 @@ export default function AdsCampaignsTab({ companyId }) {
   );
 }
 
+// Campaigns, ad groups and ads are all scheduled to the minute, in an explicit
+// time zone, so "starts at 9am" means the same thing to the user and the platform.
+const TZ = (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
+
 function CampaignForm({ initialData, onSave, onCancel, isSaving }) {
   const [form, setForm] = React.useState(
     initialData || {
       name: '', platform: 'meta', objective: 'LINK_CLICKS',
-      budget: '', startDate: '', endDate: '', audience: '', creative: '', status: 'active',
+      budget: '', startDate: '', endDate: '', timezone: TZ, audience: '', creative: '', status: 'active',
     }
   );
 
@@ -213,22 +217,39 @@ function CampaignForm({ initialData, onSave, onCancel, isSaving }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-sm text-gray-400">Daily Budget (USD)</label>
+          <label className="text-sm text-gray-400">Daily Budget</label>
           <Input type="number" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })}
             placeholder="100" className="bg-white/5 border-white/10 text-white mt-1" required />
+          {/* The number is applied as-is; the ad account decides the currency. */}
+          <p className="text-gray-500 text-[11px] mt-1">
+            Charged in whatever currency your ad account uses — Bmapz does not convert it.
+          </p>
         </div>
         <div>
-          <label className="text-sm text-gray-400">Start Date</label>
-          <Input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+          <label className="text-sm text-gray-400">Starts</label>
+          <Input type="datetime-local" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })}
             className="bg-white/5 border-white/10 text-white mt-1" />
         </div>
       </div>
 
-      <div>
-        <label className="text-sm text-gray-400">End Date</label>
-        <Input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-          className="bg-white/5 border-white/10 text-white mt-1" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="text-sm text-gray-400">Ends</label>
+          <Input type="datetime-local" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+            className="bg-white/5 border-white/10 text-white mt-1" />
+          <p className="text-gray-500 text-[11px] mt-1">Leave empty to keep running until you pause it.</p>
+        </div>
+        <div>
+          <label className="text-sm text-gray-400">Time zone</label>
+          <Input value={form.timezone || TZ} onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+            className="bg-white/5 border-white/10 text-white mt-1" />
+          <p className="text-gray-500 text-[11px] mt-1">Times are interpreted in this time zone.</p>
+        </div>
       </div>
+
+      {form.startDate && form.endDate && new Date(form.endDate) <= new Date(form.startDate) && (
+        <p className="text-red-400 text-xs">The end time must be after the start time.</p>
+      )}
 
       <div>
         <label className="text-sm text-gray-400">Target Audience</label>
