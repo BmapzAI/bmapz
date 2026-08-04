@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Zap, ListChecks, Plus, TrendingUp, Users, BookOpen, Send, Image } from 'lucide-react';
+import { Zap, Plus, TrendingUp, Users, BookOpen, Send, Image, Layers, Target, Megaphone } from 'lucide-react';
 import { toast } from 'sonner';
 
 import AdsSavedRecords from '@/components/ads/AdsSavedRecords';
@@ -15,7 +15,7 @@ import AdsCopyForm from '@/components/ads/AdsCopyForm';
 import AdsCopyOutput from '@/components/ads/AdsCopyOutput';
 import AdsRealDataPanel from '@/components/ads/AdsRealDataPanel';
 import AdsPublishModal from '@/components/ads/AdsPublishModal';
-import AdsCampaignsTab from '@/components/ads/AdsCampaignsTab';
+import AdsManagerTab from '@/components/ads/AdsManagerTab';
 import AdsOptimizationTab from '@/components/ads/AdsOptimizationTab';
 import AdsLeadsTab from '@/components/ads/AdsLeadsTab';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
@@ -224,7 +224,7 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
     if (record.type === 'strategy') {
       setStrategy(record.strategy_data ?? record.strategy ?? null);
       if (record.form_data) setStrategyForm(f => ({ ...f, ...record.form_data }));
-      setActiveTab('create');
+      setActiveTab('strategy');
     } else if (record.type === 'campaign') {
       if (record.form_data) setStrategyForm(f => ({ ...f, ...record.form_data }));
       setActiveTab('campaigns');
@@ -281,29 +281,48 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
       <AdsRealDataPanel company={company} onDataLoaded={setRealAdData} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-white/5 border border-white/10">
-          <TabsTrigger value="campaigns" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <ListChecks size={16} className="mr-2" /> {t('campaigns')}
+        {/* Tabs now mirror the real ad structure. Each publishes its own level
+            and everything below it, which is why they are ordered widest first. */}
+        <TabsList className="w-full justify-start overflow-x-auto bg-white/5 border border-white/10">
+          <TabsTrigger value="campaigns" className="shrink-0 data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
+            <Layers size={16} className="mr-2" /> Campaigns
           </TabsTrigger>
-          <TabsTrigger value="create" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <Plus size={16} className="mr-2" /> {t('createAd')}
+          <TabsTrigger value="adgroups" className="shrink-0 data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
+            <Target size={16} className="mr-2" /> Ad Groups
           </TabsTrigger>
-          <TabsTrigger value="performance" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <TrendingUp size={16} className="mr-2" /> {t('performance')}
+          <TabsTrigger value="create" className="shrink-0 data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
+            <Megaphone size={16} className="mr-2" /> Ads
           </TabsTrigger>
-          <TabsTrigger value="optimize" className="data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
+          <TabsTrigger value="strategy" className="shrink-0 data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
+            <BookOpen size={16} className="mr-2" /> Strategy
+          </TabsTrigger>
+          <TabsTrigger value="performance" className="shrink-0 data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
+            <TrendingUp size={16} className="mr-2" /> Copy
+          </TabsTrigger>
+          <TabsTrigger value="optimize" className="shrink-0 data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
             <Zap size={16} className="mr-2" /> {t('optimize')}
           </TabsTrigger>
-          <TabsTrigger value="leads" className="data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
+          <TabsTrigger value="leads" className="shrink-0 data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
             <Users size={16} className="mr-2" /> {t('leads')}
           </TabsTrigger>
         </TabsList>
 
+        {/* Campaign level — the whole tree, publishes campaign + ad groups + ads */}
         <TabsContent value="campaigns" className="space-y-6">
-          <AdsCampaignsTab companyId={company?.id} />
+          <AdsManagerTab scope="campaign" />
         </TabsContent>
 
+        {/* Ad group level — publishes ad groups + their ads */}
+        <TabsContent value="adgroups" className="space-y-6">
+          <AdsManagerTab scope="ad_group" />
+        </TabsContent>
+
+        {/* Ad level — publishes ads only */}
         <TabsContent value="create" className="space-y-6">
+          <AdsManagerTab scope="ad" />
+        </TabsContent>
+
+        <TabsContent value="strategy" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <AdsStrategyForm
               form={strategyForm} setForm={setStrategyForm} company={company}

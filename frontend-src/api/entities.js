@@ -122,6 +122,36 @@ export const AdRecord = {
   getPlatformLeads: (params) => api.get('/api/ads/platform-leads', params),
 };
 
+/**
+ * Ads Manager — the real campaign → ad group → ad hierarchy.
+ * (AdRecord above remains for the legacy saved strategies/copies.)
+ */
+export const AdsManager = {
+  platforms: () => api.get('/api/ads-manager/platforms'),
+
+  listCampaigns: (params) => api.get('/api/ads-manager/campaigns', params),
+  createCampaign: (data) => api.post('/api/ads-manager/campaigns', data),
+  updateCampaign: (id, data) => api.patch(`/api/ads-manager/campaigns/${id}`, data),
+  deleteCampaign: (id) => api.delete(`/api/ads-manager/campaigns/${id}`),
+
+  createAdGroup: (data) => api.post('/api/ads-manager/ad-groups', data),
+  updateAdGroup: (id, data) => api.patch(`/api/ads-manager/ad-groups/${id}`, data),
+  deleteAdGroup: (id) => api.delete(`/api/ads-manager/ad-groups/${id}`),
+
+  createAd: (data) => api.post('/api/ads-manager/ads', data),
+  updateAd: (id, data) => api.patch(`/api/ads-manager/ads/${id}`, data),
+  deleteAd: (id) => api.delete(`/api/ads-manager/ads/${id}`),
+
+  // levels = { campaign, ad_groups, ads }
+  validate: (id, levels) => api.post(`/api/ads-manager/campaigns/${id}/validate`, { levels }),
+  publish: (id, levels) => api.post(`/api/ads-manager/campaigns/${id}/publish`, { levels }),
+
+  generate: (brief) => api.post('/api/ads-manager/generate', brief),
+  applyPlan: (data) => api.post('/api/ads-manager/generate/apply', data),
+  optimize: (data) => api.post('/api/ads-manager/optimize', data),
+  handoverLeads: (data) => api.post('/api/ads-manager/leads/handover', data),
+};
+
 // ─── SEO ─────────────────────────────────────────────────────────────────────
 
 export const SEOAnalysis = {

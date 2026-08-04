@@ -5,7 +5,14 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [react()],
-  resolve: { alias: { '@': path.resolve(__dirname, './frontend-src') } },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './frontend-src'),
+      // Ad-platform structure is shared verbatim with the Express server so the
+      // UI and the publisher can never disagree about a platform's fields.
+      '@shared': path.resolve(__dirname, './shared'),
+    },
+  },
   root: '.',
   publicDir: 'public',
   build: {
