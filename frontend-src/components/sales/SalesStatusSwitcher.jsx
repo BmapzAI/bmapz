@@ -44,11 +44,11 @@ export default function SalesStatusSwitcher({ className = '' }) {
     <div className={`flex items-center gap-2 ${className}`}>
       <span className="hidden sm:inline text-gray-500 text-xs">{isPt ? 'Meu status' : 'My status'}</span>
       <Select value={current} onValueChange={(v) => mutation.mutate(v)} disabled={mutation.isPending}>
+        {/* The selected item already renders its own coloured dot, so the
+            trigger must NOT add a second one — that is what produced two dots. */}
         <SelectTrigger className="h-8 w-[150px] bg-black/30 border-white/10 text-white text-xs">
           <span className="flex items-center gap-1.5 truncate">
-            {mutation.isPending
-              ? <Loader2 size={11} className="animate-spin text-[#38b6ff]" />
-              : <Circle size={8} className={`${active.dot} fill-current flex-shrink-0`} />}
+            {mutation.isPending && <Loader2 size={11} className="animate-spin text-[#38b6ff] flex-shrink-0" />}
             <SelectValue />
           </span>
         </SelectTrigger>

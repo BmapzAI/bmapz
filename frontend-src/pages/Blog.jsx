@@ -13,6 +13,8 @@ import {
   CheckCircle2, Globe, Tag, Link2, Search, Edit3, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/AuthContext';
+import { canSeeDesign } from '@/lib/featureFlags';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AIContextField from '@/components/ui/AIContextField';
@@ -40,6 +42,7 @@ const emptyPost = { title: '', slug: '', meta_description: '', content: '', keyw
 
 export default function Blog() {
   const { t, isPt } = useLanguage();
+  const { dbUser } = useAuth();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(null);
   const [post, setPost] = useState(emptyPost);
@@ -313,10 +316,13 @@ Return JSON with: content (full article in markdown), meta_description (155 char
                 <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                   <Label className="text-gray-400">Content (Markdown)</Label>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={goToDesignStudio}
-                      className="h-7 px-3 text-xs border-[#38b6ff]/40 bg-[#38b6ff]/10 text-[#38b6ff] hover:bg-[#38b6ff]/20 gap-1">
-                      🎨 {isPt ? 'Design' : 'Design Studio'}
-                    </Button>
+                    {/* Design Studio is confidential until the next launch cycle. */}
+                    {canSeeDesign(dbUser) && (
+                      <Button size="sm" variant="outline" onClick={goToDesignStudio}
+                        className="h-7 px-3 text-xs border-[#38b6ff]/40 bg-[#38b6ff]/10 text-[#38b6ff] hover:bg-[#38b6ff]/20 gap-1">
+                        🎨 {isPt ? 'Design' : 'Design Studio'}
+                      </Button>
+                    )}
                     <Button size="sm" variant="outline" onClick={() => setShowCanva(true)}
                       className="h-7 px-3 text-xs border-[#00c4cc]/40 bg-[#00c4cc]/10 text-[#00c4cc] hover:bg-[#00c4cc]/20 gap-1">
                       🎨 Canva

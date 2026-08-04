@@ -14,7 +14,6 @@ import AdsStrategyOutput from '@/components/ads/AdsStrategyOutput';
 import AdsCopyForm from '@/components/ads/AdsCopyForm';
 import AdsCopyOutput from '@/components/ads/AdsCopyOutput';
 import AdsRealDataPanel from '@/components/ads/AdsRealDataPanel';
-import AdsCreativesTab from '@/components/ads/AdsCreativesTab';
 import AdsPublishModal from '@/components/ads/AdsPublishModal';
 import AdsCampaignsTab from '@/components/ads/AdsCampaignsTab';
 import AdsOptimizationTab from '@/components/ads/AdsOptimizationTab';
@@ -219,17 +218,26 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
   };
 
   const loadRecord = (record) => {
+    // The tabs are called "create" and "performance"; this used to switch to
+    // "strategy"/"copy", which match no tab at all — so nothing rendered and it
+    // looked like loading saved work did nothing.
     if (record.type === 'strategy') {
-      setStrategy(record.strategy_data);
-      if (record.form_data) setStrategyForm(record.form_data);
-      setActiveTab('strategy');
+      setStrategy(record.strategy_data ?? record.strategy ?? null);
+      if (record.form_data) setStrategyForm(f => ({ ...f, ...record.form_data }));
+      setActiveTab('create');
+    } else if (record.type === 'campaign') {
+      if (record.form_data) setStrategyForm(f => ({ ...f, ...record.form_data }));
+      setActiveTab('campaigns');
     } else {
-      setCopies(record.copies_data);
-      if (record.form_data) setCopyForm(record.form_data);
-      setActiveTab('copy');
+      setCopies(record.copies_data ?? record.copy_data ?? null);
+      if (record.form_data) setCopyForm(f => ({ ...f, ...record.form_data }));
+      setActiveTab('performance');
     }
     setShowSaved(false);
-    toast.success('Loaded!');
+    toast.success(isPt ? 'Trabalho carregado — continue de onde parou.' : 'Loaded — pick up where you left off.');
+    // Bring the restored work into view instead of leaving the user at the
+    // bottom of the saved-records list.
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
   };
 
   const openGuide = (platform) => {

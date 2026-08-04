@@ -22,6 +22,8 @@ import AIContextField from '@/components/ui/AIContextField';
 import GoogleDriveImagePicker from '@/components/integrations/GoogleDriveImagePicker';
 import CanvaPicker from '@/components/integrations/CanvaPicker';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/AuthContext';
+import { canSeeDesign } from '@/lib/featureFlags';
 import { Company, SocialPost } from '@/api/entities';
 import { InvokeLLM, GenerateImage, UploadFile } from '@/api/integrations';
 import PlatformIcon from '@/components/ui/PlatformIcon';
@@ -49,6 +51,7 @@ const HEATMAP_DATA = Array.from({ length: 7 }, (_, day) =>
 export default function SocialMedia() {
   const queryClient = useQueryClient();
   const { t, isPt } = useLanguage();
+  const { dbUser } = useAuth();
   const [activeTab, setActiveTab] = useState('planning');
   const [selectedPlatforms, setSelectedPlatforms] = useState(['instagram', 'linkedin']);
   const [editingPost, setEditingPost] = useState(null);
@@ -73,7 +76,13 @@ export default function SocialMedia() {
     setEditingPost(post);
     setNewPost({ ...post, type: post.type || post.content_type || 'text' });
     setUploadedMedia(mediaFromUrls(post.media_urls));
-    if (goToContent) setActiveTab('content');
+    if (goToContent) {
+      setActiveTab('content');
+      // Scroll the editor into view — opening a post from a list further down
+      // the page otherwise left the user staring at the list, as if nothing
+      // had loaded.
+      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    }
   };
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
@@ -747,21 +756,27 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
                     {isUploadingMedia ? 'Uploading...' : 'Add Media'}
                     <input type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} disabled={isUploadingMedia} />
                   </label>
-                  <button
-                    onClick={generateDesignBrief}
-                    disabled={isGeneratingBrief}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#cb6ce6]/40 bg-[#cb6ce6]/10 hover:bg-[#cb6ce6]/20 text-[#cb6ce6] text-sm transition-all disabled:opacity-50"
-                  >
-                    {isGeneratingBrief ? <div className="w-3 h-3 rounded-full border-2 border-[#cb6ce6] border-t-transparent animate-spin" /> : <Wand2 size={14} />}
-                    AI Design Brief
-                  </button>
-                  <button
-                    onClick={goToDesignStudio}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#38b6ff]/40 bg-[#38b6ff]/10 hover:bg-[#38b6ff]/20 text-[#38b6ff] text-sm transition-all"
-                  >
-                    <Sparkles size={14} />
-                    {isPt ? 'Design' : 'Design Studio'}
-                  </button>
+                  {/* Design Studio (and anything naming it) is confidential
+                      until the next launch cycle — App Owner only. */}
+                  {canSeeDesign(dbUser) && (
+                    <>
+                      <button
+                        onClick={generateDesignBrief}
+                        disabled={isGeneratingBrief}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#cb6ce6]/40 bg-[#cb6ce6]/10 hover:bg-[#cb6ce6]/20 text-[#cb6ce6] text-sm transition-all disabled:opacity-50"
+                      >
+                        {isGeneratingBrief ? <div className="w-3 h-3 rounded-full border-2 border-[#cb6ce6] border-t-transparent animate-spin" /> : <Wand2 size={14} />}
+                        AI Design Brief
+                      </button>
+                      <button
+                        onClick={goToDesignStudio}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#38b6ff]/40 bg-[#38b6ff]/10 hover:bg-[#38b6ff]/20 text-[#38b6ff] text-sm transition-all"
+                      >
+                        <Sparkles size={14} />
+                        {isPt ? 'Design' : 'Design Studio'}
+                      </button>
+                    </>
+                  )}
                   <button
                     onClick={() => setShowGoogleDrivePicker(true)}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg border border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-sm transition-all"

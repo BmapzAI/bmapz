@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
+import { canSeeDesign } from '@/lib/featureFlags';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import {
   Home, TrendingUp, GitBranch, Bot, Inbox,
@@ -27,7 +28,7 @@ function NavBtn({ icon: Icon, label, path, active, onClick }) {
 
 export default function MobileBottomNav() {
   const location = useLocation();
-  const { isAdmin, isCompanyAdmin } = useAuth();
+  const { dbUser, isAdmin, isCompanyAdmin } = useAuth();
   const { t, isPt } = useLanguage();
   const [showMore, setShowMore] = useState(false);
 
@@ -54,7 +55,8 @@ export default function MobileBottomNav() {
         { icon: Search,    label: 'SEO',           path: '/SEO'         },
         { icon: Share2,    label: isPt ? 'Social' : 'Social', path: '/SocialMedia' },
         { icon: BookOpen,  label: t('blog'),       path: '/Blog'        },
-        { icon: Palette,   label: 'Design',        path: '/Design'      },
+        // Design Studio is confidential until the next launch cycle.
+        ...(canSeeDesign(dbUser) ? [{ icon: Palette, label: 'Design', path: '/Design' }] : []),
         { icon: ScanLine,  label: t('brandScan'),  path: '/BrandScan'   },
       ],
     },

@@ -49,6 +49,18 @@ export default function SDRPage() {
 
   const sdrName = agent?.name || company?.personal_agent_name || 'SDR';
 
+  // Enable/disable the agent straight from the header.
+  const toggleAgent = useMutation({
+    mutationFn: (enabled) => SDR.saveAgent({ enabled }),
+    onSuccess: (_d, enabled) => {
+      queryClient.invalidateQueries({ queryKey: ['sdrAgent'] });
+      toast.success(enabled
+        ? (isPt ? 'Agente SDR ligado' : 'SDR agent turned on')
+        : (isPt ? 'Agente SDR desligado' : 'SDR agent turned off'));
+    },
+    onError: (e) => toast.error((isPt ? 'Falha ao alterar o agente: ' : 'Could not change the agent: ') + e.message),
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -63,12 +75,35 @@ export default function SDRPage() {
               : 'Your AI Sales Development Rep — greets, qualifies and routes leads automatically.'}
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-4 flex-wrap">
           {/* Shortcut so a rep can change their own availability without
               leaving the SDR section. Hidden for non-sales-team users. */}
           <SalesStatusSwitcher />
-          <div className={`px-3 py-1.5 rounded-full text-sm border ${agent?.enabled ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-gray-400 bg-white/5 border-white/10'}`}>
-            {agent?.enabled ? (isPt ? '● Ativo' : '● Active') : (isPt ? '○ Desativado' : '○ Off')}
+
+          {/* Labelled ON/OFF switch for the agent itself. It used to be an
+              unlabelled pill that only displayed state — people could not tell
+              what it referred to, and it could not be clicked to change it. */}
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500 text-xs whitespace-nowrap">{isPt ? 'Agente SDR' : 'SDR agent'}</span>
+            <button
+              type="button"
+              onClick={() => toggleAgent.mutate(!agent?.enabled)}
+              disabled={toggleAgent.isPending || agentLoading}
+              title={isPt
+                ? (agent?.enabled ? 'Desligar o agente SDR' : 'Ligar o agente SDR')
+                : (agent?.enabled ? 'Turn the SDR agent off' : 'Turn the SDR agent on')}
+              className={`flex items-center gap-2 pl-1 pr-3 py-1 rounded-full text-sm border transition-colors disabled:opacity-60 ${
+                agent?.enabled
+                  ? 'text-green-400 bg-green-500/10 border-green-500/30 hover:bg-green-500/20'
+                  : 'text-gray-400 bg-white/5 border-white/10 hover:bg-white/10'}`}
+            >
+              <span className={`relative w-8 h-4 rounded-full transition-colors ${agent?.enabled ? 'bg-green-500/70' : 'bg-white/20'}`}>
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${agent?.enabled ? 'left-4' : 'left-0.5'}`} />
+              </span>
+              {toggleAgent.isPending
+                ? (isPt ? 'Salvando…' : 'Saving…')
+                : agent?.enabled ? 'On' : 'Off'}
+            </button>
           </div>
         </div>
       </div>

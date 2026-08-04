@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { BarChart3, RefreshCw, TrendingUp, TrendingDown, AlertCircle, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -35,7 +35,16 @@ export default function AdsRealDataPanel({ company, onDataLoaded }) {
   const [error, setError] = useState(null);
   const [showConnectionModal, setShowConnectionModal] = useState(null);
 
-  const integrationStatus = company?.integration_status || {};
+  // Ask the server which platforms are ACTUALLY usable. The stored
+  // company.integration_status column can hold stale flags, which made
+  // platforms show as "connected" when no credentials existed. /status derives
+  // the answer from the real tokens + ad-account ids every time.
+  const { data: liveStatus } = useQuery({
+    queryKey: ['integrationStatus'],
+    queryFn: () => api.get('/api/integrations/status'),
+    staleTime: 30_000,
+  });
+  const integrationStatus = liveStatus?.status || liveStatus || company?.integration_status || {};
   const connectedPlatforms = PLATFORMS.filter(p => integrationStatus[p.statusKey]);
   const hasAnyConnected = connectedPlatforms.length > 0;
 

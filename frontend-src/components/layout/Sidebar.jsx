@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
+import { canSeeDesign } from '@/lib/featureFlags';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { cn } from '@/lib/utils';
 import NotificationBell from './NotificationBell';
@@ -101,7 +102,8 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         { name: 'SEO',              path: '/SEO',         icon: Search    },
         { name: t('socialMedia'),   path: '/SocialMedia', icon: Share2    },
         { name: t('blog'),          path: '/Blog',        icon: BookOpen  },
-        { name: isPt ? 'Design' : 'Design', path: '/Design', icon: Palette },
+        // Design Studio is confidential until the next launch cycle.
+        ...(canSeeDesign(dbUser) ? [{ name: 'Design', path: '/Design', icon: Palette }] : []),
         { name: t('brandScan'),     path: '/BrandScan',   icon: ScanLine  },
       ],
     },

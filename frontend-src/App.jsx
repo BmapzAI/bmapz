@@ -25,6 +25,7 @@ const Pricing = lazy(() => import('./pages/Pricing'));
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { LanguageProvider } from '@/components/ui/LanguageContext';
 import SupportAssistant from '@/components/layout/SupportAssistant';
+import { canSeeDesign } from '@/lib/featureFlags';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -57,7 +58,7 @@ const PublicRoutes = () => (
   </Suspense>
 );
 
-const AuthenticatedRoutes = () => (
+const AuthenticatedRoutes = ({ currentUser }) => (
   <Suspense fallback={<RouteFallback />}>
     <Routes>
     <Route path="/" element={
@@ -65,13 +66,18 @@ const AuthenticatedRoutes = () => (
         <MainPage />
       </LayoutWrapper>
     } />
-    {Object.entries(Pages).map(([path, Page]) => (
-      <Route key={path} path={`/${path}`} element={
-        <LayoutWrapper currentPageName={path}>
-          <Page />
-        </LayoutWrapper>
-      } />
-    ))}
+    {Object.entries(Pages)
+      // Design Studio is confidential: for anyone but an App Owner the route
+      // must not exist at all, so a direct URL falls through to Not Found
+      // rather than revealing that the section is there.
+      .filter(([path]) => path !== 'Design' || canSeeDesign(currentUser))
+      .map(([path, Page]) => (
+        <Route key={path} path={`/${path}`} element={
+          <LayoutWrapper currentPageName={path}>
+            <Page />
+          </LayoutWrapper>
+        } />
+      ))}
     <Route path="/login" element={<Navigate to="/" replace />} />
     <Route path="/signup" element={<Navigate to="/" replace />} />
     <Route path="/auth/callback" element={<AuthCallback />} />
@@ -92,7 +98,7 @@ const AuthenticatedRoutes = () => (
 );
 
 const AppRoutes = () => {
-  const { isLoadingAuth, isAuthenticated, authError } = useAuth();
+  const { isLoadingAuth, isAuthenticated, authError, dbUser } = useAuth();
   if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-[#111]">
@@ -119,7 +125,7 @@ const AppRoutes = () => {
   // conversation intact — inside the Layout it remounted on every page change.
   return (
     <>
-      <AuthenticatedRoutes />
+      <AuthenticatedRoutes currentUser={dbUser} />
       <SupportAssistant />
     </>
   );

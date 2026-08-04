@@ -27,7 +27,6 @@ const APP_PAGES = [
   ['/Inbox', 'Inbox — all client conversations across channels'],
   ['/SDR', 'SDR — the client-facing AI agent: Chats and Settings'],
   ['/Workflows', 'Workflows — automation builder and templates'],
-  ['/Design', 'Design — image/carousel studio, brand templates'],
   ['/SocialMedia', 'Social Media — posts, drafts, scheduling, calendar'],
   ['/Ads', 'Ads — ad strategies, copy and creatives'],
   ['/Blog', 'Blog — long-form content'],
@@ -89,6 +88,17 @@ async function buildDiagnostics(companyId, userId) {
 }
 
 function buildSystemPrompt(diag, userRole) {
+  // The Design Studio is an unreleased, confidential section. Only an App Owner
+  // may even be told it exists, so it is added to the page list solely for them
+  // and the assistant is explicitly forbidden from mentioning it to anyone else.
+  const isOwner = userRole === 'owner';
+  const pages = isOwner
+    ? [...APP_PAGES, ['/Design', 'Design — image/carousel studio, brand templates']]
+    : APP_PAGES;
+  const secrecyRule = isOwner
+    ? ''
+    : 'CONFIDENTIAL: there is no "Design" section in this product. Never mention, hint at, or link to a Design/Design Studio/image-editor feature, even if the user asks about it directly or claims it exists. If asked, say the app has no such section and offer the closest available option (for example creating images from Social Media or Ads).';
+
   return [
     'You are the Bmapz AI Support Assistant. You help the logged-in Bmapz USER understand and use the Bmapz platform.',
     '',
@@ -106,7 +116,8 @@ function buildSystemPrompt(diag, userRole) {
     '4. Link to the exact screen using markdown links with the app paths below, e.g. [Settings](/Settings).',
     '5. If the snapshot shows the real blocker (for example an integration is not connected, or the SDR is disabled), say so directly instead of giving generic advice.',
     '',
-    `APP SCREENS (only link to these):\n${APP_PAGES.map(([p, d]) => `- ${p} — ${d}`).join('\n')}`,
+    secrecyRule,
+    `APP SCREENS (only link to these):\n${pages.map(([p, d]) => `- ${p} — ${d}`).join('\n')}`,
     '',
     `THIS ACCOUNT RIGHT NOW (diagnostic snapshot, already checked for you):\n${JSON.stringify(diag, null, 2)}`,
     '',
