@@ -1509,3 +1509,38 @@ Provider hoisted to `App.jsx`; verified rendering on production.
 
 #### Derek actions required (Supabase SQL editor)
 Run migrations 010, 011 and 012 — all additive and safe to re-run.
+
+### 2026-08-03 - Claude (Session 25: Ads rebuild)
+
+**Quick wins (`71b6787`)** — hand-rolled platform dropdown moved into a portal
+(the Radix fixes never applied to it); "connected" now derived from
+/api/integrations/status instead of the stale stored column; duplicate SDR status
+dot removed and the On/Off pill turned into a real labelled switch; Ads
+loadRecord targeted tabs named "strategy"/"copy" that DO NOT EXIST (they are
+"create"/"performance") which is why loading saved work looked broken; Design
+Studio hidden behind `lib/featureFlags.js` (App Owner only) including a secrecy
+rule in the support assistant's prompt.
+
+**Ads rebuild (`aa35af0`)** — real hierarchy. Migration 015 adds
+ad_campaigns / ad_groups / ads / ad_publish_log. `backend/src/lib/adPlatforms.js`
+is the single spec shared by UI and server (level names, objectives, targeting,
+formats, copy limits, validateLevel). `adPublisher.js` has real adapters (Meta
+campaign/adset/ad, LinkedIn, TikTok; Google + X return a specific
+"needs approved app" error). `routes/adsManager.js` gives CRUD, /validate,
+/publish with per-level selection, /generate from the Company Brain (saved to AI
+Outputs), /optimize and /leads/handover. UI: tabs match the structure and publish
+exactly what they name; Optimize is now full-funnel, not budget-only.
+
+**INCIDENT — production 502 for ~40 min (`d6b636c` → fixed by `3d511e4`).**
+`backend/railway.json` roots the service at `backend/`, so
+`../../../shared/adPlatforms.js` escaped the deploy context. The fix commit moved
+the file into `backend/src/lib/` but **the import-path edits were left
+uncommitted**, so the deployed tree imported a directory it had just deleted and
+the server crash-looped. Lesson for next time: after a `git mv` + `sed` across
+files, run `git status` and `git show HEAD:<file>` to confirm the edits are
+actually IN the commit — a green commit message is not proof. Recovery confirmed:
+health 200, /api/ads-manager/platforms returns 401.
+
+#### Derek actions
+- Run `supabase/migrations/015_ads_hierarchy.sql`. Until then the Ads section
+  says "run migration 015" instead of erroring.
