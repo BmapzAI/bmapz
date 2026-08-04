@@ -2,15 +2,35 @@ import React, { useState, useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Download, RotateCw, Users } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Download, RotateCw, Users, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
-import { Lead } from '@/api/entities';
+import { Lead, AdsManager } from '@/api/entities';
 
 export default function AdsLeadsTab() {
   const [leads, setLeads] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastSync, setLastSync] = useState(null);
+  const queryClient = useQueryClient();
+
+  const { data: settings } = useQuery({
+    queryKey: ['adsSettings'],
+    queryFn: () => AdsManager.getSettings(),
+    retry: false,
+  });
+  const autoHandover = !!settings?.ads_auto_handover;
+
+  const saveSettings = useMutation({
+    mutationFn: (on) => AdsManager.saveSettings({ ads_auto_handover: on }),
+    onSuccess: (_d, on) => {
+      queryClient.invalidateQueries({ queryKey: ['adsSettings'] });
+      toast.success(on
+        ? 'New ad leads will be handed to the sales team automatically'
+        : 'Automatic hand-over turned off');
+    },
+    onError: (e) => toast.error(`Could not change the setting: ${e.message}`),
+  });
 
   useEffect(() => {
     const stored = localStorage.getItem('adLeadsLastSync');
@@ -82,6 +102,40 @@ export default function AdsLeadsTab() {
       <div>
         <h2 className="text-2xl font-bold text-white">Ad Leads</h2>
         <p className="text-gray-400 mt-1">Automatically sync leads from your ad campaigns</p>
+      </div>
+
+      {/* Automatic hand-over. Uses the same routing rules as everywhere else:
+          the online sales member chosen by your routing method, or the SDR queue
+          when nobody is online. */}
+      <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex items-start justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <p className="text-white font-medium text-sm flex items-center gap-2">
+            <UserCheck size={16} className="text-[#38b6ff]" />
+            Hand new ad leads to the sales team automatically
+          </p>
+          <p className="text-gray-400 text-xs mt-1 max-w-xl">
+            {autoHandover
+              ? 'On — each lead that arrives is assigned straight away using your lead routing method. If nobody is online it waits in the SDR queue.'
+              : 'Off — leads arrive unassigned and you hand them over yourself.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={autoHandover}
+          aria-label="Hand new ad leads to the sales team automatically"
+          disabled={saveSettings.isPending}
+          onClick={() => saveSettings.mutate(!autoHandover)}
+          className={`flex items-center gap-2 pl-1 pr-3 py-1 rounded-full text-sm border transition-colors flex-shrink-0 disabled:opacity-60 ${
+            autoHandover
+              ? 'text-green-400 bg-green-500/10 border-green-500/30 hover:bg-green-500/20'
+              : 'text-gray-400 bg-white/5 border-white/10 hover:bg-white/10'}`}
+        >
+          <span className={`relative w-8 h-4 rounded-full transition-colors ${autoHandover ? 'bg-green-500/70' : 'bg-white/20'}`}>
+            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${autoHandover ? 'left-4' : 'left-0.5'}`} />
+          </span>
+          {saveSettings.isPending ? 'Saving…' : autoHandover ? 'On' : 'Off'}
+        </button>
       </div>
 
       <div className="bg-white/5 border border-white/10 rounded-lg p-4">

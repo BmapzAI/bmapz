@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  Plus, ChevronRight, ChevronDown, Rocket, Trash2, Pencil, Layers, Target,
+  Plus, ChevronRight, ChevronDown, Rocket, Trash2, Pencil, Layers, Target, BookOpen,
   Megaphone, Loader2, Sparkles, CircleDot, AlertCircle, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -52,8 +52,16 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
   const [editor, setEditor] = useState(null);   // { level, mode, parentId, entity, platform }
   const [publishFor, setPublishFor] = useState(null);
   const [showGenerate, setShowGenerate] = useState(false);
+  const [copyFor, setCopyFor] = useState(null);      // { ad, group, campaign }
+  const [strategyFor, setStrategyFor] = useState(null); // campaign
 
   const { data: platforms = [] } = useQuery({ queryKey: ['adPlatforms'], queryFn: () => AdsManager.platforms() });
+  // Strategies available to build a campaign from (the level above the campaign).
+  const { data: strategies = [] } = useQuery({
+    queryKey: ['adStrategies'],
+    queryFn: () => AdsManager.listStrategies(),
+    retry: false,
+  });
   const { data: campaigns = [], isLoading, error } = useQuery({
     queryKey: ['adCampaignTree'],
     queryFn: () => AdsManager.listCampaigns(),
@@ -83,6 +91,18 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
       : level === 'ad_group' ? AdsManager.deleteAdGroup(id) : AdsManager.deleteAd(id)),
     onSuccess: () => { toast.success('Deleted'); refresh(); },
     onError: fail('delete it'),
+  });
+
+  // Each level can be built from the one above it.
+  const buildGroups = useMutation({
+    mutationFn: (campaignId) => AdsManager.generateAdGroups(campaignId, { count: 3 }),
+    onSuccess: (r, id) => { setExpanded(e => ({ ...e, [id]: true })); toast.success(`${r.ad_groups?.length || 0} ad group(s) created from this campaign`); refresh(); },
+    onError: fail('build the ad groups'),
+  });
+  const buildAds = useMutation({
+    mutationFn: (groupId) => AdsManager.generateAds(groupId, { count: 2 }),
+    onSuccess: (r) => { toast.success(`${r.ads?.length || 0} ad(s) created from this ad group`); refresh(); },
+    onError: fail('build the ads'),
   });
 
   if (error) {
@@ -178,6 +198,14 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
                     </p>
                   </div>
                   <StateChip state={c.publish_state} error={c.last_publish_error} />
+                  {scope === 'campaign' && (
+                    <button
+                      title={c.strategy && Object.keys(c.strategy).length ? 'Strategy attached — regenerate' : 'Write the strategy for this campaign'}
+                      onClick={() => setStrategyFor(c)}
+                      className={`p-1 ${c.strategy && Object.keys(c.strategy).length ? 'text-[#cb6ce6]' : 'text-gray-500 hover:text-[#cb6ce6]'}`}>
+                      <BookOpen size={13} />
+                    </button>
+                  )}
                   <Button size="sm" variant="outline" onClick={() => setPublishFor(c)}
                     className="border-white/10 text-white hover:bg-white/5 gap-1 h-7 px-2 text-xs">
                     <Rocket size={12} /> Publish
@@ -208,6 +236,13 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
                           <StateChip state={g.publish_state} error={g.last_publish_error} />
                           <button title="Edit" onClick={() => setEditor({ level: 'ad_group', mode: 'edit', entity: g, platform: c.platform })}
                             className="text-gray-500 hover:text-white p-1"><Pencil size={12} /></button>
+                          {/* Ads are built FROM this ad group's audience. */}
+                          <button title={`Build ${levelLabel(c.platform, 'ad').toLowerCase()}s from this audience`}
+                            disabled={buildAds.isPending}
+                            onClick={() => buildAds.mutate(g.id)}
+                            className="text-gray-500 hover:text-[#cb6ce6] p-1 disabled:opacity-50">
+                            {buildAds.isPending ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                          </button>
                           <button title="Add ad" onClick={() => setEditor({ level: 'ad', mode: 'create', parentId: g.id, entity: {}, platform: c.platform })}
                             className="text-gray-500 hover:text-[#38b6ff] p-1"><Plus size={13} /></button>
                           <button title="Delete" onClick={() => { if (window.confirm(`Delete "${g.name}"?`)) removeIt.mutate({ level: 'ad_group', id: g.id }); }}
@@ -224,6 +259,11 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
                                   <p className="text-gray-600 text-[10px] truncate">{a.headline || a.primary_text || 'no copy yet'}</p>
                                 </div>
                                 <StateChip state={a.publish_state} error={a.last_publish_error} />
+                                {/* Copy is the bottom of the hierarchy: it
+                                    inherits this campaign's strategy and this
+                                    ad group's audience. */}
+                                <button title="Write copy with AI" onClick={() => setCopyFor({ ad: a, group: g, campaign: c })}
+                                  className="text-gray-500 hover:text-[#cb6ce6] p-1"><Sparkles size={11} /></button>
                                 <button title="Edit" onClick={() => setEditor({ level: 'ad', mode: 'edit', entity: a, platform: c.platform })}
                                   className="text-gray-500 hover:text-white p-1"><Pencil size={11} /></button>
                                 <button title="Duplicate" onClick={() => saveAd.mutate({ data: { ...a, id: undefined, name: `${a.name} (copy)`, external_id: null, publish_state: 'local' } })}
@@ -237,11 +277,21 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
                       </div>
                     ))}
 
-                    <Button size="sm" variant="outline"
-                      onClick={() => setEditor({ level: 'ad_group', mode: 'create', parentId: c.id, entity: {}, platform: c.platform })}
-                      className="border-white/10 text-gray-300 hover:bg-white/5 gap-1.5 h-7 text-xs">
-                      <Plus size={12} /> Add {levelLabel(c.platform, 'ad_group').toLowerCase()}
-                    </Button>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button size="sm" variant="outline"
+                        onClick={() => setEditor({ level: 'ad_group', mode: 'create', parentId: c.id, entity: {}, platform: c.platform })}
+                        className="border-white/10 text-gray-300 hover:bg-white/5 gap-1.5 h-7 text-xs">
+                        <Plus size={12} /> Add {levelLabel(c.platform, 'ad_group').toLowerCase()}
+                      </Button>
+                      {/* Ad groups are built FROM the campaign and its strategy. */}
+                      <Button size="sm" variant="outline" disabled={buildGroups.isPending}
+                        onClick={() => buildGroups.mutate(c.id)}
+                        title={`Create ${levelLabel(c.platform, 'ad_group').toLowerCase()}s from this campaign's strategy and objective`}
+                        className="border-[#cb6ce6]/40 bg-[#cb6ce6]/10 text-[#cb6ce6] hover:bg-[#cb6ce6]/20 gap-1.5 h-7 text-xs">
+                        {buildGroups.isPending ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                        Build from campaign
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -254,6 +304,7 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
         <EntityEditor
           editor={editor}
           platforms={platforms}
+          strategies={strategies}
           onClose={() => setEditor(null)}
           onSave={(data) => {
             if (editor.level === 'campaign') saveCampaign.mutate({ id: editor.entity?.id, data });
@@ -273,13 +324,16 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
       />
 
       <GenerateDialog open={showGenerate} platforms={platforms} onClose={() => setShowGenerate(false)} onDone={refresh} />
+
+      <StrategyDialog campaign={strategyFor} onClose={() => setStrategyFor(null)} onDone={refresh} />
+      <CopyDialog ctx={copyFor} onClose={() => setCopyFor(null)} onDone={refresh} />
     </div>
   );
 }
 
 /* ───────────────── Editor: one dialog, platform-aware fields ───────────────── */
 
-function EntityEditor({ editor, platforms, onClose, onSave, saving }) {
+function EntityEditor({ editor, platforms, strategies = [], onClose, onSave, saving }) {
   const { level, mode, entity } = editor;
   const [form, setForm] = useState(() => ({
     status: 'draft',
@@ -303,18 +357,49 @@ function EntityEditor({ editor, platforms, onClose, onSave, saving }) {
         <div className="space-y-3 py-1">
 
           {level === 'campaign' && mode === 'create' && (
-            <Field label="Ad platform">
-              <Select value={form.platform || ''} onValueChange={set('platform')}>
-                <SelectTrigger className="in"><SelectValue placeholder="Choose a platform" /></SelectTrigger>
-                <SelectContent className="bg-[#1a1a1a] border-white/10">
-                  {platforms.map(p => (
-                    <SelectItem key={p.key} value={p.key}>
-                      {p.label}{!p.connected ? ' — not connected' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+            <>
+              <Field label="Ad platform">
+                <Select value={form.platform || ''} onValueChange={set('platform')}>
+                  <SelectTrigger className="in"><SelectValue placeholder="Choose a platform" /></SelectTrigger>
+                  <SelectContent className="bg-[#1a1a1a] border-white/10">
+                    {platforms.map(p => (
+                      <SelectItem key={p.key} value={p.key}>
+                        {p.label}{!p.connected ? ' — not connected' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              {/* Strategy sits ABOVE the campaign: pick one and the campaign
+                  inherits it, with its audience segments becoming ad groups. */}
+              {strategies.length > 0 && (
+                <Field label="Build from a strategy (optional)">
+                  <Select value={form.strategy_id || '__none__'}
+                    onValueChange={(v) => {
+                      const chosen = strategies.find(s => s.id === v);
+                      setForm(f => ({
+                        ...f,
+                        strategy_id: v === '__none__' ? undefined : v,
+                        objective: chosen?.objective || f.objective,
+                        platform: f.platform || chosen?.platform,
+                      }));
+                    }}>
+                    <SelectTrigger className="in"><SelectValue placeholder="Start from scratch" /></SelectTrigger>
+                    <SelectContent className="bg-[#1a1a1a] border-white/10">
+                      <SelectItem value="__none__">Start from scratch</SelectItem>
+                      {strategies.map(s => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {form.strategy_id && (
+                    <p className="text-gray-500 text-[11px] mt-1">
+                      The campaign will follow this strategy, and each of its audience segments
+                      becomes an ad group ready for you to target.
+                    </p>
+                  )}
+                </Field>
+              )}
+            </>
           )}
 
           <Field label="Name">
@@ -583,6 +668,162 @@ function GenerateDialog({ open, platforms, onClose, onDone }) {
             </div>
           </div>
         )}
+        <style>{`.in{background:rgba(0,0,0,0.3);border-color:rgba(255,255,255,0.1);color:#fff}`}</style>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─────────── Strategy: written for a campaign, governs everything below ─────────── */
+
+function StrategyDialog({ campaign, onClose, onDone }) {
+  const [notes, setNotes] = useState('');
+  const [result, setResult] = useState(null);
+
+  const run = useMutation({
+    mutationFn: () => AdsManager.generateStrategy(campaign.id, { notes }),
+    onSuccess: (r) => { setResult(r.strategy); onDone?.(); toast.success('Strategy attached to the campaign'); },
+    onError: (e) => toast.error(`Could not write the strategy: ${e.message}`),
+  });
+
+  if (!campaign) return null;
+  const existing = campaign.strategy && Object.keys(campaign.strategy).length ? campaign.strategy : null;
+  const shown = result || existing;
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) { setResult(null); onClose(); } }}>
+      <DialogContent className="max-w-lg bg-[#111] border-white/10 text-white">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BookOpen size={17} className="text-[#cb6ce6]" /> Strategy — {campaign.name}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <p className="text-gray-400 text-xs">
+            The strategy sits above this campaign. Its audience segments guide the ad groups,
+            and the copy written for each ad inherits it.
+          </p>
+
+          {shown && (
+            <div className="space-y-2 max-h-64 overflow-y-auto p-3 rounded-xl bg-black/20 border border-white/10">
+              {shown.positioning && <p className="text-gray-300 text-xs"><span className="text-gray-500">Positioning: </span>{shown.positioning}</p>}
+              {shown.unique_mechanism && <p className="text-gray-300 text-xs"><span className="text-gray-500">What makes it different: </span>{shown.unique_mechanism}</p>}
+              {shown.angles?.length > 0 && (
+                <p className="text-gray-300 text-xs"><span className="text-gray-500">Angles: </span>{shown.angles.join(' · ')}</p>
+              )}
+              {shown.audience_segments?.length > 0 && (
+                <div>
+                  <p className="text-gray-500 text-xs">Audience segments (become ad groups):</p>
+                  {shown.audience_segments.map((s, i) => (
+                    <p key={i} className="text-gray-300 text-xs ml-2">• <span className="text-white">{s.name}</span> — {s.message || s.who}</p>
+                  ))}
+                </div>
+              )}
+              {shown.kpis?.primary && <p className="text-gray-300 text-xs"><span className="text-gray-500">Primary KPI: </span>{shown.kpis.primary}</p>}
+            </div>
+          )}
+
+          <Field label="Anything specific it should account for? (optional)">
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} className="in min-h-[56px]"
+              placeholder="e.g. we are launching in a new city, a competitor just cut prices" />
+          </Field>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={onClose} className="border-white/10 text-white">Close</Button>
+            <Button onClick={() => run.mutate()} disabled={run.isPending}
+              className="bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-2">
+              {run.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {existing ? 'Rewrite strategy' : 'Write strategy'}
+            </Button>
+          </div>
+        </div>
+        <style>{`.in{background:rgba(0,0,0,0.3);border-color:rgba(255,255,255,0.1);color:#fff}`}</style>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─────────── Copy: written for one ad, inheriting everything above it ─────────── */
+
+function CopyDialog({ ctx, onClose, onDone }) {
+  const [variants, setVariants] = useState(null);
+  const [notes, setNotes] = useState('');
+  const spec = getPlatform(ctx?.campaign?.platform);
+
+  const gen = useMutation({
+    mutationFn: () => AdsManager.generateCopy(ctx.ad.id, { notes, count: 3 }),
+    onSuccess: (r) => setVariants(r.variants),
+    onError: (e) => toast.error(`Could not write the copy: ${e.message}`),
+  });
+  const apply = useMutation({
+    mutationFn: (v) => AdsManager.applyCopy(ctx.ad.id, v),
+    onSuccess: () => { toast.success('Copy applied to the ad'); setVariants(null); onClose(); onDone?.(); },
+    onError: (e) => toast.error(`Could not apply it: ${e.message}`),
+  });
+
+  if (!ctx || !spec) return null;
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) { setVariants(null); onClose(); } }}>
+      <DialogContent className="max-w-lg bg-[#111] border-white/10 text-white">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles size={17} className="text-[#cb6ce6]" /> Copy for &ldquo;{ctx.ad.name}&rdquo;
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          {/* Show the chain this copy inherits, so it is obvious where it comes from. */}
+          <div className="p-2.5 rounded-xl bg-black/20 border border-white/10 text-[11px] space-y-0.5">
+            <p className="text-gray-500">Inheriting from:</p>
+            <p className="text-gray-300">Strategy → <span className="text-white">{ctx.campaign.strategy && Object.keys(ctx.campaign.strategy).length ? 'attached' : 'none yet'}</span></p>
+            <p className="text-gray-300">{levelLabel(spec.key, 'campaign')} → <span className="text-white">{ctx.campaign.name}</span></p>
+            <p className="text-gray-300">{levelLabel(spec.key, 'ad_group')} → <span className="text-white">{ctx.group.name}</span>
+              {(ctx.group.targeting?.locations || []).length > 0 && <span className="text-gray-500"> ({ctx.group.targeting.locations.join(', ')})</span>}
+            </p>
+          </div>
+
+          {!variants ? (
+            <>
+              <Field label="Anything to emphasise? (optional)">
+                <Textarea value={notes} onChange={e => setNotes(e.target.value)} className="in min-h-[56px]"
+                  placeholder="e.g. lead with the free trial" />
+              </Field>
+              <p className="text-gray-500 text-[11px]">
+                Written to {spec.short}&apos;s real limits: {spec.copyFields.map(f => `${f.label} ${f.max}`).join(', ')} characters.
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={onClose} className="border-white/10 text-white">Cancel</Button>
+                <Button onClick={() => gen.mutate()} disabled={gen.isPending}
+                  className="bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-2">
+                  {gen.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Write copy
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {variants.map((v, i) => (
+                  <div key={i} className="p-3 rounded-xl bg-black/20 border border-white/10 space-y-1">
+                    {v.angle && <p className="text-[#cb6ce6] text-[10px] uppercase tracking-wide">{v.angle}</p>}
+                    {spec.copyFields.map(f => (v[f.key] ? (
+                      <p key={f.key} className="text-gray-300 text-xs">
+                        <span className="text-gray-500">{f.label}: </span>{v[f.key]}
+                        <span className="text-gray-600"> ({v[f.key].length}/{f.max})</span>
+                      </p>
+                    ) : null))}
+                    <Button size="sm" onClick={() => apply.mutate(v)} disabled={apply.isPending}
+                      className="mt-1 h-7 text-xs bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">
+                      Use this one
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setVariants(null)} className="border-white/10 text-white">Back</Button>
+              </div>
+            </>
+          )}
+        </div>
         <style>{`.in{background:rgba(0,0,0,0.3);border-color:rgba(255,255,255,0.1);color:#fff}`}</style>
       </DialogContent>
     </Dialog>

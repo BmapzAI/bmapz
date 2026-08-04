@@ -113,11 +113,41 @@ router.post('/campaigns', requireAuth, async (req, res) => {
     const payload = pick(req.body, CAMPAIGN_FIELDS);
     if (!payload.platform || !getPlatform(payload.platform)) return res.status(400).json({ error: 'Choose a valid ad platform.' });
     if (!payload.name?.trim()) return res.status(400).json({ error: 'The campaign needs a name.' });
+
+    // Building FROM a strategy: inherit it, and let its audience segments become
+    // the starting ad groups so the hierarchy actually follows the plan.
+    let strategy = payload.strategy;
+    if (req.body?.strategy_id && !strategy) {
+      const { data: fromCampaign } = await supabaseAdmin.from('ad_campaigns')
+        .select('strategy').eq('id', req.body.strategy_id).eq('company_id', req.companyId).maybeSingle();
+      if (fromCampaign?.strategy) strategy = fromCampaign.strategy;
+      if (!strategy) {
+        const { data: fromRecord } = await supabaseAdmin.from('ad_records')
+          .select('strategy').eq('id', req.body.strategy_id).eq('company_id', req.companyId).maybeSingle();
+        if (fromRecord?.strategy) strategy = fromRecord.strategy;
+      }
+    }
+    if (strategy) payload.strategy = strategy;
+
     const { data, error } = await supabaseAdmin.from('ad_campaigns')
       .insert({ ...payload, company_id: req.companyId, created_by: req.dbUser?.id || null })
       .select().single();
     if (error) throw error;
-    res.json({ ...data, ad_groups: [] });
+
+    const groups = [];
+    if (strategy && req.body?.scaffold_from_strategy !== false) {
+      const segments = Array.isArray(strategy.audience_segments) ? strategy.audience_segments.slice(0, 5) : [];
+      for (const seg of segments) {
+        const { data: g } = await supabaseAdmin.from('ad_groups').insert({
+          company_id: req.companyId, campaign_id: data.id,
+          name: seg.name || 'Audience', status: 'draft',
+          targeting: {}, strategy_notes: seg.message || seg.who || null,
+        }).select().single();
+        if (g) groups.push({ ...g, ads: [] });
+      }
+    }
+
+    res.json({ ...data, ad_groups: groups });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -475,6 +505,338 @@ router.post('/generate/apply', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+/* ─────────── Strategy: the TOP of the hierarchy, attached to a campaign ─────────── */
+
+// GET /api/ads-manager/strategies — every strategy available to build from:
+// ones saved by the Strategy generator, and ones already attached to a campaign.
+router.get('/strategies', requireAuth, async (req, res) => {
+  try {
+    const out = [];
+
+    // Saved by the Strategy tab (legacy ad_records, type = 'strategy').
+    try {
+      const { data: records } = await supabaseAdmin.from('ad_records')
+        .select('id, title, platform, objective, strategy, form_data, created_at')
+        .eq('company_id', req.companyId).eq('type', 'strategy')
+        .order('created_at', { ascending: false }).limit(50);
+      for (const r of records || []) {
+        if (!r.strategy || !Object.keys(r.strategy).length) continue;
+        out.push({
+          id: r.id, source: 'saved', title: r.title, platform: r.platform,
+          objective: r.objective, strategy: r.strategy, created_at: r.created_at,
+        });
+      }
+    } catch { /* legacy table may be empty */ }
+
+    // Attached to an existing campaign — reusable for a new one.
+    try {
+      const { data: campaigns } = await supabaseAdmin.from('ad_campaigns')
+        .select('id, name, platform, objective, strategy, created_at')
+        .eq('company_id', req.companyId).order('created_at', { ascending: false }).limit(50);
+      for (const c of campaigns || []) {
+        if (!c.strategy || !Object.keys(c.strategy).length) continue;
+        out.push({
+          id: c.id, source: 'campaign', title: `${c.name} (current strategy)`,
+          platform: c.platform, objective: c.objective, strategy: c.strategy, created_at: c.created_at,
+        });
+      }
+    } catch { /* before migration 015 */ }
+
+    res.json(out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/ads-manager/campaigns/:id/strategy
+// Generates the thinking that governs everything beneath the campaign, and
+// stores it on the campaign so ad groups and copy can inherit it.
+router.post('/campaigns/:id/strategy', requireAuth, async (req, res) => {
+  try {
+    const { data: campaign } = await scoped('ad_campaigns')(req.params.id, req.companyId);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found.' });
+    const spec = getPlatform(campaign.platform);
+    const ctx = await companyContext(req.companyId);
+
+    const schema = {
+      type: 'object',
+      required: ['positioning', 'unique_mechanism', 'angles', 'funnel', 'kpis'],
+      properties: {
+        positioning: { type: 'string' },
+        unique_mechanism: { type: 'string' },
+        angles: { type: 'array', items: { type: 'string' } },
+        audience_segments: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['name', 'who', 'message'],
+            properties: { name: { type: 'string' }, who: { type: 'string' }, message: { type: 'string' } },
+          },
+        },
+        funnel: {
+          type: 'object',
+          properties: {
+            tof: { type: 'string' }, mof: { type: 'string' }, bof: { type: 'string' },
+            budget_split: { type: 'string' },
+          },
+        },
+        creative_direction: { type: 'string' },
+        kpis: {
+          type: 'object',
+          properties: {
+            primary: { type: 'string' }, target_cpa: { type: 'string' },
+            break_even_roas: { type: 'string' }, scaling_trigger: { type: 'string' },
+          },
+        },
+      },
+    };
+
+    const result = await runAIChat({
+      companyId: req.companyId, userId: req.dbUser?.id,
+      userRole: req.dbUser?.role || 'user', userEmail: req.dbUser?.email,
+      action: 'ads_strategy', response_format: { type: 'json_object' }, temperature: 0.5,
+      system: `You are a senior performance marketing strategist writing the strategy that will govern a ${spec?.label} campaign.
+Everything below this campaign — its ${spec?.levels.ad_group.toLowerCase()}s and ${spec?.levels.ad.toLowerCase()}s — must follow from what you write.
+Give each audience segment a distinct message so it can become its own ${spec?.levels.ad_group.toLowerCase()}.
+Return ONLY JSON with these exact keys: ${JSON.stringify(schema)}`,
+      messages: [{
+        role: 'user',
+        content: `${ctx}
+
+Campaign: ${campaign.name}
+Objective: ${campaign.objective || 'not set'}
+Budget: ${campaign.budget || 'not set'} (${campaign.budget_type})
+${req.body?.notes ? `Extra notes: ${req.body.notes}` : ''}`,
+      }],
+    });
+
+    let strategy;
+    try { strategy = JSON.parse(result.content); }
+    catch { return res.status(502).json({ error: 'The AI returned something we could not read. Try again.' }); }
+
+    const { data: saved, error } = await supabaseAdmin.from('ad_campaigns')
+      .update({ strategy, updated_at: new Date().toISOString() })
+      .eq('id', campaign.id).eq('company_id', req.companyId).select().single();
+    if (error) throw error;
+
+    await saveOutput(req.companyId, req.dbUser?.id, `Ads strategy — ${campaign.name}`, strategy, 'ads_strategy');
+    res.json({ campaign: saved, strategy, usage: result.usage });
+  } catch (err) {
+    const status = err.code === 'CREDITS_EXHAUSTED' || err.code === 'MISSING_API_KEY' ? 402 : 500;
+    res.status(status).json({ error: err.publicMessage || err.message, code: err.code });
+  }
+});
+
+/* ─────────── Each level builds the one below it ─────────── */
+
+// POST /api/ads-manager/campaigns/:id/ad-groups/generate
+// Ad groups come FROM the campaign (and its strategy).
+router.post('/campaigns/:id/ad-groups/generate', requireAuth, async (req, res) => {
+  try {
+    const { data: campaign } = await scoped('ad_campaigns')(req.params.id, req.companyId);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found.' });
+    const spec = getPlatform(campaign.platform);
+    const ctx = await companyContext(req.companyId);
+
+    const targetingKeys = spec.targeting;
+    const result = await runAIChat({
+      companyId: req.companyId, userId: req.dbUser?.id,
+      userRole: req.dbUser?.role || 'user', userEmail: req.dbUser?.email,
+      action: 'ads_adgroups', response_format: { type: 'json_object' }, temperature: 0.6,
+      system: `You are building the ${spec.levels.ad_group.toLowerCase()}s for an existing ${spec.label} campaign.
+Each one must target a genuinely DIFFERENT audience so they do not compete with each other.
+Only use these targeting keys: ${targetingKeys.join(', ')}.
+Return ONLY JSON: {"ad_groups":[{"name":"","strategy_notes":"","optimization_goal":"","targeting":{}}]}`,
+      messages: [{
+        role: 'user',
+        content: `${ctx}
+
+CAMPAIGN: ${campaign.name}
+Objective: ${campaign.objective || 'not set'}
+STRATEGY GOVERNING IT: ${campaign.strategy && Object.keys(campaign.strategy).length ? JSON.stringify(campaign.strategy).slice(0, 2500) : 'none written yet — infer from the company context'}
+Optimisation goals allowed: ${spec.optimizationGoals.map(o => o.key).join(', ')}
+Create ${req.body?.count || 3} ${spec.levels.ad_group.toLowerCase()}s.`,
+      }],
+    });
+
+    let parsed;
+    try { parsed = JSON.parse(result.content); } catch { return res.status(502).json({ error: 'The AI returned something we could not read.' }); }
+    const created = [];
+    for (const g of (parsed.ad_groups || []).slice(0, 6)) {
+      const { data } = await supabaseAdmin.from('ad_groups').insert({
+        company_id: req.companyId, campaign_id: campaign.id,
+        name: g.name || 'Audience', status: 'draft',
+        targeting: g.targeting || {}, optimization_goal: g.optimization_goal || null,
+        strategy_notes: g.strategy_notes || null,
+      }).select().single();
+      if (data) created.push({ ...data, ads: [] });
+    }
+    res.json({ ad_groups: created });
+  } catch (err) {
+    const status = err.code === 'CREDITS_EXHAUSTED' || err.code === 'MISSING_API_KEY' ? 402 : 500;
+    res.status(status).json({ error: err.publicMessage || err.message, code: err.code });
+  }
+});
+
+// POST /api/ads-manager/ad-groups/:id/ads/generate
+// Ads come FROM the ad group (its audience) and the campaign above it.
+router.post('/ad-groups/:id/ads/generate', requireAuth, async (req, res) => {
+  try {
+    const { data: group } = await scoped('ad_groups')(req.params.id, req.companyId);
+    if (!group) return res.status(404).json({ error: 'Ad group not found.' });
+    const { data: campaign } = await scoped('ad_campaigns')(group.campaign_id, req.companyId);
+    const spec = getPlatform(campaign?.platform);
+    if (!spec) return res.status(404).json({ error: 'This ad group has no campaign above it.' });
+    const ctx = await companyContext(req.companyId);
+
+    const result = await runAIChat({
+      companyId: req.companyId, userId: req.dbUser?.id,
+      userRole: req.dbUser?.role || 'user', userEmail: req.dbUser?.email,
+      action: 'ads_ads', response_format: { type: 'json_object' }, temperature: 0.7,
+      system: `You are creating ${spec.label} ${spec.levels.ad.toLowerCase()}s for one specific audience.
+HARD LIMITS: ${spec.copyFields.map(f => `${f.key} max ${f.max}`).join('; ')}.
+Formats allowed: ${spec.formats.map(f => f.key).join(', ')}. Calls to action allowed: ${spec.callToActions.join(', ')}.
+Return ONLY JSON: {"ads":[{"name":"","format":"","call_to_action":"",${spec.copyFields.map(f => `"${f.key}":""`).join(',')}}]}`,
+      messages: [{
+        role: 'user',
+        content: `${ctx}
+
+CAMPAIGN: ${campaign.name} (objective ${campaign.objective || 'not set'})
+STRATEGY: ${campaign.strategy && Object.keys(campaign.strategy).length ? JSON.stringify(campaign.strategy).slice(0, 1800) : 'none'}
+THIS AD GROUP: ${group.name}
+Its audience: ${JSON.stringify(group.targeting || {})}
+${group.strategy_notes ? `Its role: ${group.strategy_notes}` : ''}
+Create ${req.body?.count || 2} ads with different angles.`,
+      }],
+    });
+
+    let parsed;
+    try { parsed = JSON.parse(result.content); } catch { return res.status(502).json({ error: 'The AI returned something we could not read.' }); }
+    const created = [];
+    for (const a of (parsed.ads || []).slice(0, 5)) {
+      const row = {
+        company_id: req.companyId, ad_group_id: group.id,
+        name: a.name || 'Ad', status: 'draft',
+        format: spec.formats.some(f => f.key === a.format) ? a.format : spec.formats[0].key,
+        call_to_action: spec.callToActions.includes(a.call_to_action) ? a.call_to_action : spec.callToActions[0],
+        copy_data: a, copy_source: 'ai',
+      };
+      for (const f of spec.copyFields) {
+        if (typeof a[f.key] === 'string' && ['headline', 'primary_text', 'description'].includes(f.key)) {
+          row[f.key] = a[f.key].slice(0, f.max);
+        }
+      }
+      const { data } = await supabaseAdmin.from('ads').insert(row).select().single();
+      if (data) created.push(data);
+    }
+    res.json({ ads: created });
+  } catch (err) {
+    const status = err.code === 'CREDITS_EXHAUSTED' || err.code === 'MISSING_API_KEY' ? 402 : 500;
+    res.status(status).json({ error: err.publicMessage || err.message, code: err.code });
+  }
+});
+
+/* ─────────── Copy: the BOTTOM of the hierarchy, written for one ad ─────────── */
+
+// POST /api/ads-manager/ads/:id/copy
+// Inherits the campaign's strategy and the ad group's targeting, and respects
+// the platform's real character limits, then writes the copy onto the ad.
+router.post('/ads/:id/copy', requireAuth, async (req, res) => {
+  try {
+    const { data: ad } = await scoped('ads')(req.params.id, req.companyId);
+    if (!ad) return res.status(404).json({ error: 'Ad not found.' });
+    const { data: group } = await scoped('ad_groups')(ad.ad_group_id, req.companyId);
+    const { data: campaign } = group ? await scoped('ad_campaigns')(group.campaign_id, req.companyId) : { data: null };
+    if (!campaign) return res.status(404).json({ error: 'This ad has no campaign above it.' });
+
+    const spec = getPlatform(campaign.platform);
+    const ctx = await companyContext(req.companyId);
+    const fields = spec.copyFields;
+
+    const props = {};
+    for (const f of fields) props[f.key] = { type: 'string' };
+    const schema = {
+      type: 'object',
+      required: ['variants'],
+      properties: {
+        variants: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: fields.filter(f => f.required).map(f => f.key),
+            properties: { ...props, angle: { type: 'string' } },
+          },
+        },
+      },
+    };
+
+    const result = await runAIChat({
+      companyId: req.companyId, userId: req.dbUser?.id,
+      userRole: req.dbUser?.role || 'user', userEmail: req.dbUser?.email,
+      action: 'ads_copy', response_format: { type: 'json_object' }, temperature: 0.7,
+      system: `You are writing ${spec.label} ad copy for ONE specific ad, inside an existing plan.
+Stay consistent with the campaign strategy and speak to THIS ad group's audience.
+HARD LIMITS — never exceed them: ${fields.map(f => `${f.label} (${f.key}) max ${f.max} characters`).join('; ')}.
+Write ${req.body?.count || 3} distinct variants with genuinely different angles.
+Return ONLY JSON with these exact keys: ${JSON.stringify(schema)}`,
+      messages: [{
+        role: 'user',
+        content: `${ctx}
+
+CAMPAIGN (top of the hierarchy): ${campaign.name} — objective ${campaign.objective || 'not set'}
+STRATEGY: ${campaign.strategy && Object.keys(campaign.strategy).length ? JSON.stringify(campaign.strategy).slice(0, 2500) : 'no strategy written yet — infer a sensible one from the company context'}
+
+AD GROUP (who will see this): ${group?.name}
+Targeting: ${JSON.stringify(group?.targeting || {})}
+${group?.strategy_notes ? `Role in the strategy: ${group.strategy_notes}` : ''}
+
+THIS AD: ${ad.name} — format ${ad.format || spec.formats[0].key}
+Landing page: ${ad.destination_url || 'not set'}
+${req.body?.notes ? `Extra notes: ${req.body.notes}` : ''}`,
+      }],
+    });
+
+    let parsed;
+    try { parsed = JSON.parse(result.content); }
+    catch { return res.status(502).json({ error: 'The AI returned something we could not read. Try again.' }); }
+    const variants = (parsed.variants || []).filter(Boolean);
+    if (!variants.length) return res.status(502).json({ error: 'The AI did not return any copy. Try again.' });
+
+    // Trim to the platform's limits so nothing can be rejected at publish time.
+    for (const v of variants) {
+      for (const f of fields) {
+        if (typeof v[f.key] === 'string' && f.max) v[f.key] = v[f.key].slice(0, f.max);
+      }
+    }
+
+    await saveOutput(req.companyId, req.dbUser?.id, `Ad copy — ${ad.name}`, variants, 'ads_copy');
+    res.json({ variants, applied: false, usage: result.usage });
+  } catch (err) {
+    const status = err.code === 'CREDITS_EXHAUSTED' || err.code === 'MISSING_API_KEY' ? 402 : 500;
+    res.status(status).json({ error: err.publicMessage || err.message, code: err.code });
+  }
+});
+
+// POST /api/ads-manager/ads/:id/copy/apply — put a chosen variant on the ad.
+router.post('/ads/:id/copy/apply', requireAuth, async (req, res) => {
+  try {
+    const variant = req.body?.variant;
+    if (!variant) return res.status(400).json({ error: 'Choose a variant first.' });
+    const { data: ad } = await scoped('ads')(req.params.id, req.companyId);
+    if (!ad) return res.status(404).json({ error: 'Ad not found.' });
+
+    const patch = { copy_data: variant, copy_source: 'ai', updated_at: new Date().toISOString() };
+    for (const k of ['headline', 'primary_text', 'description']) {
+      if (typeof variant[k] === 'string') patch[k] = variant[k];
+    }
+    // Editing a live ad means it no longer matches what is on the platform.
+    if (ad.publish_state === 'published') patch.publish_state = 'out_of_sync';
+
+    const { data, error } = await supabaseAdmin.from('ads')
+      .update(patch).eq('id', ad.id).eq('company_id', req.companyId).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 /* ───────────────────────── Optimize (not just budget) ───────────────────────── */
 
 // POST /api/ads-manager/optimize — full-funnel review, not only budget moves.
@@ -561,6 +923,70 @@ ${perf ? `Live performance data (last 30 days):\n${JSON.stringify(perf).slice(0,
 
 /* ───────────────────────── Hand leads to sales ───────────────────────── */
 
+// GET/PATCH /api/ads-manager/settings — the automatic hand-over switch.
+router.get('/settings', requireAuth, async (req, res) => {
+  try {
+    const { data } = await supabaseAdmin.from('companies')
+      .select('ads_auto_handover').eq('id', req.companyId).maybeSingle();
+    res.json({ ads_auto_handover: !!data?.ads_auto_handover });
+  } catch {
+    // Column missing before migration 016 — treat as off.
+    res.json({ ads_auto_handover: false });
+  }
+});
+
+router.patch('/settings', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('companies')
+      .update({ ads_auto_handover: !!req.body?.ads_auto_handover })
+      .eq('id', req.companyId).select('ads_auto_handover').single();
+    if (error) {
+      if (/ads_auto_handover/i.test(error.message || '')) {
+        return res.status(503).json({ error: 'Automatic hand-over is not enabled yet — run migration 016.' });
+      }
+      throw error;
+    }
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * Hand one lead to sales using the company's routing rules. Shared by the manual
+ * button and by automatic hand-over so both behave identically.
+ */
+export async function handOneLeadToSales({ companyId, leadId, ownerId = null, actorUserId = null, actorLabel = null, automatic = false }) {
+  let owner = ownerId;
+  if (!owner) {
+    const next = await pickNextOwner(companyId);
+    owner = next?.id || null;
+  }
+  const patch = { funnel_stage: 'sql', status: 'qualified' };
+  if (owner) { patch.owner_id = owner; patch.owner_assigned_at = new Date().toISOString(); }
+  await supabaseAdmin.from('leads').update(patch).eq('id', leadId).eq('company_id', companyId);
+
+  await logLeadActivity({
+    companyId, leadId,
+    activityType: LEAD_ACTIVITY_TYPES.HANDOVER,
+    summary: automatic
+      ? (owner ? 'Automatically handed to the sales team on arrival from Ads' : 'Arrived from Ads — nobody online, queued for the SDR')
+      : (owner ? 'Handed to the sales team from Ads' : 'Handed to sales from Ads — nobody online, left for the SDR'),
+    details: { source: 'ads', automatic },
+    actorUserId: automatic ? null : actorUserId,
+    actorType: automatic ? 'system' : 'user',
+    actorLabel: automatic ? 'Ads auto hand-over' : actorLabel,
+  });
+  return owner;
+}
+
+/** Whether this company wants ad leads handed over automatically. */
+export async function autoHandoverEnabled(companyId) {
+  try {
+    const { data } = await supabaseAdmin.from('companies')
+      .select('ads_auto_handover').eq('id', companyId).maybeSingle();
+    return !!data?.ads_auto_handover;
+  } catch { return false; }
+}
+
 // POST /api/ads-manager/leads/handover — single or bulk, into the normal
 // owner-assignment + lead-history pipeline used everywhere else.
 router.post('/leads/handover', requireAuth, async (req, res) => {
@@ -575,21 +1001,11 @@ router.post('/leads/handover', requireAuth, async (req, res) => {
         .eq('id', id).eq('company_id', req.companyId).maybeSingle();
       if (!lead) continue;
 
-      let owner = ownerId;
-      if (!owner) {
-        const next = await pickNextOwner(req.companyId);
-        owner = next?.id || null;
-      }
-      const patch = { funnel_stage: 'sql', status: 'qualified' };
-      if (owner) { patch.owner_id = owner; patch.owner_assigned_at = new Date().toISOString(); }
-      await supabaseAdmin.from('leads').update(patch).eq('id', id).eq('company_id', req.companyId);
-
-      await logLeadActivity({
-        companyId: req.companyId, leadId: id,
-        activityType: LEAD_ACTIVITY_TYPES.HANDOVER,
-        summary: owner ? 'Handed to the sales team from Ads' : 'Handed to sales from Ads — nobody online, left for the SDR',
-        details: { source: 'ads' },
-        actorUserId: req.dbUser?.id || null, actorType: 'user',
+      await handOneLeadToSales({
+        companyId: req.companyId,
+        leadId: id,
+        ownerId,
+        actorUserId: req.dbUser?.id || null,
         actorLabel: req.dbUser?.full_name || req.dbUser?.email || null,
       });
       handed.push(id);

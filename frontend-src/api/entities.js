@@ -150,6 +150,18 @@ export const AdsManager = {
   applyPlan: (data) => api.post('/api/ads-manager/generate/apply', data),
   optimize: (data) => api.post('/api/ads-manager/optimize', data),
   handoverLeads: (data) => api.post('/api/ads-manager/leads/handover', data),
+
+  // Hierarchy: strategy sits above the campaign, copy below the ad.
+  listStrategies: () => api.get('/api/ads-manager/strategies'),
+  generateStrategy: (campaignId, data) => api.post(`/api/ads-manager/campaigns/${campaignId}/strategy`, data),
+  // Each level builds the one below it.
+  generateAdGroups: (campaignId, data) => api.post(`/api/ads-manager/campaigns/${campaignId}/ad-groups/generate`, data),
+  generateAds: (adGroupId, data) => api.post(`/api/ads-manager/ad-groups/${adGroupId}/ads/generate`, data),
+  generateCopy: (adId, data) => api.post(`/api/ads-manager/ads/${adId}/copy`, data),
+  applyCopy: (adId, variant) => api.post(`/api/ads-manager/ads/${adId}/copy/apply`, { variant }),
+
+  getSettings: () => api.get('/api/ads-manager/settings'),
+  saveSettings: (data) => api.patch('/api/ads-manager/settings', data),
 };
 
 // ─── SEO ─────────────────────────────────────────────────────────────────────
