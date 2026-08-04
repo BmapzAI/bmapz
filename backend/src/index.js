@@ -36,6 +36,7 @@ import notificationsRoutes from './routes/notifications.js';
 import sdrRoutes from './routes/sdr.js';
 import helpRoutes from './routes/help.js';
 import adsManagerRoutes from './routes/adsManager.js';
+import searchRoutes from './routes/search.js';
 import canvaRoutes from './routes/canva.js';
 import { runAIChat } from './routes/ai.js';
 import { startAutomationScheduler } from './lib/automationScheduler.js';
@@ -122,6 +123,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/sdr', sdrRoutes);
 app.use('/api/help', helpRoutes);
 app.use('/api/ads-manager', adsManagerRoutes);
+app.use('/api/search', searchRoutes);
 app.use('/api/canva', canvaRoutes);
 
 // ─── Global error handler ─────────────────────────────────────────────────────

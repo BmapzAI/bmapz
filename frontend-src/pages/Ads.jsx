@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Zap, Plus, TrendingUp, Users, BookOpen, Send, Image, Layers, Target, Megaphone } from 'lucide-react';
+import { Zap, Plus, TrendingUp, Users, BookOpen, Send, Image, Layers, Target, Megaphone, PenLine } from 'lucide-react';
 import { toast } from 'sonner';
 
 import AdsSavedRecords from '@/components/ads/AdsSavedRecords';
@@ -25,7 +25,7 @@ import { InvokeLLM } from '@/api/integrations';
 export default function Ads() {
   const queryClient = useQueryClient();
   const { t, isPt } = useLanguage();
-  const [activeTab, setActiveTab] = useState('campaigns');
+  const [activeTab, setActiveTab] = useState('strategy');
   const [isGenerating, setIsGenerating] = useState(false);
   const [strategy, setStrategy] = useState(null);
   const [copies, setCopies] = useState(null);
@@ -281,23 +281,24 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
       <AdsRealDataPanel company={company} onDataLoaded={setRealAdData} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        {/* Tabs now mirror the real ad structure. Each publishes its own level
-            and everything below it, which is why they are ordered widest first. */}
+        {/* Ordered by the hierarchy itself: Strategy governs the campaign, the
+            campaign holds ad groups, ad groups hold ads, and copy is written for
+            an ad. Optimize and Leads follow once things are running. */}
         <TabsList className="w-full justify-start overflow-x-auto bg-white/5 border border-white/10">
+          <TabsTrigger value="strategy" className="shrink-0 data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
+            <BookOpen size={16} className="mr-2" /> Strategy
+          </TabsTrigger>
           <TabsTrigger value="campaigns" className="shrink-0 data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
             <Layers size={16} className="mr-2" /> Campaigns
           </TabsTrigger>
-          <TabsTrigger value="adgroups" className="shrink-0 data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
+          <TabsTrigger value="adgroups" className="shrink-0 data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
             <Target size={16} className="mr-2" /> Ad Groups
           </TabsTrigger>
           <TabsTrigger value="create" className="shrink-0 data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
             <Megaphone size={16} className="mr-2" /> Ads
           </TabsTrigger>
-          <TabsTrigger value="strategy" className="shrink-0 data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <BookOpen size={16} className="mr-2" /> Strategy
-          </TabsTrigger>
           <TabsTrigger value="performance" className="shrink-0 data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
-            <TrendingUp size={16} className="mr-2" /> Copy
+            <PenLine size={16} className="mr-2" /> Copy
           </TabsTrigger>
           <TabsTrigger value="optimize" className="shrink-0 data-[state=active]:bg-[#cb6ce6]/20 data-[state=active]:text-[#cb6ce6]">
             <Zap size={16} className="mr-2" /> {t('optimize')}

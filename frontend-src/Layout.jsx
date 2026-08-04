@@ -1,16 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ThemeProvider } from '@/components/ui/ThemeContext';
 import Sidebar from '@/components/layout/Sidebar';
-import MobileBottomNav from '@/components/layout/MobileBottomNav';
-import NotificationBell from '@/components/layout/NotificationBell';
+import AppHeader from '@/components/layout/AppHeader';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import { useAuth } from '@/lib/AuthContext';
 import { Toaster } from 'sonner';
-import { Link } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+
+const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 768;
 
 function LayoutContent({ children }) {
-  const [collapsed, setCollapsed] = useState(false);
+  // One switch drives both sizes: on desktop it expands/collapses the sidebar,
+  // on mobile it slides the same sidebar in and out.
+  const [sidebarOpen, setSidebarOpen] = useState(() => isDesktop());
   const { dbUser, company, isLoadingAuth } = useAuth();
+  const location = useLocation();
+
+  // On mobile the drawer covers the page, so close it after navigating.
+  useEffect(() => {
+    if (!isDesktop()) setSidebarOpen(false);
+  }, [location.pathname]);
+
+  // Keep the desktop layout sensible when the window is resized across the break.
+  useEffect(() => {
+    const onResize = () => { if (isDesktop()) setSidebarOpen(true); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   if (isLoadingAuth) {
     return (
@@ -66,35 +82,34 @@ function LayoutContent({ children }) {
         .animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
       `}</style>
       <div data-theme="dark">
-        <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+        {/* One header for every screen size: hamburger + logo, search, bell */}
+        <AppHeader
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen(o => !o)}
+          companyName={company?.personal_agent_name}
+        />
 
-        {/* Mobile top header — logo + name navigate home */}
-        <header className="fixed top-0 left-0 right-0 z-30 md:hidden h-14 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/10 flex items-center px-4 gap-3">
-          <Link to="/" className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition-opacity">
-            <img
-              src="/bmapz-logo.png"
-              alt="Bmapz AI"
-              className="w-7 h-7 rounded-lg object-contain flex-shrink-0"
-              onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
-            />
-            <div
-              className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#38b6ff] to-[#cb6ce6] flex-shrink-0"
-              style={{ display: 'none' }}
-            />
-            <span className="font-bold text-white text-base tracking-tight truncate">
-              {company?.personal_agent_name || 'Bmapz AI'}
-            </span>
-          </Link>
-          <NotificationBell />
-        </header>
+        <Sidebar
+          open={sidebarOpen}
+          collapsed={!sidebarOpen}
+          onNavigate={() => { if (!isDesktop()) setSidebarOpen(false); }}
+        />
 
-        <main className={`transition-all duration-300 ml-0 min-h-screen ${collapsed ? 'md:ml-[72px]' : 'md:ml-[240px]'}`}>
-          <div className="p-4 sm:p-6 pt-16 md:pt-4 pb-28 md:pb-6">
+        {/* Mobile: dim the page behind the drawer and let a tap close it */}
+        {sidebarOpen && (
+          <div
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 top-14 z-30 bg-black/60 md:hidden"
+            aria-hidden="true"
+          />
+        )}
+
+        <main className={`transition-all duration-300 ml-0 min-h-screen ${sidebarOpen ? 'md:ml-[240px]' : 'md:ml-[72px]'}`}>
+          <div className="p-4 sm:p-6 pt-20 md:pt-20">
             {children}
           </div>
         </main>
 
-        <MobileBottomNav />
         <OnboardingWizard />
         {/* The support assistant is mounted once in App.jsx, ABOVE the router:
             rendering it here unmounted it on every navigation, which wiped the

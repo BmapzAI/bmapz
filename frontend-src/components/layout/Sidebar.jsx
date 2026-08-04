@@ -4,9 +4,8 @@ import { useAuth } from '@/lib/AuthContext';
 import { canSeeDesign } from '@/lib/featureFlags';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { cn } from '@/lib/utils';
-import NotificationBell from './NotificationBell';
 import {
-  ChevronLeft, ChevronRight, LogOut,
+  LogOut,
   LayoutDashboard, Users, MessageSquare, Bot, GitBranch,
   Megaphone, Search, Share2, BookOpen, ScanLine,
   Sparkles, FileText, BarChart3, Clock, Palette, TrendingUp,
@@ -76,7 +75,7 @@ function NavItem({ path, icon: Icon, name, collapsed, isActive }) {
   );
 }
 
-export default function Sidebar({ collapsed, setCollapsed }) {
+export default function Sidebar({ open, collapsed, onNavigate }) {
   const location = useLocation();
   const { dbUser, company, logout, isAdmin, isCompanyAdmin } = useAuth();
   const { t, isPt } = useLanguage();
@@ -134,45 +133,17 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   return (
     <aside
       className={cn(
-        'fixed top-0 left-0 h-full z-40 bg-[#0f0f0f] border-r border-white/10 flex flex-col transition-all duration-300',
-        'hidden md:flex',
-        collapsed ? 'w-[72px]' : 'w-[240px]'
+        // Sits under the fixed header. On desktop it collapses to icons; on
+        // mobile it slides in over the content (replacing the old bottom bar).
+        'fixed top-14 left-0 bottom-0 z-40 bg-[#0f0f0f] border-r border-white/10 flex flex-col transition-transform md:transition-all duration-300',
+        'w-[240px] md:w-auto',
+        open ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+        collapsed ? 'md:w-[72px]' : 'md:w-[240px]'
       )}
+      aria-hidden={!open && typeof window !== 'undefined' && window.innerWidth < 768}
     >
-      {/* Logo - always Bmapz AI brand. Clicking navigates home. */}
-      <Link
-        to="/"
-        className="flex items-center gap-3 px-4 py-5 border-b border-white/10 flex-shrink-0 hover:bg-white/5 transition-colors"
-        title="Home"
-      >
-        <img
-          src="/bmapz-logo.png"
-          alt="Bmapz AI"
-          className="w-8 h-8 rounded-lg object-contain flex-shrink-0"
-          onError={(e) => {
-            // Fallback gradient square if the logo file isn't deployed yet
-            e.target.style.display = 'none';
-            e.target.nextSibling.style.display = 'block';
-          }}
-        />
-        <div
-          className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#38b6ff] to-[#cb6ce6] flex-shrink-0"
-          style={{ display: 'none' }}
-        />
-        {!collapsed && (
-          <span className="font-bold text-white text-lg tracking-tight truncate flex-1">
-            Bmapz AI
-          </span>
-        )}
-      </Link>
-
-      {/* Notification bell (desktop) */}
-      <div className={cn('px-3 py-2 border-b border-white/10 flex', collapsed ? 'justify-center' : 'justify-end')}>
-        <NotificationBell />
-      </div>
-
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+      {/* Nav — the logo, search and bell all live in the header now */}
+      <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5" onClick={onNavigate}>
         {NAV_SECTIONS.map((section, si) => (
           <div key={si}>
             <SectionLabel label={section.label} collapsed={collapsed} />
@@ -234,12 +205,6 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         </button>
       </div>
 
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-[#1a1a1a] border border-white/20 flex items-center justify-center text-white/50 hover:text-white transition-colors"
-      >
-        {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
-      </button>
     </aside>
   );
 }
