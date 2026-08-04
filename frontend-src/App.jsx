@@ -1,11 +1,13 @@
 import './App.css';
-import { Suspense, lazy } from 'react';
+import { Suspense, useEffect } from 'react';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { Toaster } from 'sonner';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client';
 import NavigationTracker from '@/lib/NavigationTracker';
-import { pagesConfig } from './pages.config';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { pagesConfig, prefetchCommonRoutes } from './pages.config';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 // Login/Signup are the first thing an unauthenticated visitor needs, so they
 // stay eager. Everything else is split into its own chunk and fetched on demand.
@@ -13,14 +15,14 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import AuthCallback from './pages/AuthCallback';
 
-const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
-const DataDeletion = lazy(() => import('./pages/DataDeletion'));
-const AdminPanel = lazy(() => import('./pages/AdminPanel'));
-const CompanyAdminPanel = lazy(() => import('./pages/CompanyAdminPanel'));
-const Documentation = lazy(() => import('./pages/Documentation'));
-const VideoTutorials = lazy(() => import('./pages/VideoTutorials'));
-const TermsOfService = lazy(() => import('./pages/TermsOfService'));
-const Pricing = lazy(() => import('./pages/Pricing'));
+const PrivacyPolicy = lazyWithRetry(() => import('./pages/PrivacyPolicy'), 'PrivacyPolicy');
+const DataDeletion = lazyWithRetry(() => import('./pages/DataDeletion'), 'DataDeletion');
+const AdminPanel = lazyWithRetry(() => import('./pages/AdminPanel'), 'AdminPanel');
+const CompanyAdminPanel = lazyWithRetry(() => import('./pages/CompanyAdminPanel'), 'CompanyAdminPanel');
+const Documentation = lazyWithRetry(() => import('./pages/Documentation'), 'Documentation');
+const VideoTutorials = lazyWithRetry(() => import('./pages/VideoTutorials'), 'VideoTutorials');
+const TermsOfService = lazyWithRetry(() => import('./pages/TermsOfService'), 'TermsOfService');
+const Pricing = lazyWithRetry(() => import('./pages/Pricing'), 'Pricing');
 
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { LanguageProvider } from '@/components/ui/LanguageContext';
@@ -36,6 +38,39 @@ const RouteFallback = () => (
     <div className="w-8 h-8 border-4 border-white/20 border-t-[#38b6ff] rounded-full animate-spin" />
   </div>
 );
+
+/**
+ * Wraps the routes so a failed screen shows a message instead of a blank page,
+ * and clears itself when the user navigates somewhere else.
+ */
+const RouteErrorBoundary = ({ children }) => {
+  const location = useLocation();
+  return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>;
+};
+/**
+ * Once the app has rendered successfully, forget any stale-chunk reload we did,
+ * then quietly warm the screens people open most so navigation feels instant.
+ * Prefetching waits for the browser to be idle so it never competes with the
+ * page the user is actually looking at.
+ */
+const ChunkGuardReset = () => {
+  useEffect(() => {
+    // NOTE: deliberately does NOT clear the stale-chunk guard. The app shell
+    // mounts successfully even when a ROUTE chunk fails, so clearing it here
+    // would let a permanently missing chunk reload the page forever. The guard
+    // expires on its own after a minute instead.
+    const warm = () => { prefetchCommonRoutes(); };
+    const id = 'requestIdleCallback' in window
+      ? window.requestIdleCallback(warm, { timeout: 4000 })
+      : setTimeout(warm, 2500);
+    return () => {
+      if ('cancelIdleCallback' in window) window.cancelIdleCallback(id);
+      else clearTimeout(id);
+    };
+  }, []);
+  return null;
+};
+
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : () => null;
 
@@ -43,8 +78,9 @@ const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
 
 const PublicRoutes = () => (
-  <Suspense fallback={<RouteFallback />}>
-    <Routes>
+  <RouteErrorBoundary>
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
@@ -54,13 +90,15 @@ const PublicRoutes = () => (
       <Route path="/DataDeletion" element={<DataDeletion />} />
       <Route path="/TermsOfService" element={<TermsOfService />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
-  </Suspense>
+      </Routes>
+    </Suspense>
+  </RouteErrorBoundary>
 );
 
 const AuthenticatedRoutes = ({ currentUser }) => (
-  <Suspense fallback={<RouteFallback />}>
-    <Routes>
+  <RouteErrorBoundary>
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
     <Route path="/" element={
       <LayoutWrapper currentPageName={mainPageKey}>
         <MainPage />
@@ -93,8 +131,9 @@ const AuthenticatedRoutes = ({ currentUser }) => (
       <Route path="/Pricing" element={<Pricing />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="*" element={<PageNotFound />} />
-    </Routes>
-  </Suspense>
+      </Routes>
+    </Suspense>
+  </RouteErrorBoundary>
 );
 
 const AppRoutes = () => {
@@ -143,6 +182,7 @@ export default function App() {
         <Router>
           <AuthProvider>
             <NavigationTracker />
+            <ChunkGuardReset />
             <AppRoutes />
             <Toaster position="top-right" richColors />
           </AuthProvider>

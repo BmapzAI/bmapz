@@ -54,34 +54,34 @@
  * before seeing anything. Each page is now its own chunk, fetched on first use.
  * App.jsx renders them inside a <Suspense> boundary.
  */
-import { lazy } from 'react';
+import { lazyWithRetry } from './lib/lazyWithRetry';
 
-const AIChat = lazy(() => import('./pages/AIChat'));
-const AIAutomations = lazy(() => import('./pages/AIAutomations'));
-const Design = lazy(() => import('./pages/Design'));
-const Inbox = lazy(() => import('./pages/Inbox'));
-const TeamChat = lazy(() => import('./pages/TeamChat'));
-const Notifications = lazy(() => import('./pages/Notifications'));
-const SDR = lazy(() => import('./pages/SDR'));
-const Billing = lazy(() => import('./pages/Billing'));
-const Pricing = lazy(() => import('./pages/Pricing'));
-const BrandScan = lazy(() => import('./pages/BrandScan'));
-const AIOutputs = lazy(() => import('./pages/AIOutputs'));
-const Ads = lazy(() => import('./pages/Ads'));
-const Blog = lazy(() => import('./pages/Blog'));
-const Dashboards = lazy(() => import('./pages/Dashboards'));
-const Help = lazy(() => import('./pages/Help'));
-const Home = lazy(() => import('./pages/Home'));
-const Integrations = lazy(() => import('./pages/Integrations'));
-const LeadDetails = lazy(() => import('./pages/LeadDetails'));
-const Profile = lazy(() => import('./pages/Profile'));
-const SEO = lazy(() => import('./pages/SEO'));
-const Sales = lazy(() => import('./pages/Sales'));
-const Settings = lazy(() => import('./pages/Settings'));
-const SocialMedia = lazy(() => import('./pages/SocialMedia'));
-const TextTemplates = lazy(() => import('./pages/TextTemplates'));
-const WorkflowAnalytics = lazy(() => import('./pages/WorkflowAnalytics'));
-const Workflows = lazy(() => import('./pages/Workflows'));
+const AIChat = lazyWithRetry(() => import('./pages/AIChat'), 'AIChat');
+const AIAutomations = lazyWithRetry(() => import('./pages/AIAutomations'), 'AIAutomations');
+const Design = lazyWithRetry(() => import('./pages/Design'), 'Design');
+const Inbox = lazyWithRetry(() => import('./pages/Inbox'), 'Inbox');
+const TeamChat = lazyWithRetry(() => import('./pages/TeamChat'), 'TeamChat');
+const Notifications = lazyWithRetry(() => import('./pages/Notifications'), 'Notifications');
+const SDR = lazyWithRetry(() => import('./pages/SDR'), 'SDR');
+const Billing = lazyWithRetry(() => import('./pages/Billing'), 'Billing');
+const Pricing = lazyWithRetry(() => import('./pages/Pricing'), 'Pricing');
+const BrandScan = lazyWithRetry(() => import('./pages/BrandScan'), 'BrandScan');
+const AIOutputs = lazyWithRetry(() => import('./pages/AIOutputs'), 'AIOutputs');
+const Ads = lazyWithRetry(() => import('./pages/Ads'), 'Ads');
+const Blog = lazyWithRetry(() => import('./pages/Blog'), 'Blog');
+const Dashboards = lazyWithRetry(() => import('./pages/Dashboards'), 'Dashboards');
+const Help = lazyWithRetry(() => import('./pages/Help'), 'Help');
+const Home = lazyWithRetry(() => import('./pages/Home'), 'Home');
+const Integrations = lazyWithRetry(() => import('./pages/Integrations'), 'Integrations');
+const LeadDetails = lazyWithRetry(() => import('./pages/LeadDetails'), 'LeadDetails');
+const Profile = lazyWithRetry(() => import('./pages/Profile'), 'Profile');
+const SEO = lazyWithRetry(() => import('./pages/SEO'), 'SEO');
+const Sales = lazyWithRetry(() => import('./pages/Sales'), 'Sales');
+const Settings = lazyWithRetry(() => import('./pages/Settings'), 'Settings');
+const SocialMedia = lazyWithRetry(() => import('./pages/SocialMedia'), 'SocialMedia');
+const TextTemplates = lazyWithRetry(() => import('./pages/TextTemplates'), 'TextTemplates');
+const WorkflowAnalytics = lazyWithRetry(() => import('./pages/WorkflowAnalytics'), 'WorkflowAnalytics');
+const Workflows = lazyWithRetry(() => import('./pages/Workflows'), 'Workflows');
 // The layout wraps every page, so it stays eagerly loaded.
 import __Layout from './Layout.jsx';
 
@@ -120,3 +120,24 @@ export const pagesConfig = {
     Pages: PAGES,
     Layout: __Layout,
 };
+
+/**
+ * Warm the chunks people reach for most, once the browser is idle. This makes
+ * the first click into a section feel instant without adding anything to the
+ * initial download. Failures are ignored — it is only a nicety.
+ */
+const COMMON_ROUTES = [
+    () => import('./pages/Sales'),
+    () => import('./pages/Inbox'),
+    () => import('./pages/AIChat'),
+    () => import('./pages/Workflows'),
+];
+
+let warmed = false;
+export function prefetchCommonRoutes() {
+    if (warmed) return;
+    warmed = true;
+    for (const load of COMMON_ROUTES) {
+        load().catch(() => { /* a warm-up must never surface an error */ });
+    }
+}
