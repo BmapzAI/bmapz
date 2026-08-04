@@ -12,7 +12,7 @@
  * (code: 'NOT_CONNECTED') rather than pretending.
  */
 import { supabaseAdmin } from './supabase.js';
-import { getPlatform } from '../../../shared/adPlatforms.js';
+import { getPlatform } from './adPlatforms.js';
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202606';

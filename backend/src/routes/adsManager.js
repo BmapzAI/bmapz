@@ -16,7 +16,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { runAIChat } from './ai.js';
 import { publishCampaign, resolveCredentials, PublishError } from '../lib/adPublisher.js';
-import { getPlatform, validateLevel, PLATFORM_KEYS } from '../../../shared/adPlatforms.js';
+import { getPlatform, validateLevel, PLATFORM_KEYS } from '../lib/adPlatforms.js';
 import { pickNextOwner } from '../lib/leadAssignment.js';
 import { logLeadActivity, LEAD_ACTIVITY_TYPES } from '../lib/leadActivity.js';
 import { createNotification } from '../lib/notify.js';

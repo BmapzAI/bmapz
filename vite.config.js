@@ -10,7 +10,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './frontend-src'),
       // Ad-platform structure is shared verbatim with the Express server so the
       // UI and the publisher can never disagree about a platform's fields.
-      '@shared': path.resolve(__dirname, './shared'),
+      '@shared': path.resolve(__dirname, './backend/src/lib'),
     },
   },
   root: '.',
