@@ -60,6 +60,7 @@ const AIChat = lazy(() => import('./pages/AIChat'));
 const AIAutomations = lazy(() => import('./pages/AIAutomations'));
 const Design = lazy(() => import('./pages/Design'));
 const Inbox = lazy(() => import('./pages/Inbox'));
+const TeamChat = lazy(() => import('./pages/TeamChat'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const SDR = lazy(() => import('./pages/SDR'));
 const Billing = lazy(() => import('./pages/Billing'));
@@ -87,6 +88,7 @@ import __Layout from './Layout.jsx';
 
 export const PAGES = {
     "Inbox": Inbox,
+    "TeamChat": TeamChat,
     "AIChat": AIChat,
     "AIAutomations": AIAutomations,
     "Design": Design,

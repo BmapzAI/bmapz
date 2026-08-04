@@ -4,13 +4,15 @@ import { useAuth } from '@/lib/AuthContext';
 import { canSeeDesign } from '@/lib/featureFlags';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { cn } from '@/lib/utils';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/api/apiClient';
 import {
   LogOut,
   LayoutDashboard, Users, MessageSquare, Bot, GitBranch,
   Megaphone, Search, Share2, BookOpen, ScanLine,
   Sparkles, FileText, BarChart3, Clock, Palette, TrendingUp,
   Plug, HelpCircle, User, Settings as SettingsIcon,
-  Building2, Shield, Headset,
+  Building2, Shield, Headset, Users2,
 } from 'lucide-react';
 
 /**
@@ -57,12 +59,12 @@ function SectionLabel({ label, collapsed }) {
   );
 }
 
-function NavItem({ path, icon: Icon, name, collapsed, isActive }) {
+function NavItem({ path, icon: Icon, name, collapsed, isActive, badge }) {
   return (
     <Link
       to={path}
       className={cn(
-        'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200',
+        'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 relative',
         isActive
           ? 'bg-[#38b6ff]/10 text-[#38b6ff] border border-[#38b6ff]/20'
           : 'text-white/60 hover:text-white hover:bg-white/5'
@@ -70,7 +72,15 @@ function NavItem({ path, icon: Icon, name, collapsed, isActive }) {
       title={collapsed ? name : undefined}
     >
       {Icon && <Icon className="w-5 h-5 flex-shrink-0" />}
-      {!collapsed && <span className="text-sm font-medium truncate">{name}</span>}
+      {!collapsed && <span className="text-sm font-medium truncate flex-1">{name}</span>}
+      {badge > 0 && (
+        <span className={cn(
+          'bg-[#38b6ff] text-white text-[10px] rounded-full px-1.5 py-0.5 leading-none flex-shrink-0',
+          collapsed && 'absolute top-1 right-1 px-1'
+        )}>
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
     </Link>
   );
 }
@@ -82,6 +92,15 @@ export default function Sidebar({ open, collapsed, onNavigate }) {
 
   const agentName = company?.personal_agent_name || t('aiChat');
 
+  // Unread team messages, shown as a badge next to Team Chat.
+  const { data: teamUnreadData } = useQuery({
+    queryKey: ['teamChatUnread'],
+    queryFn: () => api.get('/api/team-chat/unread'),
+    refetchInterval: 30000,
+    retry: false,
+  });
+  const teamUnread = teamUnreadData?.count || 0;
+
   const NAV_SECTIONS = [
     {
       label: null,
@@ -90,6 +109,8 @@ export default function Sidebar({ open, collapsed, onNavigate }) {
         { name: t('sales'),     path: '/Sales',     icon: Users           },
         { name: 'SDR',          path: '/SDR',       icon: Headset         },
         { name: t('inbox'),     path: '/Inbox',     icon: MessageSquare   },
+        // Staff-to-staff chat, distinct from the client Inbox above.
+        { name: isPt ? 'Chat da Equipe' : 'Team Chat', path: '/TeamChat', icon: Users2, badge: teamUnread },
         { name: agentName,      path: '/AIChat',    icon: Bot             },
         { name: t('workflows'), path: '/Workflows', icon: GitBranch       },
       ],
@@ -153,6 +174,7 @@ export default function Sidebar({ open, collapsed, onNavigate }) {
                 path={item.path}
                 icon={item.icon}
                 name={item.name}
+                badge={item.badge}
                 collapsed={collapsed}
                 isActive={isActive(item.path)}
               />
