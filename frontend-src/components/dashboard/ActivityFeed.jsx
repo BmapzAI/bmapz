@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { MessageSquare, UserPlus, GitBranch, Mail, Phone } from 'lucide-react';
 import moment from 'moment';
@@ -21,6 +22,13 @@ const activityColors = {
 
 export default function ActivityFeed({ activities }) {
   const { t } = useLanguage();
+  const navigate = useNavigate();
+  // Rows always LOOKED clickable (cursor-pointer) but did nothing. Each row
+  // now opens the lead it belongs to.
+  const openActivity = (activity) => {
+    const leadId = activity.lead_id || activity.related_lead_id;
+    if (leadId) navigate(`/LeadDetails?id=${leadId}`);
+  };
 
   if (!activities || activities.length === 0) {
     return (
@@ -40,10 +48,13 @@ export default function ActivityFeed({ activities }) {
         const Icon = activityIcons[activity.type] || MessageSquare;
         const colorClass = activityColors[activity.type] || 'text-gray-400 bg-gray-400/10';
         
+        const leadId = activity.lead_id || activity.related_lead_id;
         return (
-          <div 
-            key={activity.id} 
-            className="flex items-start gap-3 p-3 rounded-xl transition-colors duration-200 cursor-pointer bg-white/5 hover:bg-white/10"
+          <div
+            key={activity.id}
+            onClick={() => openActivity(activity)}
+            role={leadId ? 'button' : undefined}
+            className={`flex items-start gap-3 p-3 rounded-xl transition-colors duration-200 bg-white/5 hover:bg-white/10 ${leadId ? 'cursor-pointer' : ''}`}
           >
             <div className={`p-2 rounded-lg ${colorClass} flex-shrink-0`}>
               <Icon size={16} />
@@ -53,7 +64,11 @@ export default function ActivityFeed({ activities }) {
               <p className="text-xs mt-0.5 text-gray-500">{activity.description}</p>
             </div>
             <span className="text-xs whitespace-nowrap text-gray-500">
-              {moment(activity.created_date).fromNow()}
+              {/* created_date is an alias that isn't always present — falling
+                  through to created_at avoids moment(undefined) reading "now". */}
+              {(activity.created_date || activity.created_at)
+                ? moment(activity.created_date || activity.created_at).fromNow()
+                : ''}
             </span>
           </div>
         );

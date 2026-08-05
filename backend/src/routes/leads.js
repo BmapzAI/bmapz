@@ -151,7 +151,13 @@ router.get('/', requireAuth, async (req, res) => {
       if (list_id) q = q.eq('list_id', list_id);
       if (withOwner && req.query.owner_id) q = q.eq('owner_id', req.query.owner_id);
       if (status) q = q.eq('status', status);
-      if (stage) q = q.eq('pipeline_stage', stage);
+      // The real column is funnel_stage — 'pipeline_stage' never existed, so
+      // this filter 500'd for any caller. Dashboard drill-downs rely on it.
+      if (stage) q = q.eq('funnel_stage', stage);
+      if (req.query.funnel_stage) q = q.eq('funnel_stage', req.query.funnel_stage);
+      if (req.query.source) q = q.eq('source', req.query.source);
+      if (req.query.since) q = q.gte('created_at', req.query.since);
+      if (req.query.unassigned === 'true') q = q.is('owner_id', null);
       if (search) q = q.or(`lead_name.ilike.%${search}%,email.ilike.%${search}%,lead_company_name.ilike.%${search}%`);
       return q;
     };

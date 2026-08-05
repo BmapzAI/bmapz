@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLanguage } from '@/components/ui/LanguageContext';
 
-export default function FunnelChart({ stages, leads }) {
+export default function FunnelChart({ stages, leads, onStageClick }) {
   const { t } = useLanguage();
 
   const defaultStages = [
@@ -24,14 +24,23 @@ export default function FunnelChart({ stages, leads }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-500 mb-1">Each bar shows the number of leads currently at that funnel stage. The longest bar is the reference (100%).</p>
+      <p className="text-xs text-gray-500 mb-1">
+        Each bar shows the number of leads currently at that funnel stage. The longest bar is the reference (100%).
+        {onStageClick ? ' Click a stage to see its leads.' : ''}
+      </p>
       {stageData.map((stage) => {
         const count = getLeadsInStage(stage.id);
         const percentage = maxLeads > 0 ? (count / maxLeads) * 100 : 0;
-        
+
         return (
           <div key={stage.id} className="group">
-            <div className="flex items-center gap-4">
+            <div
+              className={`flex items-center gap-4 rounded-lg ${onStageClick && count > 0 ? 'cursor-pointer hover:bg-white/5 -mx-2 px-2 py-0.5 transition-colors' : ''}`}
+              onClick={onStageClick && count > 0 ? () => onStageClick(stage.id, stage.name, count) : undefined}
+              role={onStageClick && count > 0 ? 'button' : undefined}
+              tabIndex={onStageClick && count > 0 ? 0 : undefined}
+              onKeyDown={onStageClick && count > 0 ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStageClick(stage.id, stage.name, count); } } : undefined}
+            >
               <span className="text-sm font-medium w-28 truncate text-gray-400">{stage.name}</span>
               <div className="flex-1 h-7 rounded-lg overflow-hidden relative bg-white/5">
                 <div 

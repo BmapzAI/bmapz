@@ -9,6 +9,7 @@ import StatsCard from '@/components/dashboard/StatsCard';
 import FunnelChart from '@/components/dashboard/FunnelChart';
 import ActivityFeed from '@/components/dashboard/ActivityFeed';
 import GettingStarted from '@/components/dashboard/GettingStarted';
+import DrillDownModal from '@/components/dashboard/DrillDownModal';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
 import { Activity, Lead, Message, Workflow, Company, Notification } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
@@ -89,6 +90,23 @@ export default function Home() {
   const conversionRate  = leads.length > 0 ? ((convertedLeads / leads.length) * 100).toFixed(1) : 0;
   const pipelineValue   = leads.reduce((sum, l) => sum + (l.estimated_value || 0), 0);
 
+  // Real month-over-month trend: last 30 days vs the 30 before. undefined when
+  // there's no prior period to compare, so the card omits the trend line.
+  const trends = React.useMemo(() => {
+    const now = Date.now(), d30 = now - 30 * 86400_000, d60 = now - 60 * 86400_000;
+    const at = (r) => new Date(r.created_at || r.created_date || r.sent_at || 0).getTime();
+    const pct = (cur, prev) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : undefined);
+    const outbound = messages.filter(m => m.direction === 'outbound');
+    return {
+      leads: pct(leads.filter(l => at(l) >= d30).length, leads.filter(l => at(l) >= d60 && at(l) < d30).length),
+      messages: pct(outbound.filter(m => at(m) >= d30).length, outbound.filter(m => at(m) >= d60 && at(m) < d30).length),
+    };
+  }, [leads, messages]);
+
+  // Drill-down for every clickable card / funnel stage on this page.
+  const [drill, setDrill] = React.useState(null);
+  const leadsById = React.useMemo(() => Object.fromEntries(leads.map(l => [l.id, l])), [leads]);
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -130,12 +148,17 @@ export default function Home() {
         steps={[t('homeQs1'), t('homeQs2'), t('homeQs3'), t('homeQs4')]}
       />
 
-      {/* Stats */}
+      {/* Stats — clickable: each opens the records behind the number. Trends are
+          computed from real data (they were hardcoded +12%/+8%/+5%/+15%). */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard title={t('totalLeads')}      value={leads.length}                   icon={Users}         trend={12} trendLabel={t('fromLastMonth')} color="blue"    />
-        <StatsCard title={t('messagesSent')}    value={messagesSent}                   icon={MessageSquare} trend={8}  trendLabel={t('fromLastMonth')} color="cyan"    />
-        <StatsCard title={t('conversionRate')}  value={`${conversionRate}%`}           icon={TrendingUp}    trend={5}  trendLabel={t('fromLastMonth')} color="green"   />
-        <StatsCard title={t('pipelineValue')}   value={`$${pipelineValue.toLocaleString()}`} icon={DollarSign} trend={15} trendLabel={t('fromLastMonth')} color="magenta" />
+        <StatsCard title={t('totalLeads')}      value={leads.length}                   icon={Users}         trend={trends.leads}    trendLabel={t('fromLastMonth')} color="blue"
+          onClick={() => setDrill({ kind: 'leads', title: t('totalLeads'), items: leads })} />
+        <StatsCard title={t('messagesSent')}    value={messagesSent}                   icon={MessageSquare} trend={trends.messages} trendLabel={t('fromLastMonth')} color="cyan"
+          onClick={() => setDrill({ kind: 'messages', title: t('messagesSent'), items: messages.filter(m => m.direction === 'outbound') })} />
+        <StatsCard title={t('conversionRate')}  value={`${conversionRate}%`}           icon={TrendingUp}                                                            color="green"
+          onClick={() => setDrill({ kind: 'leads', title: t('conversionRate'), items: leads.filter(l => l.status === 'converted') })} />
+        <StatsCard title={t('pipelineValue')}   value={`$${pipelineValue.toLocaleString()}`} icon={DollarSign}                                                      color="magenta"
+          onClick={() => setDrill({ kind: 'leads', title: t('pipelineValue'), items: leads.filter(l => (l.estimated_value || 0) > 0) })} />
       </div>
 
       {/* Funnel + Activity */}
@@ -147,7 +170,14 @@ export default function Home() {
               <p className="text-sm mt-0.5 text-gray-400">{t('yourLeadProgression')}</p>
             </div>
           </div>
-          <FunnelChart leads={leads} />
+          <FunnelChart
+            leads={leads}
+            onStageClick={(stageId, stageName) => setDrill({
+              kind: 'leads',
+              title: `${stageName} — ${isPt ? 'leads nesta etapa' : 'leads at this stage'}`,
+              items: leads.filter(l => l.funnel_stage === stageId),
+            })}
+          />
         </div>
         <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
           <div className="mb-4">
@@ -185,6 +215,15 @@ export default function Home() {
           messagesCount={messagesSent}
         />
       </div>
+
+      <DrillDownModal
+        open={!!drill}
+        onClose={() => setDrill(null)}
+        title={drill?.title || ''}
+        kind={drill?.kind || 'leads'}
+        items={drill?.items || []}
+        leadsById={leadsById}
+      />
     </div>
   );
 }

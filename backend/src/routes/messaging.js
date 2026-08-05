@@ -169,6 +169,10 @@ router.get('/', requireAuth, async (req, res) => {
 
     if (lead_id) query = query.eq('lead_id', lead_id);
     if (status) query = query.eq('status', status);
+    // Channel + time-window filters power the dashboard drill-downs
+    // ("WhatsApp: 34 messages" → the actual 34 messages).
+    if (req.query.channel) query = query.eq('channel', req.query.channel);
+    if (req.query.since) query = query.gte('created_at', req.query.since);
 
     const { data, error, count } = await query;
     if (error) throw error;

@@ -7,6 +7,7 @@ import {
   Loader2, AlertCircle, Circle, ArrowRight,
 } from 'lucide-react';
 import { api } from '@/api/apiClient';
+import DrillDownModal from '@/components/dashboard/DrillDownModal';
 
 /**
  * Operational metrics: the numbers a sales manager actually needs, computed from
@@ -28,36 +29,53 @@ const Card = ({ title, icon: Icon, tone = 'text-[#38b6ff]', children, hint }) =>
   </div>
 );
 
-const Stat = ({ label, value, unit, tone = 'text-white' }) => (
-  <div>
-    <p className={`text-xl font-bold ${tone}`}>
-      {value === null || value === undefined ? '—' : value}
-      {value !== null && value !== undefined && unit ? <span className="text-gray-500 text-xs font-normal ml-1">{unit}</span> : null}
-    </p>
-    <p className="text-gray-400 text-xs">{label}</p>
-  </div>
-);
+// Pass onClick to make the number open a drill-down of the records behind it.
+const Stat = ({ label, value, unit, tone = 'text-white', onClick }) => {
+  const Tag = onClick ? 'button' : 'div';
+  return (
+    <Tag
+      {...(onClick ? { onClick, type: 'button', title: 'Click to see the records behind this number' } : {})}
+      className={`text-left ${onClick ? 'cursor-pointer rounded-lg -mx-1 px-1 hover:bg-white/5 transition-colors' : ''}`}
+    >
+      <p className={`text-xl font-bold ${tone}`}>
+        {value === null || value === undefined ? '—' : value}
+        {value !== null && value !== undefined && unit ? <span className="text-gray-500 text-xs font-normal ml-1">{unit}</span> : null}
+      </p>
+      <p className="text-gray-400 text-xs">{label}</p>
+    </Tag>
+  );
+};
 
 const Empty = ({ text }) => <p className="text-gray-500 text-xs py-2">{text}</p>;
 
-/** Simple horizontal bar list for distributions (channels, stages, sources). */
-const Bars = ({ data, emptyText }) => {
+/** Simple horizontal bar list for distributions (channels, stages, sources).
+ *  Pass onBarClick(key, count) to make each bar open a drill-down. */
+const Bars = ({ data, emptyText, onBarClick }) => {
   const entries = Object.entries(data || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 8);
   if (!entries.length) return <Empty text={emptyText} />;
   const max = Math.max(...entries.map(([, v]) => v));
   return (
     <div className="space-y-1.5">
-      {entries.map(([k, v]) => (
-        <div key={k}>
-          <div className="flex items-center justify-between text-xs mb-0.5">
-            <span className="text-gray-300 capitalize truncate">{String(k).replace(/_/g, ' ')}</span>
-            <span className="text-gray-500 flex-shrink-0 ml-2">{v}</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-[#3572b9] to-[#38b6ff]" style={{ width: `${(v / max) * 100}%` }} />
-          </div>
-        </div>
-      ))}
+      {entries.map(([k, v]) => {
+        const row = (
+          <>
+            <div className="flex items-center justify-between text-xs mb-0.5">
+              <span className="text-gray-300 capitalize truncate">{String(k).replace(/_/g, ' ')}</span>
+              <span className="text-gray-500 flex-shrink-0 ml-2">{v}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-[#3572b9] to-[#38b6ff]" style={{ width: `${(v / max) * 100}%` }} />
+            </div>
+          </>
+        );
+        return onBarClick ? (
+          <button key={k} onClick={() => onBarClick(k, v)} className="block w-full text-left rounded-md -mx-1 px-1 py-0.5 hover:bg-white/5 transition-colors">
+            {row}
+          </button>
+        ) : (
+          <div key={k}>{row}</div>
+        );
+      })}
     </div>
   );
 };
@@ -87,6 +105,29 @@ export default function OperationsMetrics() {
     queryFn: () => api.get('/api/metrics/overview', { days }),
     retry: false,
   });
+
+  // Drill-down: clicking a bar fetches the records behind it (this component
+  // only holds aggregates, so the list comes from the server on demand).
+  // { title, kind, endpoint, params } to fetch, or { title, kind, items } when
+  // the records are already in hand (e.g. team members from the same payload).
+  const [drill, setDrill] = useState(null);
+  const { data: fetchedRows = [], isLoading: drillLoading } = useQuery({
+    queryKey: ['metricsDrill', drill?.endpoint, drill?.params],
+    queryFn: () => api.get(drill.endpoint, { ...drill.params, limit: 200 }),
+    select: (r) => r?.data ?? r ?? [],
+    enabled: !!drill?.endpoint,
+  });
+  const drillRows = drill?.items ?? fetchedRows;
+  // One list fetch resolves message → lead names in the drill (cached 5 min).
+  const { data: allLeads = [] } = useQuery({
+    queryKey: ['metricsDrillLeadNames'],
+    queryFn: () => api.get('/api/leads', { limit: 500 }),
+    select: (r) => r?.data ?? r ?? [],
+    enabled: !!drill && drill.kind === 'messages',
+    staleTime: 5 * 60 * 1000,
+  });
+  const leadsById = Object.fromEntries((allLeads || []).map(l => [l.id, l]));
+  const sinceISO = () => new Date(Date.now() - Number(days) * 86400_000).toISOString();
 
   if (isLoading) {
     return <div className="flex justify-center py-12"><Loader2 className="animate-spin text-[#38b6ff]" /></div>;
@@ -173,9 +214,19 @@ export default function OperationsMetrics() {
           ) : (
             <>
               <div className="grid grid-cols-3 gap-2">
-                <Stat label="Online" value={av.online} tone="text-green-400" />
-                <Stat label={isPt ? 'Em espera' : 'Stand by'} value={av.standby} tone="text-yellow-400" />
-                <Stat label="Offline" value={av.offline} tone="text-gray-400" />
+                {[
+                  { key: 'online', label: 'Online', tone: 'text-green-400', value: av.online },
+                  { key: 'standby', label: isPt ? 'Em espera' : 'Stand by', tone: 'text-yellow-400', value: av.standby },
+                  { key: 'offline', label: 'Offline', tone: 'text-gray-400', value: av.offline },
+                ].map(s => (
+                  <Stat key={s.key} label={s.label} value={s.value} tone={s.tone}
+                    onClick={() => setDrill({
+                      title: `${s.label} — ${isPt ? 'time de vendas' : 'sales team'}`,
+                      kind: 'users',
+                      items: (av.members || []).filter(mem => mem.status === s.key)
+                        .map(mem => ({ id: mem.id, full_name: mem.name, email: mem.email || '', sales_status: mem.status })),
+                    })} />
+                ))}
               </div>
               <div className="mt-3 pt-3 border-t border-white/10 space-y-1.5 max-h-32 overflow-y-auto">
                 {av.members.map(mem => (
@@ -202,13 +253,15 @@ export default function OperationsMetrics() {
           {!m.messaging?.total ? <Empty text={isPt ? 'Sem mensagens no período.' : 'No messages in this period.'} /> : (
             <>
               <div className="grid grid-cols-3 gap-2">
-                <Stat label={isPt ? 'Total' : 'Total'} value={m.messaging.total} />
+                <Stat label={isPt ? 'Total' : 'Total'} value={m.messaging.total}
+                  onClick={() => setDrill({ title: isPt ? 'Mensagens no período' : 'Messages in this period', kind: 'messages', endpoint: '/api/messaging', params: { since: sinceISO() } })} />
                 <Stat label={isPt ? 'Por lead' : 'Per lead'} value={m.messaging.messages_per_lead} />
                 <Stat label={isPt ? 'Leads' : 'Leads'} value={m.messaging.leads_messaged} />
               </div>
               <div className="mt-3 pt-3 border-t border-white/10">
                 <p className="text-gray-500 text-[11px] mb-1.5">{isPt ? 'Por canal' : 'By channel'}</p>
-                <Bars data={m.messaging.channels} emptyText={isPt ? 'Sem canais.' : 'No channels.'} />
+                <Bars data={m.messaging.channels} emptyText={isPt ? 'Sem canais.' : 'No channels.'}
+                  onBarClick={(k) => setDrill({ title: `${k} — ${isPt ? 'mensagens no período' : 'messages in this period'}`, kind: 'messages', endpoint: '/api/messaging', params: { channel: k, since: sinceISO() } })} />
               </div>
             </>
           )}
@@ -228,14 +281,17 @@ export default function OperationsMetrics() {
               />
               <div className="mt-3 pt-3 border-t border-white/10 space-y-1.5">
                 {Object.entries(vel.stage_averages).map(([stage, v]) => (
-                  <div key={stage} className="flex items-center gap-2 text-xs">
-                    <span className="text-gray-300 capitalize flex-1 truncate">{stage}</span>
+                  <button key={stage} onClick={() => setDrill({
+                    title: `${stage} — ${isPt ? 'leads nesta etapa' : 'leads at this stage'}`,
+                    kind: 'leads', endpoint: '/api/leads', params: { funnel_stage: stage },
+                  })} className="w-full flex items-center gap-2 text-xs rounded-md -mx-1 px-1 py-0.5 hover:bg-white/5 transition-colors">
+                    <span className="text-gray-300 capitalize flex-1 truncate text-left">{stage}</span>
                     <ArrowRight size={10} className="text-gray-600 flex-shrink-0" />
                     <span className="text-white flex-shrink-0">
                       {v.average_hours < 48 ? `${v.average_hours}h` : `${(v.average_hours / 24).toFixed(1)}d`}
                     </span>
                     <span className="text-gray-600 flex-shrink-0">({v.samples})</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </>
@@ -263,14 +319,18 @@ export default function OperationsMetrics() {
           {!m.pipeline?.total ? <Empty text={isPt ? 'Sem leads ainda.' : 'No leads yet.'} /> : (
             <>
               <div className="grid grid-cols-3 gap-2">
-                <Stat label={isPt ? 'Leads' : 'Leads'} value={m.pipeline.total} />
-                <Stat label={isPt ? 'Novos' : 'New'} value={m.pipeline.new_in_window} />
+                <Stat label={isPt ? 'Leads' : 'Leads'} value={m.pipeline.total}
+                  onClick={() => setDrill({ title: isPt ? 'Todos os leads' : 'All leads', kind: 'leads', endpoint: '/api/leads', params: {} })} />
+                <Stat label={isPt ? 'Novos' : 'New'} value={m.pipeline.new_in_window}
+                  onClick={() => setDrill({ title: isPt ? 'Novos leads no período' : 'New leads in this period', kind: 'leads', endpoint: '/api/leads', params: { since: sinceISO() } })} />
                 <Stat label={isPt ? 'Sem dono' : 'Unassigned'} value={m.pipeline.unassigned}
-                  tone={m.pipeline.unassigned > 0 ? 'text-yellow-400' : 'text-white'} />
+                  tone={m.pipeline.unassigned > 0 ? 'text-yellow-400' : 'text-white'}
+                  onClick={() => setDrill({ title: isPt ? 'Leads sem responsável' : 'Leads with no owner', kind: 'leads', endpoint: '/api/leads', params: { unassigned: 'true' } })} />
               </div>
               <div className="mt-3 pt-3 border-t border-white/10">
                 <p className="text-gray-500 text-[11px] mb-1.5">{isPt ? 'Por etapa' : 'By stage'}</p>
-                <Bars data={m.pipeline.stages} emptyText="—" />
+                <Bars data={m.pipeline.stages} emptyText="—"
+                  onBarClick={(k) => setDrill({ title: `${k} — ${isPt ? 'leads nesta etapa' : 'leads at this stage'}`, kind: 'leads', endpoint: '/api/leads', params: { funnel_stage: k } })} />
               </div>
             </>
           )}
@@ -294,9 +354,20 @@ export default function OperationsMetrics() {
 
         {/* Lead sources */}
         <Card title={isPt ? 'Origem dos leads' : 'Where leads come from'} icon={TrendingUp} tone="text-green-400">
-          <Bars data={m.pipeline?.sources} emptyText={isPt ? 'Sem leads ainda.' : 'No leads yet.'} />
+          <Bars data={m.pipeline?.sources} emptyText={isPt ? 'Sem leads ainda.' : 'No leads yet.'}
+            onBarClick={(k) => setDrill({ title: `${isPt ? 'Leads de' : 'Leads from'} "${k}"`, kind: 'leads', endpoint: '/api/leads', params: { source: k } })} />
         </Card>
       </div>
+
+      <DrillDownModal
+        open={!!drill}
+        onClose={() => setDrill(null)}
+        title={drill?.title || ''}
+        kind={drill?.kind || 'leads'}
+        items={drillRows || []}
+        leadsById={leadsById}
+        loading={drillLoading}
+      />
 
       <p className="text-gray-600 text-[11px]">
         {isPt ? 'Atualizado em ' : 'Generated '}{new Date(m.generated_at || Date.now()).toLocaleString()}

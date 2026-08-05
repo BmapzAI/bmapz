@@ -31,6 +31,17 @@ const canEditUser = (actingRole, targetRole) => {
   return false;
 };
 
+// Internal roles (owner/system_admin) may only be held by members of the App
+// Owner's own company. The backend + a DB trigger enforce this; the UI simply
+// doesn't offer the options for users outside the platform company.
+const canOfferRole = (actingUser, targetUser, role) => {
+  if (!canEditUser(actingUser?.role, role)) return false;
+  if (['owner', 'system_admin'].includes(role)) {
+    return targetUser?.company_id === actingUser?.company_id;
+  }
+  return true;
+};
+
 // Log a change to AdminChangeLog (no-op stub — logged server-side)
 const logChange = () => Promise.resolve();
 
@@ -276,14 +287,16 @@ function InviteUserModal({ companies, onClose, onSave }) {
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger className="bg-black/30 border-white/10 text-white h-9"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-[#1a1a1a] border-white/10">
+                {/* Internal roles (System Admin / Owner) are never grantable via
+                    invite — elevate afterwards from the user table, which only
+                    offers them for platform-company members. */}
                 <SelectItem value="user" className="text-white">👤 User</SelectItem>
                 <SelectItem value="company_admin" className="text-white">🏢 Company Admin</SelectItem>
-                <SelectItem value="system_admin" className="text-white">🛡 System Admin</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">Assign to Company (optional)</label>
+            <label className="text-xs text-gray-400 mb-1 block">Assign to Company *</label>
             <Select value={companyId} onValueChange={setCompanyId}>
               <SelectTrigger className="bg-black/30 border-white/10 text-white h-9"><SelectValue placeholder="Select company..." /></SelectTrigger>
               <SelectContent className="bg-[#1a1a1a] border-white/10">
@@ -294,7 +307,7 @@ function InviteUserModal({ companies, onClose, onSave }) {
           <p className="text-xs text-gray-500">An invitation email will be sent to the user.</p>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
-            <Button disabled={!email.trim()} onClick={() => onSave(email, role, companyId)} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
+            <Button disabled={!email.trim() || !companyId} onClick={() => onSave(email, role, companyId)} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
               <UserPlus size={16} /> Send Invite
             </Button>
           </div>
@@ -570,10 +583,18 @@ export default function AdminPanel() {
   };
 
   const handleInviteUser = async (email, role, companyId) => {
-    await api.post('/api/users/invite', { email, role });
-    await logChange(user, 'invite_user', 'user', email, email, { role, company_id: companyId }, `Invited ${email} as ${role}`);
-    toast.success(`Invitation sent to ${email}`);
-    setShowInviteUser(false);
+    try {
+      // Admin invites go through /api/admin/invite so the user lands in the
+      // SELECTED company. The old /api/users/invite put every invitee in the
+      // caller's own company — i.e. customers ended up inside the platform
+      // company, which is the trust boundary for internal roles.
+      await api.post('/api/admin/invite', { email, role, company_id: companyId });
+      await logChange(user, 'invite_user', 'user', email, email, { role, company_id: companyId }, `Invited ${email} as ${role}`);
+      toast.success(`Invitation sent to ${email}`);
+      setShowInviteUser(false);
+    } catch (e) {
+      toast.error('Invite failed: ' + (e?.response?.data?.error || e.message));
+    }
   };
 
   const handleSetAccount = async (userId, accountId) => {
@@ -892,7 +913,7 @@ export default function AdminPanel() {
                             <Select value={editingUserRole} onValueChange={setEditingUserRole}>
                               <SelectTrigger className="h-7 w-36 bg-black/30 border-white/10 text-white text-xs"><SelectValue /></SelectTrigger>
                               <SelectContent className="bg-[#1a1a1a] border-white/10">
-                                {ROLE_OPTIONS.filter(r => canEditUser(user?.role, r)).map(r =>
+                                {ROLE_OPTIONS.filter(r => canOfferRole(user, u, r)).map(r =>
                                   <SelectItem key={r} value={r} className="text-white">{ROLE_LABELS[r]}</SelectItem>
                                 )}
                               </SelectContent>

@@ -168,6 +168,7 @@ router.get('/overview', requireAuth, async (req, res) => {
       members: team.map(u => ({
         id: u.id,
         name: u.full_name || u.email,
+        email: u.email,
         status: u.sales_status || 'offline',
         since: u.sales_status_updated_at,
         // How long they have held the current status.

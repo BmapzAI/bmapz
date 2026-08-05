@@ -261,9 +261,72 @@ router.patch('/purchases/:id', async (req, res) => {
   }
 });
 
+// ─── Brain insights (App Owner ONLY) ─────────────────────────────────────────
+// The full cross-company view of what the brain has learned. requireAdmin
+// already gates to owner/system_admin; this endpoint additionally requires
+// role === 'owner' — "only App owners have access to all the information
+// within the company brain".
+router.get('/brain-insights', async (req, res) => {
+  try {
+    if (req.dbUser.role !== 'owner') {
+      return res.status(403).json({ error: 'Owner access required' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('brain_learnings')
+      .select('*, company:company_id (id, name)')
+      .order('updated_at', { ascending: false })
+      .limit(200);
+    if (error) {
+      if (/brain_learnings|relation|does not exist/i.test(error.message || '')) {
+        return res.json({ data: [], note: 'Run migration 019 to enable brain learning.' });
+      }
+      throw error;
+    }
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Admin User CRUD ──────────────────────────────────────────────────────────
 
 const ADMIN_ROLES = new Set(['owner', 'system_admin', 'company_admin', 'user']);
+
+// POST /api/admin/invite — invite a user into a SPECIFIC company.
+// Internal roles (owner/system_admin) can never be granted via invite — they
+// are assigned afterwards through PATCH /users/:id, which enforces the
+// platform-company restriction. Invites cap at customer roles.
+router.post('/invite', async (req, res) => {
+  try {
+    const { email, full_name, company_id } = req.body || {};
+    if (!email || !company_id) {
+      return res.status(400).json({ error: 'email and company_id are required' });
+    }
+    const role = ['company_admin', 'user'].includes(req.body.role) ? req.body.role : 'user';
+
+    // Verify the company exists so a typo'd id can't create orphan users.
+    const { data: company, error: companyError } = await supabaseAdmin
+      .from('companies').select('id').eq('id', company_id).single();
+    if (companyError || !company) return res.status(404).json({ error: 'Company not found' });
+
+    const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      data: { company_id, role, full_name: full_name || '', invited_by: req.dbUser.email },
+    });
+    if (error) throw error;
+
+    await supabaseAdmin.from('users').upsert({
+      id: data.user.id,
+      email,
+      full_name: full_name || '',
+      company_id,
+      role,
+    }, { onConflict: 'id' });
+
+    res.json({ success: true, user: data.user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.patch('/users/:id', async (req, res) => {
   try {
@@ -276,7 +339,7 @@ router.patch('/users/:id', async (req, res) => {
       if (!ADMIN_ROLES.has(role)) return res.status(400).json({ error: 'Invalid role' });
       const { data: target, error: targetError } = await supabaseAdmin
         .from('users')
-        .select('id, role')
+        .select('id, role, company_id')
         .eq('id', req.params.id)
         .single();
       if (targetError) throw targetError;
@@ -286,6 +349,16 @@ router.patch('/users/:id', async (req, res) => {
       }
       if (req.dbUser.role === 'system_admin' && ['owner', 'system_admin'].includes(role)) {
         return res.status(403).json({ error: 'Only an Owner can grant internal admin roles' });
+      }
+      // Internal roles are platform-level power (admin routes, BYOK, brain
+      // global view). They may ONLY be held by members of the App Owner's own
+      // company — granting them to a customer-company user would hand that
+      // customer the entire platform. A DB trigger (migration 018) enforces
+      // the same rule at the schema level as defense in depth.
+      if (['owner', 'system_admin'].includes(role) && target.company_id !== req.dbUser.company_id) {
+        return res.status(403).json({
+          error: 'Internal roles (Owner / System Admin) can only be granted to members of the platform company',
+        });
       }
       updates.role = role;
     }

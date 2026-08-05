@@ -13,7 +13,7 @@ import {
   MODEL_TIER,
   PLAN_MODEL_ACCESS,
 } from '../lib/aiCredits.js';
-import { getCompanyBrain } from '../lib/companyBrain.js';
+import { getCompanyBrain, recordOutcomeLearning } from '../lib/companyBrain.js';
 import { getLiveModels } from '../lib/modelRegistry.js';
 
 const router = Router();
@@ -21,14 +21,30 @@ const router = Router();
 /**
  * Helper: get company AI settings (provider, model, keys) AND active plan.
  * Keys are stored in the api_keys JSONB column — must select that column.
+ *
+ * Cached 60s per company (in-process): settings change rarely but are read on
+ * EVERY generation, and each read was a full DB round-trip before the model
+ * call could even start. Invalidated on settings writes via
+ * invalidateAISettingsCache().
  */
+const SETTINGS_CACHE_TTL_MS = 60_000;
+const settingsCache = new Map(); // companyId -> { at, settings }
+
 async function getCompanyAISettings(companyId) {
+  const hit = settingsCache.get(companyId);
+  if (hit && Date.now() - hit.at < SETTINGS_CACHE_TTL_MS) return hit.settings;
   const { data: company } = await supabaseAdmin
     .from('companies')
     .select('api_keys')
     .eq('id', companyId)
     .single();
-  return company?.api_keys || {};
+  const settings = company?.api_keys || {};
+  settingsCache.set(companyId, { at: Date.now(), settings });
+  return settings;
+}
+
+export function invalidateAISettingsCache(companyId) {
+  settingsCache.delete(companyId);
 }
 
 /**
@@ -212,8 +228,18 @@ async function deductCredits({ companyId, userId, userEmail, credits, feature, m
     throw err;
   }
 
-  const newUsed = used + credits;
-  await supabaseAdmin.from('subscriptions').update({ ai_credits_used: newUsed }).eq('id', sub.id);
+  // Atomic increment via RPC (migration 019). The old read-modify-write raced:
+  // two concurrent generations both read used=X and both wrote X+cost, losing
+  // one deduction. Falls back to the non-atomic path until the migration runs.
+  let newUsed = used + credits;
+  const { data: rpcUsed, error: rpcErr } = await supabaseAdmin
+    .rpc('consume_ai_credits', { p_subscription_id: sub.id, p_credits: credits });
+  if (rpcErr) {
+    if (!/function|schema cache/i.test(rpcErr.message || '')) console.error('[ai] consume_ai_credits rpc failed:', rpcErr.message);
+    await supabaseAdmin.from('subscriptions').update({ ai_credits_used: newUsed }).eq('id', sub.id);
+  } else if (typeof rpcUsed === 'number') {
+    newUsed = rpcUsed;
+  }
   await supabaseAdmin.from('credit_transactions').insert({
     company_id: companyId,
     subscription_id: sub.id,
@@ -261,7 +287,10 @@ async function getOpenAIClient(companyId, keyOverride) {
     throw err;
   }
   const OpenAI = (await import('openai')).default;
-  return new OpenAI({ apiKey });
+  // timeout: a hung provider must not hold the HTTP connection for the SDK's
+  // ~10-min default. maxRetries: SDK-level backoff absorbs transient 429/5xx
+  // before we burn a whole provider-fallback attempt.
+  return new OpenAI({ apiKey, timeout: 180_000, maxRetries: 2 });
 }
 
 /**
@@ -279,7 +308,9 @@ async function getAnthropicClient(companyId, keyOverride) {
     throw err;
   }
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
-  return new Anthropic({ apiKey });
+  // Same rationale as the OpenAI client: bounded timeout + SDK retry/backoff.
+  // 180s covers the heaviest single completions (brand scans chunk their work).
+  return new Anthropic({ apiKey, timeout: 180_000, maxRetries: 2 });
 }
 
 // ─── Error categorization ────────────────────────────────────────────────────
@@ -467,19 +498,22 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
  *   6. On success: deduct credits based on model multiplier × tokens used.
  */
 async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action, skipBrain = false }) {
-  const settings = await getCompanyAISettings(companyId);
-
-  // ── Company Brain: omniscient company context on EVERY AI call ──────────
-  // Prepended to the system prompt so all generations (chat, ads, social,
-  // blog, workflows, automations…) are grounded in the company's briefing,
-  // ICP, live funnel numbers and past approved/rejected outputs. Compact
-  // (≤ ~1.5k tokens) and cached 5 min per company; Anthropic prompt caching
-  // makes repeats ~90% cheaper. Pass skipBrain: true for context-free calls.
-  if (!skipBrain) {
-    const brain = await getCompanyBrain(companyId);
-    if (brain) system = system ? `${brain}\n\n${system}` : brain;
-  }
-  const planInfo = await getCompanyPlan(companyId);
+  // ── Pre-flight: settings + brain + plan are independent reads — fetch them
+  // in PARALLEL. They used to run sequentially, costing 3 back-to-back DB
+  // round-trips before the model call could start.
+  //
+  // Company Brain: omniscient company context on EVERY AI call. Prepended to
+  // the system prompt so all generations (chat, ads, social, blog, workflows,
+  // automations…) are grounded in the company's briefing, ICP, live funnel
+  // numbers and past approved/rejected outputs. Compact (≤ ~1.5k tokens) and
+  // cached 5 min per company; Anthropic prompt caching makes repeats ~90%
+  // cheaper. Pass skipBrain: true for context-free calls.
+  const [settings, brain, planInfo] = await Promise.all([
+    getCompanyAISettings(companyId),
+    skipBrain ? Promise.resolve('') : getCompanyBrain(companyId),
+    getCompanyPlan(companyId),
+  ]);
+  if (brain) system = system ? `${brain}\n\n${system}` : brain;
   const { planId, creditsTotal, creditsUsed, status: planStatus, scanTokensRemaining, subscriptionId } = planInfo;
   const remainingCredits = Math.max(0, creditsTotal - creditsUsed);
 
@@ -613,21 +647,19 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
             completionTokens: result.usage?.completion_tokens || 0,
           });
           if (isOnTrial) {
-            // Trial: log to credit_transactions for usage visibility, no enforcement
-            const { data: sub } = await supabaseAdmin
-              .from('subscriptions')
-              .select('id')
-              .eq('company_id', companyId)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            await supabaseAdmin.from('credit_transactions').insert({
+            // Trial: log to credit_transactions for usage visibility only —
+            // never enforced, so don't make the user wait on these two writes.
+            // Fire-and-forget; failures are logged and cost nothing but a
+            // missing usage row. (subscriptionId is already known from the
+            // pre-flight plan fetch — no need to re-select it.)
+            remainingAfter = Math.max(0, remainingCredits - creditsCharged);
+            supabaseAdmin.from('credit_transactions').insert({
               company_id: companyId,
-              subscription_id: sub?.id || null,
+              subscription_id: subscriptionId || null,
               type: 'usage',
               feature: action || 'ai_chat',
               credits_delta: -creditsCharged,
-              credits_after: Math.max(0, remainingCredits - creditsCharged),
+              credits_after: remainingAfter,
               description: `${action || 'ai_chat'} — ${result.model_used} (${tokens} tokens) [trial]`,
               metadata: {
                 user_id: userId || null,
@@ -637,8 +669,9 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
                 tier: MODEL_TIER[result.model_used] || 'smart',
                 trial_uncapped: true,
               },
+            }).then(({ error }) => {
+              if (error) console.error('[ai] trial usage log failed:', error.message);
             });
-            remainingAfter = Math.max(0, remainingCredits - creditsCharged);
           } else {
             // Paid plan: real deduction with enforcement
             const deduction = await deductCredits({
@@ -1123,10 +1156,12 @@ router.post('/outputs', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/ai/outputs
+// GET /api/ai/outputs — the archive. Supports server-side outcome filtering
+// (status lives in metadata->>'status'; indexed by migration 019), free-text
+// search over title/content, and category filtering.
 router.get('/outputs', requireAuth, async (req, res) => {
   try {
-    const { type, limit = 50, offset = 0 } = req.query;
+    const { type, status, category, q, limit = 50, offset = 0 } = req.query;
     let query = supabaseAdmin
       .from('ai_outputs')
       .select('*', { count: 'exact' })
@@ -1134,11 +1169,39 @@ router.get('/outputs', requireAuth, async (req, res) => {
       .order('created_at', { ascending: false })
       .range(Number(offset), Number(offset) + Number(limit) - 1);
     if (type) query = query.eq('type', type);
+    if (category) query = query.eq('metadata->>category', category);
+    if (status) {
+      // 'pending' also matches rows written before status existed (null).
+      if (status === 'pending') query = query.or('metadata->>status.eq.pending,metadata->>status.is.null');
+      else query = query.eq('metadata->>status', status);
+    }
+    if (q) {
+      // Sanitize: strip PostgREST .or() syntax characters from user input.
+      const term = String(q).replace(/[,()"]/g, ' ').trim().slice(0, 80);
+      if (term) query = query.or(`metadata->>title.ilike.%${term}%,output.ilike.%${term}%`);
+    }
     const { data, error, count } = await query;
     if (error) throw error;
     res.json({ data: (data || []).map(flattenAIOutput), total: count });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/ai/outputs/:id — single record (entities.js AIOutput.get targeted
+// this route but it never existed; every call 404'd).
+router.get('/outputs/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('ai_outputs')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+    if (error) throw error;
+    res.json(flattenAIOutput(data));
+  } catch (err) {
+    res.status(404).json({ error: 'Output not found' });
   }
 });
 
@@ -1148,14 +1211,31 @@ router.patch('/outputs/:id', requireAuth, async (req, res) => {
     // Fetch existing to merge metadata
     const { data: existing } = await supabaseAdmin
       .from('ai_outputs')
-      .select('metadata')
+      .select('type, metadata')
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .single();
 
     const { type, prompt, output: outputText, model, ...extra } = req.body;
-    const mergedMetadata = { ...(existing?.metadata || {}), ...extra };
+    const prevMeta = existing?.metadata || {};
+    const mergedMetadata = { ...prevMeta, ...extra };
     delete mergedMetadata.metadata;
+
+    // Outcome bookkeeping — the archive + brain learning depend on this:
+    //  - preserve the ORIGINAL AI content the first time the user edits it
+    //  - stamp who/when decided the outcome
+    //  - flag edited-then-approved so the brain knows first-pass quality was off
+    const statusChanged = extra.status !== undefined && extra.status !== prevMeta.status;
+    const contentEdited = extra.content !== undefined && prevMeta.content !== undefined
+      && JSON.stringify(extra.content) !== JSON.stringify(prevMeta.content);
+    if (contentEdited && mergedMetadata.original_content === undefined) {
+      mergedMetadata.original_content = prevMeta.content;
+    }
+    if (contentEdited) mergedMetadata.was_edited = true;
+    if (statusChanged) {
+      mergedMetadata.status_at = new Date().toISOString();
+      mergedMetadata.status_by = req.dbUser?.email || null;
+    }
 
     const updates = { metadata: mergedMetadata };
     if (type !== undefined) updates.type = type;
@@ -1171,6 +1251,19 @@ router.patch('/outputs/:id', requireAuth, async (req, res) => {
       .select()
       .single();
     if (error) throw error;
+
+    // Feed the outcome into the company brain's learning loop (fire-and-forget
+    // — never blocks or fails the request).
+    if (statusChanged || contentEdited) {
+      recordOutcomeLearning({
+        companyId: req.companyId,
+        category: mergedMetadata.category || existing?.type || 'general',
+        status: mergedMetadata.status,
+        wasEdited: !!mergedMetadata.was_edited,
+        runAIChat,
+      }).catch((e) => console.error('[brain] outcome learning failed:', e.message));
+    }
+
     res.json(flattenAIOutput(data));
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
 import { invalidateCompanyBrain } from '../lib/companyBrain.js';
+import { invalidateAISettingsCache } from './ai.js';
 
 const router = Router();
 
@@ -170,6 +171,7 @@ router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
 
     if (error) throw error;
     invalidateCompanyBrain(req.companyId);
+    if (hasApiKeyUpdates) invalidateAISettingsCache(req.companyId);
     res.json(flattenCompany(data));
   } catch (err) {
     console.error('[companies/patch]', err.message);

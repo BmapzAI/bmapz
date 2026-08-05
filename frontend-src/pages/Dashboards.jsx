@@ -16,6 +16,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import StatsCard from '@/components/dashboard/StatsCard';
 import { toast } from 'sonner';
 import OperationsMetrics from '@/components/dashboard/OperationsMetrics';
+import DrillDownModal from '@/components/dashboard/DrillDownModal';
 import { Company, Lead, Message, Activity, DashboardConfig } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
 
@@ -329,24 +330,89 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
   const conversionRate = totalLeads > 0 ? ((convertedLeads / totalLeads) * 100).toFixed(1) : 0;
   const pipelineValue = leads.reduce((sum, l) => sum + (l.estimated_value || 0), 0);
 
-  const funnelData = [
-    { name: 'Awareness', value: leads.filter(l => l.funnel_stage === 'awareness').length, color: '#38b6ff' },
-    { name: 'Prospect', value: leads.filter(l => l.funnel_stage === 'prospect').length, color: '#3572b9' },
-    { name: 'MQL', value: leads.filter(l => l.funnel_stage === 'mql').length, color: '#38b6ff' },
-    { name: 'SQL', value: leads.filter(l => l.funnel_stage === 'sql').length, color: '#cb6ce6' },
-    { name: 'Customer', value: leads.filter(l => l.funnel_stage === 'customer').length, color: '#22c55e' },
+  // ── Chart datasets — ALL computed from live data. Every entry carries a
+  // `filter` so clicking its bar/slice opens a drill-down listing the actual
+  // records behind the number. (weeklyData used to be hardcoded fake numbers.)
+  const FUNNEL_STAGES_META = [
+    { key: 'prospect', name: 'Prospect', color: '#3572b9' },
+    { key: 'awareness', name: 'Awareness', color: '#38b6ff' },
+    { key: 'consideration', name: 'Consideration', color: '#8b5cf6' },
+    { key: 'mql', name: 'MQL', color: '#38b6ff' },
+    { key: 'sql', name: 'SQL', color: '#cb6ce6' },
+    { key: 'opportunity', name: 'Opportunity', color: '#f59e0b' },
+    { key: 'customer', name: 'Customer', color: '#22c55e' },
+    { key: 'retention', name: 'Retention', color: '#14b8a6' },
+    { key: 'advocacy', name: 'Advocacy', color: '#eab308' },
   ];
-  const channelData = [
-    { name: 'WhatsApp', value: messages.filter(m => m.channel === 'whatsapp').length, color: '#25D366' },
-    { name: 'Email', value: messages.filter(m => m.channel === 'email').length, color: '#38b6ff' },
-    { name: 'LinkedIn', value: messages.filter(m => m.channel === 'linkedin').length, color: '#0077b5' },
-  ];
-  const weeklyData = [
-    { day: 'Mon', leads: 12, messages: 45 }, { day: 'Tue', leads: 8, messages: 32 },
-    { day: 'Wed', leads: 15, messages: 58 }, { day: 'Thu', leads: 22, messages: 67 },
-    { day: 'Fri', leads: 18, messages: 52 }, { day: 'Sat', leads: 5, messages: 12 },
-    { day: 'Sun', leads: 3, messages: 8 },
-  ];
+  const funnelData = FUNNEL_STAGES_META.map(s => ({
+    name: s.name, color: s.color,
+    value: leads.filter(l => (l.funnel_stage || 'prospect') === s.key).length,
+    drill: { kind: 'leads', title: `${s.name} — leads at this stage`, filter: (l) => (l.funnel_stage || 'prospect') === s.key },
+  }));
+
+  const STATUS_COLORS = { new: '#38b6ff', contacted: '#3572b9', qualified: '#cb6ce6', converted: '#22c55e', lost: '#ef4444' };
+  const statusData = [...new Set(leads.map(l => l.status || 'new'))].map((st, i) => ({
+    name: st, color: STATUS_COLORS[st] || ['#38b6ff', '#cb6ce6', '#f59e0b', '#14b8a6'][i % 4],
+    value: leads.filter(l => (l.status || 'new') === st).length,
+    drill: { kind: 'leads', title: `Leads with status "${st}"`, filter: (l) => (l.status || 'new') === st },
+  }));
+
+  const SOURCE_COLORS = ['#38b6ff', '#cb6ce6', '#22c55e', '#f59e0b', '#14b8a6', '#8b5cf6', '#ef4444', '#eab308'];
+  const sourceData = [...new Set(leads.map(l => l.source || 'unknown'))].map((src, i) => ({
+    name: src, color: SOURCE_COLORS[i % SOURCE_COLORS.length],
+    value: leads.filter(l => (l.source || 'unknown') === src).length,
+    drill: { kind: 'leads', title: `Leads from "${src}"`, filter: (l) => (l.source || 'unknown') === src },
+  }));
+
+  const CHANNEL_META = {
+    whatsapp: { name: 'WhatsApp', color: '#25D366' }, email: { name: 'Email', color: '#38b6ff' },
+    linkedin: { name: 'LinkedIn', color: '#0077b5' }, instagram: { name: 'Instagram', color: '#E1306C' },
+    sms: { name: 'SMS', color: '#f59e0b' }, internal: { name: 'Internal', color: '#8b5cf6' },
+  };
+  const channelData = [...new Set(messages.map(m => m.channel || 'email'))].map((ch, i) => ({
+    name: CHANNEL_META[ch]?.name || ch, color: CHANNEL_META[ch]?.color || SOURCE_COLORS[i % SOURCE_COLORS.length],
+    value: messages.filter(m => (m.channel || 'email') === ch).length,
+    drill: { kind: 'messages', title: `${CHANNEL_META[ch]?.name || ch} messages`, filter: (m) => (m.channel || 'email') === ch },
+  }));
+
+  // Real last-7-days series: new leads created + outbound messages sent per day.
+  const weeklyData = Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(); day.setHours(0, 0, 0, 0); day.setDate(day.getDate() - (6 - i));
+    const next = new Date(day); next.setDate(next.getDate() + 1);
+    const inDay = (d) => { const t = d ? new Date(d).getTime() : NaN; return t >= day.getTime() && t < next.getTime(); };
+    return {
+      day: day.toLocaleDateString(undefined, { weekday: 'short' }),
+      leads: leads.filter(l => inDay(l.created_at || l.created_date)).length,
+      messages: messages.filter(m => m.direction === 'outbound' && inDay(m.created_at || m.sent_at)).length,
+    };
+  });
+
+  // Real month-over-month trends for the stat cards: this 30-day window vs the
+  // 30 before it. Returns undefined when there's no prior-period data to
+  // compare against, so the card simply omits the trend line.
+  const trends = React.useMemo(() => {
+    const now = Date.now();
+    const d30 = now - 30 * 86400_000;
+    const d60 = now - 60 * 86400_000;
+    const at = (r) => new Date(r.created_at || r.created_date || r.sent_at || 0).getTime();
+    const pct = (cur, prev) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : undefined);
+    const leadsCur = leads.filter(l => at(l) >= d30).length;
+    const leadsPrev = leads.filter(l => at(l) >= d60 && at(l) < d30).length;
+    const outbound = messages.filter(m => m.direction === 'outbound');
+    const msgCur = outbound.filter(m => at(m) >= d30).length;
+    const msgPrev = outbound.filter(m => at(m) >= d60 && at(m) < d30).length;
+    return { leads: pct(leadsCur, leadsPrev), messages: pct(msgCur, msgPrev) };
+  }, [leads, messages]);
+
+  // Drill-down state: which bar/slice/card was clicked, and the records behind it.
+  const [drill, setDrill] = useState(null);
+  const leadsById = React.useMemo(() => Object.fromEntries(leads.map(l => [l.id, l])), [leads]);
+  const openDrill = (entry) => {
+    const d = entry?.drill || entry?.payload?.drill;
+    if (!d) return;
+    const pool = d.kind === 'messages' ? messages : leads;
+    setDrill({ title: d.title, kind: d.kind, items: pool.filter(d.filter) });
+  };
 
   const renderWidgetContent = (widget) => {
     const legend = widget.legend || DEFAULT_WIDGET_LEGEND;
@@ -370,7 +436,7 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
         const areaColors = { leads: '#38b6ff', messages: '#cb6ce6' };
         return (
           <div>
-            <p className="text-xs text-gray-500 mb-2 px-1">Daily volume of new leads acquired and outbound messages sent this week</p>
+            <p className="text-xs text-gray-500 mb-2 px-1">New leads and outbound messages per day, last 7 days</p>
             <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={weeklyData}>
                 <defs>
@@ -399,14 +465,20 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
         );
       }
       case 'pie_chart': {
-        const pieColorMap = Object.fromEntries(channelData.map(d => [d.name, d.color]));
+        // Honour the widget's dataSource — 'leads' pies show lead sources,
+        // 'messages' pies show channel mix. (Previously every pie showed
+        // channel mix regardless of its title.)
+        const pieData = widget.dataSource === 'leads' ? sourceData : channelData;
+        const pieColorMap = Object.fromEntries(pieData.map(d => [d.name, d.color]));
         return (
           <div>
-            <p className="text-xs text-gray-500 mb-2 px-1">Share of messages sent per communication channel</p>
+            <p className="text-xs text-gray-500 mb-2 px-1">
+              {widget.dataSource === 'leads' ? 'Share of leads per acquisition source — click a slice for the list' : 'Share of messages per communication channel — click a slice for the list'}
+            </p>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={channelData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={5} dataKey="value">
-                  {channelData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={5} dataKey="value" onClick={openDrill} cursor="pointer">
+                  {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
                 {showTooltipLegend && (
                   <Tooltip
@@ -425,11 +497,22 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
         );
       }
       case 'bar_chart': {
+        // Honour the widget's dataSource: 'messages' bars show channel volume,
+        // 'leads' bars show status breakdown, 'funnel' (default) shows funnel
+        // stages. Only stages/statuses/channels with data render as bars.
+        const allBarData = widget.dataSource === 'messages' ? channelData
+          : widget.dataSource === 'leads' ? statusData
+          : funnelData;
+        const barData = allBarData.filter(d => d.value > 0);
+        const barDesc = widget.dataSource === 'messages' ? 'Messages per channel — click a bar for the list'
+          : widget.dataSource === 'leads' ? 'Leads per status — click a bar for the list'
+          : 'Leads at each funnel stage — click a bar for the list';
+        if (barData.length === 0) return <div className="h-32 flex items-center justify-center text-gray-500 text-sm">Not enough data yet</div>;
         return (
           <div>
-            <p className="text-xs text-gray-500 mb-2 px-1">Number of leads at each stage of your sales funnel</p>
+            <p className="text-xs text-gray-500 mb-2 px-1">{barDesc}</p>
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={funnelData} layout="vertical">
+              <BarChart data={barData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                 <XAxis type="number" stroke="#666" tick={{ fill: '#999' }} />
                 <YAxis dataKey="name" type="category" stroke="#666" width={70} tick={{ fill: '#999' }} />
@@ -439,7 +522,8 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
                     labelStyle={{ color: '#fff', fontWeight: 600 }}
                     formatter={(value, name, props) => {
                       const color = props?.payload?.color ?? '#ccc';
-                      return [<span>{tooltipDot(color)}<span style={{ color }}>{value} leads</span></span>, <span style={{ color }}>Count</span>];
+                      const unit = widget.dataSource === 'messages' ? (value === 1 ? 'message' : 'messages') : (value === 1 ? 'lead' : 'leads');
+                      return [<span>{tooltipDot(color)}<span style={{ color }}>{value} {unit}</span></span>, <span style={{ color }}>Count</span>];
                     }}
                   />
                 )}
@@ -447,7 +531,7 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
                   <Legend verticalAlign={legendPos === 'top' ? 'top' : legendPos === 'bottom' ? 'bottom' : 'middle'} align={legendPos === 'left' ? 'left' : legendPos === 'right' ? 'right' : 'center'} layout={legendPos === 'left' || legendPos === 'right' ? 'vertical' : 'horizontal'} wrapperStyle={{ paddingTop: legendPos === 'bottom' ? 8 : 0 }}
                     content={() => (
                       <div className={`flex flex-wrap gap-2 px-1 ${legendPos === 'top' ? 'mb-2' : 'mt-2'}`}>
-                        {funnelData.map(d => (
+                        {barData.map(d => (
                           <span key={d.name} className="flex items-center gap-1 text-xs" style={{ color: d.color }}>
                             <span style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: d.color, display: 'inline-block' }} />
                             {d.name}
@@ -457,29 +541,37 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
                     )}
                   />
                 )}
-                <Bar dataKey="value" radius={[0, 8, 8, 0]}>
-                  {funnelData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                <Bar dataKey="value" radius={[0, 8, 8, 0]} onClick={openDrill} cursor="pointer">
+                  {barData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
         );
       }
-      case 'stat_card': return (
-        <div className="grid grid-cols-2 gap-3 p-2">
-          {[
-            { label: 'Email Open Rate', value: '45%', color: '#38b6ff' },
-            { label: 'WhatsApp Response', value: '68%', color: '#25D366' },
-            { label: 'LinkedIn Connection', value: '32%', color: '#0077b5' },
-            { label: 'Meeting Booking', value: '12%', color: '#cb6ce6' },
-          ].map(item => (
-            <div key={item.label} className="p-3 rounded-xl bg-black/20 text-center">
-              <p className="text-lg font-bold" style={{ color: item.color }}>{item.value}</p>
-              <p className="text-gray-500 text-xs mt-0.5">{item.label}</p>
-            </div>
-          ))}
-        </div>
-      );
+      case 'stat_card': {
+        // Real numbers from live data. These used to be hardcoded fake
+        // percentages ("Email Open Rate 45%") that never changed.
+        const inboundCount = messages.filter(m => m.direction === 'inbound').length;
+        const outboundCount = messages.filter(m => m.direction === 'outbound').length;
+        const replyRate = outboundCount > 0 ? `${Math.round((inboundCount / outboundCount) * 100)}%` : '—';
+        const statItems = [
+          { label: 'Total Leads', value: String(totalLeads), color: '#38b6ff', drill: { kind: 'leads', title: 'All leads', filter: () => true } },
+          { label: 'Reply Rate', value: replyRate, color: '#25D366', drill: { kind: 'messages', title: 'Inbound replies', filter: (m) => m.direction === 'inbound' } },
+          { label: 'Conversion Rate', value: `${conversionRate}%`, color: '#cb6ce6', drill: { kind: 'leads', title: 'Converted leads', filter: (l) => l.status === 'converted' } },
+          { label: 'Pipeline Value', value: pipelineValue > 0 ? pipelineValue.toLocaleString() : '—', color: '#f59e0b', drill: { kind: 'leads', title: 'Leads with pipeline value', filter: (l) => (l.estimated_value || 0) > 0 } },
+        ];
+        return (
+          <div className="grid grid-cols-2 gap-3 p-2">
+            {statItems.map(item => (
+              <button key={item.label} onClick={() => openDrill(item)} className="p-3 rounded-xl bg-black/20 hover:bg-black/30 text-center transition-colors">
+                <p className="text-lg font-bold" style={{ color: item.color }}>{item.value}</p>
+                <p className="text-gray-500 text-xs mt-0.5">{item.label}</p>
+              </button>
+            ))}
+          </div>
+        );
+      }
       default: return <div className="h-32 flex items-center justify-center text-gray-500 text-sm">Widget</div>;
     }
   };
@@ -570,12 +662,20 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
         </div>
       )}
 
-      {/* Stats Cards - always visible */}
+      {/* Stats Cards — always visible. Every card is clickable and opens the
+          records behind it; trends are computed from real data (they used to be
+          hardcoded +12% / +8% / +5% / +15% that never moved). */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard title={t('totalLeads')} value={totalLeads} icon={Users} trend={12} trendLabel={t('fromLastMonth')} color="blue" />
-        <StatsCard title={t('messagesSent')} value={messagesSent} icon={MessageSquare} trend={8} trendLabel={t('fromLastMonth')} color="cyan" />
-        <StatsCard title={t('conversionRate')} value={`${conversionRate}%`} icon={Target} trend={5} trendLabel={t('fromLastMonth')} color="green" />
-        <StatsCard title={t('pipelineValue')} value={`$${pipelineValue.toLocaleString()}`} icon={TrendingUp} trend={15} trendLabel={t('fromLastMonth')} color="magenta" />
+        <StatsCard title={t('totalLeads')} value={totalLeads} icon={Users} color="blue"
+          trend={trends.leads} trendLabel={t('fromLastMonth')}
+          onClick={() => openDrill({ drill: { kind: 'leads', title: t('totalLeads'), filter: () => true } })} />
+        <StatsCard title={t('messagesSent')} value={messagesSent} icon={MessageSquare} color="cyan"
+          trend={trends.messages} trendLabel={t('fromLastMonth')}
+          onClick={() => openDrill({ drill: { kind: 'messages', title: t('messagesSent'), filter: (m) => m.direction === 'outbound' } })} />
+        <StatsCard title={t('conversionRate')} value={`${conversionRate}%`} icon={Target} color="green"
+          onClick={() => openDrill({ drill: { kind: 'leads', title: `${t('conversionRate')} — ${convertedLeads} converted`, filter: (l) => l.status === 'converted' } })} />
+        <StatsCard title={t('pipelineValue')} value={`$${pipelineValue.toLocaleString()}`} icon={TrendingUp} color="magenta"
+          onClick={() => openDrill({ drill: { kind: 'leads', title: t('pipelineValue'), filter: (l) => (l.estimated_value || 0) > 0 } })} />
       </div>
 
       {/* Dashboard Widgets */}
@@ -922,6 +1022,16 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Drill-down: the records behind whichever bar/slice/stat was clicked */}
+      <DrillDownModal
+        open={!!drill}
+        onClose={() => setDrill(null)}
+        title={drill?.title || ''}
+        kind={drill?.kind || 'leads'}
+        items={drill?.items || []}
+        leadsById={leadsById}
+      />
     </div>
   );
 }

@@ -746,25 +746,51 @@ function StrategyDialog({ campaign, onClose, onDone }) {
 /* ─────────── Copy: written for one ad, inheriting everything above it ─────────── */
 
 function CopyDialog({ ctx, onClose, onDone }) {
-  const [variants, setVariants] = useState(null);
+  // Generated copy is persisted on the ad (ads.copy_drafts), so reopening the
+  // dialog shows the last generation instead of an empty form — no regenerating
+  // (and re-spending credits) just because the dialog was closed.
+  const [variants, setVariants] = useState(() => {
+    const saved = ctx?.ad?.copy_drafts;
+    return Array.isArray(saved) && saved.length ? saved : null;
+  });
   const [notes, setNotes] = useState('');
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [dirty, setDirty] = useState(false);
   const spec = getPlatform(ctx?.campaign?.platform);
 
   const gen = useMutation({
     mutationFn: () => AdsManager.generateCopy(ctx.ad.id, { notes, count: 3 }),
-    onSuccess: (r) => setVariants(r.variants),
+    onSuccess: (r) => { setVariants(r.variants); setDirty(false); setEditingIdx(null); },
     onError: (e) => toast.error(`Could not write the copy: ${e.message}`),
   });
   const apply = useMutation({
     mutationFn: (v) => AdsManager.applyCopy(ctx.ad.id, v),
-    onSuccess: () => { toast.success('Copy applied to the ad'); setVariants(null); onClose(); onDone?.(); },
+    onSuccess: () => { toast.success('Copy applied to the ad'); onClose(); onDone?.(); },
     onError: (e) => toast.error(`Could not apply it: ${e.message}`),
   });
+  const saveDrafts = useMutation({
+    mutationFn: () => AdsManager.saveCopyDrafts(ctx.ad.id, variants || []),
+    onSuccess: () => { toast.success('Draft saved'); setDirty(false); onDone?.(); },
+    onError: (e) => toast.error(`Could not save the draft: ${e.message}`),
+  });
+
+  // Edit one field of one variant in place.
+  const editField = (idx, key, value) => {
+    setVariants(prev => prev.map((v, i) => (i === idx ? { ...v, [key]: value } : v)));
+    setDirty(true);
+  };
 
   if (!ctx || !spec) return null;
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) { setVariants(null); onClose(); } }}>
+    <Dialog open onOpenChange={(o) => {
+      // Don't discard generated variants on close — they're persisted on the ad
+      // and restored next time. Warn only if there are unsaved edits.
+      if (!o) {
+        if (dirty && !window.confirm('You have unsaved edits to these variants. Close anyway?')) return;
+        onClose();
+      }
+    }}>
       <DialogContent className="max-w-lg bg-[#111] border-white/10 text-white">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -801,16 +827,40 @@ function CopyDialog({ ctx, onClose, onDone }) {
             </>
           ) : (
             <>
+              {ctx.ad.copy_drafts_at && !gen.isSuccess && (
+                <p className="text-gray-500 text-[11px]">
+                  Kept from {new Date(ctx.ad.copy_drafts_at).toLocaleString()} — edit any variant, or regenerate to replace them.
+                </p>
+              )}
               <div className="space-y-2 max-h-72 overflow-y-auto">
                 {variants.map((v, i) => (
                   <div key={i} className="p-3 rounded-xl bg-black/20 border border-white/10 space-y-1">
-                    {v.angle && <p className="text-[#cb6ce6] text-[10px] uppercase tracking-wide">{v.angle}</p>}
-                    {spec.copyFields.map(f => (v[f.key] ? (
-                      <p key={f.key} className="text-gray-300 text-xs">
-                        <span className="text-gray-500">{f.label}: </span>{v[f.key]}
-                        <span className="text-gray-600"> ({v[f.key].length}/{f.max})</span>
-                      </p>
-                    ) : null))}
+                    <div className="flex items-center justify-between gap-2">
+                      {v.angle
+                        ? <p className="text-[#cb6ce6] text-[10px] uppercase tracking-wide">{v.angle}</p>
+                        : <span />}
+                      <button onClick={() => setEditingIdx(editingIdx === i ? null : i)}
+                        className="text-[10px] text-gray-400 hover:text-white underline">
+                        {editingIdx === i ? 'Done editing' : 'Edit'}
+                      </button>
+                    </div>
+                    {spec.copyFields.map(f => {
+                      const val = v[f.key];
+                      if (editingIdx !== i && !val) return null;
+                      const over = typeof val === 'string' && f.max && val.length > f.max;
+                      return editingIdx === i ? (
+                        <div key={f.key}>
+                          <label className="text-gray-500 text-[10px]">{f.label} ({(val || '').length}/{f.max})</label>
+                          <Textarea value={val || ''} onChange={e => editField(i, f.key, e.target.value)}
+                            className={`in text-xs min-h-[44px] ${over ? 'border-red-500/60' : ''}`} />
+                        </div>
+                      ) : (
+                        <p key={f.key} className="text-gray-300 text-xs">
+                          <span className="text-gray-500">{f.label}: </span>{val}
+                          <span className={over ? 'text-red-400' : 'text-gray-600'}> ({val.length}/{f.max})</span>
+                        </p>
+                      );
+                    })}
                     <Button size="sm" onClick={() => apply.mutate(v)} disabled={apply.isPending}
                       className="mt-1 h-7 text-xs bg-gradient-to-r from-[#3572b9] to-[#38b6ff]">
                       Use this one
@@ -818,8 +868,16 @@ function CopyDialog({ ctx, onClose, onDone }) {
                   </div>
                 ))}
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setVariants(null)} className="border-white/10 text-white">Back</Button>
+              <div className="flex justify-end gap-2 flex-wrap">
+                <Button variant="outline" onClick={onClose} className="border-white/10 text-white">Close</Button>
+                <Button variant="outline" onClick={() => saveDrafts.mutate()} disabled={saveDrafts.isPending || !dirty}
+                  className="border-[#38b6ff]/40 text-[#38b6ff] hover:bg-[#38b6ff]/10">
+                  {saveDrafts.isPending ? <Loader2 size={13} className="animate-spin" /> : 'Save draft'}
+                </Button>
+                <Button onClick={() => gen.mutate()} disabled={gen.isPending}
+                  className="bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-2">
+                  {gen.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Regenerate
+                </Button>
               </div>
             </>
           )}

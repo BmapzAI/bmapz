@@ -159,6 +159,7 @@ export const AdsManager = {
   generateAds: (adGroupId, data) => api.post(`/api/ads-manager/ad-groups/${adGroupId}/ads/generate`, data),
   generateCopy: (adId, data) => api.post(`/api/ads-manager/ads/${adId}/copy`, data),
   applyCopy: (adId, variant) => api.post(`/api/ads-manager/ads/${adId}/copy/apply`, { variant }),
+  saveCopyDrafts: (adId, drafts) => api.put(`/api/ads-manager/ads/${adId}/copy/drafts`, { drafts }),
 
   getSettings: () => api.get('/api/ads-manager/settings'),
   saveSettings: (data) => api.patch('/api/ads-manager/settings', data),

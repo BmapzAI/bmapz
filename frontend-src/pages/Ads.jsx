@@ -21,14 +21,37 @@ import AdsLeadsTab from '@/components/ads/AdsLeadsTab';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
 import { Company, AdRecord } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
+import { usePersistentDraft } from '@/lib/usePersistentDraft';
+
+/**
+ * Tells the user their last generation was kept (and lets them drop it), so a
+ * restored draft never looks like a stale bug.
+ */
+function DraftKeptNote({ savedAt, show, onClear, isPt }) {
+  if (!show || !savedAt) return null;
+  return (
+    <div className="mb-3 flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-[#38b6ff]/5 border border-[#38b6ff]/20">
+      <p className="text-[#38b6ff] text-xs">
+        {isPt ? 'Sua última geração foi mantida — ' : 'Your last generation was kept — '}
+        <span className="text-gray-400">{new Date(savedAt).toLocaleString()}</span>
+      </p>
+      <button onClick={onClear} className="text-gray-400 hover:text-white text-xs underline flex-shrink-0">
+        {isPt ? 'Limpar' : 'Clear'}
+      </button>
+    </div>
+  );
+}
 
 export default function Ads() {
   const queryClient = useQueryClient();
   const { t, isPt } = useLanguage();
   const [activeTab, setActiveTab] = useState('strategy');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [strategy, setStrategy] = useState(null);
-  const [copies, setCopies] = useState(null);
+  // Generated strategy and copy persist where they were generated — switching
+  // pages or reloading no longer throws the generation away (and no longer
+  // forces the user to spend credits regenerating).
+  const [strategy, setStrategy, strategyDraft] = usePersistentDraft('ads:strategy', null);
+  const [copies, setCopies, copiesDraft] = usePersistentDraft('ads:copies', null);
   const [showGuide, setShowGuide] = useState(false);
   const [guidePlatform, setGuidePlatform] = useState(null);
   const [showSaved, setShowSaved] = useState(false);
@@ -332,6 +355,7 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
               onOpenGuide={openGuide} hasStrategy={!!strategy}
             />
             <div className="lg:col-span-2">
+              <DraftKeptNote savedAt={strategyDraft.savedAt} show={!!strategy} onClear={strategyDraft.clear} isPt={isPt} />
               <AdsStrategyOutput strategy={strategy} setStrategy={setStrategy} company={company} />
               {strategy && (
                 <div className="mt-4 flex gap-3">
@@ -358,6 +382,7 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
               onOpenGuide={openGuide} hasCopies={!!copies}
             />
             <div className="lg:col-span-2">
+              <DraftKeptNote savedAt={copiesDraft.savedAt} show={!!(copies && copies.length)} onClear={copiesDraft.clear} isPt={isPt} />
               <AdsCopyOutput copies={copies} setCopies={setCopies} company={company} strategy={strategy} />
               {copies && copies.length > 0 && (
                 <div className="mt-4 flex gap-3">

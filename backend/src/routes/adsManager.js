@@ -437,11 +437,25 @@ async function companyContext(companyId) {
 /** Persist AI work so it also shows up in the AI Outputs section. */
 async function saveOutput(companyId, userId, title, content, action) {
   try {
-    await supabaseAdmin.from('ai_outputs').insert({
-      company_id: companyId, created_by: userId || null,
-      type: 'ads', title, content: typeof content === 'string' ? content : JSON.stringify(content, null, 2),
-      metadata: { action },
+    // ai_outputs has NO title/content/created_by columns — those live in
+    // metadata (the app-wide convention; flattenAIOutput merges them up).
+    // The previous version inserted them as top-level columns, so PostgREST
+    // rejected EVERY row and no ads generation was ever archived.
+    const body = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+    const { error } = await supabaseAdmin.from('ai_outputs').insert({
+      company_id: companyId,
+      type: 'ads',
+      output: body,
+      metadata: {
+        action,
+        title,
+        content: body,
+        category: 'ad_copy',
+        status: 'pending',
+        created_by: userId || null,
+      },
     });
+    if (error) throw error;
   } catch (err) { console.error('[adsManager] saveOutput failed:', err.message); }
 }
 
@@ -911,6 +925,18 @@ ${req.body?.notes ? `Extra notes: ${req.body.notes}` : ''}`,
       }
     }
 
+    // Persist the variants ON THE AD so the user does not have to regenerate
+    // (and re-spend credits) after closing the dialog or reloading. Replaced
+    // only on the next regenerate. Degrades quietly until migration 020 runs.
+    const { error: draftErr } = await supabaseAdmin
+      .from('ads')
+      .update({ copy_drafts: variants, copy_drafts_at: new Date().toISOString() })
+      .eq('id', ad.id)
+      .eq('company_id', req.companyId);
+    if (draftErr && !/copy_drafts|column/i.test(draftErr.message || '')) {
+      console.error('[adsManager] could not persist copy drafts:', draftErr.message);
+    }
+
     await saveOutput(req.companyId, req.dbUser?.id, `Ad copy — ${ad.name}`, variants, 'ads_copy');
     res.json({ variants, applied: false, usage: result.usage });
   } catch (err) {
@@ -937,6 +963,29 @@ router.post('/ads/:id/copy/apply', requireAuth, async (req, res) => {
     const { data, error } = await supabaseAdmin.from('ads')
       .update(patch).eq('id', ad.id).eq('company_id', req.companyId).select().single();
     if (error) throw error;
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PUT /api/ads-manager/ads/:id/copy/drafts — save the user's edits to the
+// generated variants WITHOUT applying any of them to the ad. Lets someone tweak
+// wording, come back later, and only then choose one.
+router.put('/ads/:id/copy/drafts', requireAuth, async (req, res) => {
+  try {
+    const drafts = req.body?.drafts;
+    if (!Array.isArray(drafts)) return res.status(400).json({ error: 'drafts must be an array' });
+    const { data: ad } = await scoped('ads')(req.params.id, req.companyId);
+    if (!ad) return res.status(404).json({ error: 'Ad not found.' });
+
+    const { data, error } = await supabaseAdmin.from('ads')
+      .update({ copy_drafts: drafts, copy_drafts_at: new Date().toISOString() })
+      .eq('id', ad.id).eq('company_id', req.companyId).select().single();
+    if (error) {
+      if (/copy_drafts|column/i.test(error.message || '')) {
+        return res.status(503).json({ error: 'Run migration 020 to enable copy drafts.' });
+      }
+      throw error;
+    }
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

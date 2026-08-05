@@ -1,7 +1,7 @@
 import React from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 
-export default function StatsCard({ title, value, icon: Icon, trend, trendLabel, color = 'blue' }) {
+export default function StatsCard({ title, value, icon: Icon, trend, trendLabel, color = 'blue', onClick, hint }) {
   const colorClasses = {
     blue: 'from-[#3572b9]/20 to-[#38b6ff]/10 border-[#38b6ff]/20',
     cyan: 'from-[#00e7ff]/20 to-[#38b6ff]/10 border-[#00e7ff]/20',
@@ -24,12 +24,17 @@ export default function StatsCard({ title, value, icon: Icon, trend, trendLabel,
   };
 
   const isPositive = trend > 0;
+  // Clickable cards open a drill-down listing the records behind the number.
+  const Tag = onClick ? 'button' : 'div';
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br border backdrop-blur-sm p-5 
-      transition-all duration-300 hover:scale-[1.02] hover:shadow-lg group
+    <Tag
+      {...(onClick ? { onClick, type: 'button', title: hint || 'Click to see the records behind this number' } : {})}
+      className={`relative overflow-hidden rounded-2xl bg-gradient-to-br border backdrop-blur-sm p-5
+      transition-all duration-300 hover:scale-[1.02] hover:shadow-lg group w-full text-left
+      ${onClick ? 'cursor-pointer' : ''}
       ${colorClasses[color]}`}>
-      
+
       <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-20 
         ${glowColors[color]} group-hover:opacity-40 transition-opacity duration-500`} />
       
@@ -60,6 +65,6 @@ export default function StatsCard({ title, value, icon: Icon, trend, trendLabel,
           </div>
         )}
       </div>
-    </div>
+    </Tag>
   );
 }

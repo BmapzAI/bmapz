@@ -61,6 +61,18 @@ export const FORCE_CHEAP_MODEL_ACTIONS = new Set([
   'campaign_plan',
 ]);
 
+// Interactive / short-output actions where response TIME dominates UX and a
+// fast model is plenty (short-form output, grounded by the Company Brain).
+// Long-form strategy work (ads_strategy, ads_generate, automations) stays on
+// the smart tier — quality dominates there, not latency.
+export const FAST_MODEL_ACTIONS = new Set([
+  'ads_copy',
+  'lead_scoring',
+  'help_assistant',
+  'sdr_chat',
+  'whatsapp_chat',
+]);
+
 // Scan-class actions consume "scan tokens" — a separate budget from AI credits.
 // These are NOT part of the 14-day trial (trial.scan_tokens = 0).
 // Each plan defines how many scans are included per month; extras are purchased.
@@ -192,6 +204,11 @@ export function resolveModelForPlan(requestedModel, planId, provider) {
  */
 export function resolveActionModel(action, requestedModel, planId, provider) {
   if (action && FORCE_CHEAP_MODEL_ACTIONS.has(action)) {
+    return provider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gpt-4o-mini';
+  }
+  // Latency-sensitive actions: route to the fast tier so interactive surfaces
+  // (SDR replies, ad copy variants, help chat) respond in seconds.
+  if (action && FAST_MODEL_ACTIONS.has(action)) {
     return provider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gpt-4o-mini';
   }
   return resolveModelForPlan(requestedModel, planId, provider);

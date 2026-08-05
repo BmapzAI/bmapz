@@ -27,6 +27,7 @@ import { canSeeDesign } from '@/lib/featureFlags';
 import { Company, SocialPost } from '@/api/entities';
 import { InvokeLLM, GenerateImage, UploadFile } from '@/api/integrations';
 import PlatformIcon from '@/components/ui/PlatformIcon';
+import { usePersistentDraft } from '@/lib/usePersistentDraft';
 
 const PLATFORMS = [
   { value: 'instagram', label: 'Instagram', color: '#E1306C', icon: <PlatformIcon platform="instagram" /> },
@@ -95,7 +96,9 @@ export default function SocialMedia() {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [optimizationInsights, setOptimizationInsights] = useState(null);
-  const [generatedContent, setGeneratedContent] = useState(null);
+  // Kept across navigation/reload so a generation isn't lost (and doesn't have
+  // to be paid for twice) just because the user left the page.
+  const [generatedContent, setGeneratedContent] = usePersistentDraft('social:generated', null);
   const [showGoogleDrivePicker, setShowGoogleDrivePicker] = useState(false);
   const [showCanva, setShowCanva] = useState(false);
   const navigate = useNavigate();

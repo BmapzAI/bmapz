@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { 
   CheckCircle2, XCircle, Edit3, Filter,
   MessageSquare, Mail, GitBranch, Users, FileText, 
-  LayoutTemplate, Sparkles, AlertTriangle, Check, Trash2
+  LayoutTemplate, Sparkles, AlertTriangle, Check, Trash2, Archive
 } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -16,8 +16,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { AIOutput, Company } from '@/api/entities';
+import AIOutputsArchive from '@/components/ai/AIOutputsArchive';
 
 const CATEGORIES = [
   { value: 'all', label: 'All Outputs' },
@@ -39,6 +41,7 @@ export default function AIOutputs() {
   const { isPt } = useLanguage();
   const queryClient = useQueryClient();
   const [category, setCategory] = useState('all');
+  const [tab, setTab] = useState('review');
 
   const { data: companies = [], isLoading: isLoadingCompanies } = useQuery({
     queryKey: ['companies'],
@@ -78,6 +81,7 @@ export default function AIOutputs() {
   const [pendingAction, setPendingAction] = useState(null);
 
   const filtered = outputs.filter(o => category === 'all' || o.category === category);
+  const pendingCount = outputs.filter(o => (o.status || 'pending') === 'pending').length;
 
   const handleAction = (id, action) => {
     if (applyToAll) {
@@ -94,13 +98,12 @@ export default function AIOutputs() {
 
   const applyActionSingle = async (id, action) => {
     updateMutation.mutate({ id, data: { status: action } });
-    if (action === 'approved') {
-      // The entity automation 'Execute Action on AI Output Approval' handles the backend action automatically.
-      // No need to double-invoke — the update mutation above triggers the automation.
-      toast.success('Output approved! Action will be executed automatically.');
-    } else {
-      toast.success('Output rejected.');
-    }
+    // The outcome is recorded and fed to the Company Brain's learning loop.
+    // (This used to claim "Action will be executed automatically", referring to
+    // a Base44-era entity automation that does not exist in this codebase.)
+    toast.success(action === 'approved'
+      ? (isPt ? 'Aprovado — o cérebro da empresa aprendeu com isso.' : 'Approved — your Company Brain learned from this.')
+      : (isPt ? 'Rejeitado — a IA vai evitar esse padrão.' : 'Rejected — the AI will avoid this pattern.'));
   };
 
   const applyActionToAll = (id, action) => {
@@ -128,6 +131,17 @@ export default function AIOutputs() {
     toast.success('Output edited and approved!');
   };
 
+  // Save the edit but keep the decision open — the user can come back and
+  // choose to use it later. The backend keeps the AI's original text.
+  const saveEditDraft = () => {
+    updateMutation.mutate({
+      id: editingOutput.id,
+      data: { content: editContent, draft_saved_at: new Date().toISOString() },
+    });
+    setEditingOutput(null);
+    toast.success(isPt ? 'Rascunho salvo' : 'Draft saved');
+  };
+
   const statusColors = {
     pending: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
     approved: 'text-green-400 bg-green-400/10 border-green-400/20',
@@ -146,6 +160,25 @@ export default function AIOutputs() {
         </h1>
         <p className="text-gray-400 mt-1">Review, edit, approve or reject AI-generated content before execution</p>
       </div>
+
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="bg-white/5 border border-white/10">
+          <TabsTrigger value="review" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
+            {isPt ? 'Revisar' : 'Review'}
+            {pendingCount > 0 && (
+              <span className="ml-2 px-1.5 py-0.5 rounded-full bg-yellow-400/20 text-yellow-400 text-[10px]">{pendingCount}</span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="archive" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff] gap-1.5">
+            <Archive size={14} /> {isPt ? 'Arquivo' : 'Archive'}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="archive" className="mt-4">
+          <AIOutputsArchive />
+        </TabsContent>
+
+        <TabsContent value="review" className="mt-4 space-y-6">
 
       {/* Controls */}
       <div className="flex items-center gap-3 sm:gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 flex-wrap">
@@ -314,6 +347,9 @@ export default function AIOutputs() {
         </p>
       </div>
 
+        </TabsContent>
+      </Tabs>
+
       {/* Apply to All Warning Dialog */}
       <Dialog open={showApplyWarning} onOpenChange={setShowApplyWarning}>
         <DialogContent className="max-w-md">
@@ -366,6 +402,10 @@ export default function AIOutputs() {
           <DialogFooter className="flex gap-2">
             <Button variant="outline" onClick={() => setEditingOutput(null)}>
               Cancel
+            </Button>
+            <Button variant="outline" onClick={saveEditDraft}
+              className="border-[#38b6ff]/40 text-[#38b6ff] hover:bg-[#38b6ff]/10">
+              {isPt ? 'Salvar rascunho' : 'Save draft'}
             </Button>
             <Button onClick={saveEdit} className="bg-green-600 hover:bg-green-700 gap-2">
               <CheckCircle2 size={16} />

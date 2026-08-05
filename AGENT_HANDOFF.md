@@ -1586,3 +1586,114 @@ touchpoints by actor, message volume, SDR workload. Every block is wrapped in
 `safe()` so a missing table degrades that card to null instead of 500-ing the
 page, and the UI says "not enough data" rather than showing a misleading 0.
 No schema or RLS changes; read-only and company-scoped via `requireAuth`.
+
+---
+
+### Session 25 — Claude Code (AI archive, pipeline speed, brain learning, role lockdown, drill-downs)
+
+**SECURITY — internal roles are now locked to the platform company (item 5).**
+`owner`/`system_admin` grant platform-wide power (admin routes, BYOK, brain
+global view). Three layers now enforce that only members of the App Owner's own
+company can hold them:
+1. `PATCH /api/admin/users/:id` rejects the grant when
+   `target.company_id !== req.dbUser.company_id`.
+2. New `POST /api/admin/invite` puts invitees in the **selected** company and
+   caps invites at customer roles. The Admin Panel previously called
+   `/api/users/invite`, which ignored the chosen company and put every invitee
+   in the CALLER's company — i.e. customers landed inside the platform company,
+   which is exactly the trust boundary internal roles are checked against.
+   System Admin was also offered in the invite dropdown; it is gone.
+3. Migration **018** adds a `before insert or update of role, company_id`
+   trigger on `users`, so even service-role writes (which bypass RLS) cannot
+   assign an internal role outside the platform company. It also demotes any
+   existing offending `system_admin` to `company_admin`.
+   The trigger deliberately does NOT skip owners with a null `company_id` —
+   filtering those out would silently disable the whole check.
+   Bootstrap (no other owner row) is still allowed so first-owner setup works.
+   After running it, review: `select email, role, company_id from public.users
+   where role in ('owner','system_admin');`
+
+**AI pipeline latency + scale (item 2).** `runAIChat` ran three DB round-trips
+sequentially before the model call (settings → brain → plan); they are now one
+`Promise.all`. Company AI settings are cached 60s in-process
+(`invalidateAISettingsCache()` on any api_keys write). Trial usage logging is
+fire-and-forget (it was two blocking writes AFTER the response was already in
+hand, including a redundant re-select of the subscription id). Provider clients
+now carry `timeout: 180s, maxRetries: 2` so a hung provider can't hold an HTTP
+connection for the SDK's ~10-minute default and transient 429/5xx are absorbed
+by SDK backoff instead of burning a provider-fallback attempt. Latency-sensitive
+actions (`ads_copy`, `lead_scoring`, `help_assistant`, `sdr_chat`,
+`whatsapp_chat`) route to the fast model tier via `FAST_MODEL_ACTIONS`; long-form
+strategy work stays on the smart tier. API rate limit raised 200 → 1000 per
+15 min — one active user browsing the SPA could hit 200 mid-session; AI spend is
+governed by credits, not by this abuse backstop.
+**Credit race fixed:** `deductCredits` was a read-modify-write, so two concurrent
+generations both read `used=X` and both wrote `X+cost`, losing a deduction.
+Migration **019** adds `consume_ai_credits(subscription_id, credits)` — a single
+atomic `UPDATE … RETURNING`. The code falls back to the old path until the
+migration runs, so deploy order does not matter.
+
+**Company Brain learning loop (items 1 + 4).** Migration **019** adds
+`brain_learnings` (scope `company` | `global`). Every approve/reject/edit in the
+archive calls `recordOutcomeLearning()`, which accumulates evidence counters and,
+every 8 outcomes, distills them into ONE compact lesson with a cheap
+`skipBrain` LLM pass. `getCompanyBrain()` now injects those lessons, so output
+quality compounds per account and per company. `refreshGlobalLearnings()` (hourly,
+`unref`'d) rolls company evidence into **aggregate-only** global rows — counts and
+approval rates, never titles, content, or company ids — so nothing tenant-specific
+can leak platform-wide. Full cross-company detail is exposed ONLY at
+`GET /api/admin/brain-insights`, which requires `role === 'owner'` on top of
+`requireAdmin`. The brain also now surfaces outputs the user had to EDIT before
+using, as a first-pass-quality signal.
+
+**AI Outputs archive (item 1).** `AIOutputs.jsx` gained Review | Archive tabs;
+`components/ai/AIOutputsArchive.jsx` lists every generation with outcome
+(approved/edited/rejected/pending), date + time, who decided it, view/copy/reuse,
+and an editor that can **save a draft without deciding** the outcome.
+`GET /api/ai/outputs` now filters server-side on `status` / `category` / `q`
+(migration 019 indexes `metadata->>'status'`); `pending` also matches legacy rows
+with no status. Added the missing `GET /api/ai/outputs/:id` — `entities.js`
+`AIOutput.get` had always 404'd. `PATCH` now preserves the AI's original text in
+`metadata.original_content` the first time a row is edited and stamps
+`was_edited` / `status_at` / `status_by`.
+**Fixed silent data loss:** `adsManager.saveOutput()` inserted `title`,
+`content`, and `created_by` as TOP-LEVEL columns that do not exist on
+`ai_outputs`, so PostgREST rejected EVERY row inside a try/catch — no ads
+generation had ever been archived. Those fields belong in `metadata`
+(`flattenAIOutput` merges them back up).
+
+**Generations persist where they were made (item 3).** Migration **020** adds
+`ads.copy_drafts` / `copy_drafts_at` and `ad_campaigns.ai_plan` / `ai_plan_at`.
+Generating ad copy now writes the variants onto the ad, so reopening the dialog
+restores them instead of showing an empty form; the button becomes "Regenerate",
+each variant is editable inline with live character counts against the platform
+limit, and `PUT /api/ads-manager/ads/:id/copy/drafts` saves edits WITHOUT
+applying any variant. New `lib/usePersistentDraft.js` (localStorage, 7-day TTL)
+keeps the Ads strategy/copy output and Social generation across navigation and
+reload, with a "your last generation was kept" note plus a Clear action.
+
+**Drill-downs on all data, not just bars (item 6).**
+`components/dashboard/DrillDownModal.jsx` lists the leads / messages / users
+behind any number and links each row to its page. Wired into: every dashboard
+bar and pie slice, the stat-card grid, the four top StatsCards on Dashboards AND
+Home, the Home funnel chart stages, OperationsMetrics channel/stage/source bars,
+its pipeline + availability + messaging stat cards, and its funnel-velocity rows.
+ActivityFeed rows always LOOKED clickable (`cursor-pointer`) but had no handler —
+they now open their lead.
+Supporting fixes: `GET /api/leads?stage=` filtered a **non-existent**
+`pipeline_stage` column (every call 500'd) — now `funnel_stage`, plus new
+`funnel_stage` / `source` / `since` / `unassigned` filters; `GET /api/messaging`
+gained `channel` / `since`.
+**Removed fake data while wiring this:** dashboard bar/pie widgets ignored
+`widget.dataSource` entirely (a "Lead Source Distribution" pie actually rendered
+messages-by-channel, and "Outbound Messages by Channel" rendered funnel stages);
+`weeklyData` was seven hardcoded numbers; `stat_card` showed four invented
+percentages; and all eight StatsCards showed hardcoded `+12% / +8% / +5% / +15%`
+trends. All now computed from live data, with trends omitted when there is no
+prior period to compare.
+
+#### Derek actions
+- Run migrations **018**, **019**, **020** in the Supabase SQL editor (in order).
+  Until then: role lockdown relies on the API layer only, brain learning stays
+  off (degrades silently), credit deduction uses the old non-atomic path, and
+  ad copy drafts are not persisted server-side.

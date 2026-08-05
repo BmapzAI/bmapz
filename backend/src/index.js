@@ -41,6 +41,7 @@ import internalChatRoutes from './routes/internalChat.js';
 import metricsRoutes from './routes/metrics.js';
 import canvaRoutes from './routes/canva.js';
 import { runAIChat } from './routes/ai.js';
+import { refreshGlobalLearnings } from './lib/companyBrain.js';
 import { startAutomationScheduler } from './lib/automationScheduler.js';
 import { startModelRegistryRefresh } from './lib/modelRegistry.js';
 import { startWorkflowEngine } from './lib/workflowEngine.js';
@@ -76,7 +77,10 @@ app.use(cors({
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,
+  // 200 was low enough that ONE active user browsing the SPA (dashboards,
+  // kanban, chat polling…) could hit the ceiling mid-session. This is an
+  // abuse backstop, not a usage quota — AI spend is governed by credits.
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -144,6 +148,10 @@ app.listen(PORT, () => {
   startAutomationScheduler(runAIChat);
   startModelRegistryRefresh();
   startWorkflowEngine();
+  // Platform-wide brain aggregates (counts only, no tenant content). Refreshed
+  // hourly; unref'd so it never holds the process open during a deploy.
+  refreshGlobalLearnings();
+  setInterval(refreshGlobalLearnings, 60 * 60 * 1000).unref();
 });
 
 export default app;
