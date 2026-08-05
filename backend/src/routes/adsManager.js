@@ -54,6 +54,71 @@ const scoped = (table) => (id, companyId) =>
   supabaseAdmin.from(table).select('*').eq('id', id).eq('company_id', companyId).maybeSingle();
 
 /**
+ * Map whatever shape the model used onto the platform's own copy keys.
+ *
+ * THE ROOT CAUSE of "the AI did not return usable copy": Google Responsive
+ * Search Ads are naturally described as ARRAYS — `headlines: [a, b, c]` and
+ * `descriptions: [d1, d2]` — which is what any model writing Google copy
+ * returns. The code demanded the flattened keys `headline`, `headline_2`,
+ * `headline_3`, `description`, `description_2`, found none of them, and threw
+ * every variant away as empty. Same story for the common synonyms (title, body,
+ * text, primary).
+ *
+ * So instead of demanding one spelling, normalise into the expected keys.
+ */
+const COPY_SYNONYMS = {
+  headline: ['headline', 'headline_1', 'headline1', 'title', 'h1', 'heading'],
+  headline_2: ['headline_2', 'headline2'],
+  headline_3: ['headline_3', 'headline3'],
+  description: ['description', 'description_1', 'description1', 'desc', 'body', 'body_text', 'text', 'primary'],
+  description_2: ['description_2', 'description2'],
+  primary_text: ['primary_text', 'primaryText', 'body', 'body_text', 'text', 'message', 'caption', 'ad_text', 'copy'],
+};
+
+/** Arrays the model may use instead of numbered keys, in fill order. */
+const ARRAY_SOURCES = {
+  headlines: ['headline', 'headline_2', 'headline_3'],
+  descriptions: ['description', 'description_2'],
+  texts: ['primary_text'],
+  bodies: ['primary_text'],
+};
+
+const firstString = (obj, names) => {
+  for (const n of names) {
+    const v = obj?.[n];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    // A single-element array is still a usable value.
+    if (Array.isArray(v) && typeof v[0] === 'string' && v[0].trim()) return v[0].trim();
+  }
+  return '';
+};
+
+function normalizeCopyVariant(raw, fields) {
+  if (!raw || typeof raw !== 'object') return null;
+  const out = { angle: typeof raw.angle === 'string' ? raw.angle : (raw.theme || raw.name || undefined) };
+
+  // 1) Spread any arrays across the platform's numbered slots.
+  for (const [source, targets] of Object.entries(ARRAY_SOURCES)) {
+    const arr = raw[source];
+    if (!Array.isArray(arr)) continue;
+    const values = arr.filter(v => typeof v === 'string' && v.trim());
+    targets.forEach((target, i) => {
+      if (values[i] && !out[target]) out[target] = values[i].trim();
+    });
+  }
+
+  // 2) Fill anything still missing from a direct key or a known synonym.
+  for (const f of fields) {
+    if (out[f.key]) continue;
+    const value = firstString(raw, COPY_SYNONYMS[f.key] || [f.key]);
+    if (value) out[f.key] = value;
+  }
+
+  // Usable only if it carries at least one field this platform asked for.
+  return fields.some(f => String(out[f.key] || '').trim()) ? out : null;
+}
+
+/**
  * Pull a list out of an AI response without assuming which key it used.
  * Models routinely rename the container (variants → copies → options) or return
  * a bare array, and rejecting those made generation look broken.
@@ -794,7 +859,13 @@ router.post('/ads/:id/copy', requireAuth, async (req, res) => {
 Stay consistent with the campaign strategy and speak to THIS ad group's audience.
 HARD LIMITS — never exceed them: ${fields.map(f => `${f.label} (${f.key}) max ${f.max} characters`).join('; ')}.
 Write ${req.body?.count || 3} distinct variants with genuinely different angles.
-Return ONLY JSON with these exact keys: ${JSON.stringify(schema)}`,
+
+Each variant must be a FLAT object using exactly these field names — do NOT use
+arrays such as "headlines" or "descriptions", and do not nest anything:
+${fields.map(f => `  "${f.key}": "<${f.label}, max ${f.max} chars>"`).join('\n')}
+  "angle": "<one or two words naming the angle>"
+
+Return ONLY JSON shaped: {"variants": [ { ...the fields above... } ]}`,
       messages: [{
         role: 'user',
         content: `${ctx}
@@ -816,17 +887,21 @@ ${req.body?.notes ? `Extra notes: ${req.body.notes}` : ''}`,
     try { parsed = JSON.parse(result.content); }
     catch { return res.status(502).json({ error: 'The AI returned something we could not read. Try again.' }); }
 
-    // Be tolerant about the container. Insisting on exactly `variants` made the
-    // generator fail with "did not return any copy" whenever the model answered
-    // with a bare array, or named the list copies/ads/options instead.
-    const variants = extractList(parsed, ['variants', 'copies', 'copy', 'ads', 'options', 'results', 'items'])
-      .filter(v => v && typeof v === 'object')
-      // Keep only entries that actually carry at least one copy field.
-      .filter(v => fields.some(f => String(v[f.key] || '').trim()));
+    // Tolerant about BOTH the container and the field names/shape inside it.
+    const rawList = extractList(parsed, ['variants', 'copies', 'copy', 'ads', 'options', 'results', 'items']);
+    const variants = rawList
+      .map(v => normalizeCopyVariant(v, fields))
+      .filter(Boolean);
 
     if (!variants.length) {
-      console.error('[adsManager] copy generation returned an unusable shape:', String(result.content).slice(0, 400));
-      return res.status(502).json({ error: 'The AI did not return usable copy. Try again.' });
+      // Never fail opaquely again: log AND return what the model actually said,
+      // so a shape we have not seen yet is diagnosable from the UI.
+      const sample = String(result.content || '').slice(0, 600);
+      console.error('[adsManager] unusable copy shape:', sample);
+      return res.status(502).json({
+        error: 'The AI returned copy in a shape we could not read. Try again — if it keeps happening, send this detail.',
+        detail: sample,
+      });
     }
 
     // Trim to the platform's limits so nothing can be rejected at publish time.

@@ -38,6 +38,7 @@ import helpRoutes from './routes/help.js';
 import adsManagerRoutes from './routes/adsManager.js';
 import searchRoutes from './routes/search.js';
 import internalChatRoutes from './routes/internalChat.js';
+import metricsRoutes from './routes/metrics.js';
 import canvaRoutes from './routes/canva.js';
 import { runAIChat } from './routes/ai.js';
 import { startAutomationScheduler } from './lib/automationScheduler.js';
@@ -126,6 +127,7 @@ app.use('/api/help', helpRoutes);
 app.use('/api/ads-manager', adsManagerRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/team-chat', internalChatRoutes);
+app.use('/api/metrics', metricsRoutes);
 app.use('/api/canva', canvaRoutes);
 
 // ─── Global error handler ─────────────────────────────────────────────────────

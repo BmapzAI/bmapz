@@ -82,6 +82,13 @@ function EditableField({ label, value, onSave, type = 'text', multiline = false,
   );
 }
 
+/** Never print "Invalid Date" — say the time, or say nothing useful is stored. */
+function formatWhen(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
+}
+
 export default function LeadDetails() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -94,9 +101,21 @@ export default function LeadDetails() {
 
   const { data: lead, isLoading } = useQuery({
     queryKey: ['lead', leadId],
-    queryFn: () => Lead.filter({ id: leadId }),
-    select: data => data[0],
+    // Fetch this ONE lead by id. This used to call the LIST endpoint with
+    // `{ id }`, which ignores an id filter — so it returned every lead and the
+    // page rendered data[0], meaning any card you clicked opened the newest
+    // lead instead of the one you picked.
+    queryFn: () => Lead.get(leadId),
     enabled: !!leadId,
+  });
+
+  // The lead's handling history (owner changes, stage moves, SDR activity,
+  // hand-overs, notes) so the History tab shows the whole story.
+  const { data: leadActivities = [] } = useQuery({
+    queryKey: ['leadActivities', leadId],
+    queryFn: () => Lead.activities(leadId),
+    enabled: !!leadId,
+    retry: false,
   });
 
   const { data: messages = [] } = useQuery({
@@ -184,11 +203,18 @@ export default function LeadDetails() {
   );
 
   const stage = FUNNEL_STAGES.find(s => s.id === lead.funnel_stage);
+  // These tables store `created_at` (messages also have `sent_at`); reading only
+  // `created_date` left every row with no date, which rendered "Invalid Date".
+  const when = (row) => row?.created_at || row?.sent_at || row?.created_date || null;
+
   const allInteractions = [
-    ...messages.map(m => ({ ...m, _type: 'message', _date: m.created_date })),
-    ...activities.map(a => ({ ...a, _type: 'activity', _date: a.created_date })),
-    ...workflowRuns.map(r => ({ ...r, _type: 'workflow', _date: r.created_date })),
-  ].sort((a, b) => new Date(b._date) - new Date(a._date));
+    ...messages.map(m => ({ ...m, _type: 'message', _date: when(m) })),
+    ...activities.map(a => ({ ...a, _type: 'activity', _date: when(a) })),
+    ...workflowRuns.map(r => ({ ...r, _type: 'workflow', _date: when(r) })),
+    // The lead's own handling history: owner changes, stage moves, SDR replies,
+    // hand-overs, notes. This is the record the Sales team actually cares about.
+    ...leadActivities.map(a => ({ ...a, _type: 'lead_activity', _date: when(a) })),
+  ].sort((a, b) => new Date(b._date || 0) - new Date(a._date || 0));
 
   return (
     <div className="space-y-6">
@@ -391,16 +417,20 @@ export default function LeadDetails() {
                         <p className="text-white text-sm font-medium">
                           {item._type === 'message' ? `${item.channel} ${item.direction}` :
                            item._type === 'workflow' ? `Workflow run (${item.status})` :
-                           item.title || item.type}
+                           item._type === 'lead_activity'
+                             ? String(item.activity_type || 'update').replace(/_/g, ' ')
+                             : (item.title || item.type)}
                         </p>
                         <span className="text-gray-500 text-xs flex-shrink-0">
-                          {new Date(item._date).toLocaleString()}
+                          {formatWhen(item._date)}
                         </span>
                       </div>
                       <p className="text-gray-400 text-sm mt-0.5 line-clamp-2">
                         {item._type === 'message' ? item.content :
                          item._type === 'activity' ? item.description :
-                         `${item.steps_completed || 0}/${item.steps_total || 0} steps`}
+                         item._type === 'lead_activity'
+                           ? `${item.summary}${item.actor?.full_name || item.actor_label ? ` — ${item.actor?.full_name || item.actor_label}` : ''}`
+                           : `${item.steps_completed || 0}/${item.steps_total || 0} steps`}
                       </p>
                     </div>
                   </div>

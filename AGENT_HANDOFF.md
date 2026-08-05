@@ -1544,3 +1544,45 @@ health 200, /api/ads-manager/platforms returns 401.
 #### Derek actions
 - Run `supabase/migrations/015_ads_hierarchy.sql`. Until then the Ads section
   says "run migration 015" instead of erroring.
+
+---
+
+### Session 24 — Claude Code (metrics, copy generator, lead history, wrong-lead)
+
+**CRITICAL data-integrity bug fixed: any lead card opened the WRONG lead.**
+`LeadDetails.jsx` fetched with `Lead.filter({ id })` and rendered `data[0]`.
+`Lead.filter` hits the *list* endpoint `GET /api/leads`, which read only
+`list_id/status/stage/search/owner_id/limit/offset` — **an `id` param was
+silently ignored**. So every click returned the full company list and displayed
+the newest lead. Two fixes: `LeadDetails` now calls `Lead.get(id)`
+(`GET /api/leads/:id`), and the list route honours `?id=` so any other caller
+using `filter({ id })` can't hit this again. Card click handlers were always
+passing the correct `lead.id` — the bug was purely on the fetch side.
+Pattern to watch: **`filter({ x })` where the route ignores `x`** fails silently
+and returns plausible-looking wrong data. Prefer `.get(id)` for single records.
+
+**Copy generator root cause (3rd report, now actually fixed).** Google RSA copy
+is natively `{headlines:[...], descriptions:[...]}` but the code required flat
+`headline`/`headline_2`/`description`, so the
+`.filter(v => fields.some(f => v[f.key]))` guard discarded **every** variant →
+"did not return usable copy" with no clue why. `adsManager.js` now has
+`normalizeCopyVariant()` + `COPY_SYNONYMS` + `ARRAY_SOURCES`, which spread arrays
+into numbered slots and accept common key aliases before validating. Failures now
+return `detail` (600-char sample of the raw model output) so the next report is
+diagnosable from the toast alone. Same tolerant `extractList()` applied to the
+ad-group and ad generators.
+
+**Lead history "Invalid Date".** Rows mixed `created_at`/`sent_at`/`created_date`;
+`new Date(undefined)` → "Invalid Date" rendered literally. Added `when()` +
+`formatWhen()` (returns `—`, never "Invalid Date") and folded `lead_activities`
+into the timeline with activity type, summary, and actor. This is the same
+`created_date` vs `created_at` mismatch previously fixed in AdsSavedRecords.
+
+**New `/api/metrics` (routes/metrics.js) + OperationsMetrics.jsx on Dashboards.**
+Response time SDR vs human (split on `metadata.sdr`/`metadata.human`), time to
+first contact with/without SDR, sales availability from `users.sales_status`,
+funnel velocity + time-to-customer from `lead_activities` stage_changed events,
+touchpoints by actor, message volume, SDR workload. Every block is wrapped in
+`safe()` so a missing table degrades that card to null instead of 500-ing the
+page, and the UI says "not enough data" rather than showing a misleading 0.
+No schema or RLS changes; read-only and company-scoped via `requireAuth`.

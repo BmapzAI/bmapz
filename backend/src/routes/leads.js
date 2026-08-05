@@ -145,6 +145,9 @@ router.get('/', requireAuth, async (req, res) => {
         .order('created_at', { ascending: false })
         .range(Number(offset), Number(offset) + Number(limit) - 1);
 
+      // Honour an id filter. Without this, filter({ id }) silently returned the
+      // WHOLE list and callers taking the first row opened the wrong lead.
+      if (req.query.id) q = q.eq('id', req.query.id);
       if (list_id) q = q.eq('list_id', list_id);
       if (withOwner && req.query.owner_id) q = q.eq('owner_id', req.query.owner_id);
       if (status) q = q.eq('status', status);
