@@ -261,6 +261,26 @@ router.patch('/purchases/:id', async (req, res) => {
   }
 });
 
+// GET /api/admin/accounts — the reseller/parent "accounts" a user can be
+// assigned to. The table shipped in the initial schema and the Admin Panel's
+// "Set Account" dialog reads it, but no endpoint ever served it, so that
+// dropdown was permanently empty.
+router.get('/accounts', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('accounts')
+      .select('id, name, owner_email, status, company_ids')
+      .order('name', { ascending: true });
+    if (error) {
+      if (/accounts|relation|does not exist/i.test(error.message || '')) return res.json({ data: [] });
+      throw error;
+    }
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Brain insights (App Owner ONLY) ─────────────────────────────────────────
 // The full cross-company view of what the brain has learned. requireAdmin
 // already gates to owner/system_admin; this endpoint additionally requires

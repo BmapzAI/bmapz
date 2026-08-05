@@ -49,7 +49,30 @@ const SelectScrollDownButton = React.forwardRef(({ className, ...props }, ref) =
 SelectScrollDownButton.displayName =
   SelectPrimitive.ScrollDownButton.displayName
 
-const SelectContent = React.forwardRef(({ className, children, position = "popper", ...props }, ref) => (
+/**
+ * Count children that will actually render something.
+ * React.Children.toArray already drops null/undefined/booleans and flattens
+ * nested arrays; fragments still need unwrapping by hand.
+ */
+function countRenderable(children) {
+  let n = 0;
+  React.Children.toArray(children).forEach((child) => {
+    if (React.isValidElement(child) && child.type === React.Fragment) {
+      n += countRenderable(child.props.children);
+    } else {
+      n += 1;
+    }
+  });
+  return n;
+}
+
+const SelectContent = React.forwardRef(({ className, children, position = "popper", emptyMessage = "No options available", ...props }, ref) => {
+  // Almost every dropdown in this app is `<SelectContent>{rows.map(...)}</SelectContent>`.
+  // When `rows` is empty that renders an EMPTY menu — Radix still opens it, but
+  // it's a a few pixels tall with nothing in it, so clicking the trigger looks
+  // like "the dropdown doesn't appear". Say so instead of opening a void.
+  const isEmpty = countRenderable(children) === 0;
+  return (
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
@@ -57,7 +80,10 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
         // Cap the menu to the space actually available on screen (Radix measures
         // this) so a long list near the bottom of the viewport scrolls instead of
         // being clipped off the edge.
-        "relative z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-hidden rounded-md border border-white/10 bg-[#1a1a1a] text-white shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        // z-[60] keeps the menu above dialogs/sheets (z-50). Both used to be
+        // z-50, which only worked while the popper happened to mount LAST in
+        // the DOM — open a dialog over an open menu and it lost the tie.
+        "relative z-[60] max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-hidden rounded-md border border-white/10 bg-[#1a1a1a] text-white shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className
@@ -73,12 +99,15 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
           "p-1 max-h-[inherit] overflow-y-auto",
           position === "popper" && "w-full min-w-[var(--radix-select-trigger-width)]"
         )}>
-        {children}
+        {isEmpty ? (
+          <div className="px-3 py-2.5 text-xs text-gray-400 text-center whitespace-nowrap">{emptyMessage}</div>
+        ) : children}
       </SelectPrimitive.Viewport>
       <SelectScrollDownButton />
     </SelectPrimitive.Content>
   </SelectPrimitive.Portal>
-))
+  );
+})
 SelectContent.displayName = SelectPrimitive.Content.displayName
 
 const SelectLabel = React.forwardRef(({ className, ...props }, ref) => (

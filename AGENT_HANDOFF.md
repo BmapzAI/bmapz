@@ -1697,3 +1697,43 @@ prior period to compare.
   Until then: role lockdown relies on the API layer only, brain learning stays
   off (degrades silently), credit deduction uses the old non-atomic path, and
   ad copy drafts are not persisted server-side.
+
+---
+
+### Session 26 — Claude Code (dropdowns not appearing)
+
+**Root cause: an empty `SelectContent` opens an invisible menu.** Nearly every
+dropdown in the app is written as `<SelectContent>{rows.map(...)}</SelectContent>`
+(60 occurrences). When `rows` is empty that renders a menu with NO children —
+Radix still opens it, but it is ~2px tall with nothing inside, so clicking the
+trigger looks like the dropdown is broken. Fixed once in the primitive:
+`SelectContent` counts renderable children (`React.Children.toArray` plus
+one-level fragment unwrapping) and renders "No options available" when there are
+none. Override per-instance with the `emptyMessage` prop.
+
+**The Set Account dropdown could never populate.** `AdminPanel.jsx` had
+`const allAccounts = [];` hardcoded, and no endpoint served the `accounts` table
+(which has existed since 001_initial_schema.sql). Added
+`GET /api/admin/accounts` (owner/system_admin via the existing `requireAdmin`,
+returns `{data: []}` if the table is missing) and wired the panel to it.
+
+**Stacking hardened.** Dialog/overlay/sheet content and every popper content
+were ALL `z-50`, so a dropdown inside a modal only rendered on top because its
+portal happened to mount later in the DOM — a tie broken by document order, which
+flips as soon as a dialog opens over an already-open menu. Now: dialogs/sheets
+stay `z-50`, Select/DropdownMenu/Popover content are `z-[60]`, tooltips `z-[70]`.
+
+**How this was verified** (the pane cannot composite frames here, so screenshots
+are unavailable — measured the live DOM instead): a temporary probe entry
+(`zprobe.html` + `frontend-src/zprobe.jsx` + `pages/ZDropdownProbe.jsx`, all
+deleted afterwards) rendered a Dialog containing a populated Select, an EMPTY
+Select, a DropdownMenu and a Popover, served by `npm run dev`. Measured through
+`javascript_tool`: populated select → 3 options, `z-index: 60`; empty select →
+"No options available" present in the viewport; DropdownMenu → 2 menu items,
+`z-index: 60`; Popover → found, `z-index: 60`; dialog → `z-index: 50`.
+Note for whoever tests interactively: Radix `DropdownMenuTrigger` opens on
+`pointerdown`, so a synthetic `.click()` does nothing — dispatch a real
+`PointerEvent`.
+Ignore any `opacity: 0` / 2px heights seen when measuring in that environment:
+with a 0x0 viewport the enter animations never run and `animation-fill-mode:
+both` pins elements at the 0% keyframe. It is a harness artifact, not a bug.

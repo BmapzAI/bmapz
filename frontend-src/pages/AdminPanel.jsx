@@ -507,7 +507,14 @@ export default function AdminPanel() {
     enabled: isAdmin,
   });
 
-  const allAccounts = [];
+  // The accounts table has existed since the initial schema and the "Set
+  // Account" dialog reads this list, but nothing ever fetched it — it was
+  // hardcoded to [], so that dropdown could only ever open empty.
+  const { data: allAccounts = [] } = useQuery({
+    queryKey: ['admin_accounts'],
+    queryFn: () => api.get('/api/admin/accounts').then(r => r.data ?? r),
+    enabled: isAdmin,
+  });
 
   const { data: changeLogs = [] } = useQuery({
     queryKey: ['admin_changelog'],
