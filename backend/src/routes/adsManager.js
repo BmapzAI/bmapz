@@ -18,6 +18,7 @@ import { runAIChat } from './ai.js';
 import { publishCampaign, resolveCredentials, PublishError } from '../lib/adPublisher.js';
 import { getPlatform, validateLevel, PLATFORM_KEYS } from '../lib/adPlatforms.js';
 import { pickNextOwner } from '../lib/leadAssignment.js';
+import { FUNNEL_STAGES } from '../lib/sdrEngine.js';
 import { logLeadActivity, LEAD_ACTIVITY_TYPES } from '../lib/leadActivity.js';
 import { createNotification } from '../lib/notify.js';
 
@@ -51,6 +52,23 @@ const pick = (body, fields) => {
 
 const scoped = (table) => (id, companyId) =>
   supabaseAdmin.from(table).select('*').eq('id', id).eq('company_id', companyId).maybeSingle();
+
+/**
+ * Pull a list out of an AI response without assuming which key it used.
+ * Models routinely rename the container (variants → copies → options) or return
+ * a bare array, and rejecting those made generation look broken.
+ */
+function extractList(parsed, keys) {
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== 'object') return [];
+  for (const k of keys) {
+    if (Array.isArray(parsed[k])) return parsed[k];
+  }
+  // Fall back to the first array-valued property, then to a single object.
+  const firstArray = Object.values(parsed).find(v => Array.isArray(v) && v.length);
+  if (firstArray) return firstArray;
+  return Object.keys(parsed).length ? [parsed] : [];
+}
 
 /* ───────────────────────── Platform metadata ───────────────────────── */
 
@@ -660,7 +678,7 @@ Create ${req.body?.count || 3} ${spec.levels.ad_group.toLowerCase()}s.`,
     let parsed;
     try { parsed = JSON.parse(result.content); } catch { return res.status(502).json({ error: 'The AI returned something we could not read.' }); }
     const created = [];
-    for (const g of (parsed.ad_groups || []).slice(0, 6)) {
+    for (const g of extractList(parsed, ['ad_groups', 'adGroups', 'groups', 'ad_sets', 'adsets']).slice(0, 6)) {
       const { data } = await supabaseAdmin.from('ad_groups').insert({
         company_id: req.companyId, campaign_id: campaign.id,
         name: g.name || 'Audience', status: 'draft',
@@ -711,7 +729,7 @@ Create ${req.body?.count || 2} ads with different angles.`,
     let parsed;
     try { parsed = JSON.parse(result.content); } catch { return res.status(502).json({ error: 'The AI returned something we could not read.' }); }
     const created = [];
-    for (const a of (parsed.ads || []).slice(0, 5)) {
+    for (const a of extractList(parsed, ['ads', 'creatives', 'variants']).slice(0, 5)) {
       const row = {
         company_id: req.companyId, ad_group_id: group.id,
         name: a.name || 'Ad', status: 'draft',
@@ -797,8 +815,19 @@ ${req.body?.notes ? `Extra notes: ${req.body.notes}` : ''}`,
     let parsed;
     try { parsed = JSON.parse(result.content); }
     catch { return res.status(502).json({ error: 'The AI returned something we could not read. Try again.' }); }
-    const variants = (parsed.variants || []).filter(Boolean);
-    if (!variants.length) return res.status(502).json({ error: 'The AI did not return any copy. Try again.' });
+
+    // Be tolerant about the container. Insisting on exactly `variants` made the
+    // generator fail with "did not return any copy" whenever the model answered
+    // with a bare array, or named the list copies/ads/options instead.
+    const variants = extractList(parsed, ['variants', 'copies', 'copy', 'ads', 'options', 'results', 'items'])
+      .filter(v => v && typeof v === 'object')
+      // Keep only entries that actually carry at least one copy field.
+      .filter(v => fields.some(f => String(v[f.key] || '').trim()));
+
+    if (!variants.length) {
+      console.error('[adsManager] copy generation returned an unusable shape:', String(result.content).slice(0, 400));
+      return res.status(502).json({ error: 'The AI did not return usable copy. Try again.' });
+    }
 
     // Trim to the platform's limits so nothing can be rejected at publish time.
     for (const v of variants) {
@@ -954,23 +983,31 @@ router.patch('/settings', requireAuth, async (req, res) => {
  * Hand one lead to sales using the company's routing rules. Shared by the manual
  * button and by automatic hand-over so both behave identically.
  */
-export async function handOneLeadToSales({ companyId, leadId, ownerId = null, actorUserId = null, actorLabel = null, automatic = false }) {
+export async function handOneLeadToSales({
+  companyId, leadId, ownerId = null, actorUserId = null, actorLabel = null,
+  automatic = false, stage = null,
+}) {
   let owner = ownerId;
   if (!owner) {
     const next = await pickNextOwner(companyId);
     owner = next?.id || null;
   }
-  const patch = { funnel_stage: 'sql', status: 'qualified' };
+
+  // The stage is the user's choice. Only stages at or past MQL imply the lead is
+  // qualified; handing over an early-funnel lead must not silently mark it so.
+  const chosen = FUNNEL_STAGES.includes(stage) ? stage : 'sql';
+  const patch = { funnel_stage: chosen };
+  if (FUNNEL_STAGES.indexOf(chosen) >= FUNNEL_STAGES.indexOf('mql')) patch.status = 'qualified';
   if (owner) { patch.owner_id = owner; patch.owner_assigned_at = new Date().toISOString(); }
   await supabaseAdmin.from('leads').update(patch).eq('id', leadId).eq('company_id', companyId);
 
   await logLeadActivity({
     companyId, leadId,
     activityType: LEAD_ACTIVITY_TYPES.HANDOVER,
-    summary: automatic
+    summary: `${automatic
       ? (owner ? 'Automatically handed to the sales team on arrival from Ads' : 'Arrived from Ads — nobody online, queued for the SDR')
-      : (owner ? 'Handed to the sales team from Ads' : 'Handed to sales from Ads — nobody online, left for the SDR'),
-    details: { source: 'ads', automatic },
+      : (owner ? 'Handed to the sales team from Ads' : 'Handed to sales from Ads — nobody online, left for the SDR')} · entering "${chosen}"`,
+    details: { source: 'ads', automatic, stage: chosen },
     actorUserId: automatic ? null : actorUserId,
     actorType: automatic ? 'system' : 'user',
     actorLabel: automatic ? 'Ads auto hand-over' : actorLabel,
@@ -1005,6 +1042,7 @@ router.post('/leads/handover', requireAuth, async (req, res) => {
         companyId: req.companyId,
         leadId: id,
         ownerId,
+        stage: req.body?.stage || null,
         actorUserId: req.dbUser?.id || null,
         actorLabel: req.dbUser?.full_name || req.dbUser?.email || null,
       });

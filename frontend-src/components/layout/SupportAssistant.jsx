@@ -30,12 +30,36 @@ export default function SupportAssistant() {
   });
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  // `awake` = full-size bubble. It shrinks while the user is busy elsewhere so
+  // it can never sit on top of a button they are trying to press.
+  const [awake, setAwake] = useState(true);
   const endRef = useRef(null);
   const inputRef = useRef(null);
+  const idleTimer = useRef(null);
 
   useEffect(() => {
     try { sessionStorage.setItem(HISTORY_KEY, JSON.stringify(messages.slice(-40))); } catch { /* storage full or blocked */ }
   }, [messages]);
+
+  // Shrink after a few seconds of no interaction; any activity wakes it briefly
+  // so it stays discoverable without being in the way.
+  useEffect(() => {
+    if (open) return;
+    const shrink = () => setAwake(false);
+    const bump = () => {
+      setAwake(true);
+      clearTimeout(idleTimer.current);
+      idleTimer.current = setTimeout(shrink, 2500);
+    };
+    idleTimer.current = setTimeout(shrink, 3500);
+    window.addEventListener('scroll', bump, { passive: true });
+    window.addEventListener('keydown', bump);
+    return () => {
+      clearTimeout(idleTimer.current);
+      window.removeEventListener('scroll', bump);
+      window.removeEventListener('keydown', bump);
+    };
+  }, [open]);
 
   const greeting = isPt
     ? 'Oi! Sou o assistente de suporte do Bmapz. Posso explicar como usar o app, verificar sua conta e te levar até a tela certa. Não consigo criar nem editar nada — mas te mostro exatamente como fazer.'
@@ -96,17 +120,29 @@ export default function SupportAssistant() {
 
   return (
     <>
-      {/* Bubble — always visible, above everything else */}
+      {/* Bubble. When idle it shrinks and tucks partly off the right edge so it
+          stops covering buttons underneath; hovering (or focusing, or touching)
+          brings it back to full size. */}
       {!open && (
         <button
           type="button"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true); }}
+          onMouseEnter={() => setAwake(true)}
+          onMouseLeave={() => setAwake(false)}
+          onFocus={() => setAwake(true)}
+          onBlur={() => setAwake(false)}
+          onTouchStart={() => setAwake(true)}
           aria-label={isPt ? 'Abrir assistente de suporte' : 'Open support assistant'}
-          className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[100] w-14 h-14 rounded-full
+          title={isPt ? 'Ajuda' : 'Help'}
+          className={`fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[100] rounded-full
             bg-gradient-to-br from-[#3572b9] to-[#38b6ff] shadow-2xl shadow-[#38b6ff]/25
-            flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-transform"
+            flex items-center justify-center text-white
+            transition-all duration-300 ease-out
+            ${awake
+              ? 'w-14 h-14 opacity-100 translate-x-0 scale-100'
+              : 'w-10 h-10 opacity-40 translate-x-3 scale-95'}`}
         >
-          <LifeBuoy size={24} />
+          <LifeBuoy size={awake ? 24 : 18} className="transition-all duration-300" />
         </button>
       )}
 

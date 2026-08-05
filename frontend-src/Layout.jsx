@@ -86,7 +86,6 @@ function LayoutContent({ children }) {
         <AppHeader
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(o => !o)}
-          companyName={company?.personal_agent_name}
         />
 
         <Sidebar

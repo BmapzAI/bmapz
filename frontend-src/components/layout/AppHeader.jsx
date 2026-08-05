@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, X } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 import NotificationBell from './NotificationBell';
 
@@ -15,20 +15,23 @@ import NotificationBell from './NotificationBell';
  * sidebar to icons; on mobile it slides the same sidebar in over the content,
  * which replaces the old bottom tab bar.
  */
-export default function AppHeader({ sidebarOpen, onToggleSidebar, companyName }) {
+export default function AppHeader({ sidebarOpen, onToggleSidebar }) {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/10">
       <div className="h-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4">
 
-        {/* Hamburger — one control for both sizes */}
+        {/* Hamburger — one control for both sizes. It stays a hamburger whether
+            the menu is open or closed; swapping it for an X made the button look
+            like a different control each time. */}
         <button
           type="button"
           onClick={onToggleSidebar}
           aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
           aria-expanded={sidebarOpen}
-          className="p-2 -ml-1 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+          className={`p-2 -ml-1 rounded-lg transition-colors flex-shrink-0 ${
+            sidebarOpen ? 'text-white bg-white/10' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
         >
-          {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          <Menu size={20} />
         </button>
 
         {/* Logo + name → home */}
@@ -40,9 +43,12 @@ export default function AppHeader({ sidebarOpen, onToggleSidebar, companyName })
             onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
           />
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#38b6ff] to-[#cb6ce6] flex-shrink-0" style={{ display: 'none' }} />
-          {/* The name is the product's, not the company's — keep it stable. */}
-          <span className="hidden sm:inline font-bold text-white text-base tracking-tight truncate max-w-[160px]">
-            {companyName || 'Bmapz AI'}
+          {/* Always the product wordmark, styled like the logo: "Bmapz" in white
+              with the "A" and "I" in the brand blue gradient. Never the company
+              or agent name — this is the app's identity. */}
+          <span className="hidden sm:inline font-bold text-base tracking-tight whitespace-nowrap">
+            <span className="text-white">Bmapz</span>
+            <span className="bg-gradient-to-r from-[#38b6ff] to-[#3572b9] bg-clip-text text-transparent">AI</span>
           </span>
         </Link>
 

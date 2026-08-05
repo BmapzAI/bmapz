@@ -3,10 +3,24 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Download, RotateCw, Users, UserCheck } from 'lucide-react';
+import { Download, RotateCw, Users, UserCheck, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
 import { Lead, AdsManager } from '@/api/entities';
+
+/**
+ * Where a handed-over lead should land. Mirrors the funnel stages used by the
+ * Sales board and the SDR, so a lead arriving from Ads sits in the same pipeline
+ * as everything else. Only MQL and beyond mark a lead as qualified.
+ */
+const FUNNEL_STAGES = [
+  { key: 'awareness',     label: 'Awareness',     hint: 'just discovered you' },
+  { key: 'consideration', label: 'Consideration', hint: 'weighing options' },
+  { key: 'mql',           label: 'MQL',           hint: 'marketing qualified' },
+  { key: 'sql',           label: 'SQL',           hint: 'sales qualified' },
+  { key: 'opportunity',   label: 'Opportunity',   hint: 'active deal' },
+];
 
 export default function AdsLeadsTab() {
   const [leads, setLeads] = useState([]);
@@ -20,6 +34,20 @@ export default function AdsLeadsTab() {
     retry: false,
   });
   const autoHandover = !!settings?.ads_auto_handover;
+
+  // Manual hand-over: which leads, and which stage they should enter.
+  const [selected, setSelected] = useState([]);
+  const [stage, setStage] = useState('sql');
+
+  const handover = useMutation({
+    mutationFn: () => AdsManager.handoverLeads({ lead_ids: selected, stage }),
+    onSuccess: (r) => {
+      toast.success(`${r.handed} lead(s) handed to sales as "${stage}"`);
+      setSelected([]);
+      syncLeads();
+    },
+    onError: (e) => toast.error(`Could not hand the leads over: ${e.message}`),
+  });
 
   const saveSettings = useMutation({
     mutationFn: (on) => AdsManager.saveSettings({ ads_auto_handover: on }),
@@ -174,12 +202,51 @@ export default function AdsLeadsTab() {
         </div>
       </div>
 
+      {/* Manual hand-over: pick leads, choose the stage they enter, send them. */}
+      {leads.length > 0 && (
+        <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex items-end gap-3 flex-wrap">
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">Stage the lead enters</label>
+            <Select value={stage} onValueChange={setStage}>
+              <SelectTrigger className="h-9 w-56 bg-black/30 border-white/10 text-white text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-[#1a1a1a] border-white/10">
+                {FUNNEL_STAGES.map(s => (
+                  <SelectItem key={s.key} value={s.key}>{s.label} — {s.hint}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={() => handover.mutate()}
+            disabled={!selected.length || handover.isPending}
+            className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2 h-9"
+          >
+            {handover.isPending ? <Loader2 size={15} className="animate-spin" /> : <UserCheck size={15} />}
+            Hand {selected.length || ''} to sales
+          </Button>
+          <p className="text-gray-500 text-xs flex-1 min-w-[200px]">
+            Assigned using your lead routing method. Only stages from MQL onward mark the lead as qualified.
+          </p>
+        </div>
+      )}
+
       {leads.length > 0 ? (
         <div className="space-y-4">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/10">
+                  <th className="text-left py-3 px-2 w-8">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all leads"
+                      checked={selected.length > 0 && selected.length === leads.length}
+                      onChange={(e) => setSelected(e.target.checked ? leads.map(l => l.id) : [])}
+                      className="w-4 h-4 accent-[#38b6ff]"
+                    />
+                  </th>
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">Name</th>
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">Email</th>
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">Company</th>
@@ -191,6 +258,15 @@ export default function AdsLeadsTab() {
               <tbody>
                 {leads.map(lead => (
                   <tr key={lead.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                    <td className="py-3 px-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${lead.lead_name || lead.email || 'lead'}`}
+                        checked={selected.includes(lead.id)}
+                        onChange={(e) => setSelected(s => e.target.checked ? [...s, lead.id] : s.filter(x => x !== lead.id))}
+                        className="w-4 h-4 accent-[#38b6ff]"
+                      />
+                    </td>
                     <td className="py-3 px-4 text-white">{lead.lead_name || '—'}</td>
                     <td className="py-3 px-4 text-white">{lead.email || '—'}</td>
                     <td className="py-3 px-4 text-gray-400">{lead.lead_company_name || '—'}</td>

@@ -3,6 +3,70 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Target, ChevronDown, ChevronUp, Edit3, Check } from 'lucide-react';
 
+/**
+ * Render whatever the AI returned, readably.
+ *
+ * These fields used to be dropped straight into a template literal, so when the
+ * model answered with a richer shape — e.g. TOF as { objective, formats, kpis }
+ * rather than a sentence — the screen showed "[object Object]". The model is
+ * free to be more detailed than the schema suggests, so the UI formats any
+ * shape instead of assuming a string.
+ */
+/** Marketing acronyms should stay upper-case, not become "Kpis" or "Roas". */
+const ACRONYMS = new Set(['kpi', 'kpis', 'tof', 'mof', 'bof', 'cta', 'ctas', 'roas', 'cpa', 'cpc', 'cpm', 'ctr', 'icp', 'seo', 'ugc', 'aov', 'ltv']);
+
+function prettyLabel(key) {
+  return String(key)
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(w => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(' ');
+}
+
+function toText(value, depth = 0) {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+  const pad = '  '.repeat(depth);
+
+  if (Array.isArray(value)) {
+    return value
+      .map(v => (typeof v === 'object' && v !== null
+        ? `${pad}•\n${toText(v, depth + 1)}`
+        : `${pad}• ${toText(v, depth)}`))
+      .join('\n');
+  }
+
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .filter(([, v]) => v !== null && v !== undefined && v !== '')
+      .map(([k, v]) => {
+        const label = prettyLabel(k);
+        const rendered = toText(v, depth + 1);
+        // Keep short values on the same line; break long/nested ones.
+        return rendered.includes('\n') || rendered.length > 60
+          ? `${pad}${label}:\n${rendered}`
+          : `${pad}${label}: ${rendered}`;
+      })
+      .join('\n');
+  }
+
+  return String(value);
+}
+
+/** "Label: value" blocks, skipping anything the AI did not provide. */
+function labelled(pairs) {
+  return pairs
+    .map(([label, value]) => {
+      const text = toText(value, 1);
+      if (!text) return null;
+      return text.includes('\n') ? `${label}:\n${text}` : `${label}: ${text}`;
+    })
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 export default function AdsStrategyOutput({ strategy, setStrategy, company }) {
   const [expandedSection, setExpandedSection] = useState('business_analysis');
   const [editingSection, setEditingSection] = useState(null);
@@ -21,12 +85,44 @@ export default function AdsStrategyOutput({ strategy, setStrategy, company }) {
   };
 
   const strategySections = [
-    { key: 'business_analysis', title: 'Business Context Analysis', content: strategy?.business_analysis || '', editable: true },
-    { key: 'strategic_foundation', title: 'Strategic Foundation', content: strategy?.strategic_foundation ? `Unique Mechanism: ${strategy.strategic_foundation.unique_mechanism}\n\nPositioning: ${strategy.strategic_foundation.positioning}\n\nAngles:\n${strategy.strategic_foundation.angles?.map(a => `• ${a}`).join('\n')}` : '' },
-    { key: 'funnel', title: 'Funnel Architecture', content: strategy?.funnel_architecture ? `TOF: ${strategy.funnel_architecture.tof}\n\nMOF: ${strategy.funnel_architecture.mof}\n\nBOF: ${strategy.funnel_architecture.bof}\n\nBudget Split: ${strategy.funnel_architecture.budget_split}` : '' },
-    { key: 'creative', title: 'Creative Strategy', content: strategy?.creative_strategy ? `Hook Angles:\n${strategy.creative_strategy.hooks?.map(h => `• ${h}`).join('\n')}\n\nEmotional Appeals:\n${strategy.creative_strategy.emotional_appeals?.map(e => `• ${e}`).join('\n')}\n\nVisual Direction: ${strategy.creative_strategy.visual_direction}` : '' },
-    { key: 'kpis', title: 'KPIs & Metrics', content: strategy?.kpis ? `Primary KPI: ${strategy.kpis.primary}\nSecondary KPI: ${strategy.kpis.secondary}\nTarget CPA: ${strategy.kpis.target_cpa}\nBreak-even ROAS: ${strategy.kpis.break_even_roas}\nScaling Trigger: ${strategy.kpis.scaling_trigger}` : '' },
-    { key: 'optimization', title: 'Optimization Loop', content: strategy?.optimization || '', editable: true },
+    { key: 'business_analysis', title: 'Business Context Analysis', content: toText(strategy?.business_analysis), editable: true },
+    {
+      key: 'strategic_foundation', title: 'Strategic Foundation',
+      content: labelled([
+        ['Unique Mechanism', strategy?.strategic_foundation?.unique_mechanism],
+        ['Positioning', strategy?.strategic_foundation?.positioning],
+        ['Angles', strategy?.strategic_foundation?.angles],
+      ]),
+    },
+    {
+      key: 'funnel', title: 'Funnel Architecture',
+      content: labelled([
+        ['TOF — Top of funnel (attract)', strategy?.funnel_architecture?.tof],
+        ['MOF — Middle of funnel (nurture)', strategy?.funnel_architecture?.mof],
+        ['BOF — Bottom of funnel (convert)', strategy?.funnel_architecture?.bof],
+        ['Budget Split', strategy?.funnel_architecture?.budget_split],
+      ]),
+    },
+    {
+      key: 'creative', title: 'Creative Strategy',
+      content: labelled([
+        ['Hook Angles', strategy?.creative_strategy?.hooks],
+        ['Emotional Appeals', strategy?.creative_strategy?.emotional_appeals],
+        ['Rational Appeals', strategy?.creative_strategy?.rational_appeals],
+        ['Visual Direction', strategy?.creative_strategy?.visual_direction],
+      ]),
+    },
+    {
+      key: 'kpis', title: 'KPIs & Metrics',
+      content: labelled([
+        ['Primary KPI', strategy?.kpis?.primary],
+        ['Secondary KPI', strategy?.kpis?.secondary],
+        ['Target CPA', strategy?.kpis?.target_cpa],
+        ['Break-even ROAS', strategy?.kpis?.break_even_roas],
+        ['Scaling Trigger', strategy?.kpis?.scaling_trigger],
+      ]),
+    },
+    { key: 'optimization', title: 'Optimization Loop', content: toText(strategy?.optimization), editable: true },
   ];
 
   if (!strategy) {
