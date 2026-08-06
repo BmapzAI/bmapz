@@ -453,6 +453,149 @@ router.get('/data-deletion-requests', async (req, res) => {
   }
 });
 
+// GET /api/admin/data-deletion-requests/:id/preview — what WOULD be erased.
+// Always run before executing: deletion is irreversible, so the operator sees
+// the exact blast radius first.
+router.get('/data-deletion-requests/:id/preview', async (req, res) => {
+  try {
+    const { data: reqRow, error } = await supabaseAdmin
+      .from('data_deletion_requests').select('*').eq('id', req.params.id).single();
+    if (error || !reqRow) return res.status(404).json({ error: 'Request not found' });
+
+    const email = String(reqRow.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'Request has no email' });
+
+    const [users, leads] = await Promise.all([
+      supabaseAdmin.from('users').select('id, email, full_name, role, company_id').ilike('email', email),
+      supabaseAdmin.from('leads').select('id, lead_name, email, company_id').ilike('email', email),
+    ]);
+
+    const leadIds = (leads.data || []).map(l => l.id);
+    let messageCount = 0;
+    if (leadIds.length) {
+      const { count } = await supabaseAdmin
+        .from('messages').select('id', { count: 'exact', head: true }).in('lead_id', leadIds);
+      messageCount = count || 0;
+    }
+
+    // Owners/system_admins are platform staff — never auto-erase them, or a
+    // deletion request could remove the account that runs the business.
+    const protectedUsers = (users.data || []).filter(u => ['owner', 'system_admin'].includes(u.role));
+
+    res.json({
+      request: reqRow,
+      matches: {
+        users: users.data || [],
+        leads: leads.data || [],
+        message_count: messageCount,
+      },
+      protected_users: protectedUsers,
+      can_execute: protectedUsers.length === 0,
+      warning: protectedUsers.length
+        ? 'This email belongs to a platform Owner/System Admin. Erasing it would remove an internal account — handle manually.'
+        : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/data-deletion-requests/:id/execute — actually erase the data.
+// Irreversible. Records exactly what was removed as the audit trail.
+router.post('/data-deletion-requests/:id/execute', async (req, res) => {
+  try {
+    const { data: reqRow, error } = await supabaseAdmin
+      .from('data_deletion_requests').select('*').eq('id', req.params.id).single();
+    if (error || !reqRow) return res.status(404).json({ error: 'Request not found' });
+    if (reqRow.status === 'completed') {
+      return res.status(409).json({ error: 'This request has already been completed' });
+    }
+
+    const email = String(reqRow.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'Request has no email' });
+
+    const { data: users } = await supabaseAdmin
+      .from('users').select('id, email, role').ilike('email', email);
+    if ((users || []).some(u => ['owner', 'system_admin'].includes(u.role))) {
+      return res.status(403).json({
+        error: 'This email belongs to a platform Owner/System Admin and cannot be erased automatically.',
+      });
+    }
+
+    const { data: leads } = await supabaseAdmin
+      .from('leads').select('id').ilike('email', email);
+    const leadIds = (leads || []).map(l => l.id);
+
+    const report = { email, deleted_at: new Date().toISOString(), messages: 0, leads: 0, users: 0, auth_users: 0, errors: [] };
+
+    // Messages first — leads cascade-null rather than delete them for us.
+    if (leadIds.length) {
+      const { count, error: msgErr } = await supabaseAdmin
+        .from('messages').delete({ count: 'exact' }).in('lead_id', leadIds);
+      if (msgErr) report.errors.push(`messages: ${msgErr.message}`); else report.messages = count || 0;
+    }
+    if (leadIds.length) {
+      const { count, error: leadErr } = await supabaseAdmin
+        .from('leads').delete({ count: 'exact' }).in('id', leadIds);
+      if (leadErr) report.errors.push(`leads: ${leadErr.message}`); else report.leads = count || 0;
+    }
+    for (const u of users || []) {
+      const { error: uErr } = await supabaseAdmin.from('users').delete().eq('id', u.id);
+      if (uErr) { report.errors.push(`users(${u.id}): ${uErr.message}`); continue; }
+      report.users += 1;
+      // Remove the auth identity too, otherwise the person can still sign in.
+      const { error: aErr } = await supabaseAdmin.auth.admin.deleteUser(u.id);
+      if (aErr) report.errors.push(`auth(${u.id}): ${aErr.message}`); else report.auth_users += 1;
+    }
+
+    const { data: updated } = await supabaseAdmin
+      .from('data_deletion_requests')
+      .update({
+        status: report.errors.length ? 'processing' : 'completed',
+        handled_by: req.dbUser?.email || null,
+        handled_at: new Date().toISOString(),
+        deletion_report: report,
+      })
+      .eq('id', reqRow.id)
+      .select()
+      .single();
+
+    res.json({ success: report.errors.length === 0, report, request: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/admin/data-deletion-requests/:id — status / notes only.
+router.patch('/data-deletion-requests/:id', async (req, res) => {
+  try {
+    const { status, notes } = req.body || {};
+    const updates = {};
+    if (status !== undefined) {
+      if (!['pending', 'processing', 'completed', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+      updates.status = status;
+      updates.handled_by = req.dbUser?.email || null;
+      updates.handled_at = new Date().toISOString();
+    }
+    if (notes !== undefined) updates.notes = notes;
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'Nothing to update' });
+
+    const { data, error } = await supabaseAdmin
+      .from('data_deletion_requests').update(updates).eq('id', req.params.id).select().single();
+    if (error) {
+      if (/handled_by|deletion_report|notes|column/i.test(error.message || '')) {
+        return res.status(503).json({ error: 'Run migration 022 to enable the data-deletion workflow.' });
+      }
+      throw error;
+    }
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/admin/usage-stats — system-wide AI credit consumption breakdown
 // Returns: totals + per-company + per-user + per-model
 router.get('/usage-stats', async (req, res) => {

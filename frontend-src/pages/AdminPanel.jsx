@@ -11,13 +11,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import {
   Shield, Users, CreditCard, Building2, Zap, Search,
-  Edit3, Check, X, Plus, Trash2, AlertTriangle, Crown, UserPlus, Settings,
+  Edit3, Check, X, Plus, Trash2, AlertTriangle, ShieldAlert, Crown, UserPlus, Settings,
   History, Lock, TrendingUp
 } from 'lucide-react';
 import AdminUsageTab from '@/components/admin/AdminUsageTab';
 import { PLANS, formatBRL } from '@/lib/plans';
 // AdminPanel uses /api/admin/* endpoints directly for cross-company access
 import { useAuth } from '@/lib/AuthContext';
+import DataDeletionRequestsTab from '@/components/admin/DataDeletionRequestsTab';
 
 const PLAN_OPTIONS = ['trial', 'starter', 'growth', 'scale', 'enterprise'];
 const STATUS_OPTIONS = ['trialing', 'active', 'past_due', 'canceled', 'paused'];
@@ -791,7 +792,15 @@ export default function AdminPanel() {
           <TabsTrigger value="changelog" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
             <History size={14} className="mr-1.5" /> {isPt ? 'Log de Mudanças' : 'Change Log'}
           </TabsTrigger>
+          <TabsTrigger value="privacy" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
+            <ShieldAlert size={14} className="mr-1.5" /> {isPt ? 'Exclusão de Dados' : 'Data Deletion'}
+          </TabsTrigger>
         </TabsList>
+
+        {/* ── DATA DELETION (GDPR / platform requests) ── */}
+        <TabsContent value="privacy" className="mt-4">
+          <DataDeletionRequestsTab />
+        </TabsContent>
 
         {/* ── COMPANIES ── */}
         <TabsContent value="companies" className="mt-4">
