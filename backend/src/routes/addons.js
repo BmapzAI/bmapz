@@ -29,6 +29,67 @@ const ADDONS = {
  * for manual grants. System Admins can use it directly; other users go through
  * the billing flow.
  */
+/**
+ * Grant an add-on to a company. Shared by the authenticated route below AND by
+ * the Stripe webhook.
+ *
+ * The webhook could never call POST /api/addons/purchase — that route sits
+ * behind requireAuth and a webhook has no user session — so the comment
+ * claiming "the Stripe webhook calls this endpoint" was never true and paid
+ * add-ons were never granted. Exporting the logic fixes that without giving the
+ * webhook a fake session.
+ */
+export async function grantAddon({ companyId, type, quantity = 1, paymentRef = null, grantedBy = null, provider = 'stripe' }) {
+  if (!ADDONS[type]) throw new Error(`Unknown add-on type: ${type}`);
+
+  const { data: sub } = await supabaseAdmin
+    .from('subscriptions')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!sub) throw new Error('No active subscription for this company.');
+
+  const addon = ADDONS[type];
+  const updates = {};
+  let txnType = 'bonus';
+  let txnDesc = `${type} ×${quantity}`;
+  let creditsDelta = 0;
+
+  if (type === 'extra_credit_pack') {
+    const credits = (addon.credits || 0) * quantity;
+    updates.topup_credits_purchased = (sub.topup_credits_purchased || 0) + credits;
+    txnType = 'topup';
+    txnDesc = `Extra Credit Pack ×${quantity} (+${credits} credits)`;
+    creditsDelta = credits;
+  } else if (type === 'extra_full_scan') {
+    const tokens = (addon.scan_tokens || 0) * quantity;
+    updates.scan_tokens_addon = (sub.scan_tokens_addon || 0) + tokens;
+    txnType = 'scan_addon';
+    txnDesc = `Full Scan token ×${quantity}`;
+  } else if (type === 'extra_user' || type === 'extra_company') {
+    txnDesc = `${type} ×${quantity} (handled by subscription billing)`;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await supabaseAdmin.from('subscriptions').update(updates).eq('id', sub.id);
+  }
+
+  await supabaseAdmin.from('credit_transactions').insert({
+    company_id: companyId,
+    subscription_id: sub.id,
+    type: txnType,
+    feature: type,
+    credits_delta: creditsDelta,
+    credits_after: (sub.ai_credits_total || 0) + (sub.topup_credits_purchased || 0) + creditsDelta - (sub.ai_credits_used || 0),
+    description: txnDesc,
+    metadata: { addon: type, quantity, payment_ref: paymentRef, granted_by: grantedBy, provider },
+  });
+
+  return { success: true, type, quantity, credits_granted: creditsDelta };
+}
+
 router.post('/purchase', requireAuth, async (req, res) => {
   try {
     const { type, quantity = 1, payment_ref } = req.body;
@@ -43,55 +104,15 @@ router.post('/purchase', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Add-ons must be purchased via the Billing page. Direct grant requires admin role.' });
     }
 
-    const { data: sub } = await supabaseAdmin
-      .from('subscriptions')
-      .select('*')
-      .eq('company_id', req.companyId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!sub) return res.status(404).json({ error: 'No active subscription. Subscribe first.' });
-
-    const addon = ADDONS[type];
-    const updates = {};
-    let txnType, txnDesc, creditsDelta = 0;
-
-    if (type === 'extra_credit_pack') {
-      const credits = (addon.credits || 0) * quantity;
-      updates.topup_credits_purchased = (sub.topup_credits_purchased || 0) + credits;
-      txnType = 'topup';
-      txnDesc = `Extra Credit Pack ×${quantity} (+${credits} credits)`;
-      creditsDelta = credits;
-    } else if (type === 'extra_full_scan') {
-      const tokens = (addon.scan_tokens || 0) * quantity;
-      updates.scan_tokens_addon = (sub.scan_tokens_addon || 0) + tokens;
-      txnType = 'scan_addon';
-      txnDesc = `Full Scan token ×${quantity}`;
-    } else if (type === 'extra_user' || type === 'extra_company') {
-      // These are billed monthly via Stripe subscription items — no DB change
-      // here; the subscription's user_seats / company_profiles count updates
-      // via the billing webhook directly.
-      txnType = 'bonus';
-      txnDesc = `${type} ×${quantity} (handled by subscription billing)`;
-    }
-
-    if (Object.keys(updates).length > 0) {
-      await supabaseAdmin.from('subscriptions').update(updates).eq('id', sub.id);
-    }
-
-    await supabaseAdmin.from('credit_transactions').insert({
-      company_id: req.companyId,
-      subscription_id: sub.id,
-      type: txnType,
-      feature: type,
-      credits_delta: creditsDelta,
-      credits_after: (sub.ai_credits_total || 0) + (sub.topup_credits_purchased || 0) + creditsDelta - (sub.ai_credits_used || 0),
-      description: txnDesc,
-      metadata: { addon: type, quantity, payment_ref: payment_ref || null, granted_by: req.dbUser?.email || null },
+    const result = await grantAddon({
+      companyId: req.companyId,
+      type,
+      quantity,
+      paymentRef: payment_ref || null,
+      grantedBy: req.dbUser?.email || null,
     });
 
-    res.json({ success: true, type, quantity });
+    res.json(result);
   } catch (err) {
     console.error('[addons/purchase]', err.message);
     res.status(500).json({ error: err.message });
@@ -126,8 +147,10 @@ router.post('/cancel-annual', requireAuth, requireAdmin, async (req, res) => {
       scale:      { monthly: 785,   annual: 667.25 },
       enterprise: { monthly: 2350,  annual: 1997.50 },
     };
-    const prices = PLAN_PRICES[sub.plan_id];
-    if (!prices) return res.status(400).json({ error: `Plan ${sub.plan_id} has no pricing data` });
+    // sub.plan_id does not exist in the schema — the column is `plan`.
+    const planId = sub.plan_id || sub.plan || 'trial';
+    const prices = PLAN_PRICES[planId];
+    if (!prices) return res.status(400).json({ error: `Plan ${planId} has no pricing data` });
 
     const start = new Date(sub.annual_start_at || sub.created_at);
     const now = new Date();
@@ -161,12 +184,12 @@ router.post('/cancel-annual', requireAuth, requireAdmin, async (req, res) => {
       credits_delta: 0,
       credits_after: 0,
       description: `Annual cancellation after ${monthsUsed} months — fee R$ ${fee.toFixed(2)}, refund R$ ${refund.toFixed(2)}`,
-      metadata: { fee, refund, months_used: monthsUsed, plan_id: sub.plan_id, cancelled_by: req.dbUser?.email },
+      metadata: { fee, refund, months_used: monthsUsed, plan_id: planId, cancelled_by: req.dbUser?.email },
     });
 
     res.json({
       cancelled: true,
-      plan_id: sub.plan_id,
+      plan_id: planId,
       months_used: monthsUsed,
       cancellation_fee_brl: fee,
       prepaid_remaining_brl: prepaidRemaining,

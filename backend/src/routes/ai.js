@@ -59,15 +59,25 @@ const TRIAL_DAYS = 14;
  * credit system (or any new signup that missed the initial seeding) can use
  * AI immediately.
  */
+/** Read the plan name whichever column the live table uses (see note below). */
+const planOf = (sub) => sub?.plan_id || sub?.plan || 'trial';
+
 async function getCompanyPlan(companyId) {
   if (!companyId) {
     console.warn('[ai/getCompanyPlan] called with no companyId');
     return { planId: 'trial', creditsTotal: 0, creditsUsed: 0, subscriptionId: null, status: 'inactive', scanTokensRemaining: 0 };
   }
 
+  // NOTE: select('*') rather than an explicit column list on purpose.
+  // This used to request `plan_id`, which does NOT exist in any migration — the
+  // column is `plan`. PostgREST fails the whole SELECT on an unknown column, so
+  // the query errored, `sub` came back null, and every company was treated as
+  // (and re-created as) a TRIAL — including customers who had paid, because the
+  // Stripe webhook writes `plan`. Reading both names keeps this working whichever
+  // the live database actually has.
   let { data: sub, error: selectErr } = await supabaseAdmin
     .from('subscriptions')
-    .select('id, plan_id, ai_credits_total, ai_credits_used, topup_credits_purchased, status, trial_ends_at, scan_tokens_total, scan_tokens_used, scan_tokens_addon, cycle_started_at, cycle_ends_at, billing_cycle, annual_start_at')
+    .select('*')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -82,7 +92,9 @@ async function getCompanyPlan(companyId) {
       .from('subscriptions')
       .insert({
         company_id: companyId,
-        plan_id: 'trial',
+        // `plan` is the column the schema actually defines (001); `plan_id` was
+        // never created. planOf() reads either on the way back out.
+        plan: 'trial',
         status: 'trialing',
         ai_credits_total: TRIAL_CREDITS,
         ai_credits_used: 0,
@@ -139,7 +151,7 @@ async function getCompanyPlan(companyId) {
   // If the subscription's cycle has ended, reset AI credits + scan tokens to
   // their per-plan defaults. Idempotent: only fires once per cycle.
   if (sub && sub.cycle_ends_at && new Date(sub.cycle_ends_at) <= new Date()) {
-    const planId = sub.plan_id || 'trial';
+    const planId = planOf(sub);
     const monthlyCredits = PLAN_MONTHLY_CREDITS[planId] || 0;
     const monthlyScanTokens = PLAN_SCAN_TOKENS[planId] || 0;
     const nextCycleStart = new Date();
@@ -182,7 +194,7 @@ async function getCompanyPlan(companyId) {
   const scanTokensRemaining = Math.max(0, scanTokensTotal - (sub?.scan_tokens_used || 0));
 
   const result = {
-    planId: sub?.plan_id || 'trial',
+    planId: planOf(sub),
     creditsTotal: (sub?.ai_credits_total || 0) + (sub?.topup_credits_purchased || 0),
     creditsUsed: sub?.ai_credits_used || 0,
     subscriptionId: sub?.id || null,

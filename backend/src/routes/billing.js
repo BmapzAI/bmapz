@@ -1,8 +1,22 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
+import { getActiveProvider, getPaymentSettings } from '../lib/paymentProviders.js';
 
 const router = Router();
+
+// GET /api/billing/payment-method — which provider customers will be charged
+// through. Safe for any authenticated user: returns the label only, never
+// credentials or the full provider config.
+router.get('/payment-method', requireAuth, async (_req, res) => {
+  try {
+    const settings = await getPaymentSettings();
+    const key = settings.active_provider || 'stripe';
+    res.json({ provider: key, label: settings.providers?.[key]?.label || key });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 async function getStripe() {
   const Stripe = (await import('stripe')).default;
@@ -41,20 +55,27 @@ router.post('/checkout', requireAuth, requireCompanyAdmin, async (req, res) => {
     const price_id = directPriceId || resolvePriceId(plan_id || plan, billing_cycle);
     if (!price_id) return res.status(400).json({ error: 'price_id is required. Provide price_id or a known plan_id.' });
 
-    const stripe = await getStripe();
-    const session = await stripe.checkout.sessions.create({
+    // Dispatch through the provider registry rather than calling Stripe
+    // directly, so the App Owner can switch providers without a code change
+    // (Admin → Payments). Stripe stays the default.
+    const { key: providerKey, adapter } = await getActiveProvider();
+    const stripe = providerKey === 'stripe' ? await getStripe() : null;
+
+    const { url, reference } = await adapter.createCheckout({
+      stripe,
+      priceId: price_id,
+      companyId: req.companyId,
+      plan: plan || plan_id,
+      customerEmail: req.dbUser.email,
+      successUrl: success_url || `${process.env.FRONTEND_URL}/billing?success=true`,
+      cancelUrl: cancel_url || `${process.env.FRONTEND_URL}/billing?cancelled=true`,
       mode: 'subscription',
-      payment_method_types: ['card'],
-      line_items: [{ price: price_id, quantity: 1 }],
-      customer_email: req.dbUser.email,
-      metadata: { company_id: req.companyId, plan },
-      success_url: success_url || `${process.env.FRONTEND_URL}/billing?success=true`,
-      cancel_url: cancel_url || `${process.env.FRONTEND_URL}/billing?cancelled=true`,
     });
 
-    res.json({ url: session.url, session_id: session.id });
+    res.json({ url, session_id: reference, provider: providerKey });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    const status = err.code?.startsWith('PROVIDER_') ? 503 : 500;
+    res.status(status).json({ error: err.publicMessage || err.message, code: err.code });
   }
 });
 

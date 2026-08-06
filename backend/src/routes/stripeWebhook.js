@@ -1,17 +1,21 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
+import { grantAddon } from './addons.js';
+import { PLAN_MONTHLY_CREDITS, PLAN_SCAN_TOKENS } from '../lib/aiCredits.js';
 
 const router = Router();
 
-const PLAN_CREDIT_MAP = {
-  starter: 1000,
-  professional: 5000,
-  enterprise: 20000,
-};
+// Credit grants MUST match what the plans actually promise. This table listed
+// starter: 1000 (the plan sells 15,000) and a "professional" plan that does not
+// exist, while growth/scale were missing entirely and silently fell back to
+// 1000 — so every paying customer was granted a fraction of what they bought.
+// PLAN_MONTHLY_CREDITS in lib/aiCredits.js is the single source of truth.
 
 const PLAN_CONTACTS_MAP = {
-  starter: 1000,
-  professional: 10000,
+  trial: 1500,
+  starter: 1500,
+  growth: 10000,
+  scale: 50000,
   enterprise: 100000,
 };
 
@@ -37,8 +41,41 @@ router.post('/api/stripe/webhook', async (req, res) => {
         const plan = session.metadata?.plan || 'starter';
         if (!companyId) break;
 
-        const credits = PLAN_CREDIT_MAP[plan] || 1000;
-        const contactsLimit = PLAN_CONTACTS_MAP[plan] || 1000;
+        // Add-on purchases (credit packs, scan tokens) are one-off payments,
+        // not plan changes. Nothing handled them before: addons.js claimed the
+        // webhook called POST /api/addons/purchase, but that route is behind
+        // requireAuth and a webhook has no session — so paid add-ons were
+        // charged and never granted.
+        const addonType = session.metadata?.addon_type;
+        if (addonType) {
+          const quantity = Number(session.metadata?.quantity || 1);
+          try {
+            await grantAddon({
+              companyId,
+              type: addonType,
+              quantity,
+              paymentRef: session.payment_intent || session.id,
+              grantedBy: 'stripe_webhook',
+              provider: 'stripe',
+            });
+            await supabaseAdmin.from('billing_purchases').insert({
+              company_id: companyId,
+              type: addonType,
+              amount_brl: (session.amount_total || 0) / 100,
+              status: 'paid',
+              stripe_payment_intent_id: session.payment_intent,
+              payment_provider: 'stripe',
+              provider_reference: session.id,
+            });
+          } catch (e) {
+            console.error('[stripe webhook] add-on grant failed:', e.message);
+          }
+          break;
+        }
+
+        const credits = PLAN_MONTHLY_CREDITS[plan] ?? PLAN_MONTHLY_CREDITS.starter;
+        const contactsLimit = PLAN_CONTACTS_MAP[plan] || 1500;
+        const scanTokens = PLAN_SCAN_TOKENS[plan] || 0;
 
         // Upsert subscription
         const { data: existing } = await supabaseAdmin
@@ -56,6 +93,8 @@ router.post('/api/stripe/webhook', async (req, res) => {
             ai_credits_total: credits,
             ai_credits_used: 0,
             contacts_limit: contactsLimit,
+            scan_tokens_total: scanTokens,
+            scan_tokens_used: 0,
           }).eq('id', existing.id);
         } else {
           await supabaseAdmin.from('subscriptions').insert({
@@ -67,6 +106,8 @@ router.post('/api/stripe/webhook', async (req, res) => {
             ai_credits_total: credits,
             ai_credits_used: 0,
             contacts_limit: contactsLimit,
+            scan_tokens_total: scanTokens,
+            scan_tokens_used: 0,
           });
         }
 
@@ -78,6 +119,8 @@ router.post('/api/stripe/webhook', async (req, res) => {
           status: 'paid',
           stripe_payment_intent_id: session.payment_intent,
           credits_granted: credits,
+          payment_provider: 'stripe',
+          provider_reference: session.id,
         });
 
         // Credit transaction

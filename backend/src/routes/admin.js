@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { getPaymentSettings, savePaymentSettings, PROVIDER_KEYS } from '../lib/paymentProviders.js';
 
 const router = Router();
 
@@ -277,6 +278,59 @@ router.get('/accounts', async (req, res) => {
     }
     res.json({ data });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Payment providers (App Owner ONLY) ──────────────────────────────────────
+// Which provider takes customer money is a platform-level business decision, so
+// it is owner-only on top of requireAdmin — a system_admin must not be able to
+// redirect the company's revenue.
+
+router.get('/payments', async (req, res) => {
+  try {
+    if (req.dbUser.role !== 'owner') return res.status(403).json({ error: 'Owner access required' });
+    res.json(await getPaymentSettings());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/payments', async (req, res) => {
+  try {
+    if (req.dbUser.role !== 'owner') return res.status(403).json({ error: 'Owner access required' });
+
+    const current = await getPaymentSettings();
+    const next = { ...current };
+
+    if (req.body?.active_provider !== undefined) {
+      const key = req.body.active_provider;
+      if (!PROVIDER_KEYS.includes(key)) {
+        return res.status(400).json({ error: `Unknown provider "${key}". Known: ${PROVIDER_KEYS.join(', ')}` });
+      }
+      // Refuse to make a disabled provider active — that would break checkout
+      // for every customer the moment it is saved.
+      const enabled = req.body?.providers?.[key]?.enabled ?? current.providers?.[key]?.enabled;
+      if (enabled === false) {
+        return res.status(400).json({ error: 'Enable that provider before making it active.' });
+      }
+      next.active_provider = key;
+    }
+
+    if (req.body?.providers && typeof req.body.providers === 'object') {
+      next.providers = { ...current.providers };
+      for (const [k, v] of Object.entries(req.body.providers)) {
+        if (!PROVIDER_KEYS.includes(k)) continue;
+        next.providers[k] = { ...(current.providers?.[k] || {}), ...v };
+      }
+    }
+
+    const saved = await savePaymentSettings(next, req.dbUser.email);
+    res.json(saved);
+  } catch (err) {
+    if (/platform_settings|relation|does not exist/i.test(err.message || '')) {
+      return res.status(503).json({ error: 'Run migration 023 to enable payment provider settings.' });
+    }
     res.status(500).json({ error: err.message });
   }
 });
