@@ -18,6 +18,17 @@ async function provisionCompany(authUser) {
     'My Company';
   const fullName = meta.full_name || meta.name || authUser.email.split('@')[0];
 
+  // IDEMPOTENCY GUARD. Provisioning used to insert a company unconditionally,
+  // so anything that repeatedly reached this path created a company EVERY time.
+  // That is exactly what happened during the 021 outage: the users lookup
+  // errored, the caller ignored the error, treated the user as unprovisioned,
+  // and each retry minted another empty "…'s Workspace" — 3 companies became 16.
+  const { data: current } = await supabaseAdmin
+    .from('users').select('*, companies!company_id(*)').eq('id', authUser.id).maybeSingle();
+  if (current?.company_id) {
+    return { user: current, company: flattenCompany(current.companies) };
+  }
+
   const { data: company, error: companyErr } = await supabaseAdmin
     .from('companies').insert({ name: companyName }).select().single();
   if (companyErr) throw companyErr;
@@ -27,10 +38,19 @@ async function provisionCompany(authUser) {
   // 'system_admin' are reserved for the Bmapz platform team and can only be
   // granted from the internal Admin Panel. This is deliberate: 'owner' unlocks
   // BYOK, which bypasses Bmapz credit billing — customers must never self-grant it.
+  // upsert, not update: this function now serves BOTH the "user row exists but
+  // has no company" repair path and the "no user row at all" JIT path, and
+  // .update() on a missing row returns no rows and would throw.
   const { data: updatedUser, error: userErr } = await supabaseAdmin
     .from('users')
-    .update({ company_id: company.id, role: 'company_admin', full_name: fullName })
-    .eq('id', authUser.id).select('*, companies!company_id(*)').single();
+    .upsert({
+      id: authUser.id,
+      email: authUser.email,
+      company_id: company.id,
+      role: 'company_admin',
+      full_name: fullName,
+    }, { onConflict: 'id' })
+    .select('*, companies!company_id(*)').single();
   if (userErr) throw userErr;
 
   await supabaseAdmin.from('subscriptions').insert({
@@ -44,8 +64,20 @@ async function provisionCompany(authUser) {
 router.get('/me', requireJWT, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { data: dbUser } = await supabaseAdmin
-      .from('users').select('*, companies!company_id(*)').eq('id', userId).single();
+    const { data: dbUser, error: lookupErr } = await supabaseAdmin
+      .from('users').select('*, companies!company_id(*)').eq('id', userId).maybeSingle();
+
+    // Distinguish "this user genuinely has no row" from "the query failed".
+    // The old code destructured only `data`, so ANY query failure looked
+    // identical to a brand-new user and triggered provisioning — which is how a
+    // transient database error turned into 13 duplicate companies.
+    if (lookupErr) {
+      console.error('[auth/me] user lookup failed — refusing to provision:', lookupErr.message);
+      return res.status(503).json({
+        error: 'Could not load your profile. Please try again in a moment.',
+        code: 'LOOKUP_FAILED',
+      });
+    }
 
     if (dbUser) {
       if (!dbUser.company_id) {
@@ -56,31 +88,12 @@ router.get('/me', requireJWT, async (req, res) => {
       return res.json({ user: dbUser, company: flattenCompany(dbUser.companies) });
     }
 
-    const meta = req.user.user_metadata || {};
-    const companyName =
-      meta.company_name ||
-      (meta.full_name ? meta.full_name.split(' ')[0] + "'s Workspace" : null) ||
-      'My Company';
-    const fullName = meta.full_name || meta.name || req.user.email.split('@')[0];
-
-    const { data: company, error: companyErr } = await supabaseAdmin
-      .from('companies').insert({ name: companyName }).select().single();
-    if (companyErr) throw companyErr;
-
-    const { data: newUser, error: userErr } = await supabaseAdmin
-      .from('users').upsert({
-        id: userId, email: req.user.email, full_name: fullName,
-        company_id: company.id, role: 'company_admin', // top CUSTOMER role; owner is Bmapz-internal
-      }).select('*, companies!company_id(*)').single();
-    if (userErr) throw userErr;
-
-    await supabaseAdmin.from('subscriptions').insert({
-      company_id: company.id, plan: 'trial', status: 'trialing',
-      ai_credits_total: 8000, ai_credits_used: 0, contacts_limit: 1500,
-    });
-
+    // Genuinely no users row — provision one. provisionCompany() re-checks
+    // first, so a race between two concurrent /me calls cannot create two
+    // companies for the same person.
+    const { user: newUser, company } = await provisionCompany(req.user);
     console.log('[auth/me] JIT-provisioned new user', req.user.email);
-    return res.json({ user: newUser, company: flattenCompany(newUser.companies) });
+    return res.json({ user: newUser, company });
   } catch (err) {
     console.error('[auth/me]', err);
     res.status(500).json({ error: err.message });

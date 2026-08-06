@@ -1974,3 +1974,21 @@ migration. A migration can break code that was never touched.
 
 `supabase/EMERGENCY_ROLLBACK_021.sql` drops the column and its trigger if the
 app is ever still broken — costs only the account switcher.
+
+**Collateral damage from the 021 incident: 13 duplicate companies (3 → 16).**
+`GET /api/auth/me` auto-provisions a company when it believes the user has none.
+It destructured only `data` from the users lookup, so a FAILED query was
+indistinguishable from a brand-new user — and while the embed was broken, every
+retry (including the error screen's Retry button) minted another empty
+"…'s Workspace". Three fixes, all deployed:
+ 1. `/me` now checks `error` explicitly and returns 503 instead of provisioning
+    when the lookup fails. Never create data on the strength of a failed read.
+ 2. `provisionCompany()` re-reads the user first and returns the existing company
+    if one is already set, so concurrent calls cannot each create one.
+ 3. The JIT branch now calls `provisionCompany()` (upsert-based) instead of
+    duplicating the insert logic unguarded.
+`supabase/CLEANUP_ORPHAN_COMPANIES.sql` removes the empties — preview first, the
+DELETE is commented out and only touches companies with no users, no granted
+access, no subscription, no leads, no AI outputs and no social posts.
+Also fixed "Invalid Date" on the Admin Panel cards (created_at vs created_date
+again) via fmtDate/fmtTime helpers.

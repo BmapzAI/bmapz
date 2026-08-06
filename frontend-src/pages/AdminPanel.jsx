@@ -20,6 +20,11 @@ import { PLANS, formatBRL } from '@/lib/plans';
 import { useAuth } from '@/lib/AuthContext';
 import DataDeletionRequestsTab from '@/components/admin/DataDeletionRequestsTab';
 
+// The API returns created_at; created_date is an alias that is often absent,
+// and new Date(undefined) renders the literal string "Invalid Date".
+const fmtDate = (v) => { if (!v) return '—'; const d = new Date(v); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString(); };
+const fmtTime = (v) => { if (!v) return ''; const d = new Date(v); return isNaN(d.getTime()) ? '' : d.toLocaleTimeString(); };
+
 const PLAN_OPTIONS = ['trial', 'starter', 'growth', 'scale', 'enterprise'];
 const STATUS_OPTIONS = ['trialing', 'active', 'past_due', 'canceled', 'paused'];
 const ROLE_OPTIONS = ['owner', 'system_admin', 'company_admin', 'user'];
@@ -820,7 +825,7 @@ export default function AdminPanel() {
                   <div className="space-y-1 text-xs text-gray-400">
                     {c.website && <p>🌐 {c.website}</p>}
                     <p>👥 {companyUsers.length} user(s)</p>
-                    <p>📅 {new Date(c.created_date).toLocaleDateString()}</p>
+                    <p>📅 {fmtDate(c.created_at || c.created_date)}</p>
                     {sub && (
                       <>
                         <p>💳 <span className={sub.status === 'active' ? 'text-green-400' : 'text-yellow-400'}>{sub.status}</span></p>
@@ -1012,7 +1017,7 @@ export default function AdminPanel() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-500 text-xs">
-                        {u.created_date ? new Date(u.created_date).toLocaleDateString() : '—'}
+                        {fmtDate(u.created_at || u.created_date)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -1065,7 +1070,7 @@ export default function AdminPanel() {
                         purchase.status === 'pending' ? 'bg-yellow-400' : 'bg-red-400'}`} />
                       <div>
                         <p className="text-white text-sm font-medium">{purchase.description || purchase.type}</p>
-                        <p className="text-gray-500 text-xs">{comp?.name || purchase.company_id} · {new Date(purchase.created_date).toLocaleDateString()}</p>
+                        <p className="text-gray-500 text-xs">{comp?.name || purchase.company_id} · {fmtDate(purchase.created_at || purchase.created_date)}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -1124,8 +1129,8 @@ export default function AdminPanel() {
                 {changeLogs.map(log => (
                   <tr key={log.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
                     <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
-                      {new Date(log.created_date).toLocaleDateString()}<br />
-                      <span className="text-gray-600">{new Date(log.created_date).toLocaleTimeString()}</span>
+                      {fmtDate(log.created_at || log.created_date)}<br />
+                      <span className="text-gray-600">{fmtTime(log.created_at || log.created_date)}</span>
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-white text-xs">{log.performed_by_email}</p>
