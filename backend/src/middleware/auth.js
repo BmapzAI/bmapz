@@ -60,7 +60,12 @@ export async function requireAuth(req, res, next) {
     }
 
     req.dbUser = dbUser;
-    req.companyId = dbUser.company_id;
+    // Requests are scoped to the company the user is CURRENTLY working in.
+    // active_company_id is set by the account switcher and is validated both in
+    // the switch endpoint and by a DB trigger (migration 021); company_id is
+    // the home company and the fallback for everyone who never switched.
+    req.companyId = dbUser.active_company_id || dbUser.company_id;
+    req.homeCompanyId = dbUser.company_id;
     next();
   } catch (err) {
     console.error('[auth middleware]', err);

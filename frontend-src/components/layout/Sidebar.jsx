@@ -6,6 +6,7 @@ import { useLanguage } from '@/components/ui/LanguageContext';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
+import AccountSwitcher from '@/components/layout/AccountSwitcher';
 import {
   LogOut,
   LayoutDashboard, Users, MessageSquare, Bot, GitBranch,
@@ -197,8 +198,11 @@ export default function Sidebar({ open, collapsed, onNavigate }) {
         )}
       </nav>
 
-      {/* User profile + Sign Out */}
+      {/* Company / profile area + Sign Out */}
       <div className="border-t border-white/10 px-2 py-3 flex-shrink-0">
+        {/* Clicking the company opens the switcher when the user can reach more
+            than one company; otherwise it is a plain label. */}
+        <AccountSwitcher collapsed={collapsed} />
         {dbUser && (
           collapsed ? (
             <Link to="/Profile" className="flex justify-center mb-2 hover:opacity-80 transition-opacity" title={dbUser.full_name || dbUser.email}>

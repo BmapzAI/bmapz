@@ -350,10 +350,34 @@ router.post('/invite', async (req, res) => {
 
 router.patch('/users/:id', async (req, res) => {
   try {
-    const { role, full_name, profile_picture } = req.body || {};
+    const { role, full_name, profile_picture, company_id, account_id, accessible_company_ids } = req.body || {};
     const updates = {};
     if (full_name !== undefined) updates.full_name = full_name;
     if (profile_picture !== undefined) updates.profile_picture = profile_picture;
+
+    // Company assignment. This route accepted ONLY role/full_name/profile_picture,
+    // so "Assign user to company" sent {company_id}, matched nothing, and got
+    // 400 "No supported user fields supplied" — after the UI had already
+    // claimed success. Same for "Set Account" sending {account_id}.
+    if (company_id !== undefined) {
+      if (company_id) {
+        const { data: company } = await supabaseAdmin
+          .from('companies').select('id').eq('id', company_id).single();
+        if (!company) return res.status(404).json({ error: 'Company not found' });
+      }
+      updates.company_id = company_id || null;
+      // Moving someone to a different company must not leave them "active" in
+      // the old one (migration 021).
+      updates.active_company_id = null;
+    }
+    if (account_id !== undefined) updates.account_id = account_id || null;
+    // Extra companies this user may switch into via the account switcher.
+    if (accessible_company_ids !== undefined) {
+      if (!Array.isArray(accessible_company_ids)) {
+        return res.status(400).json({ error: 'accessible_company_ids must be an array' });
+      }
+      updates.accessible_company_ids = accessible_company_ids;
+    }
 
     if (role !== undefined) {
       if (!ADMIN_ROLES.has(role)) return res.status(400).json({ error: 'Invalid role' });

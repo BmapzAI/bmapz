@@ -102,6 +102,80 @@ function flattenCompany(row) {
 }
 
 // GET /api/companies/current
+// ─── Multi-company switching ─────────────────────────────────────────────────
+// Users granted access to several companies (users.accessible_company_ids) need
+// to move between them so data scope never mixes. Platform roles can reach any
+// company. Switching writes active_company_id — never company_id — so a user's
+// home company and role stay intact (see migration 021).
+
+const PLATFORM_ROLES = new Set(['owner', 'system_admin']);
+
+/** Companies this user is allowed to work in, newest-name-first. */
+async function listSwitchableCompanies(dbUser) {
+  if (PLATFORM_ROLES.has(dbUser.role)) {
+    const { data } = await supabaseAdmin
+      .from('companies').select('id, name, logo_url, industry').order('name', { ascending: true });
+    return data || [];
+  }
+  const ids = [dbUser.company_id, ...(dbUser.accessible_company_ids || [])].filter(Boolean);
+  if (!ids.length) return [];
+  const { data } = await supabaseAdmin
+    .from('companies').select('id, name, logo_url, industry')
+    .in('id', [...new Set(ids)])
+    .order('name', { ascending: true });
+  return data || [];
+}
+
+// GET /api/companies/switchable — the switcher's option list.
+router.get('/switchable', requireAuth, async (req, res) => {
+  try {
+    const companies = await listSwitchableCompanies(req.dbUser);
+    res.json({
+      data: companies,
+      active_company_id: req.companyId,
+      home_company_id: req.dbUser.company_id,
+      can_switch: companies.length > 1,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/companies/switch { company_id } — change the active company.
+router.post('/switch', requireAuth, async (req, res) => {
+  try {
+    const target = req.body?.company_id;
+    if (!target) return res.status(400).json({ error: 'company_id is required' });
+
+    // Authorisation is decided HERE from the user's own record — never from
+    // anything the client sends beyond the target id.
+    const allowed = await listSwitchableCompanies(req.dbUser);
+    if (!allowed.some(c => c.id === target)) {
+      return res.status(403).json({ error: 'You do not have access to that company' });
+    }
+
+    // Returning to the home company clears the override rather than storing it.
+    const nextActive = target === req.dbUser.company_id ? null : target;
+    const { error } = await supabaseAdmin
+      .from('users')
+      .update({ active_company_id: nextActive })
+      .eq('id', req.dbUser.id);
+    if (error) {
+      if (/active_company_id|column/i.test(error.message || '')) {
+        return res.status(503).json({ error: 'Run migration 021 to enable company switching.' });
+      }
+      throw error;
+    }
+
+    // The brain and AI settings caches are keyed by company, so nothing to
+    // clear — but the switched-to company's data must be read fresh.
+    const company = allowed.find(c => c.id === target);
+    res.json({ success: true, active_company_id: target, company });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/current', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin

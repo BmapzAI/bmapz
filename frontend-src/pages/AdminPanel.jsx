@@ -424,6 +424,19 @@ function SetAccountModal({ user: targetUser, accounts, onClose, onSave }) {
 function AssignUserToCompanyModal({ users, companies, onClose, onSave }) {
   const [userId, setUserId] = useState('');
   const [companyId, setCompanyId] = useState('');
+  // Extra companies the user may switch into from the sidebar account switcher.
+  const [extraIds, setExtraIds] = useState([]);
+  const selectedUser = users.find(u => u.id === userId);
+
+  // Prefill from the chosen user so editing access doesn't wipe existing grants.
+  React.useEffect(() => {
+    if (!selectedUser) return;
+    setCompanyId(selectedUser.company_id || '');
+    setExtraIds(selectedUser.accessible_company_ids || []);
+  }, [selectedUser]);
+
+  const toggleExtra = (id) =>
+    setExtraIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-[#111] border-white/10 text-white max-w-md">
@@ -451,10 +464,36 @@ function AssignUserToCompanyModal({ users, companies, onClose, onSave }) {
               </SelectContent>
             </Select>
           </div>
-          <p className="text-xs text-gray-500">This will update the user's company_id association.</p>
+          {/* Additional companies → these appear in the user's account switcher */}
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">
+              Also allow access to (optional)
+              <span className="text-gray-600"> — appears in their account switcher</span>
+            </label>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-black/20 divide-y divide-white/5">
+              {companies.filter(c => c.id !== companyId).map(c => (
+                <label key={c.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-white/5">
+                  <input
+                    type="checkbox"
+                    checked={extraIds.includes(c.id)}
+                    onChange={() => toggleExtra(c.id)}
+                    className="accent-[#38b6ff]"
+                  />
+                  <span className="text-sm text-white truncate">{c.name}</span>
+                </label>
+              ))}
+              {companies.filter(c => c.id !== companyId).length === 0 && (
+                <p className="px-3 py-2 text-xs text-gray-500">No other companies yet.</p>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-gray-500">
+            The primary company is where the user lands by default. Any extra companies let them
+            switch scope from the sidebar without mixing data.
+          </p>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
-            <Button disabled={!userId || !companyId} onClick={() => onSave(userId, companyId)} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
+            <Button disabled={!userId || !companyId} onClick={() => onSave(userId, companyId, extraIds.filter(id => id !== companyId))} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
               <Check size={16} /> Assign
             </Button>
           </div>
@@ -549,7 +588,15 @@ export default function AdminPanel() {
 
   const updateUserMutation = useMutation({
     mutationFn: ({ id, data }) => api.patch(`/api/admin/users/${id}`, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin_users'] }); toast.success('User updated'); setEditingUser(null); },
+    onSuccess: (_res, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+      setEditingUser(null);
+      // Callers that assign a company/account announce their own, more specific
+      // result — don't stack a generic toast on top of it.
+      const keys = Object.keys(variables?.data || {});
+      const handledByCaller = keys.some(k => ['company_id', 'account_id', 'accessible_company_ids'].includes(k));
+      if (!handledByCaller) toast.success('User updated');
+    },
   });
 
   const deleteUserMutation = useMutation({
@@ -607,19 +654,36 @@ export default function AdminPanel() {
   const handleSetAccount = async (userId, accountId) => {
     const targetUser = allUsers.find(u => u.id === userId);
     const account = allAccounts.find(a => a.id === accountId);
-    updateUserMutation.mutate({ id: userId, data: { account_id: accountId } });
+    // Same false-success bug as company assignment — await the real result.
+    try {
+      await updateUserMutation.mutateAsync({ id: userId, data: { account_id: accountId } });
+    } catch (e) {
+      toast.error(`Could not set account: ${e?.response?.data?.error || e.message}`);
+      return;
+    }
     await logChange(user, 'assign_user', 'user', userId, targetUser?.email, { account_id: accountId, account_name: account?.name }, `Set account for ${targetUser?.email} to ${account?.name}`);
     setSettingAccount(null);
-    toast.success('Account ID set');
+    toast.success(`Account set to ${account?.name || accountId}`);
   };
 
-  const handleAssignUser = async (userId, companyId) => {
+  const handleAssignUser = async (userId, companyId, accessibleCompanyIds = []) => {
     const targetUser = allUsers.find(u => u.id === userId);
     const comp = allCompanies.find(c => c.id === companyId);
-    updateUserMutation.mutate({ id: userId, data: { company_id: companyId } });
+    // mutate() is fire-and-forget: the old code toasted success immediately and
+    // the real failure arrived afterwards as a second, contradictory toast.
+    // mutateAsync + await means we only claim success once it actually saved.
+    try {
+      await updateUserMutation.mutateAsync({
+        id: userId,
+        data: { company_id: companyId, accessible_company_ids: accessibleCompanyIds },
+      });
+    } catch (e) {
+      toast.error(`Could not assign user: ${e?.response?.data?.error || e.message}`);
+      return;
+    }
     await logChange(user, 'assign_user', 'user', userId, targetUser?.email, { company_id: companyId, company_name: comp?.name }, `Assigned ${targetUser?.email} to ${comp?.name}`);
     setShowAssignUser(false);
-    toast.success('User assigned to company');
+    toast.success(`User assigned to ${comp?.name || 'company'}`);
   };
 
   const getCompanyForSub = (sub) => allCompanies.find(c => c.id === sub.company_id);
