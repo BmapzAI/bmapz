@@ -6,7 +6,7 @@ import { api } from '@/api/apiClient';
 
 // ─── AI / LLM ────────────────────────────────────────────────────────────────
 
-export const InvokeLLM = async ({ prompt, systemPrompt, response_json_schema, inputFields, action }) => {
+export const InvokeLLM = async ({ prompt, systemPrompt, response_json_schema, inputFields, action, archiveTitle }) => {
   const messages = [];
   if (inputFields) {
     // Build prompt from inputFields (legacy Base44 pattern)
@@ -35,10 +35,14 @@ export const InvokeLLM = async ({ prompt, systemPrompt, response_json_schema, in
     ].filter(Boolean).join('\n\n');
   }
   if (action) {
-    // action drives plan-gated features (e.g. brand_scan blocked on trial)
-    // and triggers the "force cheap model" path for heavy one-shot calls.
+    // action drives plan-gated features (e.g. brand_scan blocked on trial),
+    // the "force cheap model" / "fast model" routing, AND whether the result is
+    // filed in the AI Outputs archive (see ARCHIVE_CATEGORY_BY_ACTION in
+    // backend/src/routes/ai.js). Content generators should always pass one.
     params.action = action;
   }
+  // Optional human-readable label for the archived record.
+  if (archiveTitle) params.archive_title = archiveTitle;
 
   const result = await api.post('/api/ai/chat', params);
   

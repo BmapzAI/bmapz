@@ -21,6 +21,7 @@
  *       WHATSAPP_PHONE_NUMBER_ID    (from WhatsApp → API Setup)
  */
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { runAIChat } from './ai.js';
 
@@ -98,8 +99,40 @@ async function identifyUser(fromPhone, messageText) {
   return { userId: user.id, companyId: user.company_id, userRole: user.role, email: user.email };
 }
 
+/**
+ * Verify Meta's X-Hub-Signature-256: HMAC-SHA256 of the RAW request body keyed
+ * with the app secret. Without this, anyone who knows the URL can POST fake
+ * inbound messages — which would drive the SDR agent, create leads and burn AI
+ * credits on attacker-supplied text. Meta also requires it for app review.
+ *
+ * Needs req.rawBody, captured by the express.json verify hook in index.js.
+ * If META_APP_SECRET is not configured we REJECT rather than accept blindly.
+ */
+function verifyMetaSignature(req) {
+  const appSecret = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET || '';
+  if (!appSecret) {
+    console.error('[whatsapp] META_APP_SECRET not set — rejecting webhook payload');
+    return false;
+  }
+  const header = req.get('x-hub-signature-256') || '';
+  const [algo, supplied] = header.split('=');
+  if (algo !== 'sha256' || !supplied) return false;
+  if (!req.rawBody) {
+    console.error('[whatsapp] raw body unavailable — cannot verify signature');
+    return false;
+  }
+  const expected = crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(supplied, 'utf8');
+  // timingSafeEqual throws on length mismatch — compare lengths first.
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 // POST /api/whatsapp/webhook — incoming messages from Meta
 router.post('/webhook', async (req, res) => {
+  if (!verifyMetaSignature(req)) {
+    return res.status(401).send('invalid signature');
+  }
   // Respond 200 immediately — Meta retries if we don't ack fast
   res.status(200).send('OK');
 

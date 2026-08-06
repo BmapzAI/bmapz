@@ -200,6 +200,74 @@ async function getCompanyPlan(companyId) {
 }
 
 /**
+ * Which actions produce user-facing CONTENT that belongs in the AI Outputs
+ * archive, and under which category the archive should file it.
+ *
+ * runAIChat is the single choke point every AI generation flows through, so
+ * archiving here means a new generator is archived the moment it passes an
+ * action — no more per-caller wiring to forget. Before this, only ads and
+ * automations archived anything, so Social, Blog, workflow and message
+ * generations never appeared in AI Outputs at all.
+ *
+ * DELIBERATELY NOT ARCHIVED:
+ *  - design_* — Design Studio is confidential (App Owner only). Writing its
+ *    output to the company-level archive would reveal the section exists.
+ *  - sdr_chat / whatsapp_chat / help_assistant — conversation turns, not
+ *    reviewable content; they'd bury the archive in chat noise.
+ *  - lead_scoring / *_scan / brand_scan — stored in their own tables with
+ *    purpose-built UIs.
+ */
+const ARCHIVE_CATEGORY_BY_ACTION = {
+  social_post: 'social_media',
+  social_caption: 'social_media',
+  social_performance: 'social_media',
+  blog_post: 'blogposts',
+  blog_outline: 'blogposts',
+  message_template: 'message_templates',
+  email_template: 'email_templates',
+  inbox_reply: 'message_templates',
+  workflow_build: 'workflows',
+  workflow_optimize: 'workflows',
+  workflow_node: 'workflows',
+  seo_plan: 'strategies',
+  marketing_plan: 'strategies',
+  sales_marketing_plan: 'strategies',
+  campaign_plan: 'strategies',
+  prospect_list: 'prospect_list',
+};
+
+/**
+ * File a finished generation in the AI Outputs archive. Fire-and-forget: the
+ * user already has their content, so a failed archive write must never surface
+ * as a failed generation.
+ */
+function archiveGeneration({ companyId, userId, userEmail, action, title, content, model, tokens }) {
+  const category = ARCHIVE_CATEGORY_BY_ACTION[action];
+  if (!category || !companyId || !content) return;
+  const body = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+  // title/content/category/status live in metadata — ai_outputs has no such
+  // columns, and inserting them top-level makes PostgREST reject the row.
+  supabaseAdmin.from('ai_outputs').insert({
+    company_id: companyId,
+    type: action,
+    output: body,
+    model: model || null,
+    tokens_used: tokens || null,
+    metadata: {
+      title: title || `${action.replace(/_/g, ' ')} — ${new Date().toLocaleDateString()}`,
+      content: body,
+      category,
+      status: 'pending',
+      created_by: userId || null,
+      created_by_email: userEmail || null,
+      action,
+    },
+  }).then(({ error }) => {
+    if (error) console.error('[ai/archive] could not archive generation:', error.message);
+  });
+}
+
+/**
  * Deduct credits from the active subscription and log the transaction.
  * Returns { remaining } or throws if insufficient credits.
  */
@@ -497,7 +565,7 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
  *   5. Call providers in order, with fallback. Track tokens.
  *   6. On success: deduct credits based on model multiplier × tokens used.
  */
-async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action, skipBrain = false }) {
+async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action, skipBrain = false, archiveTitle, skipArchive = false }) {
   // ── Pre-flight: settings + brain + plan are independent reads — fetch them
   // in PARALLEL. They used to run sequentially, costing 3 back-to-back DB
   // round-trips before the model call could start.
@@ -689,6 +757,18 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
         }
       }
 
+      // File content generations in the AI Outputs archive (no-op for actions
+      // that aren't reviewable content — see ARCHIVE_CATEGORY_BY_ACTION).
+      if (!skipArchive) {
+        archiveGeneration({
+          companyId, userId, userEmail, action,
+          title: archiveTitle,
+          content: result.content,
+          model: result.model_used,
+          tokens: result.usage?.total_tokens,
+        });
+      }
+
       return {
         ...result,
         key_source: attempt.source,
@@ -794,13 +874,14 @@ router.get('/diagnose', requireAuth, async (req, res) => {
 // POST /api/ai/chat
 router.post('/chat', requireAuth, async (req, res) => {
   try {
-    const { messages, model, temperature = 0.7, max_tokens, response_format, system, action } = req.body;
+    const { messages, model, temperature = 0.7, max_tokens, response_format, system, action, archive_title } = req.body;
     const result = await runAIChat({
       companyId: req.companyId,
       userId: req.dbUser?.id,
       userRole: req.dbUser?.role,
       userEmail: req.dbUser?.email,
       messages, model, temperature, max_tokens, response_format, system, action,
+      archiveTitle: archive_title,
     });
     res.json(result);
   } catch (err) {

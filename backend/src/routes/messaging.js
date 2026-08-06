@@ -184,9 +184,24 @@ router.get('/', requireAuth, async (req, res) => {
 
 router.post('/', requireAuth, async (req, res) => {
   try {
+    const payload = { ...pickFields(req.body, MESSAGE_FIELDS), company_id: req.companyId };
+
+    // Tag who sent it. The dashboard compares SDR-agent response time against
+    // human response time by reading metadata.sdr / metadata.human, but only
+    // the SDR engine and inbox replies ever set those flags — anything sent
+    // through the messaging UI landed untagged and was counted as NEITHER,
+    // silently understating human response time. A request on this
+    // authenticated route is a person sending, unless the caller says otherwise.
+    if ((payload.direction || 'outbound') === 'outbound') {
+      const meta = payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {};
+      if (meta.sdr === undefined && meta.human === undefined) {
+        payload.metadata = { ...meta, human: true, sent_by: req.dbUser?.id || null };
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('messages')
-      .insert({ ...pickFields(req.body, MESSAGE_FIELDS), company_id: req.companyId })
+      .insert(payload)
       .select()
       .single();
     if (error) throw error;

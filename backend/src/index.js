@@ -91,7 +91,13 @@ app.use('/api', limiter);
 app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use(stripeWebhookRoutes);
 
-app.use(express.json({ limit: '10mb' }));
+// Keep the raw bytes so webhook handlers can verify HMAC signatures (Meta's
+// X-Hub-Signature-256 is computed over the exact payload, so a re-serialised
+// req.body will not match).
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // ─── Health check ─────────────────────────────────────────────────────────────

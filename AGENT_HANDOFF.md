@@ -1737,3 +1737,72 @@ Note for whoever tests interactively: Radix `DropdownMenuTrigger` opens on
 Ignore any `opacity: 0` / 2px heights seen when measuring in that environment:
 with a 0x0 viewport the enter animations never run and `animation-fill-mode:
 both` pins elements at the 0% keyframe. It is a harness artifact, not a bug.
+
+---
+
+### Session 27 — Claude Code (connectivity, webhook security, economics audit)
+
+**AI Outputs archiving is now central (item 5).** Only 3 code paths ever wrote to
+`ai_outputs` (automations.js, automationScheduler.js, adsManager.js). Everything
+else — Social, Blog, Inbox replies, workflow AI, SEO, and the 15 frontend
+`InvokeLLM` callers — generated content that never appeared in AI Outputs.
+`runAIChat` is the single choke point every AI generation flows through, so
+archiving now happens there via `ARCHIVE_CATEGORY_BY_ACTION` (action → archive
+category). A generator only has to pass an `action` and it is archived; pass
+`archiveTitle` for a readable label, or `skipArchive: true` to opt out.
+`InvokeLLM` forwards both. Tagged so far: SocialMedia (`social_post`),
+Blog (`blog_post`), Inbox (`inbox_reply`).
+**Deliberately NOT archived** — and this is a policy, not an oversight:
+ - `design_*`: Design Studio is an App-Owner-only business secret. Writing its
+   output into the company-level archive would reveal the section exists.
+ - `sdr_chat` / `whatsapp_chat` / `help_assistant`: conversation turns, not
+   reviewable content — they would bury the archive in chat noise.
+ - `lead_scoring`, `*_scan`: stored in their own tables with purpose-built UIs.
+Remaining generators still untagged (so still unarchived): workflow AI panels,
+SEO, BrandScan setup, Ads creatives tab, SocialPerformanceTab, Dashboards custom
+metric. Add an `action` from the map to archive them.
+
+**SECURITY — WhatsApp webhook had no payload signature check.** `POST
+/api/whatsapp/webhook` accepted any body, so anyone who knew the URL could inject
+fake inbound messages — driving the SDR agent, creating leads and burning AI
+credits on attacker text. Now verifies Meta's `X-Hub-Signature-256` (HMAC-SHA256
+of the RAW body, timing-safe compare). `express.json` in index.js gained a
+`verify` hook to keep `req.rawBody`, since a re-serialised body never matches.
+Unit-tested 8/8: valid, tampered body, wrong secret, missing header, wrong algo,
+truncated signature, no secret, no raw body.
+**It fails CLOSED: without `META_APP_SECRET` set in Railway the webhook rejects
+everything.** That is deliberate (Meta requires the check for app review), but it
+means inbound WhatsApp stops until Derek sets that env var. Documented in
+backend/.env.example.
+
+**Dashboard SDR-vs-human response time was systematically wrong.** The metric
+splits on `messages.metadata.sdr` / `.human`, but only sdrEngine.js and
+email.js ever set those flags — messages sent through the messaging UI
+(`POST /api/messaging`) landed untagged and counted as NEITHER, understating human
+response time. That route now tags outbound messages `{human: true, sent_by}`
+unless the caller already declared `sdr`/`human`.
+
+**Verified present and working (no change needed):** Stripe webhook signature
+verification; OAuth `state` is HMAC-signed and validated on callback; all 23
+entity route prefixes in entities.js resolve to mounted backend routers;
+`users.sales_status` and `lead_activities` both have real writers, so the
+availability and velocity metrics are live.
+
+**Translation state:** `LanguageContext.jsx` holds 736 keys for `en` and 736 for
+`pt-BR` — zero missing on either side, no duplicates. Coverage is NOT uniform
+though: the app uses two patterns, `t('key')` and inline `isPt ? 'pt' : 'en'`
+ternaries, so a low `t()` count does not mean untranslated. Pages with NEITHER
+(effectively English-only): TextTemplates, Login, Signup, PrivacyPolicy,
+TermsOfService, DataDeletion, and largely WorkflowAnalytics / SEO / Inbox /
+Integrations / LeadDetails / AIChat / Dashboards / Help.
+
+**AI economics — profitable, but the allowances are mis-scaled (needs Derek's
+decision, do NOT change unilaterally).** Gross margin on AI is >99%: burning an
+entire Scale allowance (150k credits) on any configured model costs under R$4 of
+provider spend against R$785 revenue. The problem is the opposite of a leak —
+`TOKENS_PER_CREDIT = 12` combined with the model multipliers makes allowances
+tiny. On the Anthropic default (claude-3-5-haiku, multiplier 6) a Starter
+customer (15k credits) gets ~2 ads strategies OR ~3 blog posts per month; on
+claude-sonnet-4-5 (multiplier 25) they get ZERO ads strategies. Scans are safe —
+they charge a scan token and skip credit deduction. See the arithmetic in the
+session report. This is a pricing decision, deliberately left to Derek.

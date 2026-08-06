@@ -85,6 +85,8 @@ function MessageThread({ messages, lead, onReply, isSending }) {
       const companies = await Company.list();
       const company = companies[0];
       const res = await InvokeLLM({
+        action: 'inbox_reply',
+        archiveTitle: `Reply draft — ${lead?.lead_name || 'lead'}`,
         prompt: `Write a professional, concise reply to this message in the same language as the message.
 Context: You are a sales/marketing professional at "${company?.name || 'the company'}".
 Services: ${company?.services_description || ''}

@@ -126,6 +126,8 @@ export default function Blog() {
     setIsGenerating(true);
     try {
       const response = await InvokeLLM({
+        action: 'blog_post',
+        archiveTitle: `Blog post — ${post.title || 'untitled'}`,
         prompt: `Write a complete, SEO-optimized blog post with the following details:
 Title: ${post.title}
 Keywords: ${post.keywords.join(', ')}

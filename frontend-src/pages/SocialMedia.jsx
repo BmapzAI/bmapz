@@ -189,6 +189,8 @@ ICP - Industries: ${icp.industries?.join(', ') || 'Not set'}`;
     setIsGenerating(true);
     try {
       const response = await InvokeLLM({
+        action: 'social_post',
+        archiveTitle: `Social post — ${aiPrompt.slice(0, 60)}`,
         prompt: `You are a social media expert. Create high-performing social media posts using this company context:
 
 ${buildCompanyContext()}
