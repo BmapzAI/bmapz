@@ -154,7 +154,7 @@ const TUTORIALS = [
         title: 'Your First AI Conversation',
         titlePt: 'Sua Primeira Conversa com a IA',
         description: 'Start a conversation with the BMAPZ AI agent. Use quick actions, upload files, and use voice input to dictate your prompts.',
-        descriptionPt: 'Inicie uma conversa com o agente IA do BMAPZ. Use a••es rápidas, faça upload de arquivos e use entrada de voz.',
+        descriptionPt: 'Inicie uma conversa com o agente IA do BMAPZ. Use ações rápidas, faça upload de arquivos e use entrada de voz.',
         duration: '8 min',
         level: 'Beginner',
         levelPt: 'Iniciante',
@@ -169,8 +169,8 @@ const TUTORIALS = [
         ],
         stepsPt: [
           'Clique em "Chat IA" no menu lateral',
-          'Clique em um botão de A••o Rápida para começar',
-          'Ou escreva sua pr•pria solicita••o na caixa de texto',
+          'Clique em um botão de Ação Rápida para começar',
+          'Ou escreva sua própria solicitação na caixa de texto',
           'Use o botão de microfone para gravar e transcrever voz',
           'Anexe arquivos (PDF, imagens, CSV) para análise',
         ],
@@ -230,7 +230,7 @@ const TUTORIALS = [
         ],
         stepsPt: [
           'Acesse Fluxos e clique em "Novo Fluxo"',
-          'Arraste nós de a••o do painel esquerdo',
+          'Arraste nós de ação do painel esquerdo',
           'Conecte os nós com setas',
           'Defina intervalos entre as etapas',
           'Adicione condições para lógica de ramificação',
@@ -300,7 +300,7 @@ const TUTORIALS = [
         ],
         stepsPt: [
           'Acesse Brand Scan no menu lateral',
-          'Preencha o formul•rio com informações da empresa',
+          'Preencha o formulário com informações da empresa',
           'Clique em "Gerar Brand Scan"',
           'Aguarde ~30 segundos pelo relatório da IA',
           'Exporte em PDF ou TXT',

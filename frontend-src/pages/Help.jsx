@@ -19,50 +19,52 @@ import ReactMarkdown from 'react-markdown';
 
 const faqCategories = [
   {
-    title: 'Getting Started / Primeiros Passos',
+    title: 'Getting Started', titlePt: 'Primeiros Passos',
     icon: Zap,
     faqs: [
-      { question: 'How do I set up my first sales workflow? / Como configuro meu primeiro fluxo de vendas?', answer: 'Navigate to the Workflows section from the sidebar, click "New Workflow", and follow the step-by-step builder. You can add email, WhatsApp, LinkedIn steps, and set delays.\n\nAcesse Fluxos no menu lateral, clique em "Novo Fluxo" e siga o construtor. Você pode adicionar etapas de e-mail, WhatsApp, LinkedIn e definir intervalos.' },
-      { question: 'How do I import leads? / Como importo leads?', answer: 'Go to Sales → Add New Lead → choose manual entry or CSV/XLS import from the Integrations page.\n\nVê em Vendas → Novo Lead → escolha entrada manual ou importe CSV/XLS pela página de Integrações.' },
-      { question: 'What is ICP? / O que → ICP?', answer: 'The Ideal Customer Profile defines your perfect customer characteristics: industries, company sizes, locations, job titles. This helps the AI qualify and prioritize leads.\n\nO Perfil de Cliente Ideal define as características do seu cliente perfeito: setores, tamanho da empresa, localiza••es, cargos. Isso ajuda a IA a qualificar leads.' }
+      { question: 'How do I set up my first sales workflow?', questionPt: 'Como configuro meu primeiro fluxo de vendas?', answer: 'Navigate to the Workflows section from the sidebar, click "New Workflow", and follow the step-by-step builder. You can add email, WhatsApp, LinkedIn steps, and set delays.', answerPt: 'Acesse Fluxos no menu lateral, clique em "Novo Fluxo" e siga o construtor. Você pode adicionar etapas de e-mail, WhatsApp, LinkedIn e definir intervalos.' },
+      { question: 'How do I import leads?', questionPt: 'Como importo leads?', answer: 'Go to Sales → Add New Lead → choose manual entry or CSV/XLS import from the Integrations page.', answerPt: 'Vê em Vendas → Novo Lead → escolha entrada manual ou importe CSV/XLS pela página de Integrações.' },
+      { question: 'What is ICP?', questionPt: 'O que é ICP?', answer: 'The Ideal Customer Profile defines your perfect customer characteristics: industries, company sizes, locations, job titles. This helps the AI qualify and prioritize leads.', answerPt: 'O Perfil de Cliente Ideal define as características do seu cliente perfeito: setores, tamanho da empresa, localizações, cargos. Isso ajuda a IA a qualificar leads.' }
     ]
   },
   {
-    title: 'AI Sales Agent / Agente de Vendas IA',
+    title: 'AI Sales Agent', titlePt: 'Agente de Vendas IA',
     icon: MessageCircle,
     faqs: [
-      { question: 'How does the AI analyze leads? / Como a IA analisa os leads?', answer: 'The BMAPZ AI analyzes websites, social media profiles, and ad libraries to identify opportunities and create personalized outreach messages.\n\nA IA do BMAPZ analisa sites, perfis em redes sociais e bibliotecas de anúncios para identificar oportunidades e criar mensagens personalizadas.' },
-      { question: 'Can I customize the message tone? / Posso personalizar o tom das mensagens?', answer: 'Yes! Choose from: Professional, Friendly, Consultative, Direct, Strategic, or Performance. The AI adapts accordingly.\n\nSim! Escolha entre: Profissional, Amigável, Consultivo, Direto, Estratégico ou Performance. A IA se adapta.' },
-      { question: 'How do I use voice input? / Como usar entrada de voz?', answer: 'Click the microphone button in AI Chat. The platform requests microphone access, then transcribes your speech in real time into the text input.\n\nClique no botão de microfone no Chat IA. A plataforma solicita acesso ao microfone e transcreve sua fala em tempo real no campo de texto.' }
+      { question: 'How does the AI analyze leads?', questionPt: 'Como a IA analisa os leads?', answer: 'The BMAPZ AI analyzes websites, social media profiles, and ad libraries to identify opportunities and create personalized outreach messages.', answerPt: 'A IA do BMAPZ analisa sites, perfis em redes sociais e bibliotecas de anúncios para identificar oportunidades e criar mensagens personalizadas.' },
+      { question: 'Can I customize the message tone?', questionPt: 'Posso personalizar o tom das mensagens?', answer: 'Yes! Choose from: Professional, Friendly, Consultative, Direct, Strategic, or Performance. The AI adapts accordingly.', answerPt: 'Sim! Escolha entre: Profissional, Amigável, Consultivo, Direto, Estratégico ou Performance. A IA se adapta.' },
+      { question: 'How do I use voice input?', questionPt: 'Como usar entrada de voz?', answer: 'Click the microphone button in AI Chat. The platform requests microphone access, then transcribes your speech in real time into the text input.', answerPt: 'Clique no botão de microfone no Chat IA. A plataforma solicita acesso ao microfone e transcreve sua fala em tempo real no campo de texto.' }
     ]
   },
   {
-    title: 'Lead Management / Gestão de Leads',
+    title: 'Lead Management', titlePt: 'Gestão de Leads',
     icon: Users,
     faqs: [
-      { question: 'What is Qualification Review? / O que → a Revisão de Qualificação?', answer: 'Shows leads as cards with AI analysis. Double-click a Kanban card to open the full lead details page.\n\nExibe leads como cards com análise de IA. Clique duas vezes em um card Kanban para abrir a página de detalhes completos do lead.' },
-      { question: 'What are Dynamic Lead Lists? / O que são Listas Dinâmicas de Leads?', answer: 'Dynamic lists automatically include leads matching your criteria (funnel stage, ICP score, source, status) and update in real time.\n\nListas dinâmicas incluem automaticamente leads que correspondem aos seus critérios (etapa do funil, score ICP, origem, status) e se atualizam em tempo real.' }
+      { question: 'What is Qualification Review?', questionPt: 'O que é a Revisão de Qualificação?', answer: 'Shows leads as cards with AI analysis. Double-click a Kanban card to open the full lead details page.', answerPt: 'Exibe leads como cards com análise de IA. Clique duas vezes em um card Kanban para abrir a página de detalhes completos do lead.' },
+      { question: 'What are Dynamic Lead Lists?', questionPt: 'O que são Listas Dinâmicas de Leads?', answer: 'Dynamic lists automatically include leads matching your criteria (funnel stage, ICP score, source, status) and update in real time.', answerPt: 'Listas dinâmicas incluem automaticamente leads que correspondem aos seus critérios (etapa do funil, score ICP, origem, status) e se atualizam em tempo real.' }
     ]
   },
   {
     title: 'Workflows',
     icon: GitBranch,
     faqs: [
-      { question: 'What workflow steps are available? / Quais etapas estão disponíveis?', answer: 'Available steps: Send Email, Send WhatsApp, Send LinkedIn, Wait Period, Condition branches. Use Shift+Click to select multiple nodes, scroll to zoom, right-click drag to pan.\n\nEtapas disponíveis: Enviar E-mail, WhatsApp, LinkedIn, Aguardar, Condição. Use Shift+Clique para selecionar múltiplos nós, scroll para zoom, arrastar com botão direito para mover o canvas.' },
-      { question: 'Can workflows send messages automatically? / Os fluxos enviam mensagens automaticamente?', answer: 'Yes! Enable "Auto-send" on any message step. Messages will be sent at the scheduled time without manual approval.\n\nSim! Ative "Auto-envio" em qualquer etapa de mensagem. As mensagens serão enviadas no horário agendado sem aprovação manual.' }
+      { question: 'What workflow steps are available?', questionPt: 'Quais etapas estão disponíveis?', answer: 'Available steps: Send Email, Send WhatsApp, Send LinkedIn, Wait Period, Condition branches. Use Shift+Click to select multiple nodes, scroll to zoom, right-click drag to pan.', answerPt: 'Etapas disponíveis: Enviar E-mail, WhatsApp, LinkedIn, Aguardar, Condição. Use Shift+Clique para selecionar múltiplos nós, scroll para zoom, arrastar com botão direito para mover o canvas.' },
+      { question: 'Can workflows send messages automatically?', questionPt: 'Os fluxos enviam mensagens automaticamente?', answer: 'Yes! Enable "Auto-send" on any message step. Messages will be sent at the scheduled time without manual approval.', answerPt: 'Sim! Ative "Auto-envio" em qualquer etapa de mensagem. As mensagens serão enviadas no horário agendado sem aprovação manual.' }
     ]
   }
 ];
 
 const resources = [
-  { title: 'Video Tutorials / Tutoriais', icon: Play, description: 'Watch step-by-step guides / Guias em vídeo', link: '/VideoTutorials' },
-  { title: 'Documentation / Documentação', icon: Book, description: 'Detailed feature guides / Guia completo de funcionalidades', link: '/Documentation' },
+  { title: 'Video Tutorials', titlePt: 'Tutoriais', icon: Play, description: 'Watch step-by-step guides', descriptionPt: 'Guias em vídeo', link: '/VideoTutorials' },
+  { title: 'Documentation', titlePt: 'Documentação', icon: Book, description: 'Detailed feature guides', descriptionPt: 'Guia completo de funcionalidades', link: '/Documentation' },
   { title: 'API Reference', icon: FileText, description: 'For developers', link: '#' },
 ];
 
 // Build FAQ context string for the AI
+// Feed the help assistant BOTH locales so it can answer in either language,
+// even though the UI now shows only the reader's own language.
 const faqContext = faqCategories.flatMap(c =>
-  c.faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`)
+  c.faqs.map(f => `Q: ${f.question} / ${f.questionPt || ''}\nA: ${f.answer}\n${f.answerPt || ''}`)
 ).join('\n\n');
 
 function AIChatPanel({ query, onClose, t }) {
@@ -181,6 +183,7 @@ function AIChatPanel({ query, onClose, t }) {
 
 export default function Help() {
   const { t, language } = useLanguage();
+  const isPt = language === 'pt-BR';
   const [searchQuery, setSearchQuery] = useState('');
   const [aiOpen, setAiOpen] = useState(false);
   const [pendingQuery, setPendingQuery] = useState('');
@@ -194,11 +197,14 @@ export default function Help() {
 
   const filteredCategories = faqCategories.map(category => ({
     ...category,
-    faqs: category.faqs.filter(faq =>
-      !searchQuery ||
-      faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      faq.answer.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    faqs: category.faqs.filter(faq => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      // Search both locales — a pt-BR reader types Portuguese words, and those
+      // now live in the *Pt fields rather than the concatenated string.
+      return [faq.question, faq.questionPt, faq.answer, faq.answerPt]
+        .some(v => (v || '').toLowerCase().includes(q));
+    })
   })).filter(category => category.faqs.length > 0);
 
   const handleSearchSubmit = (e) => {
@@ -260,8 +266,8 @@ export default function Help() {
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3572b9]/20 to-[#cb6ce6]/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <Icon size={24} className="text-[#38b6ff]" />
               </div>
-              <h3 className="font-semibold text-white mb-1">{resource.title}</h3>
-              <p className="text-gray-400 text-sm">{resource.description}</p>
+              <h3 className="font-semibold text-white mb-1">{isPt ? (resource.titlePt || resource.title) : resource.title}</h3>
+              <p className="text-gray-400 text-sm">{isPt ? (resource.descriptionPt || resource.description) : resource.description}</p>
             </Wrapper>
           );
         })}
@@ -277,18 +283,18 @@ export default function Help() {
                 <div className="w-10 h-10 rounded-xl bg-[#38b6ff]/20 flex items-center justify-center">
                   <Icon size={20} className="text-[#38b6ff]" />
                 </div>
-                <h2 className="text-lg font-semibold text-white">{category.title}</h2>
+                <h2 className="text-lg font-semibold text-white">{isPt ? (category.titlePt || category.title) : category.title}</h2>
               </div>
               <Accordion type="single" collapsible className="px-4">
                 {category.faqs.map((faq, faqIndex) => (
                   <AccordionItem key={faqIndex} value={`${index}-${faqIndex}`} className="border-white/10">
                     <AccordionTrigger className="text-white hover:text-[#38b6ff] text-left">
-                      {faq.question}
+                      {isPt ? (faq.questionPt || faq.question) : faq.question}
                     </AccordionTrigger>
                     <AccordionContent className="text-gray-400">
-                      {faq.answer}
+                      {isPt ? (faq.answerPt || faq.answer) : faq.answer}
                       <button
-                        onClick={() => { setPendingQuery(faq.question); setAiOpen(true); }}
+                        onClick={() => { setPendingQuery(isPt ? (faq.questionPt || faq.question) : faq.question); setAiOpen(true); }}
                         className="mt-2 flex items-center gap-1 text-[#38b6ff] text-xs hover:underline"
                       >
                         <Bot className="w-3 h-3" /> Ask AI for more details

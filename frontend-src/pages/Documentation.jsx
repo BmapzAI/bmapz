@@ -91,7 +91,7 @@ const DOCS = [
 
 - **Arrastar cards** entre colunas move os leads pelas etapas
 - **Duplo clique** em um card abre a página de detalhes completos do lead
-- **Menu de contexto** oferece a••es rápidas: Ver Detalhes, Enviar Mensagem, Desqualificar
+- **Menu de contexto** oferece ações rápidas: Ver Detalhes, Enviar Mensagem, Desqualificar
 - **Score ICP** → exibido em cada card  verde (70+), amarelo (40-70), vermelho (abaixo de 40)
 - **Filtros Avançados** permitem filtrar por faixa de score ICP, valor estimado, decisor e origem`,
       },
@@ -308,7 +308,7 @@ As listas dinâmicas se atualizam automaticamente quando novos leads corresponde
     sections: [
       {
         title: 'What is Brand Scan?',
-        titlePt: 'O que → o Brand Scan?',
+        titlePt: 'O que é o Brand Scan?',
         content: `Brand Scan is BMAPZ's deep AI analysis of your brand and digital presence.
 
 **What it analyzes:**

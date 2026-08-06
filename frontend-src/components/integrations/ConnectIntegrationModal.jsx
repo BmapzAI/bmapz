@@ -440,6 +440,21 @@ export default function ConnectIntegrationModal({ integration, company, user, is
 
   const handleDisconnect = async () => {
     if (!company || !integration.statusKey) return;
+    try {
+      // Actually revoke the stored credentials. This used to ONLY flip
+      // integration_status, so the OAuth access/refresh tokens stayed in the
+      // company's api_keys row — the integration looked disconnected while the
+      // platform could still be called on the user's behalf. POST
+      // /api/oauth/disconnect already existed to clear them; nothing called it.
+      await api.post('/api/oauth/disconnect', {
+        provider: integration.oauthProvider || integration.statusKey || integration.type,
+      });
+    } catch (e) {
+      // Token clearing is the part that matters — if it fails, say so and stop
+      // rather than marking the integration disconnected while it still works.
+      toast.error(`${t('disconnect')} — ${e?.response?.data?.error || e.message}`);
+      return;
+    }
     await Company.update(company.id, {
       integration_status: { ...(company.integration_status || {}), [integration.statusKey]: false }
     });

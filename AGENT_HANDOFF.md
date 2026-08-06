@@ -1806,3 +1806,78 @@ customer (15k credits) gets ~2 ads strategies OR ~3 blog posts per month; on
 claude-sonnet-4-5 (multiplier 25) they get ZERO ads strategies. Scans are safe —
 they charge a scan token and skip credit deduction. See the arithmetic in the
 session report. This is a pricing decision, deliberately left to Derek.
+
+---
+
+### Session 28 — Claude Code (audit results: dead-endpoint bugs, i18n inversions, mojibake)
+
+The 8-lens audit returned 2 lenses before the session limit (i18n, dead code);
+the other 6 (AI-output connectivity, dashboard metrics, integrations/next-phase,
+DB drift, cost, runtime breakage) did NOT run — they are Codex's job, see
+`docs/CODEX_PICKUP_2026-08-05.md`.
+
+**Two dead-endpoint bugs found and fixed (both verified by grep before acting).**
+1. `POST /api/oauth/disconnect` existed and correctly clears stored OAuth tokens
+   from `companies.api_keys` — but **nothing called it**. The Integrations
+   "Disconnect" button only flipped `integration_status[key] = false`, so the
+   access and refresh tokens survived a disconnect: the UI said disconnected
+   while the platform could still be called on the user's behalf. This is both a
+   privacy defect and a platform-review problem (token revocation). The modal now
+   calls the endpoint FIRST and aborts if it fails, rather than marking the
+   integration disconnected while it still works.
+2. Social → Performance "Boost" POSTed to `/api/social/posts/boost`, which no
+   route defines — the call 404'd and the user saw a bare "Boost failed". Real
+   boosting creates a Meta ad and needs Marketing API permissions the app has not
+   been granted, so the button now says exactly that instead of failing opaquely.
+
+**i18n: two inversions where users saw the WRONG language.**
+ - `BrandScanSetup.jsx` was hardcoded **Portuguese**, so English users got a
+   Portuguese form. All labels/placeholders/headers are now per-locale, and the
+   auto-fill prompt no longer forces `Portuguese (Brazil)` output regardless of
+   the user's language.
+ - `Help.jsx` concatenated both languages into every string
+   ("Getting Started / Primeiros Passos", answers as `EN\n\nPT`), so **everyone
+   saw both languages at once**. Split into `question`/`questionPt`,
+   `answer`/`answerPt`, `title`/`titlePt`, `description`/`descriptionPt` (10 Qs,
+   10 As, 5 titles, 2 descriptions). Search now matches both locales, and the
+   help assistant still receives BOTH languages as context so it can answer in
+   either. Verified in the built chunk: 0 dual-language strings remain.
+
+**Mojibake repaired (11 instances).** Portuguese accented characters had been
+replaced by `•` and `→` in committed source, producing text users could not read:
+`O que → ICP?` (é), `localiza••es` (localizações), `a••es` (ações), `A••o` (Ação),
+`pr•pria` (própria), `solicita••o` (solicitação), `formul•rio` (formulário), and
+`O que → o Brand Scan?`. Fixed across Help.jsx, Documentation.jsx and
+VideoTutorials.jsx. NOTE: `Login.jsx` `placeholder="••••••••"` is an intentional
+password mask, and `Settings → ICP` / `Minutes → …` arrows are intentional — do
+not "fix" those.
+
+**i18n scale, measured (for whoever picks this up):** ~1,650 user-visible English
+literals never reach a translation path. Worst: the Workflow Builder internals
+(~231 across 6 components with zero i18n wiring), the Ads sub-tab tree (~267,
+11 of 12 children, AdsGuideModal alone 81), Settings → API Keys (~100),
+Integrations + connect modal (~172), Dashboards (~85), and five zero-i18n routed
+pages — SEO, WorkflowAnalytics, LeadDetails, TextTemplates, Inbox (~181).
+`PrivacyPolicy.jsx` is English-only while its sibling `TermsOfService.jsx` is
+bilingual. Note ~173 of those literals sit in files with **zero importers** —
+do not spend translation effort there.
+
+**Dead code inventory (NOT deleted — awaiting Derek's decision).** ~7,900 lines
+of provably unreferenced frontend code: a whole second workflow builder
+(`FlowchartBuilder.jsx` 1,957 lines + `AIOptimizationPanel.jsx`), 34 unused
+shadcn `ui/` wrappers (~3,280 lines incl. `sidebar.jsx` at 626), superseded
+components (`AdsCreativesTab`, `AdsCampaignsTab`, `DashboardEditor`,
+`LeadListManager`, `SocialAnalyticsTab`, `MobileBottomNav`, `AccountSwitcher`,
+`PasswordInput`, `ProtectedRoute` — which also reads AuthContext fields that no
+longer exist), and three Base44 leftovers (`VisualEditAgent.jsx`,
+`base44Client.js`, `app-params.js`). Backend: ~25 handlers with no caller, split
+by risk — billing/add-on endpoints (the whole `/api/addons` router;
+`addons.js` claims the Stripe webhook calls it and it does not),
+auth/OAuth (`/auth/complete-profile`, `/oauth/google/refresh`,
+`PATCH /users/:id/role` duplicating `PATCH /users/:id`), and admin
+(`/admin/data-deletion-requests` — GDPR requests are stored with **no screen to
+action them**, which matters for platform review). Duplicates: three workflow
+template systems, two ad systems, four `ai_outputs` write paths beside an
+uncalled `POST /api/ai/outputs`. Also: 11 unused frontend packages, 4 unused
+backend packages, `frontend-package.json` is a byte-identical duplicate of
+`package.json`, and `React.StrictMode` is disabled in `main.jsx`.

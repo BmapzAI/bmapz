@@ -57,21 +57,16 @@ export default function SocialPerformanceTab({ company, selectedPlatforms, setSe
   const handleBoost = async (post) => {
     const platform = (post.platforms || [])[0];
     if (platform !== 'facebook' && platform !== 'instagram') { toast.error('Boost only for Facebook/Instagram'); return; }
-    setBoostingId(post.id);
-    try {
-      const res = await api.post('/api/social/posts/boost', {
-        post_id: post.external_post_id,
-        company_id: company?.id,
-        daily_budget: 10,
-        duration_days: 7,
-      });
-      if (res?.success) {
-        toast.success(`Boost campaign created (PAUSED). Activate in Meta Ads Manager.`);
-      } else {
-        toast.error(res?.error || 'Boost failed');
-      }
-    } catch { toast.error('Boost failed'); }
-    finally { setBoostingId(null); }
+    // This used to POST /api/social/posts/boost, which no backend route
+    // defines — the call always 404'd and the user just saw "Boost failed"
+    // with no reason. Boosting a published post creates a real Meta ad, which
+    // needs the Marketing API permissions the app has not been granted yet, so
+    // say that plainly instead of failing opaquely.
+    toast.info(
+      'Boosting a post creates a real Meta ad, which needs Meta Marketing API access. That approval is not in place yet — build the campaign in the Ads section instead.',
+      { duration: 8000 },
+    );
+    void post;
   };
 
   const postsWithPerformance = filteredPosts.filter(p => p.performance);
