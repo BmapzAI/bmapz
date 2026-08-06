@@ -30,7 +30,7 @@ async function provisionCompany(authUser) {
   const { data: updatedUser, error: userErr } = await supabaseAdmin
     .from('users')
     .update({ company_id: company.id, role: 'company_admin', full_name: fullName })
-    .eq('id', authUser.id).select('*, companies(*)').single();
+    .eq('id', authUser.id).select('*, companies!company_id(*)').single();
   if (userErr) throw userErr;
 
   await supabaseAdmin.from('subscriptions').insert({
@@ -45,7 +45,7 @@ router.get('/me', requireJWT, async (req, res) => {
   try {
     const userId = req.user.id;
     const { data: dbUser } = await supabaseAdmin
-      .from('users').select('*, companies(*)').eq('id', userId).single();
+      .from('users').select('*, companies!company_id(*)').eq('id', userId).single();
 
     if (dbUser) {
       if (!dbUser.company_id) {
@@ -71,7 +71,7 @@ router.get('/me', requireJWT, async (req, res) => {
       .from('users').upsert({
         id: userId, email: req.user.email, full_name: fullName,
         company_id: company.id, role: 'company_admin', // top CUSTOMER role; owner is Bmapz-internal
-      }).select('*, companies(*)').single();
+      }).select('*, companies!company_id(*)').single();
     if (userErr) throw userErr;
 
     await supabaseAdmin.from('subscriptions').insert({
@@ -101,7 +101,7 @@ router.post('/complete-profile', requireJWT, async (req, res) => {
     const userId = req.user.id;
 
     const { data: existing } = await supabaseAdmin
-      .from('users').select('*, companies(*)').eq('id', userId).single();
+      .from('users').select('*, companies!company_id(*)').eq('id', userId).single();
     if (existing && existing.company_id) {
       return res.json({ user: existing, company: flattenCompany(existing.companies) });
     }
