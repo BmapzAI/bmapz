@@ -1881,3 +1881,70 @@ template systems, two ad systems, four `ai_outputs` write paths beside an
 uncalled `POST /api/ai/outputs`. Also: 11 unused frontend packages, 4 unused
 backend packages, `frontend-package.json` is a byte-identical duplicate of
 `package.json`, and `React.StrictMode` is disabled in `main.jsx`.
+
+---
+
+### Session 29 — Claude Code (switcher, cleanup, GDPR, payments)
+
+**Company assignment was silently failing.** `PATCH /api/admin/users/:id`
+accepted only role/full_name/profile_picture, so "Assign user to company" sent
+`{company_id}`, matched nothing and got 400 "No supported user fields supplied"
+— AFTER the UI toasted success, because it used `mutate()` without awaiting.
+Route now accepts company_id / account_id / accessible_company_ids; both
+handlers use `mutateAsync` and only claim success once it saved.
+
+**Account switcher (migration 021).** `users.accessible_company_ids` shipped in
+001 and RLS honoured it, but nothing ever let a user move between companies.
+Clicking the company block in the sidebar now switches scope. Switching writes a
+NEW `active_company_id`, never `company_id`: company_id is the home company and
+migration 018's trigger polices it for owner/system_admin, so rewriting it per
+switch would make the App Owner's own switching raise "internal roles are
+restricted to the platform company". `requireAuth` resolves
+`active_company_id || company_id`. Authorisation is decided server-side from the
+user's own record and re-enforced by a DB trigger. The menu is lazily loaded —
+the sidebar is in the entry graph and eager Radix dropdown grew the entry
+433KB → 519KB; it is back to 435KB with a 2.3KB lazy chunk.
+
+**Dead code deleted: 48 files / ~7,900 lines** (tag
+`pre-deadcode-cleanup-2026-08-05`, plus a zip in ~/bmapz-backups). Verification
+caught two flaws in my own scanner BEFORE deleting: it missed dynamic
+`import('./pages/X')` (making every page look dead) and did not resolve
+`index.ts` (which would have deleted `utils/index.ts` and broken `createPageUrl`
+in 7 live files). Final proof: production build + all 20 page chunks still
+succeed, which Vite would fail on any live reference.
+
+**GDPR data-deletion workflow (migration 022).** Requests were stored and listed
+but never shown or actioned, and nothing was ever erased. Added a preview
+endpoint (exact blast radius), an execute endpoint that really deletes
+leads/messages/user accounts + auth logins and records an audit report, and an
+Admin Panel tab with type-DELETE confirmation. Owners/system_admins are refused
+automatically so a request can never erase the account running the business.
+
+**BILLING — two critical bugs.**
+1. `getCompanyPlan` selected `plan_id`, which exists in NO migration (the column
+   is `plan`). PostgREST fails the whole SELECT on an unknown column, so the
+   query errored, `sub` was null, and EVERY company was treated as — and
+   re-created as — a trial, including paying customers, because the Stripe
+   webhook writes `plan`. Now selects `*` and resolves `plan_id || plan`.
+   Same bug fixed in `addons.js` cancel-annual.
+2. The webhook's credit table granted `starter: 1000` when the plan sells
+   15,000, referenced a non-existent "professional" plan, and omitted
+   growth/scale so they fell back to 1000. Now imports PLAN_MONTHLY_CREDITS /
+   PLAN_SCAN_TOKENS from lib/aiCredits.js and grants scan tokens too.
+3. Add-ons were charged and never granted — `addons.js` claimed the webhook
+   called `POST /api/addons/purchase`, but that route is behind `requireAuth`
+   and a webhook has no session. Extracted `grantAddon()`; the webhook now
+   handles `metadata.addon_type` checkouts directly.
+
+**Pluggable payments (migration 023).** `platform_settings` holds the active
+provider; `lib/paymentProviders.js` dispatches checkout; `/api/billing/checkout`
+goes through the registry. Stripe stays primary and is the only implemented
+adapter — Mercado Pago / Pix / manual are declared but throw
+PROVIDER_NOT_IMPLEMENTED rather than pretending to take money. Selection is
+OWNER-ONLY on top of requireAdmin, so a system_admin cannot redirect revenue.
+`billing_purchases` now records `payment_provider` + `provider_reference`.
+
+#### Derek actions
+- Run migrations **021**, **022**, **023**.
+- Still pending from earlier: `META_APP_SECRET` in Railway (deferred to the next
+  phase by Derek), and the AI credit-allowance pricing decision.
