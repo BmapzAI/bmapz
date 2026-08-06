@@ -1948,3 +1948,29 @@ OWNER-ONLY on top of requireAdmin, so a system_admin cannot redirect revenue.
 - Run migrations **021**, **022**, **023**.
 - Still pending from earlier: `META_APP_SECRET` in Railway (deferred to the next
   phase by Derek), and the AI credit-allowance pricing decision.
+
+---
+
+### INCIDENT — app down after migration 021 (my fault, ~fixed in ec231cd)
+
+**Cause.** Migration 021 added `users.active_company_id REFERENCES companies(id)`.
+That gave `users` a SECOND foreign key to `companies`, and PostgREST then refuses
+a bare embed: *"Could not embed because more than one relationship was found for
+'users' and 'companies'"*. `requireAuth` ran `select('*, companies(*)')` on EVERY
+authenticated request, so the entire app stopped loading the instant the
+migration was applied. The frontend surfaced it as "Connection Error".
+
+**Fix.** The embed now names the FK — `companies!company_id(*)` — in
+`middleware/auth.js` (both requireAuth and optionalAuth) and all four sites in
+`routes/auth.js`. Auth is the single choke point for every request, so
+`loadDbUser()` additionally falls back to two plain queries if the hint is
+rejected for any reason; the app works whether or not the hint parses.
+
+**Lesson for next time — this is the real takeaway.** Adding a foreign-key column
+silently changes the meaning of EVERY existing PostgREST embed between those two
+tables. Before adding an FK, grep for embeds of the target table
+(`select('*, <table>(`) and disambiguate them in the SAME commit as the
+migration. A migration can break code that was never touched.
+
+`supabase/EMERGENCY_ROLLBACK_021.sql` drops the column and its trigger if the
+app is ever still broken — costs only the account switcher.
