@@ -43,8 +43,16 @@ function slugHandle(src, fallback = 'user') {
 async function freeHandle(table, column, base) {
   let candidate = base;
   for (let n = 2; n <= 50; n++) {
-    const { data } = await supabaseAdmin
-      .from(table).select('id').ilike(column, candidate).maybeSingle();
+    const { data, error } = await supabaseAdmin
+      .from(table).select('id').ilike(column, candidate).limit(1).maybeSingle();
+    // Column not there yet (migration 024 not run): signal "no handle" so the
+    // caller omits it rather than failing. Signup must never depend on a
+    // migration having been applied — that would make a pending migration an
+    // outage, which is the exact failure mode we are engineering out.
+    if (error) {
+      if (/column|does not exist|schema cache/i.test(error.message || '')) return null;
+      throw error;
+    }
     if (!data) return candidate;
     candidate = `${base}${n}`.slice(0, 30);
   }
@@ -73,9 +81,14 @@ async function provisionCompany(authUser) {
 
   // Every company and user gets a unique @handle at creation (migration 024),
   // so the search / invite features never have to cope with missing ones.
+  // freeHandle returns null when the column does not exist yet (migration 024
+  // not applied). Omit the field in that case: a pending migration must never
+  // be able to break signup.
   const companyHandle = await freeHandle('companies', 'handle', slugHandle(companyName, 'company'));
   const { data: company, error: companyErr } = await supabaseAdmin
-    .from('companies').insert({ name: companyName, handle: companyHandle }).select().single();
+    .from('companies')
+    .insert(companyHandle ? { name: companyName, handle: companyHandle } : { name: companyName })
+    .select().single();
   if (companyErr) throw companyErr;
 
   // A username chosen at signup wins; otherwise derive one from the first name.
@@ -101,7 +114,7 @@ async function provisionCompany(authUser) {
       company_id: company.id,
       role: 'company_admin',
       full_name: fullName,
-      username: userHandle,
+      ...(userHandle ? { username: userHandle } : {}),
     }, { onConflict: 'id' })
     .select('*').single();
   if (userErr) throw userErr;
@@ -124,8 +137,14 @@ router.get('/username-available', async (req, res) => {
       return res.json({ available: false, reason: 'invalid' });
     }
     const { data, error } = await supabaseAdmin
-      .from('users').select('id').ilike('username', username).maybeSingle();
-    if (error) throw error;
+      .from('users').select('id').ilike('username', username).limit(1).maybeSingle();
+    if (error) {
+      // Column not there yet — say so plainly instead of a bare 500.
+      if (/column|does not exist|schema cache/i.test(error.message || '')) {
+        return res.status(503).json({ available: false, reason: 'unavailable', error: 'Run migration 024 to enable usernames.' });
+      }
+      throw error;
+    }
     res.json({ available: !data, reason: data ? 'taken' : null });
   } catch (err) {
     res.status(500).json({ error: err.message });

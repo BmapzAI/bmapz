@@ -26,8 +26,14 @@ router.get('/username-available', requireAuth, async (req, res) => {
       return res.json({ available: false, reason: 'invalid', message: '3–30 characters, letters, numbers and underscore only.' });
     }
     const { data, error } = await supabaseAdmin
-      .from('users').select('id').ilike('username', username).maybeSingle();
-    if (error) throw error;
+      .from('users').select('id').ilike('username', username).limit(1).maybeSingle();
+    if (error) {
+      // Column not present until migration 024 runs — say so, don't 500.
+      if (/column|does not exist|schema cache/i.test(error.message || '')) {
+        return res.status(503).json({ available: false, reason: 'unavailable', error: 'Run migration 024 to enable usernames.' });
+      }
+      throw error;
+    }
     const taken = !!data && data.id !== req.dbUser.id;
     res.json({ available: !taken, reason: taken ? 'taken' : null });
   } catch (err) {
@@ -45,8 +51,13 @@ router.get('/lookup', requireAuth, requireCompanyAdmin, async (req, res) => {
     if (!USERNAME_RE.test(username)) return res.json({ data: null });
     const { data, error } = await supabaseAdmin
       .from('users').select('id, username, full_name, profile_picture')
-      .ilike('username', username).maybeSingle();
-    if (error) throw error;
+      .ilike('username', username).limit(1).maybeSingle();
+    if (error) {
+      if (/column|does not exist|schema cache/i.test(error.message || '')) {
+        return res.status(503).json({ data: null, error: 'Run migration 024 to enable username lookup.' });
+      }
+      throw error;
+    }
     if (!data) return res.json({ data: null });
     // Say whether they are ALREADY in this company, without exposing which other
     // company they belong to if they are not.
@@ -74,7 +85,13 @@ router.get('/search', requireAuth, async (req, res) => {
       .eq('company_id', req.companyId)
       .or(`username.ilike.%${term}%,full_name.ilike.%${term}%,email.ilike.%${term}%`)
       .limit(20);
-    if (error) throw error;
+    if (error) {
+      // Degrade to no results rather than breaking a mention/search picker.
+      if (/column|does not exist|schema cache/i.test(error.message || '')) {
+        return res.json({ data: [], note: 'Run migration 024 to enable username search.' });
+      }
+      throw error;
+    }
     res.json({ data: data || [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
