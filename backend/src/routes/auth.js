@@ -10,6 +10,48 @@ function flattenCompany(row) {
   return { ...rest, ...(api_keys || {}), ...(settings || {}) };
 }
 
+/**
+ * Fetch the company the user is CURRENTLY working in, flattened for the client.
+ *
+ * Fetched separately rather than embedded: `users` has two FKs to `companies`
+ * (company_id and active_company_id since migration 021), so an embed is either
+ * ambiguous — which took the app down — or pinned to the wrong one, which would
+ * show the home company's branding for a whole session after switching.
+ */
+async function activeCompanyFor(user) {
+  const id = user?.active_company_id || user?.company_id;
+  if (!id) return null;
+  const { data } = await supabaseAdmin.from('companies').select('*').eq('id', id).single();
+  return flattenCompany(data);
+}
+
+/** Slug a string into a legal handle: lowercase, [a-z0-9_], 3–30 chars. */
+function slugHandle(src, fallback = 'user') {
+  const s = String(src || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')  // strip accents
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 30);
+  return s.length >= 3 ? s : fallback;
+}
+
+/**
+ * Find a free handle by appending a counter. Racy by nature, so the caller must
+ * still tolerate the unique index rejecting it (migration 024).
+ */
+async function freeHandle(table, column, base) {
+  let candidate = base;
+  for (let n = 2; n <= 50; n++) {
+    const { data } = await supabaseAdmin
+      .from(table).select('id').ilike(column, candidate).maybeSingle();
+    if (!data) return candidate;
+    candidate = `${base}${n}`.slice(0, 30);
+  }
+  // Give up guessing politely and use something that will not collide.
+  return `${base}${Date.now().toString(36)}`.slice(0, 30);
+}
+
 async function provisionCompany(authUser) {
   const meta = authUser.user_metadata || {};
   const companyName =
@@ -24,14 +66,24 @@ async function provisionCompany(authUser) {
   // errored, the caller ignored the error, treated the user as unprovisioned,
   // and each retry minted another empty "…'s Workspace" — 3 companies became 16.
   const { data: current } = await supabaseAdmin
-    .from('users').select('*, companies!company_id(*)').eq('id', authUser.id).maybeSingle();
+    .from('users').select('*').eq('id', authUser.id).maybeSingle();
   if (current?.company_id) {
-    return { user: current, company: flattenCompany(current.companies) };
+    return { user: current, company: await activeCompanyFor(current) };
   }
 
+  // Every company and user gets a unique @handle at creation (migration 024),
+  // so the search / invite features never have to cope with missing ones.
+  const companyHandle = await freeHandle('companies', 'handle', slugHandle(companyName, 'company'));
   const { data: company, error: companyErr } = await supabaseAdmin
-    .from('companies').insert({ name: companyName }).select().single();
+    .from('companies').insert({ name: companyName, handle: companyHandle }).select().single();
   if (companyErr) throw companyErr;
+
+  // A username chosen at signup wins; otherwise derive one from the first name.
+  const desiredUsername = meta.username ? slugHandle(meta.username, '') : '';
+  const userHandle = await freeHandle(
+    'users', 'username',
+    desiredUsername || slugHandle(String(fullName).split(' ')[0], slugHandle(authUser.email.split('@')[0], 'user')),
+  );
 
   // A new customer becomes 'company_admin' — the TOP role for a customer
   // workspace (full control of their own company + team). 'owner' and
@@ -49,8 +101,9 @@ async function provisionCompany(authUser) {
       company_id: company.id,
       role: 'company_admin',
       full_name: fullName,
+      username: userHandle,
     }, { onConflict: 'id' })
-    .select('*, companies!company_id(*)').single();
+    .select('*').single();
   if (userErr) throw userErr;
 
   await supabaseAdmin.from('subscriptions').insert({
@@ -58,14 +111,32 @@ async function provisionCompany(authUser) {
     ai_credits_total: 8000, ai_credits_used: 0, contacts_limit: 1500,
   });
 
-  return { user: updatedUser, company: flattenCompany(updatedUser.companies) };
+  return { user: updatedUser, company: await activeCompanyFor(updatedUser) };
 }
+
+// GET /api/auth/username-available?username=derek — UNAUTHENTICATED on purpose:
+// signup needs to check a handle before an account exists. Returns only a
+// boolean, so it cannot be used to read anything about the account that holds it.
+router.get('/username-available', async (req, res) => {
+  try {
+    const username = String(req.query.username || '').trim().replace(/^@+/, '');
+    if (!/^[A-Za-z0-9_]{3,30}$/.test(username)) {
+      return res.json({ available: false, reason: 'invalid' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('users').select('id').ilike('username', username).maybeSingle();
+    if (error) throw error;
+    res.json({ available: !data, reason: data ? 'taken' : null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.get('/me', requireJWT, async (req, res) => {
   try {
     const userId = req.user.id;
     const { data: dbUser, error: lookupErr } = await supabaseAdmin
-      .from('users').select('*, companies!company_id(*)').eq('id', userId).maybeSingle();
+      .from('users').select('*').eq('id', userId).maybeSingle();
 
     // Distinguish "this user genuinely has no row" from "the query failed".
     // The old code destructured only `data`, so ANY query failure looked
@@ -85,7 +156,7 @@ router.get('/me', requireJWT, async (req, res) => {
         const { user, company } = await provisionCompany(req.user);
         return res.json({ user, company });
       }
-      return res.json({ user: dbUser, company: flattenCompany(dbUser.companies) });
+      return res.json({ user: dbUser, company: await activeCompanyFor(dbUser) });
     }
 
     // Genuinely no users row — provision one. provisionCompany() re-checks
@@ -113,30 +184,36 @@ router.post('/complete-profile', requireJWT, async (req, res) => {
     const role = 'company_admin';
     const userId = req.user.id;
 
-    const { data: existing } = await supabaseAdmin
-      .from('users').select('*, companies!company_id(*)').eq('id', userId).single();
-    if (existing && existing.company_id) {
-      return res.json({ user: existing, company: flattenCompany(existing.companies) });
+    // This endpoint was the UNFIXED TWIN of the runaway-company incident: it
+    // used `.single()` (which errors when there is no row), discarded the error,
+    // and then inserted a company + subscription. A double-submitted form or any
+    // transient read failure created another company each time.
+    // maybeSingle + an explicit error check + delegating to the guarded
+    // provisionCompany() removes all three problems.
+    const { data: existing, error: lookupErr } = await supabaseAdmin
+      .from('users').select('*').eq('id', userId).maybeSingle();
+    if (lookupErr) {
+      console.error('[auth/complete-profile] lookup failed — refusing to provision:', lookupErr.message);
+      return res.status(503).json({ error: 'Could not load your profile. Please try again.', code: 'LOOKUP_FAILED' });
+    }
+    if (existing?.company_id) {
+      return res.json({ user: existing, company: await activeCompanyFor(existing) });
     }
 
-    const { data: company, error: companyErr } = await supabaseAdmin
-      .from('companies').insert({ name: company_name || 'My Company' }).select().single();
-    if (companyErr) throw companyErr;
-
-    const { data: user, error: userErr } = await supabaseAdmin
-      .from('users').upsert({
-        id: userId, email: req.user.email,
+    // Carry the names the user just typed into provisioning, then reuse the one
+    // hardened creation path instead of a second, unguarded copy of it.
+    const { user, company } = await provisionCompany({
+      ...req.user,
+      user_metadata: {
+        ...(req.user.user_metadata || {}),
         full_name: full_name || req.user.user_metadata?.full_name || '',
-        company_id: company.id, role,
-      }).select().single();
-    if (userErr) throw userErr;
-
-    await supabaseAdmin.from('subscriptions').insert({
-      company_id: company.id, plan: 'trial', status: 'trialing',
-      ai_credits_total: 8000, ai_credits_used: 0, contacts_limit: 1500,
+        company_name: company_name || req.user.user_metadata?.company_name,
+        username: req.body?.username || req.user.user_metadata?.username,
+      },
     });
+    void role; // role is decided inside provisionCompany (always company_admin)
 
-    res.json({ user, company: flattenCompany(company) });
+    res.json({ user, company });
   } catch (err) {
     console.error('[auth/complete-profile]', err);
     res.status(500).json({ error: err.message });

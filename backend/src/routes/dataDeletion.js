@@ -4,10 +4,20 @@ import { supabaseAdmin } from '../lib/supabase.js';
 const router = Router();
 
 // POST /api/data-deletion — public endpoint (no auth required for GDPR requests)
+// Anyone on the internet can POST here (that is the point — GDPR / platform
+// deletion callbacks are unauthenticated). So the value stored must be a real,
+// single email address: an admin later runs a DELETE keyed off it, and a stored
+// SQL-LIKE wildcard such as "%" would have matched every row in the table.
+const EMAIL_RE = /^[^\s@%_]+@[^\s@%_]+\.[^\s@%_]{2,}$/;
+
 router.post('/', async (req, res) => {
   try {
-    const { email, instagram_username, reason, status = 'pending' } = req.body;
+    const { instagram_username, reason, status = 'pending' } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
     if (!email) return res.status(400).json({ error: 'email is required' });
+    if (email.length > 254 || !EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: 'Provide a single valid email address.' });
+    }
 
     const { data, error } = await supabaseAdmin
       .from('data_deletion_requests')

@@ -214,11 +214,20 @@ router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
     let existingSettings = {};
 
     if (hasApiKeyUpdates || hasSettingsUpdates) {
-      const { data: existing } = await supabaseAdmin
+      const { data: existing, error: readErr } = await supabaseAdmin
         .from('companies')
         .select('api_keys, settings')
         .eq('id', req.companyId)
         .single();
+      // Refuse the write if the read failed. Both columns are merged blobs that
+      // get REPLACED wholesale below, so defaulting to `{}` would turn saving one
+      // settings field into deleting every API key and every other setting.
+      if (readErr) {
+        console.error('[companies/patch] existing settings read failed, refusing to write:', readErr.message);
+        return res.status(503).json({
+          error: 'Could not read your current settings, so nothing was saved. Please try again.',
+        });
+      }
       existingApiKeys = existing?.api_keys || {};
       existingSettings = existing?.settings || {};
     }

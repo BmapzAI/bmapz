@@ -102,12 +102,20 @@ router.patch('/:id', requireAuth, async (req, res) => {
     const { title, status, company_data, report, ...rest } = req.body;
 
     // Fetch existing results to merge into
-    const { data: existing } = await supabaseAdmin
+    const { data: existing, error: readErr } = await supabaseAdmin
       .from('brand_scans')
       .select('results')
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .single();
+
+    // The whole report lives in this one JSONB blob and is replaced below, so
+    // merging onto `{}` after a failed read would wipe a completed scan and
+    // leave only the field being edited. Refuse instead.
+    if (readErr) {
+      console.error('[brandScans/patch] read failed, refusing to write:', readErr.message);
+      return res.status(503).json({ error: 'Could not read the existing scan, so nothing was saved. Please try again.' });
+    }
 
     const existingResults = existing?.results || {};
     const updatedResults = {

@@ -43,11 +43,22 @@ function decodeOAuthState(state) {
  * Fetch a company's api_keys and integration_status in one call.
  */
 async function getCompanyKeys(companyId) {
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('companies')
     .select('api_keys, integration_status')
     .eq('id', companyId)
     .single();
+  // THROW rather than defaulting to {}. Every OAuth write in this file merges
+  // onto this value and then UPDATEs the whole api_keys blob, so returning an
+  // empty object on a failed read made the next write DELETE every stored
+  // credential for that company — Meta, Google, LinkedIn, TikTok, Canva, all of
+  // them — from a single transient database hiccup.
+  if (error) {
+    const err = new Error('Could not read the company integration settings. Nothing was changed.');
+    err.code = 'KEYS_READ_FAILED';
+    err.publicMessage = err.message;
+    throw err;
+  }
   return {
     apiKeys: data?.api_keys || {},
     integrationStatus: data?.integration_status || {},

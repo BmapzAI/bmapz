@@ -399,13 +399,21 @@ export async function enrollLead({ workflowId, companyId, leadId, context = {} }
   if (wf.status !== 'active') throw new Error('Workflow must be active before enrolling leads');
 
   if (leadId) {
-    const { data: existing } = await supabaseAdmin
+    // The "already enrolled" guard must not be able to fail open. maybeSingle()
+    // ERRORS when a lead somehow has two active runs, and the discarded error
+    // meant the guard silently passed and enrolled a THIRD — each new run then
+    // making the next check fail too. .limit(1) plus an explicit error check
+    // keeps the guard closed.
+    const { data: existing, error: guardErr } = await supabaseAdmin
       .from('workflow_runs')
       .select('id')
       .eq('workflow_id', workflowId)
       .eq('lead_id', leadId)
       .eq('status', 'active')
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle();
+    if (guardErr) throw guardErr;
     if (existing) return existing;
   }
 
@@ -483,8 +491,16 @@ export async function handleInboundEvent({ companyId, channel, contactHandle, co
     if (!lead && contactHandle) {
       const isEmail = /@/.test(contactHandle);
       const col = isEmail ? 'email' : 'phone';
-      const { data } = await supabaseAdmin.from('leads').select('*')
-        .eq('company_id', companyId).eq(col, contactHandle).maybeSingle();
+      // .limit(1) is required: maybeSingle() ERRORS on multiple matches, and two
+      // leads sharing a phone/email is ordinary (CSV import duplicates, a
+      // contact who also messages in). Without it the lookup failed and the
+      // block below created a NEW lead for every inbound message from that
+      // person — unbounded duplicate leads from one duplicate contact.
+      const { data, error } = await supabaseAdmin.from('leads').select('*')
+        .eq('company_id', companyId).eq(col, contactHandle)
+        .order('created_at', { ascending: true }).limit(1).maybeSingle();
+      // A failed read must not be read as "no such lead" — that creates data.
+      if (error) throw error;
       lead = data;
     }
     let brandNewLead = false;

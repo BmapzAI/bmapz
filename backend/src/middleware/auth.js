@@ -39,26 +39,31 @@ export async function requireJWT(req, res, next) {
  * every request in the app, so it must not be able to fail on an embed detail.
  */
 export async function loadDbUser(userId) {
-  const { data, error } = await supabaseAdmin
-    .from('users')
-    .select('*, companies!company_id(*)')
-    .eq('id', userId)
-    .single();
-  if (!error && data) return data;
-  if (error) console.error('[auth] embedded company select failed, falling back:', error.message);
-
-  const { data: plain, error: plainErr } = await supabaseAdmin
+  // Deliberately NO PostgREST embed here.
+  //
+  // Two reasons, both learned the hard way:
+  //  1. `users` now has two FKs to `companies` (company_id and, since migration
+  //     021, active_company_id). A bare embed is ambiguous and took the whole
+  //     app down; even a hinted embed can only follow ONE of them.
+  //  2. The company the app must show is the ACTIVE one (what the switcher
+  //     selected), not the home one. An embed hinted at company_id would return
+  //     the wrong company's name, logo and settings for the entire session after
+  //     a switch, while every data query used the active company — mismatched
+  //     branding on top of correct data, which is worse than an error.
+  // Two explicit queries are cheap, unambiguous, and immune to future FKs.
+  const { data: user, error } = await supabaseAdmin
     .from('users').select('*').eq('id', userId).single();
-  if (plainErr || !plain) return null;
+  if (error || !user) return null;
 
-  if (plain.company_id) {
+  const activeCompanyId = user.active_company_id || user.company_id;
+  if (activeCompanyId) {
     const { data: company } = await supabaseAdmin
-      .from('companies').select('*').eq('id', plain.company_id).single();
-    plain.companies = company || null;
+      .from('companies').select('*').eq('id', activeCompanyId).single();
+    user.companies = company || null;
   } else {
-    plain.companies = null;
+    user.companies = null;
   }
-  return plain;
+  return user;
 }
 
 export async function requireAuth(req, res, next) {

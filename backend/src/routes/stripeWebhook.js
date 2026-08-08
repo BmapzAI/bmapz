@@ -77,12 +77,23 @@ router.post('/api/stripe/webhook', async (req, res) => {
         const contactsLimit = PLAN_CONTACTS_MAP[plan] || 1500;
         const scanTokens = PLAN_SCAN_TOKENS[plan] || 0;
 
-        // Upsert subscription
-        const { data: existing } = await supabaseAdmin
+        // Upsert subscription.
+        // .limit(1) + explicit error check: .single() errors both when there is
+        // no row AND when there are two, and the discarded error made all three
+        // outcomes look like "no subscription" → INSERT. Stripe delivers events
+        // at-least-once, so a replayed checkout would then add another row.
+        const { data: existing, error: subReadErr } = await supabaseAdmin
           .from('subscriptions')
           .select('id')
           .eq('company_id', companyId)
-          .single();
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        // Fail the webhook so Stripe RETRIES, rather than writing on a bad read.
+        if (subReadErr) {
+          console.error('[stripe webhook] subscription read failed, asking Stripe to retry:', subReadErr.message);
+          return res.status(503).json({ error: 'subscription read failed' });
+        }
 
         if (existing) {
           await supabaseAdmin.from('subscriptions').update({

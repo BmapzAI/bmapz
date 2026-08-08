@@ -89,11 +89,26 @@ async function identifyUser(fromPhone, messageText) {
   const emailMatch = messageText.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
   if (!emailMatch) return null;
 
-  const { data: user } = await supabaseAdmin
+  // The regex's local-part class allows % and _, which are SQL-LIKE wildcards.
+  // Combined with .ilike() that let anyone texting the business number send
+  // "%@bmapz.com" and be matched as whichever user happened to sort first —
+  // adopting that user's identity and company. Reject wildcards and match
+  // exactly instead.
+  const candidateEmail = emailMatch[1].toLowerCase();
+  if (/[%_]/.test(candidateEmail)) return null;
+
+  const { data: user, error } = await supabaseAdmin
     .from('users')
     .select('id, email, role, company_id')
-    .ilike('email', emailMatch[1])
+    .eq('email', candidateEmail)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
+  // Treat a failed read as "unidentified" rather than letting it fall through.
+  if (error) {
+    console.error('[whatsapp] identify lookup failed:', error.message);
+    return null;
+  }
   if (!user) return null;
 
   return { userId: user.id, companyId: user.company_id, userRole: user.role, email: user.email };

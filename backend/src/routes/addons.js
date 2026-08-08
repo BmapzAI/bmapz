@@ -42,6 +42,25 @@ const ADDONS = {
 export async function grantAddon({ companyId, type, quantity = 1, paymentRef = null, grantedBy = null, provider = 'stripe' }) {
   if (!ADDONS[type]) throw new Error(`Unknown add-on type: ${type}`);
 
+  // IDEMPOTENCY. Stripe delivers webhooks at-least-once, so a replayed
+  // checkout.session.completed would grant the same credit pack again — free
+  // credits for a single payment. The payment reference is the natural key:
+  // if a transaction already recorded it, this grant already happened.
+  if (paymentRef) {
+    const { data: already, error: dupErr } = await supabaseAdmin
+      .from('credit_transactions')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('metadata->>payment_ref', paymentRef)
+      .limit(1)
+      .maybeSingle();
+    if (dupErr) throw dupErr; // never grant on a failed duplicate check
+    if (already) {
+      console.log(`[addons] payment_ref ${paymentRef} already granted — skipping duplicate`);
+      return { success: true, type, quantity, credits_granted: 0, duplicate: true };
+    }
+  }
+
   const { data: sub } = await supabaseAdmin
     .from('subscriptions')
     .select('*')

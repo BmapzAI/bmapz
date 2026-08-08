@@ -49,12 +49,28 @@ async function defaultSdrName(companyId) {
 export async function getSdrAgent(companyId, userId = null) {
   let q = supabaseAdmin.from('sdr_agents').select('*').eq('company_id', companyId);
   q = userId ? q.eq('user_id', userId) : q.is('user_id', null);
-  const { data } = await q.maybeSingle();
+  // .limit(1) matters: maybeSingle() ERRORS when more than one row matches, and
+  // this is a get-or-create — so the first duplicate row would make every later
+  // call fail the read and insert yet another, compounding on every inbound
+  // message. Ordering makes the pick deterministic.
+  const { data, error } = await q.order('created_at', { ascending: true }).limit(1).maybeSingle();
+  // Never create on a failed read: that is how one transient error becomes an
+  // unbounded row count on a path that runs per inbound message.
+  if (error) throw error;
   if (data) return data;
+
   const name = await defaultSdrName(companyId);
-  const { data: created } = await supabaseAdmin.from('sdr_agents')
+  const { data: created, error: insErr } = await supabaseAdmin.from('sdr_agents')
     .insert({ company_id: companyId, user_id: userId, enabled: false, name })
     .select().single();
+  if (insErr) {
+    // Lost a race with a concurrent create — re-read rather than failing.
+    let retry = supabaseAdmin.from('sdr_agents').select('*').eq('company_id', companyId);
+    retry = userId ? retry.eq('user_id', userId) : retry.is('user_id', null);
+    const { data: existing } = await retry.order('created_at', { ascending: true }).limit(1).maybeSingle();
+    if (existing) return existing;
+    throw insErr;
+  }
   return created;
 }
 

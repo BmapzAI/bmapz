@@ -566,6 +566,31 @@ export default function CompanyAdminPanel() {
                 </div>
               </div>
 
+              {/* Upsell path: this tab is where an admin discovers they are
+                  running low, so give them somewhere to go from here. */}
+              <div className="rounded-2xl border border-[#38b6ff]/25 bg-gradient-to-br from-[#3572b9]/10 to-[#cb6ce6]/10 p-5 flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <p className="text-white font-semibold">
+                    {isPt ? 'Precisa de mais capacidade?' : 'Need more capacity?'}
+                  </p>
+                  <p className="text-gray-400 text-sm mt-0.5">
+                    {isPt
+                      ? 'Compare os planos, ou compre créditos, scans e usuários extras.'
+                      : 'Compare plans, or buy extra credits, scans and users.'}
+                  </p>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <Button onClick={() => navigate(createPageUrl('Pricing'))}
+                    className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
+                    <Star size={15} /> {isPt ? 'Ver planos' : 'View plans'}
+                  </Button>
+                  <Button variant="outline" onClick={() => navigate(createPageUrl('Billing'))}
+                    className="border-white/15 text-white hover:bg-white/5 gap-2">
+                    <CreditCard size={15} /> {isPt ? 'Cobrança e add-ons' : 'Billing & add-ons'}
+                  </Button>
+                </div>
+              </div>
+
               <div className="rounded-xl border border-[#38b6ff]/20 bg-[#38b6ff]/5 p-4 flex items-start gap-3">
                 <AlertTriangle size={16} className="text-[#38b6ff] flex-shrink-0 mt-0.5" />
                 <p className="text-[#38b6ff] text-sm">{t('billingInfo')}</p>

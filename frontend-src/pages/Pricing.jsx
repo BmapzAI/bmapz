@@ -5,6 +5,8 @@ import { Check, Zap, ScanLine, Users, Building2, Star, ArrowRight, Loader2 } fro
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { PLANS, formatBRL, ANNUAL_DISCOUNT } from '@/lib/plans';
+import { createPageUrl } from '@/utils';
+import { useAuth } from '@/lib/AuthContext';
 
 import { toast } from 'sonner';
 import { Company } from '@/api/entities';
@@ -107,6 +109,9 @@ function PlanCard({ plan, billing, language, onSelect, current, loading }) {
 
 export default function Pricing() {
   const navigate = useNavigate();
+  // Pricing is reachable both signed-in and signed-out, so add-on links must
+  // branch on that: signed-in goes to Billing, a visitor signs up first.
+  const { isAuthenticated } = useAuth();
   const { language } = useLanguage();
   const isPt = language === 'pt-BR';
   const [billing, setBilling] = useState('monthly');
@@ -188,9 +193,19 @@ export default function Pricing() {
         ))}
       </div>
 
-      {/* Add-ons */}
+      {/* Add-ons — these were static cards nobody could act on. A signed-in
+          user goes straight to Billing where add-ons are actually purchased; a
+          visitor is sent to sign up first, since there is nothing to attach a
+          purchase to yet. */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <h2 className="text-white font-bold text-lg mb-4">{isPt ? 'Add-ons disponíveis' : 'Available Add-ons'}</h2>
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <h2 className="text-white font-bold text-lg">{isPt ? 'Add-ons disponíveis' : 'Available Add-ons'}</h2>
+          <span className="text-gray-500 text-xs">
+            {isAuthenticated
+              ? (isPt ? 'Clique para comprar' : 'Click to purchase')
+              : (isPt ? 'Crie sua conta para comprar' : 'Create an account to purchase')}
+          </span>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { icon: Zap, label: isPt ? 'Pacote de Créditos Extra' : 'Extra Credit Pack', desc: isPt ? 'A partir de R$ 49/pacote' : 'From R$ 49/pack' },
@@ -198,13 +213,18 @@ export default function Pricing() {
             { icon: Users, label: isPt ? 'Usuário Adicional' : 'Extra User', desc: isPt ? 'A partir de R$ 59/mês' : 'From R$ 59/mo' },
             { icon: Building2, label: isPt ? 'Perfil de Empresa' : 'Company Profile', desc: isPt ? 'R$ 750/mês (Enterprise)' : 'R$ 750/mo (Enterprise)' },
           ].map((addon) => (
-            <div key={addon.label} className="flex items-start gap-3 p-3 rounded-xl bg-black/20 border border-white/5">
+            <button
+              key={addon.label}
+              onClick={() => navigate(isAuthenticated ? createPageUrl('Billing') : '/signup')}
+              className="flex items-start gap-3 p-3 rounded-xl bg-black/20 border border-white/5 text-left hover:border-[#38b6ff]/40 hover:bg-black/30 transition-colors group"
+            >
               <addon.icon size={18} className="text-[#38b6ff] flex-shrink-0 mt-0.5" />
-              <div>
+              <div className="min-w-0">
                 <p className="text-white text-sm font-medium">{addon.label}</p>
                 <p className="text-gray-500 text-xs mt-0.5">{addon.desc}</p>
               </div>
-            </div>
+              <ArrowRight size={14} className="text-gray-600 group-hover:text-[#38b6ff] flex-shrink-0 ml-auto mt-0.5 transition-colors" />
+            </button>
           ))}
         </div>
       </div>

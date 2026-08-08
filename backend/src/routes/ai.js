@@ -83,7 +83,18 @@ async function getCompanyPlan(companyId) {
     .limit(1)
     .maybeSingle();
 
-  if (selectErr) console.error('[ai/getCompanyPlan] select error:', selectErr.message);
+  // Refuse to provision on a FAILED read. This runs on every AI call in the
+  // product (chat, SDR replies, the 60s automation and workflow ticks), and the
+  // branch below inserts a subscription when `sub` is null — so a transient
+  // SELECT failure used to mint a duplicate subscription per call. Same shape as
+  // the incident that turned 3 companies into 16; here the blast radius is
+  // larger because the caller frequency is far higher.
+  if (selectErr) {
+    const err = new Error('Could not read your subscription. Please try again in a moment.');
+    err.code = 'PLAN_LOOKUP_FAILED';
+    err.publicMessage = err.message;
+    throw err;
+  }
 
   // Case A: no subscription at all → create a fresh trial sub with credits
   if (!sub) {

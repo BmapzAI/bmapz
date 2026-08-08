@@ -440,7 +440,15 @@ async function getGoogleAdsAccessToken(companyId, company) {
     throw new Error(tokens.error_description || tokens.error || 'Google OAuth token refresh failed. Reconnect Google Ads.');
   }
 
-  const { data: row } = await supabaseAdmin.from('companies').select('api_keys').eq('id', companyId).single();
+  // Read-merge-write over the whole api_keys blob: if the read fails and we
+  // merge onto `{}`, the update DELETES every other stored credential. Skip
+  // persisting rather than wiping — the token below still works for this call.
+  const { data: row, error: readErr } = await supabaseAdmin
+    .from('companies').select('api_keys').eq('id', companyId).single();
+  if (readErr) {
+    console.error('[ads] Google token refresh: api_keys read failed, not persisting:', readErr.message);
+    return tokens.access_token;
+  }
   const apiKeys = row?.api_keys || {};
   await supabaseAdmin.from('companies').update({
     api_keys: {

@@ -7,6 +7,80 @@ const router = Router();
 export const SALES_STATUSES = ['online', 'standby', 'offline'];
 
 // GET /api/users — all users in current company
+// ─── @usernames ──────────────────────────────────────────────────────────────
+// Stored without the leading '@'; case-insensitive unique (migration 024).
+// Used so a company admin can find an existing user to invite, and so teammates
+// can find each other.
+
+const USERNAME_RE = /^[A-Za-z0-9_]{3,30}$/;
+/** Strip a leading @ and normalise for comparison. */
+const normHandle = (v) => String(v || '').trim().replace(/^@+/, '');
+
+// GET /api/users/username-available?username=derek
+// Public-ish but still behind auth: used by profile editing. Signup uses the
+// unauthenticated variant on the auth router.
+router.get('/username-available', requireAuth, async (req, res) => {
+  try {
+    const username = normHandle(req.query.username);
+    if (!USERNAME_RE.test(username)) {
+      return res.json({ available: false, reason: 'invalid', message: '3–30 characters, letters, numbers and underscore only.' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('users').select('id').ilike('username', username).maybeSingle();
+    if (error) throw error;
+    const taken = !!data && data.id !== req.dbUser.id;
+    res.json({ available: !taken, reason: taken ? 'taken' : null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/users/lookup?q=@derek — find a user ANYWHERE on the platform by exact
+// @username, so a company admin can invite someone who already has an account.
+// Deliberately returns only what an inviter needs — never company, role or any
+// other tenant data, so this cannot be used to enumerate another company.
+router.get('/lookup', requireAuth, requireCompanyAdmin, async (req, res) => {
+  try {
+    const username = normHandle(req.query.q);
+    if (!USERNAME_RE.test(username)) return res.json({ data: null });
+    const { data, error } = await supabaseAdmin
+      .from('users').select('id, username, full_name, profile_picture')
+      .ilike('username', username).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.json({ data: null });
+    // Say whether they are ALREADY in this company, without exposing which other
+    // company they belong to if they are not.
+    const { data: mine } = await supabaseAdmin
+      .from('users').select('id').eq('id', data.id).eq('company_id', req.companyId).maybeSingle();
+    res.json({ data: { ...data, already_in_company: !!mine } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/users/search?q=der — find people INSIDE the caller's company only.
+// Company-scoped on purpose: this powers mention pickers and team search, which
+// must never surface users from another company.
+router.get('/search', requireAuth, async (req, res) => {
+  try {
+    const raw = normHandle(req.query.q);
+    if (raw.length < 2) return res.json({ data: [] });
+    // Sanitise before interpolating into PostgREST's .or() grammar.
+    const term = raw.replace(/[,()"*]/g, '').slice(0, 40);
+    if (!term) return res.json({ data: [] });
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select('id, username, full_name, email, profile_picture, role')
+      .eq('company_id', req.companyId)
+      .or(`username.ilike.%${term}%,full_name.ilike.%${term}%,email.ilike.%${term}%`)
+      .limit(20);
+    if (error) throw error;
+    res.json({ data: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/', requireAuth, async (req, res) => {
   try {
     const withSales = 'id, email, full_name, role, created_at, profile_picture, is_sales_team, sales_status, sales_status_updated_at';
@@ -114,14 +188,45 @@ router.get('/me', requireAuth, (req, res) => {
 // PATCH /api/users/me — update own profile
 router.patch('/me', requireAuth, async (req, res) => {
   try {
-    const { full_name, profile_picture } = req.body;
+    const { full_name, profile_picture, username } = req.body;
+    const updates = {};
+    // Only assign fields that were actually sent — the old version always wrote
+    // both, so patching one silently nulled the other.
+    if (full_name !== undefined) updates.full_name = full_name;
+    if (profile_picture !== undefined) updates.profile_picture = profile_picture;
+
+    if (username !== undefined) {
+      const clean = normHandle(username);
+      if (!USERNAME_RE.test(clean)) {
+        return res.status(400).json({ error: 'Username must be 3–30 characters: letters, numbers and underscore only.' });
+      }
+      const { data: clash } = await supabaseAdmin
+        .from('users').select('id').ilike('username', clean).maybeSingle();
+      if (clash && clash.id !== req.dbUser.id) {
+        return res.status(409).json({ error: `@${clean} is already taken.`, code: 'USERNAME_TAKEN' });
+      }
+      updates.username = clean;
+    }
+
+    if (!Object.keys(updates).length) return res.json(req.dbUser);
+
     const { data, error } = await supabaseAdmin
       .from('users')
-      .update({ full_name, profile_picture })
+      .update(updates)
       .eq('id', req.dbUser.id)
       .select()
       .single();
-    if (error) throw error;
+    if (error) {
+      // The unique index is the real authority — a race between two people
+      // claiming the same handle lands here.
+      if (/idx_users_username_lower|duplicate key/i.test(error.message || '')) {
+        return res.status(409).json({ error: 'That username was just taken. Pick another.', code: 'USERNAME_TAKEN' });
+      }
+      if (/users_username_format/i.test(error.message || '')) {
+        return res.status(400).json({ error: 'Username must be 3–30 characters: letters, numbers and underscore only.' });
+      }
+      throw error;
+    }
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

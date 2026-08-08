@@ -520,8 +520,8 @@ router.get('/data-deletion-requests/:id/preview', async (req, res) => {
     if (!email) return res.status(400).json({ error: 'Request has no email' });
 
     const [users, leads] = await Promise.all([
-      supabaseAdmin.from('users').select('id, email, full_name, role, company_id').ilike('email', email),
-      supabaseAdmin.from('leads').select('id, lead_name, email, company_id').ilike('email', email),
+      supabaseAdmin.from('users').select('id, email, full_name, role, company_id').eq('email', email),
+      supabaseAdmin.from('leads').select('id, lead_name, email, company_id').eq('email', email),
     ]);
 
     const leadIds = (leads.data || []).map(l => l.id);
@@ -567,17 +567,30 @@ router.post('/data-deletion-requests/:id/execute', async (req, res) => {
 
     const email = String(reqRow.email || '').trim().toLowerCase();
     if (!email) return res.status(400).json({ error: 'Request has no email' });
+    // Defence in depth: rows predating the intake validation could still hold a
+    // LIKE wildcard, and this endpoint DELETES. Refuse anything that is not a
+    // single plain address rather than trusting what is already stored.
+    if (!/^[^\s@%_]+@[^\s@%_]+\.[^\s@%_]{2,}$/.test(email)) {
+      return res.status(400).json({
+        error: 'This request does not contain a single valid email address and cannot be executed automatically.',
+      });
+    }
 
-    const { data: users } = await supabaseAdmin
-      .from('users').select('id, email, role').ilike('email', email);
+    const { data: users, error: usersErr } = await supabaseAdmin
+      .from('users').select('id, email, role').eq('email', email);
+    if (usersErr) return res.status(503).json({ error: `Could not read users: ${usersErr.message}` });
     if ((users || []).some(u => ['owner', 'system_admin'].includes(u.role))) {
       return res.status(403).json({
         error: 'This email belongs to a platform Owner/System Admin and cannot be erased automatically.',
       });
     }
 
-    const { data: leads } = await supabaseAdmin
-      .from('leads').select('id').ilike('email', email);
+    const { data: leads, error: leadsErr } = await supabaseAdmin
+      .from('leads').select('id').eq('email', email);
+    // Never delete on the strength of a failed read — an errored SELECT returns
+    // no rows, which would otherwise look like "nothing to delete" and mark the
+    // request completed without honouring it.
+    if (leadsErr) return res.status(503).json({ error: `Could not read leads: ${leadsErr.message}` });
     const leadIds = (leads || []).map(l => l.id);
 
     const report = { email, deleted_at: new Date().toISOString(), messages: 0, leads: 0, users: 0, auth_users: 0, errors: [] };
