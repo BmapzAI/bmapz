@@ -1992,3 +1992,86 @@ DELETE is commented out and only touches companies with no users, no granted
 access, no subscription, no leads, no AI outputs and no social posts.
 Also fixed "Invalid Date" on the Admin Panel cards (created_at vs created_date
 again) via fmtDate/fmtTime helpers.
+
+---
+
+### Session 30 — Claude Code (systemic hardening after two incidents)
+
+An 8-lens audit hunted the bug CLASSES behind the last two incidents rather than
+the instances. The verdict: **the pattern was systemic.** Fixed, worst first.
+
+**CRITICAL — remote data destruction, in code I added in session 29.** The public
+GDPR intake accepted any string as `email`; the admin execute path passed it to
+`.ilike()` where `%` is a SQL wildcard, then hard-DELETEd matching leads,
+messages and user accounts. `{"email":"%"}` from anyone on the internet, then one
+admin click, would have deleted the lead and message tables. Intake now validates
+a single real address and rejects `%`/`_`; execute re-validates what is stored
+(older rows could hold a wildcard), matches with `.eq()`, and returns 503 on any
+failed read instead of deleting.
+
+**CRITICAL — "provision on a failed read" existed in four more places**, two far
+hotter than the original:
+ - `ai.js getCompanyPlan` inserted a subscription when the SELECT failed — on
+   EVERY AI call plus two 60-second ticks.
+ - `auth.js /complete-profile` was the untouched twin of the incident.
+ - `sdrEngine.getSdrAgent`, `workflowEngine` inbound-lead lookup and
+   `enrollLead`'s guard used `maybeSingle()` with **no `.limit(1)`** — which
+   ERRORS on multiple matches, so the first duplicate row made every later call
+   fail its read and insert another, compounding per inbound message.
+   **Rule going forward: `maybeSingle()` without `.limit(1)` is a bug whenever
+   duplicates are physically possible.**
+
+**CRITICAL — credential wipe.** `oauth.js getCompanyKeys` returned `{}` on a
+failed read, and every OAuth write merges onto it then REPLACES the whole
+`api_keys` blob — one transient error would delete every stored integration
+credential for that company. Same read-merge-write wipe fixed in the Gmail
+refresh (runs unattended ~hourly), the Google Ads refresh, `PATCH
+/api/companies/current` (a one-field settings save could erase all keys) and the
+brand-scan PATCH (could blank a finished report).
+
+**CRITICAL — billing.** Stripe delivers at-least-once; the subscription lookup
+was `.single()` with the error discarded, so a replay could add a duplicate
+subscription, and `grantAddon` had no idempotency so a replayed add-on payment
+granted the credits twice. `grantAddon` now short-circuits on a repeated
+`payment_ref`, and the webhook returns 503 so Stripe retries rather than writing
+on a bad read.
+
+**HIGH — identity spoofing.** `whatsappWebhook.identifyUser` matched an email
+parsed out of attacker-controlled message text using `.ilike()`, and the regex
+permits `%` — so texting the business number "%@bmapz.com" adopted whichever
+user sorted first, along with their company. Now rejects wildcards, matches
+exactly, and treats a failed read as unidentified.
+
+**Corrected my own 021 hotfix.** The embed hint pointed at `company_id` (home),
+while every data query scopes to `active_company_id` — so after switching, the
+shell would show the WRONG company's name/logo/settings over correct data. The
+company is now resolved from the effective scope with no embed at all, which
+also removes the embed-ambiguity class permanently from the auth path.
+
+**Nearly repeated the mistake, caught it in production verification.** The
+username code wrote `users.username` unconditionally, so deploying before
+migration 024 would have broken new signups. `freeHandle()` now returns null when
+the column is absent, inserts omit the field, and every username endpoint answers
+503 "Run migration 024" instead of 500. **A pending migration must never be able
+to cause an outage.**
+
+**Features:** @usernames + @companynames (migration 024 — case-insensitive
+unique, backfilled from first names / name slugs, chosen at signup, with
+availability / platform-wide lookup / company-scoped search). Company Admin
+subscription tab links to Pricing and Billing; pricing add-on cards link to
+Billing when signed in and signup otherwise. `React.StrictMode` re-enabled
+(dev-only; it surfaces exactly the non-idempotent effects behind both incidents).
+`frontend-package.json` deleted after confirming it was content-identical to
+`package.json` (CRLF vs LF only) and referenced nowhere but this handoff.
+
+#### Still open (NOT done this session)
+- Migration **024** needs running (everything degrades cleanly until then).
+- **Item 7a** — three workflow-template systems: keep the one the live builder
+  uses, remove the rest. Not started.
+- **Item 7b** — migrate legacy AdRecord saved work into the new ad hierarchy,
+  then delete the old system. Not started; needs a data migration, so it must not
+  be rushed.
+- **Item 10** — cross-company isolation hardening and the team-chat review. The
+  audit lens for this had not returned when the session ended; 3 of 5 lenses
+  (isolation, runaway jobs, migration safety) still owe findings.
+- The AI credit-allowance pricing decision.
