@@ -2075,3 +2075,48 @@ Billing when signed in and signup otherwise. `React.StrictMode` re-enabled
   audit lens for this had not returned when the session ended; 3 of 5 lenses
   (isolation, runaway jobs, migration safety) still owe findings.
 - The AI credit-allowance pricing decision.
+
+**Session 30 (cont.) — item 10, cross-company isolation.** All 5 audit lenses
+returned: 73 findings, 12 critical. The switcher itself audited CLEAN — it takes
+only the target id from the client, derives authorisation from the server-loaded
+user row, writes active_company_id only, and is backed by 021's trigger; both
+in-process caches are keyed by companyId (never by user) and invalidated on
+settings writes. What was actually broken:
+
+ - **Tenant leak:** `GET /api/workflows/meta/node-templates` selected the WHOLE
+   node_templates table with no filter, via the service role — every logged-in
+   user of every company received every other company's private workflow
+   templates. Now scoped like its sibling in nodeTemplates.js.
+ - **Tenant transplant:** six PATCH handlers passed `req.body` straight into
+   `.update()`. `.eq('company_id', …)` only constrains WHICH row is updated, not
+   what the SET clause contains — so a client could PATCH its own row with
+   `{"company_id": "<other tenant>"}` and move it, or `{"is_global": true}` to
+   publish a private template platform-wide. New `lib/safeUpdate.js`
+   (`sanitizeUpdate`) strips id/company_id/created_at/created_by/is_global/
+   user_id/owner_id; applied in blog, funnels, seo, dashboardConfigs,
+   nodeTemplates and lead_lists. Deliberately a deny-list, not an allow-list:
+   per-table allow-lists silently drop new fields, and silent write failures
+   have bitten this codebase repeatedly.
+ - **Secret disclosure:** `GET /api/companies/current` is requireAuth only but
+   returned `select('*')` through flattenCompany, which spreads api_keys to the
+   top level — so every ordinary member could read the company's OpenAI,
+   Anthropic, Meta, Google and SMTP credentials. flattenCompany now takes
+   `includeSecrets`; non-admins get `has_<key>` booleans instead of values.
+ - **Cross-company user disclosure:** `PATCH /api/leads/:id` accepted `owner_id`
+   with no membership check (unlike `PATCH /:id/owner`, which validates), and
+   `GET /leads` embeds owner(full_name, email) — so a lead could be assigned to
+   another company's user and their name/email read back. Now validated
+   identically, and it refuses on a failed verification read.
+ - **Switcher draft leak:** `queryClient.clear()` does not touch localStorage,
+   where AI drafts live under un-scoped keys — a strategy generated for company A
+   reappeared in company B after switching. `clearAllPersistentDrafts()` now runs
+   as part of the switch.
+
+Still outstanding from this lens (not yet done): `requireAuth` trusts
+`active_company_id` verbatim rather than re-deriving it from
+accessible_company_ids (the boundary currently rests on 021's trigger alone);
+the admin `accessible_company_ids` branch does not clear `active_company_id`, so
+revoking access from a switched-in user makes the trigger reject the whole
+update; and team-chat/`GET /api/users`/lead-owner membership checks compare the
+target's HOME company against the ACTIVE company, so a switched-in guest cannot
+be added to threads. All three are functional/medium, none is a leak.

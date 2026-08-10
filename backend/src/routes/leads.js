@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { runAIChat } from './ai.js';
 import { logLeadActivity, logLeadChanges, LEAD_ACTIVITY_TYPES } from '../lib/leadActivity.js';
 import { pickNextOwner } from '../lib/leadAssignment.js';
+import { sanitizeUpdate } from '../lib/safeUpdate.js';
 
 const router = Router();
 
@@ -102,7 +103,10 @@ router.patch('/lists/:id', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('lead_lists')
-      .update(req.body)
+      // sanitizeUpdate strips company_id/id: .eq('company_id') limits WHICH row
+      // is updated, not what the SET clause may contain — without this a client
+      // could move its list into another company.
+      .update(sanitizeUpdate(req.body))
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .select()
@@ -276,6 +280,19 @@ router.patch('/:id', requireAuth, async (req, res) => {
     const patch = pickLeadFields(req.body);
     // A lead has exactly one owner; stamp when that ownership changed.
     if ('owner_id' in patch && patch.owner_id !== before?.owner_id) {
+      // Validate the target the same way PATCH /:id/owner does. Without this,
+      // owner_id could be set to a user in ANOTHER company — and because
+      // GET /leads embeds owner(id, full_name, email, profile_picture), that
+      // user's name and email would then be read back by this company.
+      if (patch.owner_id) {
+        const { data: owner, error: ownerErr } = await supabaseAdmin
+          .from('users').select('id, company_id')
+          .eq('id', patch.owner_id).maybeSingle();
+        if (ownerErr) return res.status(503).json({ error: 'Could not verify the owner. Nothing was saved.' });
+        if (!owner || owner.company_id !== req.companyId) {
+          return res.status(400).json({ error: 'That user is not part of this company' });
+        }
+      }
       patch.owner_assigned_at = patch.owner_id ? new Date().toISOString() : null;
     }
 

@@ -13,8 +13,29 @@ import { useState, useEffect, useCallback } from 'react';
  * Entries older than maxAgeMs are ignored (and cleaned up) so stale generations
  * don't resurface weeks later.
  */
-const PREFIX = 'bmapz_draft:';
+export const DRAFT_PREFIX = 'bmapz_draft:';
+const PREFIX = DRAFT_PREFIX;
 const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+/**
+ * Remove every persisted draft. Called when the active company changes: these
+ * live in localStorage, which queryClient.clear() does NOT touch, so without
+ * this a strategy generated for company A would reappear in company B's Ads
+ * page after switching — a cross-company content leak.
+ */
+export function clearAllPersistentDrafts() {
+  try {
+    const doomed = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(PREFIX)) doomed.push(k);
+    }
+    doomed.forEach(k => localStorage.removeItem(k));
+    return doomed.length;
+  } catch {
+    return 0; // private mode / storage disabled
+  }
+}
 
 export function usePersistentDraft(key, initialValue = null, { maxAgeMs = DEFAULT_MAX_AGE_MS } = {}) {
   const storageKey = `${PREFIX}${key}`;

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
 import { useAuth } from '@/lib/AuthContext';
 import { useLanguage } from '@/components/ui/LanguageContext';
+import { clearAllPersistentDrafts } from '@/lib/usePersistentDraft';
 
 /**
  * Account switcher — lets a user who can reach more than one company move
@@ -47,6 +48,10 @@ export default function AccountSwitcher({ collapsed = false }) {
       // cache rather than invalidating individual keys, so no record from the
       // old scope can survive the switch.
       queryClient.clear();
+      // queryClient.clear() does NOT touch localStorage, where generated AI
+      // drafts are kept. Without this, a strategy generated for the previous
+      // company would reappear in this one.
+      clearAllPersistentDrafts();
       toast.success(isPt ? `Agora em ${target.name}` : `Now in ${target.name}`);
       // Full reload guarantees every provider (auth, company, language) re-reads
       // under the new scope.

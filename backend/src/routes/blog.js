@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { sanitizeUpdate } from '../lib/safeUpdate.js';
 
 const router = Router();
 
@@ -56,7 +57,9 @@ router.patch('/:id', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('blog_posts')
-      .update(req.body)
+      // sanitizeUpdate strips company_id/id/is_global: .eq('company_id') limits
+      // WHICH row is updated, not what the SET clause may contain.
+      .update(sanitizeUpdate(req.body))
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .select()

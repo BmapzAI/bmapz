@@ -91,14 +91,38 @@ const SETTINGS_FIELDS = new Set([
  * Flatten a company row: spread api_keys and settings JSONB into top-level keys
  * so the frontend can read company.openai_api_key etc. transparently.
  */
-function flattenCompany(row) {
+/**
+ * Flatten a company row for the client.
+ *
+ * `includeSecrets` MUST be false for anyone who is not a company admin. This
+ * used to always spread api_keys to the top level, so GET /companies/current —
+ * gated by requireAuth only — handed every ordinary member of a company its
+ * OpenAI/Anthropic/Meta/Google/SMTP credentials. Non-admins now get presence
+ * booleans instead of values, so the UI can still show "connected" without the
+ * secret being on the wire.
+ */
+const SECRET_KEY_RE = /(_api_key|_secret|_token|_password|refresh_token)$/i;
+
+function flattenCompany(row, { includeSecrets = false } = {}) {
   if (!row) return row;
   const { api_keys, settings, ...rest } = row;
-  return {
-    ...rest,
-    ...(api_keys || {}),
-    ...(settings || {}),
-  };
+  const keys = api_keys || {};
+
+  if (includeSecrets) {
+    return { ...rest, ...keys, ...(settings || {}) };
+  }
+
+  const safe = {};
+  for (const [k, v] of Object.entries(keys)) {
+    if (SECRET_KEY_RE.test(k)) {
+      // Presence only — never the value.
+      safe[`has_${k}`] = !!(v && String(v).trim());
+    } else {
+      // Non-secret config (chosen provider, model names, account ids…) is fine.
+      safe[k] = v;
+    }
+  }
+  return { ...rest, ...safe, ...(settings || {}) };
 }
 
 // GET /api/companies/current
@@ -184,7 +208,9 @@ router.get('/current', requireAuth, async (req, res) => {
       .eq('id', req.companyId)
       .single();
     if (error) throw error;
-    res.json(flattenCompany(data));
+    // requireAuth only — an ordinary member must not receive credentials.
+    const isAdmin = ['owner', 'system_admin', 'company_admin'].includes(req.dbUser?.role);
+    res.json(flattenCompany(data, { includeSecrets: isAdmin }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -242,7 +268,7 @@ router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
         .select('*')
         .eq('id', req.companyId)
         .single();
-      return res.json(flattenCompany(current));
+      return res.json(flattenCompany(current, { includeSecrets: true }));
     }
 
     const { data, error } = await supabaseAdmin
@@ -255,7 +281,9 @@ router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
     if (error) throw error;
     invalidateCompanyBrain(req.companyId);
     if (hasApiKeyUpdates) invalidateAISettingsCache(req.companyId);
-    res.json(flattenCompany(data));
+    // This route is requireCompanyAdmin, and the settings UI needs the values
+    // back to keep showing what is saved.
+    res.json(flattenCompany(data, { includeSecrets: true }));
   } catch (err) {
     console.error('[companies/patch]', err.message);
     res.status(500).json({ error: err.message });
