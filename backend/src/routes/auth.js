@@ -91,12 +91,20 @@ async function provisionCompany(authUser) {
     .select().single();
   if (companyErr) throw companyErr;
 
-  // A username chosen at signup wins; otherwise derive one from the first name.
+  // KEEP an existing username. This path also serves a user who has a users row
+  // but no company, and the upsert below resolves to an UPDATE for them. Two
+  // problems if we always computed a fresh handle: freeHandle sees their OWN
+  // username as taken and returns `name2`, silently RENAMING them; and since
+  // migration 027 that counts as a change, so if they had changed it within 90
+  // days the trigger would reject the whole upsert and provisioning would fail.
+  // A handle is only ASSIGNED when there isn't one.
   const desiredUsername = meta.username ? slugHandle(meta.username, '') : '';
-  const userHandle = await freeHandle(
-    'users', 'username',
-    desiredUsername || slugHandle(String(fullName).split(' ')[0], slugHandle(authUser.email.split('@')[0], 'user')),
-  );
+  const userHandle = current?.username
+    ? null                                     // already has one — leave it alone
+    : await freeHandle(
+      'users', 'username',
+      desiredUsername || slugHandle(String(fullName).split(' ')[0], slugHandle(authUser.email.split('@')[0], 'user')),
+    );
 
   // A new customer becomes 'company_admin' — the TOP role for a customer
   // workspace (full control of their own company + team). 'owner' and
