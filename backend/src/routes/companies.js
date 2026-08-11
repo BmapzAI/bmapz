@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
 import { invalidateCompanyBrain } from '../lib/companyBrain.js';
 import { invalidateAISettingsCache } from './ai.js';
+import { daysUntilHandleChange } from './users.js';
 
 const router = Router();
 
@@ -138,13 +139,13 @@ const PLATFORM_ROLES = new Set(['owner', 'system_admin']);
 async function listSwitchableCompanies(dbUser) {
   if (PLATFORM_ROLES.has(dbUser.role)) {
     const { data } = await supabaseAdmin
-      .from('companies').select('id, name, logo_url, industry').order('name', { ascending: true });
+      .from('companies').select('id, name, handle, logo_url, industry').order('name', { ascending: true });
     return data || [];
   }
   const ids = [dbUser.company_id, ...(dbUser.accessible_company_ids || [])].filter(Boolean);
   if (!ids.length) return [];
   const { data } = await supabaseAdmin
-    .from('companies').select('id, name, logo_url, industry')
+    .from('companies').select('id, name, handle, logo_url, industry')
     .in('id', [...new Set(ids)])
     .order('name', { ascending: true });
   return data || [];
@@ -195,6 +196,80 @@ router.post('/switch', requireAuth, async (req, res) => {
     // clear — but the switched-to company's data must be read fresh.
     const company = allowed.find(c => c.id === target);
     res.json({ success: true, active_company_id: target, company });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/companies/handle — change the @companyname.
+// Kept OFF the generic settings PATCH deliberately: it is an identity with a
+// 90-day cooldown (migration 027) and a case-insensitive uniqueness constraint,
+// so it needs its own validation and its own error messages.
+router.patch('/handle', requireAuth, requireCompanyAdmin, async (req, res) => {
+  try {
+    const clean = String(req.body?.handle || '').trim().replace(/^@+/, '');
+    if (!/^[A-Za-z0-9_]{3,30}$/.test(clean)) {
+      return res.status(400).json({ error: 'Company handle must be 3–30 characters: letters, numbers and underscore only.' });
+    }
+
+    const { data: company, error: readErr } = await supabaseAdmin
+      .from('companies').select('id, handle, handle_changed_at').eq('id', req.companyId).single();
+    if (readErr) return res.status(503).json({ error: 'Could not read the company. Nothing was changed.' });
+
+    // Same handle in different case is not a change — don't spend the allowance.
+    if (String(company.handle || '').toLowerCase() !== clean.toLowerCase()) {
+      const remaining = daysUntilHandleChange(company.handle_changed_at);
+      if (remaining > 0) {
+        return res.status(429).json({
+          error: `The company handle can be changed again in ${remaining} day${remaining === 1 ? '' : 's'}.`,
+          code: 'HANDLE_COOLDOWN',
+          days_remaining: remaining,
+        });
+      }
+      const { data: clash, error: clashErr } = await supabaseAdmin
+        .from('companies').select('id').ilike('handle', clean).limit(1).maybeSingle();
+      if (clashErr) return res.status(503).json({ error: 'Could not check that handle. Nothing was changed.' });
+      if (clash && clash.id !== req.companyId) {
+        return res.status(409).json({ error: `@${clean} is already taken.`, code: 'HANDLE_TAKEN' });
+      }
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('companies').update({ handle: clean }).eq('id', req.companyId).select().single();
+    if (error) {
+      if (/idx_companies_handle_lower|duplicate key/i.test(error.message || '')) {
+        return res.status(409).json({ error: 'That handle was just taken. Pick another.', code: 'HANDLE_TAKEN' });
+      }
+      if (/once every 90 days/i.test(error.message || '')) {
+        return res.status(429).json({ error: error.message, code: 'HANDLE_COOLDOWN' });
+      }
+      if (/handle|column|does not exist/i.test(error.message || '')) {
+        return res.status(503).json({ error: 'Run migrations 024 and 027 to enable company handles.' });
+      }
+      throw error;
+    }
+    invalidateCompanyBrain(req.companyId);
+    res.json(flattenCompany(data, { includeSecrets: true }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/companies/handle-available?handle=acme
+router.get('/handle-available', requireAuth, async (req, res) => {
+  try {
+    const clean = String(req.query.handle || '').trim().replace(/^@+/, '');
+    if (!/^[A-Za-z0-9_]{3,30}$/.test(clean)) return res.json({ available: false, reason: 'invalid' });
+    const { data, error } = await supabaseAdmin
+      .from('companies').select('id').ilike('handle', clean).limit(1).maybeSingle();
+    if (error) {
+      if (/handle|column|does not exist/i.test(error.message || '')) {
+        return res.status(503).json({ available: false, reason: 'unavailable', error: 'Run migration 024 to enable company handles.' });
+      }
+      throw error;
+    }
+    const taken = !!data && data.id !== req.companyId;
+    res.json({ available: !taken, reason: taken ? 'taken' : null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

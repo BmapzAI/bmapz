@@ -42,6 +42,8 @@ Recent leads (${recentLeads.length}): ${recentLeads.map(l => `${l.lead_company_n
     setAnalyzing(true);
     try {
       const response = await InvokeLLM({
+        action: 'workflow_optimize',
+        archiveTitle: 'Workflow optimization suggestions',
         prompt: `You are an expert sales automation strategist. Analyze this workflow and provide actionable optimization suggestions.
 
 ${buildContext()}
@@ -133,6 +135,8 @@ Return JSON array of suggestions with:
     try {
       const fileUrls = uploadedFiles.map(f => f.url);
       const response = await InvokeLLM({
+        action: 'workflow_build',
+        archiveTitle: `Workflow build — ${prompt?.slice(0, 60) || 'from file'}`,
         prompt: `You are a workflow automation expert. Build a sales/marketing workflow based on this request: "${prompt || 'based on the provided image/file'}"
 ${aiContext ? `\nAdditional context from user: ${aiContext}` : ''}
 Context: ${buildContext()}

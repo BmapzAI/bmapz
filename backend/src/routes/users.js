@@ -16,6 +16,21 @@ const USERNAME_RE = /^[A-Za-z0-9_]{3,30}$/;
 /** Strip a leading @ and normalise for comparison. */
 const normHandle = (v) => String(v || '').trim().replace(/^@+/, '');
 
+/**
+ * A handle may change once every 90 days — it is an identity other people learn,
+ * mention and search by, so it must not churn. Returns days remaining, 0 if the
+ * change is allowed now. Enforced for real by the trigger in migration 027; this
+ * is only so the UI can explain the wait instead of surfacing a DB error.
+ */
+export const HANDLE_COOLDOWN_DAYS = 90;
+export function daysUntilHandleChange(changedAt) {
+  if (!changedAt) return 0;                    // never changed → free change
+  const elapsedMs = Date.now() - new Date(changedAt).getTime();
+  if (Number.isNaN(elapsedMs)) return 0;
+  const remainingMs = HANDLE_COOLDOWN_DAYS * 86400_000 - elapsedMs;
+  return remainingMs <= 0 ? 0 : Math.ceil(remainingMs / 86400_000);
+}
+
 // GET /api/users/username-available?username=derek
 // Public-ish but still behind auth: used by profile editing. Signup uses the
 // unauthenticated variant on the auth router.
@@ -221,12 +236,30 @@ router.patch('/me', requireAuth, async (req, res) => {
       if (!USERNAME_RE.test(clean)) {
         return res.status(400).json({ error: 'Username must be 3–30 characters: letters, numbers and underscore only.' });
       }
-      const { data: clash } = await supabaseAdmin
-        .from('users').select('id').ilike('username', clean).maybeSingle();
-      if (clash && clash.id !== req.dbUser.id) {
-        return res.status(409).json({ error: `@${clean} is already taken.`, code: 'USERNAME_TAKEN' });
+      // Changing to the same handle (different case) is a no-op, not a change —
+      // don't burn the 90-day allowance on it.
+      const current = String(req.dbUser.username || '');
+      if (current.toLowerCase() === clean.toLowerCase()) {
+        updates.username = clean;
+      } else {
+        // Pre-check the cooldown so the user gets a friendly message; the DB
+        // trigger (migration 027) is the real authority and rejects regardless.
+        const remaining = daysUntilHandleChange(req.dbUser.username_changed_at);
+        if (remaining > 0) {
+          return res.status(429).json({
+            error: `You can change your username again in ${remaining} day${remaining === 1 ? '' : 's'}.`,
+            code: 'USERNAME_COOLDOWN',
+            days_remaining: remaining,
+          });
+        }
+        const { data: clash, error: clashErr } = await supabaseAdmin
+          .from('users').select('id').ilike('username', clean).limit(1).maybeSingle();
+        if (clashErr) return res.status(503).json({ error: 'Could not check that username. Nothing was changed.' });
+        if (clash && clash.id !== req.dbUser.id) {
+          return res.status(409).json({ error: `@${clean} is already taken.`, code: 'USERNAME_TAKEN' });
+        }
+        updates.username = clean;
       }
-      updates.username = clean;
     }
 
     if (!Object.keys(updates).length) return res.json(req.dbUser);
@@ -242,6 +275,11 @@ router.patch('/me', requireAuth, async (req, res) => {
       // claiming the same handle lands here.
       if (/idx_users_username_lower|duplicate key/i.test(error.message || '')) {
         return res.status(409).json({ error: 'That username was just taken. Pick another.', code: 'USERNAME_TAKEN' });
+      }
+      // The migration-027 trigger is the real authority on the cooldown; pass
+      // its message through rather than showing a raw database error.
+      if (/once every 90 days/i.test(error.message || '')) {
+        return res.status(429).json({ error: error.message, code: 'USERNAME_COOLDOWN' });
       }
       if (/users_username_format/i.test(error.message || '')) {
         return res.status(400).json({ error: 'Username must be 3–30 characters: letters, numbers and underscore only.' });

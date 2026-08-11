@@ -85,7 +85,13 @@ export default function AccountSwitcher({ collapsed = false }) {
         </div>
         <div className="min-w-0">
           <p className="text-white text-sm font-medium truncate">{active.name}</p>
-          {dbUser?.role && <p className="text-white/40 text-[11px] capitalize truncate">{dbUser.role.replace(/_/g, ' ')}</p>}
+          {/* Single-company users still see the @companyname — it is how the
+              company is referred to across the platform. */}
+          <p className="text-white/40 text-[11px] truncate">
+            {active.handle
+              ? <span className="text-[#38b6ff]/80">@{active.handle}</span>
+              : (dbUser?.role ? <span className="capitalize">{dbUser.role.replace(/_/g, ' ')}</span> : null)}
+          </p>
         </div>
       </div>
     );

@@ -213,7 +213,12 @@ export default function Sidebar({ open, collapsed, onNavigate }) {
               <UserAvatar user={dbUser} size={36} />
               <div className="min-w-0 flex-1">
                 <p className="text-white text-sm font-medium truncate">{dbUser.full_name || dbUser.email}</p>
-                <p className="text-white/40 text-xs truncate">{dbUser.email}</p>
+                {/* The @username is the platform identifier, so it takes the
+                    email's place here. Falls back to the email for anyone who
+                    somehow has no handle yet. */}
+                <p className="text-white/40 text-xs truncate">
+                  {dbUser.username ? `@${dbUser.username}` : dbUser.email}
+                </p>
               </div>
             </Link>
           )

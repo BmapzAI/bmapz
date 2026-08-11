@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { InvokeLLM } from '@/api/integrations';
 import { api } from '@/api/apiClient';
 import { SocialPost } from '@/api/entities';
+import { usePersistentDraft } from '@/lib/usePersistentDraft';
 
 const PLATFORMS = [
   { value: 'instagram', label: 'Instagram', color: '#E1306C', icon: '📸' },
@@ -19,7 +20,8 @@ const PLATFORMS = [
 
 export default function SocialPerformanceTab({ company, selectedPlatforms, setSelectedPlatforms, posts = [] }) {
   const [isOptimizing, setIsOptimizing] = useState(false);
-  const [boostInsights, setBoostInsights] = useState(null);
+  // Kept in place until re-run — see usePersistentDraft.
+  const [boostInsights, setBoostInsights] = usePersistentDraft('social:boostInsights', null);
 
   const integrationStatus = company?.integration_status || {};
 
@@ -83,6 +85,8 @@ export default function SocialPerformanceTab({ company, selectedPlatforms, setSe
     setIsOptimizing(true);
     try {
       const response = await InvokeLLM({
+        action: 'social_performance',
+        archiveTitle: 'Social boosting recommendations',
         prompt: `You are a social media expert. Analyze these published posts and give boosting recommendations.
 
 Company: ${company?.name || 'Unknown'}

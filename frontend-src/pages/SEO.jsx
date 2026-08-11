@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Company, SEOAnalysis } from '@/api/entities';
+import { usePersistentDraft } from '@/lib/usePersistentDraft';
 
 const PLAIN_ENGLISH_LABELS = {
   title_tag: {
@@ -156,7 +157,9 @@ export default function SEO() {
   const [url, setUrl] = useState('');
   const [scanType, setScanType] = useState('page');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [results, setResults] = useState(null);
+  // The analysis stays on screen until a new one is run — leaving the page and
+  // coming back no longer throws it away (and no longer costs another run).
+  const [results, setResults, resultsDraft] = usePersistentDraft('seo:results', null);
   const [expandedChecklist, setExpandedChecklist] = useState(null);
   const [expandedIssue, setExpandedIssue] = useState(null);
   const [aiUnavailable, setAiUnavailable] = useState(false);
@@ -249,7 +252,15 @@ Based on your knowledge of the URL and best practices, return a JSON object with
 }
 Be realistic and specific based on what you know about the URL. If it's an HTTPS URL, set https: true. If it's a well-known site, use your knowledge about their SEO. Provide at least 3 top_issues and 3 quick_wins.`;
 
-      const res = await api.post('/api/ai/chat', { messages: [{ role: 'user', content: seoPrompt }], response_format: { type: 'json_object' } }).then(r => JSON.parse(r.content));
+      // `action` does two things: routes the model tier, and files the result in
+      // the AI Outputs archive (ARCHIVE_CATEGORY_BY_ACTION in routes/ai.js).
+      // Without it an SEO analysis was archived nowhere.
+      const res = await api.post('/api/ai/chat', {
+        messages: [{ role: 'user', content: seoPrompt }],
+        response_format: { type: 'json_object' },
+        action: 'seo_plan',
+        archive_title: `SEO analysis — ${normalizedUrl}`,
+      }).then(r => JSON.parse(r.content));
       const response = res;
       if (response.error) throw new Error(response.error);
       const analysisResult = { ...response, url: normalizedUrl, scanType, analyzed_at: new Date().toISOString() };
@@ -386,6 +397,19 @@ Be realistic and specific based on what you know about the URL. If it's an HTTPS
       {/* Results */}
       {results && (
         <div className="space-y-6">
+          {/* Say the analysis was kept, so a restored result never reads as a
+              stale bug, and give a way to clear it. */}
+          {resultsDraft?.savedAt && (
+            <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-[#38b6ff]/5 border border-[#38b6ff]/20">
+              <p className="text-[#38b6ff] text-xs">
+                Analysis kept from <span className="text-gray-400">{new Date(resultsDraft.savedAt).toLocaleString()}</span>
+                {results.url ? <span className="text-gray-400"> · {results.url}</span> : null}
+              </p>
+              <button onClick={resultsDraft.clear} className="text-gray-400 hover:text-white text-xs underline flex-shrink-0">
+                Clear
+              </button>
+            </div>
+          )}
           {/* Score Cards */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {[

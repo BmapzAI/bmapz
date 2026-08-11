@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Company, Workflow, WorkflowRun } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
+import { usePersistentDraft } from '@/lib/usePersistentDraft';
 
 const COLORS = ['#38b6ff', '#cb6ce6', '#22c55e', '#ef4444', '#f59e0b'];
 
@@ -32,7 +33,9 @@ export default function WorkflowAnalytics() {
   const [channelDateRange, setChannelDateRange] = useState('30');
   const [selectedChannels, setSelectedChannels] = useState(['email', 'linkedin', 'whatsapp', 'instagram']);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [aiInsights, setAiInsights] = useState(null);
+  // Kept in place until re-run, so leaving the page does not discard the
+  // analysis (or force paying for another one).
+  const [aiInsights, setAiInsights] = usePersistentDraft('workflowAnalytics:insights', null);
   const [channelStats, setChannelStats] = useState(null);
   const [channelStatsLoading, setChannelStatsLoading] = useState(false);
 
@@ -129,6 +132,8 @@ export default function WorkflowAnalytics() {
         instagram: channelStats?.instagram || {},
       };
       const response = await InvokeLLM({
+        action: 'workflow_optimize',
+        archiveTitle: 'Workflow performance analysis',
         prompt: `As a workflow and marketing automation optimization expert, analyze this performance data:
         
 ${JSON.stringify(analysisData, null, 2)}

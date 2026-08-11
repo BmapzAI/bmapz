@@ -25,7 +25,11 @@ export default function CompanySwitcherMenu({ companies, activeId, active, initi
             <>
               <div className="min-w-0 flex-1 text-left">
                 <p className="text-white text-sm font-medium truncate">{active?.name}</p>
+                {/* The @companyname sits right next to the name — it is the
+                    company's identifier on the platform. */}
                 <p className="text-white/40 text-[11px] truncate">
+                  {active?.handle ? <span className="text-[#38b6ff]/80">@{active.handle}</span> : null}
+                  {active?.handle ? ' · ' : ''}
                   {isPt ? `${companies.length} empresas` : `${companies.length} companies`}
                 </p>
               </div>
@@ -50,7 +54,10 @@ export default function CompanySwitcherMenu({ companies, activeId, active, initi
             className="text-white focus:bg-white/10 cursor-pointer gap-2"
           >
             <Building2 size={14} className="text-[#38b6ff] flex-shrink-0" />
-            <span className="flex-1 truncate">{c.name}</span>
+            <span className="flex-1 min-w-0 truncate">
+              {c.name}
+              {c.handle && <span className="text-white/40 text-[11px] ml-1.5">@{c.handle}</span>}
+            </span>
             {switching === c.id
               ? <Loader2 size={13} className="animate-spin text-gray-400" />
               : c.id === activeId && <Check size={14} className="text-green-400" />}

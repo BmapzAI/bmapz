@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import { Company } from '@/api/entities';
 import { UploadFile } from '@/api/integrations';
+import HandleEditor from '@/components/profile/HandleEditor';
 
 export default function Profile() {
   const { t, isPt } = useLanguage();
@@ -47,7 +48,7 @@ export default function Profile() {
     loadUser();
   }, []);
 
-  const { data: companies = [] } = useQuery({
+  const { data: companies = [], refetch: refetchCompanies } = useQuery({
     queryKey: ['companies'],
     queryFn: () => Company.list(),
   });
@@ -171,9 +172,14 @@ export default function Profile() {
               </button>
             </div>
             
-            <div className="flex-1 pb-2">
+            <div className="flex-1 pb-2 min-w-0">
               <h2 className="text-xl font-bold text-white z-10 relative">{user?.full_name || 'User'}</h2>
-              <p className="text-gray-400">{user?.email}</p>
+              {/* The @username is the identifier inside the platform, so it
+                  leads; the email is secondary. */}
+              {user?.username
+                ? <p className="text-[#38b6ff] font-medium truncate">@{user.username}</p>
+                : null}
+              <p className="text-gray-500 text-sm truncate">{user?.email}</p>
             </div>
 
             <div className={`px-4 py-1.5 rounded-full bg-gradient-to-r ${accessLevelColors[user?.access_level || 'user']} text-white text-sm font-medium`}>
@@ -189,12 +195,52 @@ export default function Profile() {
                 flex items-center justify-center">
                 <Building2 size={24} className="text-[#38b6ff]" />
               </div>
-              <div>
-                <p className="font-semibold text-white">{company.name}</p>
+              <div className="min-w-0">
+                <p className="font-semibold text-white truncate">
+                  {company.name}
+                  {company.handle && <span className="text-[#38b6ff] font-normal ml-2">@{company.handle}</span>}
+                </p>
                 <p className="text-gray-400 text-sm capitalize">{company.subscription_tier || 'Basic'} Plan</p>
               </div>
             </div>
           )}
+
+          {/* Identity: the @handles other people use to find you */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <HandleEditor
+              label={isPt ? 'Seu @username' : 'Your @username'}
+              value={user?.username}
+              changedAt={user?.username_changed_at}
+              checkPath="/api/users/username-available"
+              checkParam="username"
+              hint={isPt
+                ? 'Como colegas te encontram e mencionam na plataforma.'
+                : 'How teammates find and mention you on the platform.'}
+              onSave={async (clean) => {
+                // PATCH /users/me is the same endpoint the rest of this page
+                // uses; it validates the handle and enforces the cooldown.
+                const updated = await api.patch('/api/users/me', { username: clean });
+                setUser((prev) => ({ ...prev, ...updated }));
+              }}
+            />
+            {company && (
+              <HandleEditor
+                label={isPt ? '@companyname' : '@companyname'}
+                value={company.handle}
+                changedAt={company.handle_changed_at}
+                checkPath="/api/companies/handle-available"
+                checkParam="handle"
+                canEdit={['owner', 'system_admin', 'company_admin'].includes(user?.role)}
+                hint={isPt
+                  ? 'Identificador da empresa. Só administradores podem alterar.'
+                  : "The company's identifier. Only admins can change it."}
+                onSave={async (clean) => {
+                  await api.patch('/api/companies/handle', { handle: clean });
+                  await refetchCompanies();
+                }}
+              />
+            )}
+          </div>
 
           {/* Form */}
           <div className="space-y-4">
