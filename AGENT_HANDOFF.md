@@ -2234,3 +2234,76 @@ aliases, take column names from the migrations, never from the frontend payload.
 **7a `node_templates`:** kept, per Derek. Maintenance cost today is zero — no code
 references it any more; it is an unused table. Flag it only if it starts appearing
 in backups/costs.
+
+---
+
+### Session 33 — Claude Code (items 3 → 1 → 2)
+
+**Item 3 — every AI result now persists in place and reaches the archive.**
+SEO was the named gap and had both problems: it called `/api/ai/chat` with no
+`action` (archived nowhere) and held results in plain `useState` (leaving the page
+threw the analysis away and forced paying for another). Now tagged `seo_plan`,
+persisted via `usePersistentDraft`, with a "kept from …" note + Clear so a
+restored result never reads as a stale bug. Same treatment for WorkflowAnalytics
+and WorkflowAIPanel (`workflow_optimize` / `workflow_build`) and
+SocialPerformanceTab (`social_performance`), with their insights persisted too.
+Still deliberately NOT archived: Design (App-Owner-only secret), BrandScan (own
+table + report UI), Dashboards custom-metric prompt (configuration, not content).
+
+**Item 1 — @username / @companyname are the platform identifiers.**
+Migration 027 adds `username_changed_at` / `handle_changed_at` and enforces the
+90-day cooldown in a TRIGGER, so no code path — including a service-role write —
+can bypass it. First assignment is not a "change", so everyone gets one free
+change after 024. Backend pre-checks the cooldown for a friendly 429 with
+`days_remaining` and translates the trigger's error; changing case only is not
+treated as a change so it does not burn the allowance. New `PATCH
+/api/companies/handle` + `GET /handle-available`, kept off the generic settings
+PATCH because a handle needs its own validation. Cooldown maths unit-tested 7/7.
+UI: `components/profile/HandleEditor.jsx` (live case-insensitive availability, an
+inline lock with days remaining, admin-only for the company handle). `@username`
+replaces the email in the sidebar and leads over it in the profile;
+`@companyname` sits beside the company name in the switcher and profile.
+
+**Item 2 — data-protection hardening.** Finished the audit's remaining findings:
+ - **Crash:** `GET /api/ai/diagnose` had no try/catch while its awaits can reject
+   → unhandled rejection can kill the process. Wrapped.
+ - **Duplicate work / double spend:** the automation tick's claim was
+   unconditional and unchecked, so two workers could run the same automation
+   every minute. Now a compare-and-swap on the value that was read.
+ - **Duplicate public posts:** social publish had no already-published check and
+   re-posted to platforms that had already succeeded on a retry. Now refuses,
+   skips, and MERGES per-platform ids instead of replacing them.
+ - **Untrackable live ads:** `adPublisher.mark()` discarded the error on the write
+   that persists `external_id` — the thing that makes publishing idempotent — so
+   a failure left a live campaign with no local record and the next publish
+   duplicated it. Failures now surface as `persistence_warnings` with the ids.
+ - **Webhook replay:** WhatsApp had no idempotency; a replayed delivery duplicated
+   messages, leads and a paid AI reply. Now keyed on Meta's `message.id`.
+ - **Cost runaway:** the SDR loop had no turn cap and resent the whole history
+   each turn (quadratic tokens). 40-turn cap that hands over to a human, and only
+   a 20-turn window goes to the model.
+ - **Unbounded queries:** capped `/leads/bulk` (1000) and `/workflows/:id/enroll`
+   (500); limited all seven metrics queries, which previously pulled a company's
+   entire history including full message bodies on every dashboard load, and
+   dropped the unused `content` column from that select.
+
+**Migration 028 makes the anti-duplication guarantees durable.** Check-then-insert
+is always racy; unique indexes are not. Adds them on
+`messages(platform_message_id)`, `credit_transactions` payment_ref, active
+`workflow_runs(workflow_id, lead_id)`, `sdr_agents(company_id, user_id)` + its
+company default, and `subscriptions(company_id)`. **Each index is created only if
+the table has no duplicates today** — otherwise it raises a NOTICE naming the
+table and continues, so the migration cannot abort and never deletes anything.
+A report at the end lists whatever was skipped, for a human to resolve.
+
+**Verification lesson recorded (session 32's crash).** `no-undef` was set to
+'warn' and I verify with `eslint --quiet`, which prints errors only — so the one
+rule that catches a guaranteed runtime crash was invisible to my own check, and
+`vite build` does not resolve JSX identifiers either. It is now `'error'`, which
+immediately surfaced four crashing screens (Company Admin Panel ×2, CSV lead
+import ×2 files, and the entire Video Tutorials page). **Never trust
+`eslint --quiet` + a green build as proof a screen renders.**
+
+#### Derek actions
+- Run migrations **027** and **028** (028 reports rather than failing if it finds
+  duplicates — read its output).
