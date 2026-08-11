@@ -840,8 +840,13 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
 
 // GET /api/ai/diagnose — health check for AI providers (no PII returned)
 router.get('/diagnose', requireAuth, async (req, res) => {
+  try {
   const settings = await getCompanyAISettings(req.companyId);
-  // Include plan + credits in diagnose so users can see exactly why AI is blocked
+  // Include plan + credits in diagnose so users can see exactly why AI is blocked.
+  // NOTE: this handler had NO try/catch while both awaits can reject —
+  // getCompanyPlan now deliberately throws on a failed read. In Express 4 an
+  // async handler's rejection is unhandled, which can take the whole process
+  // down rather than returning an error for one request.
   const plan = await getCompanyPlan(req.companyId);
   const diag = {
     plan: {
@@ -892,6 +897,10 @@ router.get('/diagnose', requireAuth, async (req, res) => {
   }
 
   res.json(diag);
+  } catch (err) {
+    console.error('[ai/diagnose]', err.message);
+    res.status(503).json({ error: err.publicMessage || 'Could not run diagnostics right now.', code: err.code });
+  }
 });
 
 // POST /api/ai/chat

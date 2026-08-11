@@ -163,6 +163,30 @@ router.post('/webhook', async (req, res) => {
     const text = message.text?.body || '';
     if (!text) return;
 
+    // IDEMPOTENCY. Meta delivers at-least-once and retries anything it does not
+    // consider acked, so without this a single inbound message could be
+    // processed repeatedly: duplicate stored messages, duplicate leads, and a
+    // duplicate AI reply (and its cost) every time.
+    // message.id is Meta's own unique id, and it is already persisted on the
+    // stored message as platform_message_id.
+    if (message.id) {
+      const { data: seen, error: seenErr } = await supabaseAdmin
+        .from('messages')
+        .select('id')
+        .eq('platform_message_id', message.id)
+        .limit(1)
+        .maybeSingle();
+      // On a failed check, stop rather than risk double-processing.
+      if (seenErr) {
+        console.error('[whatsapp] duplicate check failed, skipping this delivery:', seenErr.message);
+        return;
+      }
+      if (seen) {
+        console.log(`[whatsapp] message ${message.id} already processed — ignoring replay`);
+        return;
+      }
+    }
+
     console.log(`[whatsapp] incoming from ${fromPhone}: ${text.slice(0, 100)}`);
 
     // Identify user

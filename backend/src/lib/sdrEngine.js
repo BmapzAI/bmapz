@@ -266,6 +266,37 @@ export async function handleInboundForSdr({ companyId, channel = 'web', contactH
 
   const messages = [...(convo.messages || []), { role: 'client', content: text, at: new Date().toISOString() }];
 
+  // COST + LOOP GUARD. The whole conversation history is sent to the model on
+  // every turn, so tokens grow quadratically with the number of turns and there
+  // was no cap at all: an automated or adversarial sender could hold a
+  // conversation open indefinitely and bill the company for all of it. Past the
+  // cap, hand over to a person instead of replying again.
+  const MAX_SDR_TURNS = 40;
+  const clientTurns = messages.filter(m => m.role === 'client').length;
+  if (clientTurns > MAX_SDR_TURNS) {
+    console.warn(`[sdr] conversation ${convo.id} hit the ${MAX_SDR_TURNS}-turn cap — handing over to a human`);
+    await supabaseAdmin.from('sdr_conversations').update({
+      messages,
+      status: 'handed_over',
+      human_takeover: true,
+      notes: [...(convo.notes || []), {
+        at: new Date().toISOString(),
+        note: `Automatic hand-over: reached the ${MAX_SDR_TURNS}-turn limit for one conversation.`,
+      }],
+      last_message_at: new Date().toISOString(),
+    }).eq('id', convo.id);
+    if (!alreadyLogged) {
+      await logToInbox({ companyId, leadId: convo.lead_id || leadId, channel, direction: 'inbound', content: text, from: contactHandle, convoId: convo.id });
+    }
+    return { reply: null, handed_over: true, reason: 'turn_limit' };
+  }
+
+  // Only the recent window goes to the model — older turns are summarised by
+  // their presence in the stored conversation, and sending everything grew the
+  // prompt without improving the reply.
+  const MODEL_HISTORY_TURNS = 20;
+  const recentMessages = messages.slice(-MODEL_HISTORY_TURNS);
+
   // Always log the client's inbound message to the unified Inbox thread.
   if (!alreadyLogged) {
     await logToInbox({ companyId, leadId: convo.lead_id || leadId, channel, direction: 'inbound', content: text, from: contactHandle, convoId: convo.id });
@@ -280,7 +311,9 @@ export async function handleInboundForSdr({ companyId, channel = 'web', contactH
     return { conversation: convo, reply: null, outcome: 'none', handedToHuman: true };
   }
 
-  const decision = await sdrRespond({ companyId, agent, facts, conversationMessages: messages });
+  // recentMessages, not messages: the model only needs the recent window, and
+  // sending the entire history made token cost grow quadratically with turns.
+  const decision = await sdrRespond({ companyId, agent, facts, conversationMessages: recentMessages });
   const reply = decision.reply || "Thanks for reaching out! Someone from our team will follow up shortly.";
 
   messages.push({ role: 'sdr', content: reply, at: new Date().toISOString() });

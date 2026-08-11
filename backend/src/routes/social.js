@@ -106,13 +106,30 @@ router.delete('/posts/:id', requireAuth, async (req, res) => {
 
 router.post('/posts/:id/publish', requireAuth, async (req, res) => {
   try {
-    const { data: post } = await supabaseAdmin
+    const { data: post, error: postErr } = await supabaseAdmin
       .from('social_posts')
       .select('*')
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .single();
+    if (postErr && postErr.code !== 'PGRST116') {
+      return res.status(503).json({ error: 'Could not read the post. Nothing was published.' });
+    }
     if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    // IDEMPOTENCY. Publishing is externally visible and irreversible: a
+    // double-click, or a retry after a PARTIAL failure, re-posted to the
+    // platforms that had already succeeded. Refuse an already-published post,
+    // and below skip any platform that already holds a post id.
+    if (post.status === 'published') {
+      return res.status(409).json({
+        error: 'This post is already published.',
+        code: 'ALREADY_PUBLISHED',
+        platform_post_ids: post.platform_post_ids || {},
+      });
+    }
+    const alreadyPosted = post.platform_post_ids && typeof post.platform_post_ids === 'object'
+      ? post.platform_post_ids : {};
 
     const { data: companyRow } = await supabaseAdmin
       .from('companies')
@@ -127,6 +144,14 @@ router.post('/posts/:id/publish', requireAuth, async (req, res) => {
     const platforms = post.platforms || [];
 
     for (const platform of platforms) {
+      // Skip platforms that already succeeded. Without this, retrying a
+      // partially-failed publish (Facebook OK, Twitter failed → status 'failed'
+      // → user hits Publish again) posted to Facebook a SECOND time.
+      const prior = alreadyPosted[platform];
+      if (prior && !prior.error) {
+        results[platform] = { ...prior, skipped: 'already published' };
+        continue;
+      }
       const content = post.platform_contents?.[platform] || post.content || '';
       try {
         if (platform === 'facebook') {
@@ -148,9 +173,12 @@ router.post('/posts/:id/publish', requireAuth, async (req, res) => {
     const allSuccess = Object.values(results).every(r => !r.error);
     const newStatus = allSuccess ? 'published' : 'failed';
 
+    // MERGE, don't replace: a retry only carries results for the platforms it
+    // attempted, so overwriting would lose the ids of the ones that succeeded
+    // earlier — and then a third attempt would re-post to them.
     await supabaseAdmin.from('social_posts').update({
       status: newStatus,
-      platform_post_ids: results,
+      platform_post_ids: { ...alreadyPosted, ...results },
       published_at: allSuccess ? new Date().toISOString() : null,
     }).eq('id', post.id);
 

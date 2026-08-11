@@ -111,13 +111,31 @@ async function tick() {
     if (!due?.length) return;
 
     for (const a of due) {
-      // Claim first (set next_run_at forward) so a crash mid-run can't
-      // cause a tight retry loop.
+      // CONDITIONAL claim. Pushing next_run_at forward is what stops a crash
+      // mid-run turning into a tight retry loop — but the update's success was
+      // never checked, and the claim was unconditional. So two instances (or a
+      // restart overlapping a tick) could each "claim" the same automation and
+      // both run it: duplicate ai_outputs rows and double the AI spend, every
+      // 60 seconds.
+      //
+      // `.eq('next_run_at', a.next_run_at)` makes this a compare-and-swap: only
+      // the worker that still sees the value it read wins the claim.
       const nextRun = computeNextRunAt(a, new Date());
-      await supabaseAdmin
+      const { data: claimed, error: claimErr } = await supabaseAdmin
         .from('ai_automations')
         .update({ next_run_at: nextRun.toISOString() })
-        .eq('id', a.id);
+        .eq('id', a.id)
+        .eq('next_run_at', a.next_run_at)
+        .select('id');
+      if (claimErr) {
+        console.error(`[automations] claim failed for ${a.id}, skipping this tick:`, claimErr.message);
+        continue;
+      }
+      if (!claimed || claimed.length === 0) {
+        // Someone else claimed it first — do NOT run it again.
+        console.log(`[automations] ${a.id} already claimed by another worker, skipping`);
+        continue;
+      }
 
       const result = await executeAutomation(a);
 

@@ -53,7 +53,7 @@ router.get('/overview', requireAuth, async (req, res) => {
   const messaging = await safe(async () => {
     const { data: msgs } = await supabaseAdmin
       .from('messages')
-      .select('lead_id, direction, channel, content, sent_at, created_at, metadata')
+      .select('lead_id, direction, channel, sent_at, created_at, metadata').limit(5000)
       .eq('company_id', companyId)
       .gte('created_at', since)
       .order('created_at', { ascending: true });
@@ -114,11 +114,11 @@ router.get('/overview', requireAuth, async (req, res) => {
   /* ── Time from lead created to its FIRST outbound contact ── */
   const firstContact = await safe(async () => {
     const { data: leads } = await supabaseAdmin
-      .from('leads').select('id, created_at').eq('company_id', companyId).gte('created_at', since);
+      .from('leads').select('id, created_at').eq('company_id', companyId).gte('created_at', since).limit(5000);
     if (!leads?.length) return null;
 
     const { data: outbound } = await supabaseAdmin
-      .from('messages').select('lead_id, sent_at, created_at, metadata')
+      .from('messages').select('lead_id, sent_at, created_at, metadata').limit(5000)
       .eq('company_id', companyId).eq('direction', 'outbound').gte('created_at', since);
 
     const firstByLead = new Map();
@@ -184,7 +184,7 @@ router.get('/overview', requireAuth, async (req, res) => {
   const velocity = await safe(async () => {
     const { data: acts } = await supabaseAdmin
       .from('lead_activities')
-      .select('lead_id, activity_type, details, created_at')
+      .select('lead_id, activity_type, details, created_at').limit(5000)
       .eq('company_id', companyId)
       .in('activity_type', ['created', 'stage_changed', 'status_changed', 'qualified'])
       .gte('created_at', since)
@@ -242,7 +242,7 @@ router.get('/overview', requireAuth, async (req, res) => {
   const touchpoints = await safe(async () => {
     const { data: acts } = await supabaseAdmin
       .from('lead_activities')
-      .select('lead_id, activity_type, actor_type, created_at')
+      .select('lead_id, activity_type, actor_type, created_at').limit(5000)
       .eq('company_id', companyId).gte('created_at', since);
     if (!acts?.length) return null;
 
@@ -268,7 +268,7 @@ router.get('/overview', requireAuth, async (req, res) => {
   /* ── Pipeline shape + SDR workload ── */
   const pipeline = await safe(async () => {
     const { data: leads } = await supabaseAdmin
-      .from('leads').select('funnel_stage, status, owner_id, source, created_at')
+      .from('leads').select('funnel_stage, status, owner_id, source, created_at').limit(10000)
       .eq('company_id', companyId);
     if (!leads) return null;
 
@@ -286,7 +286,7 @@ router.get('/overview', requireAuth, async (req, res) => {
 
   const sdr = await safe(async () => {
     const { data: convos } = await supabaseAdmin
-      .from('sdr_conversations').select('status, outcome, human_takeover, created_at, last_message_at')
+      .from('sdr_conversations').select('status, outcome, human_takeover, created_at, last_message_at').limit(5000)
       .eq('company_id', companyId).gte('created_at', since);
     if (!convos) return null;
     const outcomes = {};

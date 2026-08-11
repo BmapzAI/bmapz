@@ -138,6 +138,17 @@ router.post('/:id/enroll', requireAuth, async (req, res) => {
       ? req.body.lead_ids
       : (req.body?.lead_id ? [req.body.lead_id] : []);
     if (!leadIds.length) return res.status(400).json({ error: 'lead_id or lead_ids required' });
+    // Cap the batch: each id triggers a sequential enrollLead (a read plus an
+    // insert plus a counter bump), so an unbounded array held the request open
+    // and hammered the database for as long as the client cared to send ids.
+    const MAX_ENROLL = 500;
+    if (leadIds.length > MAX_ENROLL) {
+      return res.status(413).json({
+        error: `Enroll up to ${MAX_ENROLL} leads per request (received ${leadIds.length}).`,
+        code: 'ENROLL_TOO_LARGE',
+        max: MAX_ENROLL,
+      });
+    }
 
     const results = [];
     for (const leadId of leadIds) {

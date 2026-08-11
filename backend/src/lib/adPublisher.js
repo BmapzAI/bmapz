@@ -319,8 +319,21 @@ export async function publishCampaign({ companyId, campaign, adGroups = [], leve
   const adapter = ADAPTERS[platform];
   const results = [];
 
+  // Persisting external_id is what makes publishing idempotent: it is how we know
+  // an object already exists on the platform and must not be created again. If
+  // that write silently fails, the live campaign exists on Meta/LinkedIn/TikTok
+  // while we have no record of it — so the next publish creates a DUPLICATE and
+  // the customer is billed twice by the platform. Surface it loudly with the id
+  // so it can be reconciled by hand instead of losing it.
+  const markFailures = [];
   const mark = async (table, id, patch) => {
-    await supabaseAdmin.from(table).update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
+    const { error } = await supabaseAdmin
+      .from(table).update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) {
+      const detail = `${table}#${id}: ${error.message} (unsaved: ${JSON.stringify(patch)})`;
+      console.error('[adPublisher] FAILED to persist platform result —', detail);
+      markFailures.push(detail);
+    }
   };
 
   // ── Campaign ──
@@ -399,7 +412,18 @@ export async function publishCampaign({ companyId, campaign, adGroups = [], leve
     }
   }
 
-  return summarise(results);
+  const summary = summarise(results);
+  // If any platform id failed to save, say so in the response. Reporting plain
+  // success would hide a live campaign we can no longer track — and the next
+  // publish would duplicate it.
+  if (markFailures.length) {
+    summary.persistence_warnings = markFailures;
+    summary.warning =
+      'Some objects were created on the ad platform but their ids could not be saved. '
+      + 'Do NOT publish again before reconciling, or duplicates will be created. '
+      + 'See persistence_warnings for the ids.';
+  }
+  return summary;
 }
 
 function summarise(results) {

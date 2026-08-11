@@ -241,6 +241,18 @@ router.post('/bulk', requireAuth, async (req, res) => {
   try {
     const { leads } = req.body;
     if (!Array.isArray(leads)) return res.status(400).json({ error: 'leads must be an array' });
+    // Cap the batch. This mapped a client-supplied array straight into one
+    // INSERT with only a type check, so a single request could attempt to write
+    // an unbounded number of rows (accidentally, from a huge CSV, or on purpose).
+    const MAX_BULK_LEADS = 1000;
+    if (leads.length === 0) return res.status(400).json({ error: 'No leads supplied' });
+    if (leads.length > MAX_BULK_LEADS) {
+      return res.status(413).json({
+        error: `Import up to ${MAX_BULK_LEADS} leads at a time (received ${leads.length}). Split the file and try again.`,
+        code: 'BULK_TOO_LARGE',
+        max: MAX_BULK_LEADS,
+      });
+    }
 
     const rows = leads.map(l => ({
       ...pickLeadFields(l),
