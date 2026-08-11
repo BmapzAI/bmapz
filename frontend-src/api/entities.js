@@ -131,6 +131,12 @@ export const AdsManager = {
 
   listCampaigns: (params) => api.get('/api/ads-manager/campaigns', params),
   createCampaign: (data) => api.post('/api/ads-manager/campaigns', data),
+  // Saved strategies/copies now live in the AI Outputs archive; these endpoints
+  // read BOTH it and the legacy ad_records table so the list is correct before
+  // and after migration 025.
+  savedList: () => api.get('/api/ads-manager/saved').then(r => r?.data ?? r ?? []),
+  saveWork: (data) => api.post('/api/ads-manager/saved', data),
+  deleteSaved: (id) => api.delete(`/api/ads-manager/saved/${id}`),
   updateCampaign: (id, data) => api.patch(`/api/ads-manager/campaigns/${id}`, data),
   deleteCampaign: (id) => api.delete(`/api/ads-manager/campaigns/${id}`),
 
@@ -291,16 +297,12 @@ export const BrandScanData = {
   delete: (id) => api.delete(`/api/brand-scans/${id}`),
 };
 
-// ─── Node Templates ───────────────────────────────────────────────────────────
-
-export const NodeTemplate = {
-  list: (params) => api.get('/api/node-templates', params),
-  filter: (params) => api.get('/api/node-templates', params),
-  get: (id) => api.get(`/api/node-templates/${id}`),
-  create: (data) => api.post('/api/node-templates', data),
-  update: (id, data) => api.patch(`/api/node-templates/${id}`, data),
-  delete: (id) => api.delete(`/api/node-templates/${id}`),
-};
+// NOTE: the NodeTemplate entity and the /api/node-templates routes were removed.
+// They were the third, obsolete workflow-template system: nothing in the UI ever
+// imported the entity and no code called the endpoints. The two systems actually
+// used by the builder are the built-in library in
+// components/workflows/workflowTemplates.js and saved templates stored as
+// workflows with is_template = true.
 
 // ─── Workflow Runs ─────────────────────────────────────────────────────────────
 

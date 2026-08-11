@@ -19,7 +19,7 @@ import AdsManagerTab from '@/components/ads/AdsManagerTab';
 import AdsOptimizationTab from '@/components/ads/AdsOptimizationTab';
 import AdsLeadsTab from '@/components/ads/AdsLeadsTab';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
-import { Company, AdRecord } from '@/api/entities';
+import { Company, AdsManager } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
 import { usePersistentDraft } from '@/lib/usePersistentDraft';
 
@@ -102,21 +102,25 @@ export default function Ads() {
     }));
   }, [company]);
 
+  // Saved strategies/copies live in the AI Outputs archive now (migration 025).
+  // The endpoint reads BOTH it and the legacy ad_records table, so this list is
+  // correct before the migration, during and after — a pending migration must
+  // never make saved work look lost.
   const { data: adRecords = [] } = useQuery({
-    queryKey: ['adRecords'],
-    queryFn: () => AdRecord.list(),
+    queryKey: ['adSavedWork'],
+    queryFn: () => AdsManager.savedList(),
   });
 
   const saveMutation = useMutation({
-    mutationFn: (data) => AdRecord.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['adRecords'] }); toast.success(isPt ? 'Salvo!' : 'Saved!'); },
+    mutationFn: (data) => AdsManager.saveWork(data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['adSavedWork'] }); toast.success(isPt ? 'Salvo!' : 'Saved!'); },
     // Without this a failed save showed nothing at all — the record just vanished.
     onError: (e) => toast.error((isPt ? 'Falha ao salvar: ' : 'Could not save: ') + (e?.message || 'unknown error')),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => AdRecord.delete(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['adRecords'] }); toast.success(t('deleted')); },
+    mutationFn: (id) => AdsManager.deleteSaved(id),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['adSavedWork'] }); toast.success(t('deleted')); },
     onError: (e) => toast.error((isPt ? 'Falha ao excluir: ' : 'Could not delete: ') + (e?.message || 'unknown error')),
   });
 
@@ -231,13 +235,13 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
   const saveStrategy = () => {
     if (!strategy || !company) return;
     const title = `${strategyForm.platform || 'Multi-platform'} — ${strategyForm.objective} — ${new Date().toLocaleDateString()}`;
-    saveMutation.mutate({ company_id: company.id, type: 'strategy', title, platform: strategyForm.platform, objective: strategyForm.objective, strategy_data: strategy, form_data: strategyForm });
+    saveMutation.mutate({ type: 'strategy', title, platform: strategyForm.platform, strategy, form_data: strategyForm });
   };
 
   const saveCopies = () => {
     if (!copies || !company) return;
     const title = `${copyForm.platform || 'Multi-platform'} Copies — ${copyForm.angle} — ${new Date().toLocaleDateString()}`;
-    saveMutation.mutate({ company_id: company.id, type: 'copy', title, platform: copyForm.platform, copies_data: copies, form_data: copyForm });
+    saveMutation.mutate({ type: 'copy', title, platform: copyForm.platform, copies_data: copies, form_data: copyForm });
   };
 
   const loadRecord = (record) => {
@@ -418,18 +422,19 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
             // the ad platform is a separate, not-yet-available step (it needs the
             // provider app approved), so we never claim the ad went live.
             try {
-              await saveMutation.mutateAsync({
-                company_id: company.id,
-                type: 'campaign',
-                title: publishTarget.title,
+              // A campaign is a real entity in the current structure, so it goes
+              // to ad_campaigns — not into the legacy ad_records table, and not
+              // into the saved-work archive (which holds strategies and copies).
+              await AdsManager.createCampaign({
+                name: publishTarget.title,
                 platform: publishTarget.platform,
                 objective: strategyForm.objective || 'LINK_CLICKS',
-                budget: strategyForm.budget || null,
+                budget: strategyForm.budget ? Number(strategyForm.budget) : null,
                 status: 'draft',
-                strategy_data: strategy,
-                copies_data: copies,
-                form_data: { ...strategyForm, ...copyForm },
+                strategy: strategy || {},
+                settings: { copies: copies || null, form_data: { ...strategyForm, ...copyForm } },
               });
+              queryClient.invalidateQueries({ queryKey: ['adSavedWork'] });
               setShowPublishModal(false);
               setPublishTarget(null);
               toast.success(isPt

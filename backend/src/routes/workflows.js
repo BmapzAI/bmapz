@@ -61,24 +61,11 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/workflows/meta/node-templates — MUST be before /:id to avoid shadowing
-router.get('/meta/node-templates', requireAuth, async (req, res) => {
-  try {
-    // TENANT LEAK FIX: this selected the ENTIRE node_templates table with no
-    // filter, through the service role (RLS bypassed) — so every logged-in user
-    // of every company received every other company's private workflow
-    // templates. Scoped the same way as the canonical GET /api/node-templates.
-    const { data, error } = await supabaseAdmin
-      .from('node_templates')
-      .select('*')
-      .or(`company_id.eq.${req.companyId},is_global.eq.true`)
-      .order('category');
-    if (error) throw error;
-    res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// GET /api/workflows/meta/node-templates was removed with the rest of the
+// obsolete node_templates system (nothing called it, and it leaked every
+// company's templates until it was scoped). The builder uses the built-in
+// library in components/workflows/workflowTemplates.js plus saved templates
+// stored as workflows with is_template = true.
 
 router.get('/:id', requireAuth, async (req, res) => {
   try {

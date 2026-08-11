@@ -2120,3 +2120,56 @@ revoking access from a switched-in user makes the trigger reject the whole
 update; and team-chat/`GET /api/users`/lead-owner membership checks compare the
 target's HOME company against the ACTIVE company, so a switched-in guest cannot
 be added to threads. All three are functional/medium, none is a leak.
+
+---
+
+### Session 31 — Claude Code (7a workflow templates, 7b AdRecord migration)
+
+**7a — three workflow-template systems reduced to the two that are used.**
+Investigated all three:
+ - `components/workflows/workflowTemplates.js` — the built-in starter library.
+   **LIVE**: `WORKFLOW_TEMPLATES` in WorkflowBuilderModal, `WORKFLOW_TEMPLATE_LIST`
+   in Workflows.jsx.
+ - `workflows` rows with `is_template = true` — saved/global templates.
+   **LIVE**: Workflows.jsx fetches and renders them; line 225 deliberately shows
+   the combined count of both systems.
+ - `node_templates` table + `/api/node-templates` + the `NodeTemplate` entity +
+   a duplicate `/api/workflows/meta/node-templates`. **OBSOLETE**: the entity was
+   never imported by any component and nothing called either endpoint (the
+   duplicate one also leaked every company's templates until it was scoped last
+   session). Removed `routes/nodeTemplates.js`, its mount, the entity and the
+   duplicate endpoint.
+The `node_templates` TABLE is left in place — nothing in the app has ever written
+to it so it should be empty, but dropping a table is destructive and is Derek's
+call, not something to slip into a cleanup.
+
+**7b — legacy AdRecord migrated into the current structures.**
+`ad_records` held three kinds of row, and they do not all have the same new home:
+ - `type='campaign'` → **`ad_campaigns`** (structural fit).
+ - `type='strategy'` / `'copy'` → **`ai_outputs`** (the AI Outputs archive).
+   These are STANDALONE in the old system — attached to no campaign and no ad —
+   so they cannot go into ad_campaigns/ads without inventing fake parents that
+   would pollute the campaign list. The archive is their honest home: it already
+   stores generated work with a title, category and reuse.
+
+`supabase/migrations/025_migrate_ad_records.sql` **COPIES** both kinds across. It
+is idempotent (keyed on `migrated_from_ad_record`) and **deletes nothing**.
+
+Code changes, sequenced so a pending migration cannot make saved work look lost:
+ - New `GET/POST/DELETE /api/ads-manager/saved` reads **both** the archive and
+   the legacy table, de-duplicating on `migrated_from_ad_record`, so the Saved
+   list is correct before, during and after the migration. Delete routes to
+   whichever table holds the row.
+ - The Ads page now saves strategies/copies into the archive, and the publish
+   modal creates a real `ad_campaigns` row instead of an `ad_records` one.
+ - **Nothing writes to `ad_records` any more.** The read fallback remains, and
+   tolerates the table being gone.
+
+`supabase/026_drop_ad_records.sql` (deliberately NOT in migrations/) is the final
+step: it verifies the counts match, then RENAMES the table to a dated backup
+rather than dropping it outright, with the actual drop left commented for later.
+
+#### Derek actions
+1. Run `025_migrate_ad_records.sql` (preview query at the top first).
+2. Check Ads → Saved: strategies and copies present, "Load" restores them.
+3. Only then run `026_drop_ad_records.sql`.

@@ -606,6 +606,140 @@ router.post('/generate/apply', requireAuth, async (req, res) => {
 
 // GET /api/ads-manager/strategies — every strategy available to build from:
 // ones saved by the Strategy generator, and ones already attached to a campaign.
+/* ───────────── Saved ads work (strategies + copies) ─────────────
+ * Saved strategies/copies used to live in the legacy `ad_records` table. They
+ * now live in the AI Outputs archive (`ai_outputs`), which is the feature for
+ * exactly this — see migration 025, which COPIES them across without deleting.
+ *
+ * These endpoints read BOTH sources and de-duplicate, so the Saved list is
+ * correct before the migration, after it, and during. That matters: a pending
+ * migration must never make a user's saved work look lost.
+ */
+
+/** Normalise an ai_outputs row into the shape the Ads page expects. */
+function savedFromAiOutput(row) {
+  const m = row.metadata || {};
+  let parsed = m.content ?? row.output;
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch { /* keep the string */ }
+  }
+  const isStrategy = m.category === 'strategies' || m.action === 'ads_strategy';
+  return {
+    id: row.id,
+    source: 'ai_output',
+    type: isStrategy ? 'strategy' : 'copy',
+    title: m.title || 'Saved',
+    platform: m.platform || null,
+    form_data: m.form_data || {},
+    strategy: isStrategy ? parsed : null,
+    copies_data: isStrategy ? null : parsed,
+    created_at: row.created_at,
+    legacy_id: m.migrated_from_ad_record || null,
+  };
+}
+
+// GET /api/ads-manager/saved — merged saved strategies + copies.
+router.get('/saved', requireAuth, async (req, res) => {
+  try {
+    const out = [];
+    const migratedLegacyIds = new Set();
+
+    const { data: outputs, error: outErr } = await supabaseAdmin
+      .from('ai_outputs')
+      .select('id, output, metadata, created_at')
+      .eq('company_id', req.companyId)
+      .eq('type', 'ads')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (outErr) throw outErr;
+    for (const row of outputs || []) {
+      const m = row.metadata || {};
+      // Only rows that represent SAVED work, not every archived generation.
+      if (!['strategies', 'ad_copy'].includes(m.category)) continue;
+      const norm = savedFromAiOutput(row);
+      if (norm.legacy_id) migratedLegacyIds.add(norm.legacy_id);
+      out.push(norm);
+    }
+
+    // Legacy rows that have NOT been migrated yet.
+    const { data: legacy, error: legErr } = await supabaseAdmin
+      .from('ad_records')
+      .select('id, type, title, platform, strategy, copies_data, form_data, created_at')
+      .eq('company_id', req.companyId)
+      .in('type', ['strategy', 'copy'])
+      .order('created_at', { ascending: false })
+      .limit(100);
+    // The table may be gone once 026 has been run — that is fine, not an error.
+    if (legErr && !/ad_records|relation|does not exist/i.test(legErr.message || '')) throw legErr;
+    for (const r of legacy || []) {
+      if (migratedLegacyIds.has(r.id)) continue; // already shown from the archive
+      out.push({
+        id: r.id, source: 'ad_record', type: r.type, title: r.title,
+        platform: r.platform, form_data: r.form_data || {},
+        strategy: r.strategy || null, copies_data: r.copies_data || null,
+        created_at: r.created_at, legacy_id: r.id,
+      });
+    }
+
+    out.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    res.json({ data: out });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ads-manager/saved — save into the ARCHIVE (never ad_records again).
+router.post('/saved', requireAuth, async (req, res) => {
+  try {
+    const { type, title, platform, strategy, copies_data, form_data } = req.body || {};
+    if (!['strategy', 'copy'].includes(type)) {
+      return res.status(400).json({ error: 'type must be "strategy" or "copy"' });
+    }
+    const payload = type === 'strategy' ? strategy : copies_data;
+    if (!payload) return res.status(400).json({ error: 'Nothing to save' });
+
+    const body = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+    const { data, error } = await supabaseAdmin.from('ai_outputs').insert({
+      company_id: req.companyId,
+      type: 'ads',
+      output: body,
+      metadata: {
+        title: title || `Ads ${type}`,
+        content: body,
+        category: type === 'strategy' ? 'strategies' : 'ad_copy',
+        status: 'approved',
+        action: `ads_${type}`,
+        platform: platform || null,
+        form_data: form_data || {},
+        created_by: req.dbUser?.id || null,
+      },
+    }).select().single();
+    if (error) throw error;
+    res.json(savedFromAiOutput(data));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/ads-manager/saved/:id — deletes from whichever table holds it.
+router.delete('/saved/:id', requireAuth, async (req, res) => {
+  try {
+    const { error: aiErr, count } = await supabaseAdmin
+      .from('ai_outputs').delete({ count: 'exact' })
+      .eq('id', req.params.id).eq('company_id', req.companyId);
+    if (aiErr) throw aiErr;
+    if (count) return res.json({ success: true, source: 'ai_output' });
+
+    const { error: legErr } = await supabaseAdmin
+      .from('ad_records').delete()
+      .eq('id', req.params.id).eq('company_id', req.companyId);
+    if (legErr && !/ad_records|relation|does not exist/i.test(legErr.message || '')) throw legErr;
+    res.json({ success: true, source: 'ad_record' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/strategies', requireAuth, async (req, res) => {
   try {
     const out = [];
