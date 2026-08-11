@@ -101,10 +101,14 @@ router.get('/search', requireAuth, async (req, res) => {
 router.get('/', requireAuth, async (req, res) => {
   try {
     const withSales = 'id, email, full_name, role, created_at, profile_picture, is_sales_team, sales_status, sales_status_updated_at';
+    // Team membership = home company OR granted access. A `.eq('company_id')`
+    // alone omitted guests working in this company via accessible_company_ids,
+    // so they were invisible in the team list, owner pickers and mention menus
+    // of the very company they were in.
     const run = (cols) => supabaseAdmin
       .from('users')
       .select(cols)
-      .eq('company_id', req.companyId)
+      .or(`company_id.eq.${req.companyId},accessible_company_ids.cs.{${req.companyId}}`)
       .order('created_at', { ascending: false });
 
     let { data, error } = await run(withSales);

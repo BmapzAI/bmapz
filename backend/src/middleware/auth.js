@@ -66,6 +66,54 @@ export async function loadDbUser(userId) {
   return user;
 }
 
+const PLATFORM_ROLES = new Set(['owner', 'system_admin']);
+
+/**
+ * May this user act inside this company?
+ *
+ * True when it is their home company, when it has been granted to them via
+ * accessible_company_ids, or when they hold a platform role.
+ *
+ * Callers previously compared `users.company_id === req.companyId` directly.
+ * Those two DIVERGE for exactly the people the switcher exists for: a guest
+ * working inside company B still has company_id = A, so a home-company
+ * comparison wrongly excluded them — e.g. team-chat could not add them to a
+ * thread in the very company they were working in.
+ */
+export function isMemberOfCompany(user, companyId) {
+  if (!user || !companyId) return false;
+  if (PLATFORM_ROLES.has(user.role)) return true;
+  if (user.company_id === companyId) return true;
+  return (user.accessible_company_ids || []).includes(companyId);
+}
+
+/**
+ * The company this request acts in: the stored active company IF the user may
+ * act there, otherwise their home company. Never returns a company the user has
+ * no claim to, regardless of what is stored on the row.
+ */
+export function resolveActiveCompany(dbUser) {
+  const active = dbUser?.active_company_id;
+  if (!active) return dbUser?.company_id || null;
+  if (isMemberOfCompany(dbUser, active)) return active;
+  console.warn(
+    `[auth] user ${dbUser.id} has active_company_id ${active} it may not access — falling back to home company`,
+  );
+  return dbUser.company_id || null;
+}
+
+/** The same test, for a set of user ids. Returns the ids that are members. */
+export async function filterCompanyMembers(userIds, companyId) {
+  const ids = [...new Set((userIds || []).filter(Boolean))];
+  if (!ids.length) return [];
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('id, role, company_id, accessible_company_ids')
+    .in('id', ids);
+  if (error) throw error;
+  return (data || []).filter(u => isMemberOfCompany(u, companyId)).map(u => u.id);
+}
+
 export async function requireAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
@@ -97,10 +145,13 @@ export async function requireAuth(req, res, next) {
 
     req.dbUser = dbUser;
     // Requests are scoped to the company the user is CURRENTLY working in.
-    // active_company_id is set by the account switcher and is validated both in
-    // the switch endpoint and by a DB trigger (migration 021); company_id is
-    // the home company and the fallback for everyone who never switched.
-    req.companyId = dbUser.active_company_id || dbUser.company_id;
+    //
+    // RE-DERIVED, not trusted. Every company-scoped query in the app hangs off
+    // this one value, so it must not rest solely on migration 021's trigger
+    // having been applied and never bypassed. If a stored active_company_id is
+    // not one this user may act in, ignore it and fall back to the home company
+    // rather than honouring it.
+    req.companyId = resolveActiveCompany(dbUser);
     req.homeCompanyId = dbUser.company_id;
     next();
   } catch (err) {
@@ -150,7 +201,7 @@ export async function optionalAuth(req, res, next) {
         req.dbUser = dbUser;
         // Honour the active company here too, so an optionally-authenticated
         // request sees the same scope as an authenticated one.
-        req.companyId = dbUser.active_company_id || dbUser.company_id;
+        req.companyId = resolveActiveCompany(dbUser);
         req.homeCompanyId = dbUser.company_id;
       }
     }

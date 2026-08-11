@@ -664,7 +664,9 @@ router.get('/saved', requireAuth, async (req, res) => {
     // Legacy rows that have NOT been migrated yet.
     const { data: legacy, error: legErr } = await supabaseAdmin
       .from('ad_records')
-      .select('id, type, title, platform, strategy, copies_data, form_data, created_at')
+      // The COLUMN is copy_data. `copies_data` is only the UI's field name,
+      // aliased in routes/ads.js — selecting it here would error.
+      .select('id, type, title, platform, strategy, copy_data, form_data, created_at')
       .eq('company_id', req.companyId)
       .in('type', ['strategy', 'copy'])
       .order('created_at', { ascending: false })
@@ -676,7 +678,9 @@ router.get('/saved', requireAuth, async (req, res) => {
       out.push({
         id: r.id, source: 'ad_record', type: r.type, title: r.title,
         platform: r.platform, form_data: r.form_data || {},
-        strategy: r.strategy || null, copies_data: r.copies_data || null,
+        // Normalised OUT as copies_data (what the Ads page reads) from the
+        // real copy_data column.
+        strategy: r.strategy || null, copies_data: r.copy_data || null,
         created_at: r.created_at, legacy_id: r.id,
       });
     }

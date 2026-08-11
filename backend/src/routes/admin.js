@@ -431,6 +431,21 @@ router.patch('/users/:id', async (req, res) => {
         return res.status(400).json({ error: 'accessible_company_ids must be an array' });
       }
       updates.accessible_company_ids = accessible_company_ids;
+
+      // If the user is currently ACTIVE in a company we are revoking, clear it.
+      // Migration 021's trigger validates active_company_id against
+      // accessible_company_ids on the same row, so revoking access while the
+      // user is still active there made the trigger reject the WHOLE update —
+      // access could not be revoked at all until they switched away themselves.
+      const { data: target, error: targetErr } = await supabaseAdmin
+        .from('users').select('company_id, active_company_id, role')
+        .eq('id', req.params.id).maybeSingle();
+      if (targetErr) return res.status(503).json({ error: 'Could not read the user. Nothing was changed.' });
+      const stillAllowed = !target?.active_company_id
+        || target.active_company_id === target.company_id
+        || ['owner', 'system_admin'].includes(target.role)
+        || accessible_company_ids.includes(target.active_company_id);
+      if (!stillAllowed) updates.active_company_id = null;
     }
 
     if (role !== undefined) {

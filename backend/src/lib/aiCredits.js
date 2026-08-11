@@ -121,7 +121,25 @@ export const DEFAULT_MODEL_PER_PROVIDER = {
 };
 
 // 1 credit ≈ this many tokens of baseline gpt-4o-mini
-const TOKENS_PER_CREDIT = 12;
+/**
+ * How many baseline (gpt-4o-mini-equivalent) tokens one AI credit buys.
+ *
+ * Raised 12 → 60 deliberately. At 12 the allowances were unusable in practice:
+ * on the Anthropic default (claude-3-5-haiku, multiplier 6) a Starter customer's
+ * 15,000 credits bought about TWO ads strategies or THREE blog posts a month, and
+ * on claude-sonnet-4-5 a single strategy cost 25,000 credits — more than the whole
+ * monthly allowance, so the feature could not be used at all.
+ *
+ * At 60 the same Starter plan gets ~12 strategies or ~18 blog posts on the
+ * default model, and 3 strategies even on Sonnet. Gross margin on AI moves from
+ * ~99.6% to ~98.2% (worst case: burning an entire Scale allowance costs about
+ * R$ 15 of provider spend against R$ 785 of revenue), so the product becomes
+ * usable at negligible cost.
+ *
+ * This changes only what a generation COSTS, never what a plan GRANTS — existing
+ * balances are untouched and simply go five times further.
+ */
+const TOKENS_PER_CREDIT = 60;
 
 /**
  * Family-based heuristics so NEW models released by Anthropic/OpenAI are

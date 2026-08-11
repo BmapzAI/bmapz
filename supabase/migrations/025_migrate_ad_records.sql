@@ -19,7 +19,7 @@
 -- ── STEP 1 — PREVIEW (safe, read-only). Run this alone first. ────────────────
 -- select type, count(*) as rows,
 --        count(*) filter (where coalesce(strategy, '{}'::jsonb) <> '{}'::jsonb) as with_strategy,
---        count(*) filter (where coalesce(copies_data, '{}'::jsonb) <> '{}'::jsonb) as with_copies
+--        count(*) filter (where coalesce(copy_data, '{}'::jsonb) <> '{}'::jsonb) as with_copies
 -- from public.ad_records group by type order by type;
 
 begin;
@@ -58,7 +58,6 @@ select
   'ads',
   coalesce(
     nullif(r.strategy::text, '{}'),
-    nullif(r.copies_data::text, '{}'),
     nullif(r.copy_data::text, '{}'),
     '{}'
   ),
@@ -66,7 +65,6 @@ select
     'title',   coalesce(nullif(r.title, ''), 'Imported ' || r.type),
     'content', coalesce(
                  nullif(r.strategy::text, '{}'),
-                 nullif(r.copies_data::text, '{}'),
                  nullif(r.copy_data::text, '{}'),
                  '{}'
                ),

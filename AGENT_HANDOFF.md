@@ -2173,3 +2173,64 @@ rather than dropping it outright, with the actual drop left commented for later.
 1. Run `025_migrate_ad_records.sql` (preview query at the top first).
 2. Check Ads → Saved: strategies and copies present, "Load" restores them.
 3. Only then run `026_drop_ad_records.sql`.
+
+---
+
+### Session 32 — Claude Code (credits, isolation trio, migration 025 fix)
+
+**TOKENS_PER_CREDIT raised 12 → 60 (Derek's decision).** At 12 the allowances were
+unusable: on the Anthropic default (haiku, multiplier 6) a Starter customer's
+15,000 credits bought ~2 ads strategies or ~3 blog posts a month, and on
+claude-sonnet-4-5 one strategy cost 25,000 credits — more than the entire monthly
+allowance, so the feature could not be used at all. At 60, Starter gets ~12
+strategies / ~18 blog posts on the default model and 3 even on Sonnet. Verified
+against the real `computeCreditCost()`, not arithmetic on paper. Margin moves
+~99.6% → ~98.2% (worst case: an entire Scale allowance ≈ R$ 15 of provider spend
+against R$ 785). This changes only what a generation COSTS, never what a plan
+GRANTS — existing balances are untouched and go 5× further. The ≥1 credit floor
+still holds.
+
+**Migration 025 had a bug (mine) — fixed.** It referenced `ad_records.copies_data`,
+which does not exist: the real columns are `strategy` and `copy_data`;
+`strategy_data`/`copies_data` are only the UI's field names, aliased in
+routes/ads.js (`AD_FIELD_ALIASES`). Because the migration is wrapped in a
+transaction, Derek's failed run rolled back cleanly and applied nothing. The same
+mistake was in the new `/api/ads-manager/saved` legacy read — also fixed before it
+shipped. Lesson: when writing SQL against a table the UI talks to through
+aliases, take column names from the migrations, never from the frontend payload.
+
+**The three medium isolation items — all three fixed.**
+ 1. `requireAuth` no longer TRUSTS `active_company_id`. New
+    `resolveActiveCompany()` re-derives it: the stored value is honoured only if
+    the user may actually act there (home company, granted via
+    accessible_company_ids, or a platform role), otherwise it falls back to the
+    home company and logs. The tenant boundary no longer rests solely on
+    migration 021's trigger. Unit-tested 10/10, including a forged
+    active_company_id being ignored.
+ 2. Revoking access now works. `PATCH /api/admin/users/:id` clears
+    `active_company_id` when the new `accessible_company_ids` no longer contains
+    it — 021's trigger validates both fields on the same row, so revoking access
+    from a user who was still active in that company made the trigger reject the
+    WHOLE update, i.e. access could not be revoked until they switched away.
+ 3. Membership is now "home company OR granted access", via shared
+    `isMemberOfCompany()` / `filterCompanyMembers()`. `.eq('company_id', …)`
+    compared a target's HOME company against the ACTIVE one, so a guest working
+    in a company could not be added to its team-chat threads and did not appear
+    in its team list, owner pickers or mention menus. Applied in
+    internalChat.js (thread creation) and GET /api/users.
+
+**Answers to Derek's chat questions (verified by reading the code, not assumed):**
+ - Team chat is correctly company-scoped: `internal_conversations.company_id`,
+   membership rows carry `company_id` too, and every query filters on
+   `req.companyId` (the ACTIVE company).
+ - Chats DO switch per company — switching shows only that company's threads.
+ - Nothing is lost on switching: threads belong to the company, so switching
+   hides one set and shows the other. Switching back restores the first set.
+   No history, group or membership is deleted by switching.
+ - Multi-company users CAN now chat with the active company's members in both
+   directions (that was fix 3 — previously they could start threads but could
+   not be added to one).
+
+**7a `node_templates`:** kept, per Derek. Maintenance cost today is zero — no code
+references it any more; it is an unused table. Flag it only if it starts appearing
+in backups/costs.

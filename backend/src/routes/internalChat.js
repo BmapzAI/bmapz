@@ -11,7 +11,7 @@
  */
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, filterCompanyMembers } from '../middleware/auth.js';
 import { createNotification } from '../lib/notify.js';
 
 const router = Router();
@@ -106,9 +106,12 @@ router.post('/conversations', requireAuth, async (req, res) => {
     if (!others.length) return res.status(400).json({ error: 'Choose at least one teammate.' });
 
     // Everyone must be in this company — never allow a cross-company thread.
-    const { data: valid } = await supabaseAdmin.from('users')
-      .select('id').eq('company_id', req.companyId).in('id', others);
-    const validIds = (valid || []).map(u => u.id);
+    //
+    // Uses membership, not home company. `.eq('company_id', req.companyId)`
+    // compared each target's HOME company against the ACTIVE one, so a teammate
+    // who is a guest in this company (accessible_company_ids) could not be added
+    // to a thread in the very company they were working in.
+    const validIds = await filterCompanyMembers(others, req.companyId);
     if (!validIds.length) return res.status(400).json({ error: 'Those users are not in your company.' });
 
     const kind = validIds.length === 1 ? 'dm' : 'group';
