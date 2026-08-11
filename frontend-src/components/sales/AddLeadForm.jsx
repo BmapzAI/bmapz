@@ -16,7 +16,10 @@ import {
 import { toast } from 'sonner';
 import { Building2, User, Mail, Phone, Globe, Linkedin, Upload, FileSpreadsheet, Crown } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { UploadFile } from '@/api/integrations';
+// ExtractDataFromUploadedFile was used at line ~88 but never imported, so CSV /
+// XLS lead import threw "ExtractDataFromUploadedFile is not defined" the moment
+// a file was chosen.
+import { UploadFile, ExtractDataFromUploadedFile } from '@/api/integrations';
 import { Company, Lead } from '@/api/entities';
 
 export default function AddLeadForm({ onClose, stages }) {

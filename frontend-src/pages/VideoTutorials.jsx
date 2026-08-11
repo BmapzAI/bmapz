@@ -318,6 +318,10 @@ const LEVEL_COLORS = {
 };
 
 function VideoCard({ video, language, onClick }) {
+  // These components receive `language` as a prop but referenced `isPt`, which
+  // existed only in the page component — so every card threw "isPt is not
+  // defined" and the whole Video Tutorials page failed to render.
+  const isPt = language === 'pt-BR';
   const title = isPt ? video.titlePt : video.title;
   const description = isPt ? video.descriptionPt : video.description;
   const level = isPt ? video.levelPt : video.level;
@@ -352,6 +356,7 @@ function VideoCard({ video, language, onClick }) {
 }
 
 function VideoModal({ video, language, onClose }) {
+  const isPt = language === 'pt-BR';
   if (!video) return null;
   const title = isPt ? video.titlePt : video.title;
   const description = isPt ? video.descriptionPt : video.description;

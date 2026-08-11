@@ -13,7 +13,7 @@ import { createPageUrl } from '@/utils';
 import { useNavigate } from 'react-router-dom';
 import {
   Settings, Users, CreditCard, UserPlus, Edit3, Check, X,
-  Crown, Zap, Building2, AlertTriangle, Lock, Plus, Sparkles, ArrowRight
+  Crown, Zap, Building2, AlertTriangle, Lock, Plus, Sparkles, ArrowRight, Star
 } from 'lucide-react';
 import { Company, User, Subscription } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
@@ -228,6 +228,7 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
 
 export default function CompanyAdminPanel() {
   const { t, isPt } = useLanguage();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { dbUser: user, isLoadingAuth: loading } = useAuth();
   const [showInvite, setShowInvite] = useState(false);

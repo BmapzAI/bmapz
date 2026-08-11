@@ -9,7 +9,9 @@ import { toast } from 'sonner';
 import ConnectIntegrationModal from '@/components/integrations/ConnectIntegrationModal';
 import { useAuth } from '@/lib/AuthContext';
 import { Company, Lead, Message, Activity } from '@/api/entities';
-import { UploadFile } from '@/api/integrations';
+// Same missing import as AddLeadForm: the lead-import flow here referenced
+// ExtractDataFromUploadedFile without importing it.
+import { UploadFile, ExtractDataFromUploadedFile } from '@/api/integrations';
 
 const INTEGRATIONS = [
   // ── AD ACCOUNTS ──────────────────────────────────

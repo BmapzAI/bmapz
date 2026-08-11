@@ -59,7 +59,12 @@ export default [
 
       // General code quality — warnings only, not errors, to avoid blocking builds
       'no-unused-vars': ['warn', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
-      'no-undef': 'warn',
+      // ERROR, not warn. An undefined identifier is a guaranteed runtime crash,
+      // never a style preference: `<Star />` without importing Star took the
+      // Company Admin Panel down with "Star is not defined". It was a warning,
+      // and `eslint --quiet` (which shows errors only) hid it — so both the lint
+      // and the build passed while the page was broken for every user.
+      'no-undef': 'error',
       'no-console': 'off',
     },
   },
