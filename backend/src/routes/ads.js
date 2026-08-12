@@ -21,6 +21,19 @@ const AD_NULLABLE_TIMESTAMPS = ['published_at'];
 const AD_NULLABLE_NUMBERS = ['budget'];
 const AD_STATUSES = ['draft', 'active', 'paused', 'completed', 'failed'];
 
+// The legacy `ad_records` table is being retired: migration 025 copied its
+// contents into `ai_outputs` / `ad_campaigns`, and supabase/026 renames it away.
+// These endpoints stay only for any client still pointing at them, and they must
+// DEGRADE rather than 500 once the table is gone — retiring a table must never
+// present itself to a user as an outage. `adsManager.js` already does this for
+// its own reads; these five were the ones still throwing.
+const isMissingAdRecords = (error) =>
+  !!error && /ad_records|relation|does not exist|schema cache/i.test(error.message || '');
+const RETIRED = {
+  error: 'Saved ads work now lives in the AI Outputs archive. Use /api/ads-manager/saved.',
+  code: 'AD_RECORDS_RETIRED',
+};
+
 const pickFields = (body, fields) => {
   const src = { ...(body || {}) };
   for (const [alias, column] of Object.entries(AD_FIELD_ALIASES)) {
@@ -68,6 +81,8 @@ router.get('/records', requireAuth, async (req, res) => {
     if (type) query = query.eq('type', type);
 
     const { data, error, count } = await query;
+    // Table retired — an empty list is the honest answer, not a 500.
+    if (isMissingAdRecords(error)) return res.json({ data: [], total: 0 });
     if (error) throw error;
     res.json({ data: (data || []).map(withAdAliases), total: count });
   } catch (err) {
@@ -87,10 +102,13 @@ router.post('/records', requireAuth, async (req, res) => {
     let { data, error } = await insert(payload);
     // form_data only exists after migration 012 — save the rest rather than
     // failing the whole record.
-    if (error && /form_data/i.test(error.message || '')) {
+    if (error && /form_data/i.test(error.message || '') && !isMissingAdRecords(error)) {
       const { form_data, ...rest } = payload; // eslint-disable-line no-unused-vars
       ({ data, error } = await insert(rest));
     }
+    // Nothing writes here any more (saves go to the archive via
+    // /api/ads-manager/saved). Say so plainly instead of a bare 500.
+    if (isMissingAdRecords(error)) return res.status(410).json(RETIRED);
     if (error) throw error;
     res.json(withAdAliases(data));
   } catch (err) {
@@ -125,10 +143,11 @@ router.patch('/records/:id', requireAuth, async (req, res) => {
       .single();
 
     let { data, error } = await run(payload);
-    if (error && /form_data/i.test(error.message || '')) {
+    if (error && /form_data/i.test(error.message || '') && !isMissingAdRecords(error)) {
       const { form_data, ...rest } = payload; // eslint-disable-line no-unused-vars
       ({ data, error } = await run(rest));
     }
+    if (isMissingAdRecords(error)) return res.status(410).json(RETIRED);
     if (error) throw error;
     res.json(withAdAliases(data));
   } catch (err) {
@@ -143,6 +162,9 @@ router.delete('/records/:id', requireAuth, async (req, res) => {
       .delete()
       .eq('id', req.params.id)
       .eq('company_id', req.companyId);
+    // Deleting from a table that no longer exists has already achieved the
+    // caller's goal, so report success rather than an error.
+    if (isMissingAdRecords(error)) return res.json({ success: true, note: 'already retired' });
     if (error) throw error;
     res.json({ success: true });
   } catch (err) {

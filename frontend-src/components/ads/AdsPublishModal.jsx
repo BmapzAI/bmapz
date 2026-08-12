@@ -3,12 +3,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, Check, ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { api } from '@/api/apiClient';
-
 
 const NEVER_SHOW_KEY = 'bmapz_never_show_budget_warning';
 
-export default function AdsPublishModal({ isOpen, onClose, onConfirm, platform, adTitle, isUpdate = false, campaignData = {} }) {
+// `campaignData` is still passed by the caller but no longer read here: this
+// modal only confirms intent, and the confirm handler owns the write.
+export default function AdsPublishModal({ isOpen, onClose, onConfirm, platform, adTitle, isUpdate = false }) {
   const [neverShowAgain, setNeverShowAgain] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -21,25 +21,22 @@ export default function AdsPublishModal({ isOpen, onClose, onConfirm, platform, 
     
     setPublishing(true);
     setError(null);
-    
-    try {
-      const res = await api.post('/api/ads/records', {
-        platform,
-        campaignData: {
-          ...campaignData,
-          title: adTitle,
-          description: campaignData.description || campaignData.strategy?.summary || '',
-          landing_url: campaignData.landing_url || campaignData.strategy?.recommended_link || '',
-        },
-        isUpdate,
-      });
 
-      if (!res.success && res.error) {
-        throw new Error(res.error);
-      }
+    try {
+      // The confirm handler owns the real write (a campaign goes to ad_campaigns).
+      //
+      // This used to POST to /api/ads/records FIRST and only call onConfirm if
+      // that returned. Two things were wrong with it: the body it sent
+      // (`campaignData`, `isUpdate`) matched none of that endpoint's allowed
+      // columns except `platform`, so it silently inserted a near-empty row into
+      // the legacy ad_records table on every publish; and it checked `res.success`,
+      // which that endpoint never returns, so a genuine failure read as success.
+      // It also made publishing depend on a legacy table that is being retired —
+      // once ad_records is gone the POST would throw here and onConfirm would
+      // never run, so campaigns could not be created at all.
+      await onConfirm?.();
 
       setConfirmed(true);
-      onConfirm?.();
       setTimeout(() => {
         setConfirmed(false);
         onClose?.();

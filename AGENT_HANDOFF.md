@@ -2307,3 +2307,146 @@ import ×2 files, and the entire Video Tutorials page). **Never trust
 #### Derek actions
 - Run migrations **027** and **028** (028 reports rather than failing if it finds
   duplicates — read its output).
+
+---
+
+## Session 34 — First audit run WITH a live database connection
+
+Supabase MCP became available, so the checks that had been asserted from code
+only were finally run against the real database (project `jmtnubzgnfjmtcwbegow`,
+"Bmapz AI", sa-east-1, Postgres 17.6).
+
+### Verified green (previously unverifiable)
+- **All 17 migration objects from 018–028 exist**, including **all six** of 028's
+  unique indexes — so no table had pre-existing duplicates and the durable
+  anti-duplication protection is fully in place.
+- **Orphan cleanup worked:** companies 16 → **3** (the original count).
+- **Handles:** 0 companies without a handle, 0 users without a username, 0
+  case-insensitive collisions on either.
+- **Internal-role containment:** 1 internal role in total, **0 outside the
+  platform company** — migration 018's trigger is doing its job.
+- **Migration 025 fully migrated all 4 `ad_records`** (3 → `ai_outputs`,
+  1 → `ad_campaigns`). Nothing was lost; the originals remain by design.
+- **`subscriptions` has `plan`, NOT `plan_id`** — confirming the billing bug was
+  real: the old select errored, so every company (including paying ones) was
+  read as `trial`. The `planOf()` fallback was necessary, not defensive padding.
+- All five triggers attached (`trg_enforce_active_company_access`,
+  `trg_enforce_internal_role_company`, `trg_enforce_username_cooldown`,
+  `trg_enforce_handle_cooldown`, plus the `updated_at` pair).
+- `platform_settings` seeded with its `payments` row and unreadable by clients
+  (policy `using (false)`).
+- `brain_learnings` empty is **expected**, not a fault: it only writes when
+  someone marks an outcome in the AI Outputs archive, and the first distilled
+  lesson needs `DISTILL_EVERY = 8` outcomes in one category.
+
+### THREE EXPLOITABLE HOLES FOUND — migration 029
+RLS was enabled on every table with correct company-scoped policies, **but `anon`
+and `authenticated` also held full SELECT/INSERT/UPDATE/DELETE table grants.**
+The policies were the only barrier between the public anon key (which ships in
+the frontend bundle by design) and the data — and three of them were written as
+"a company member may do ALL on their own company's rows", which is right for
+leads and wrong for billing and identity. Reachable with only the anon key and a
+normal customer login:
+
+1. **Billing bypass.** `PATCH /rest/v1/subscriptions?company_id=eq.<own>` with
+   `{"plan":"enterprise","ai_credits_used":0}`. Self-granted unlimited plan,
+   repeatable.
+2. **Cross-company breach.** `PATCH /rest/v1/users?id=eq.<own id>` with
+   `{"accessible_company_ids":["<any company uuid>"]}`. The users policy is
+   `auth.uid() = id` with `cmd=ALL`, so writing your *own* row is permitted — and
+   every other table's policy TRUSTS `accessible_company_ids`. One write grants
+   read/write over another company's leads, messages, ai_outputs and its
+   `companies` row, **which holds `api_keys`** (1 company currently stores real
+   keys there). This is precisely the cross-company leak the project forbids.
+3. **Credit minting.** `POST /rest/v1/rpc/consume_ai_credits` with a NEGATIVE
+   `p_credits` — SECURITY INVOKER, no sign check, EXECUTE granted to PUBLIC.
+
+Plus Supabase's own linter: 6 functions with mutable `search_path`, and 2
+SECURITY DEFINER trigger functions callable over REST by `anon`.
+
+**Why 029 is safe:** the frontend never touches a table. It imports Supabase
+*only* for auth — zero `.from(`, `.rpc(` or `.channel(` calls in `frontend-src`
+(so no Realtime either), confirmed twice by independent searches. All data flows
+through the Express backend on `SUPABASE_SERVICE_ROLE_KEY`, and `service_role`
+has BYPASSRLS plus its own grants, so none of these changes are visible to the
+running app. `supabaseAnon` is used solely to verify JWTs, never to read tables.
+
+029 applies defence in depth, ordered by durability:
+- revoke every `anon`/`authenticated` table, view and sequence grant in `public`,
+  **and `alter default privileges`** so a future table cannot be born
+  world-writable — that latent form is the same bug waiting to recur;
+- narrow the `subscriptions` and `users` policies to SELECT (still correct if a
+  grant is ever restored), wrapping `auth.uid()` in a sub-select to fix lint 0003;
+- pin `search_path` on all six functions and revoke client EXECUTE;
+- reject negative `p_credits` — the one caller always passes a positive amount, so
+  a future refund must be written deliberately rather than by sign-flipping;
+- **a `BEFORE UPDATE` trigger on `users`** (`guard_privileged_user_columns`)
+  blocking client changes to `role`, `company_id` and `accessible_company_ids`.
+  This is the layer that survives the grants being restored by accident. It keys
+  off the PostgREST JWT role, so only `anon`/`authenticated` are restricted —
+  `service_role` and direct SQL (migrations, SQL editor, psql) carry no
+  `request.jwt.claims` and pass through, so it cannot lock anyone out.
+
+Nobody currently has a non-empty `accessible_company_ids`, so the cross-company
+vector has no history of use and the change carries no migration risk.
+
+#### Derek actions
+- **Run migration 029** — applying it was blocked by the sandbox permission
+  classifier, so it needs approval or a manual run. Nothing else in this session
+  changed the database.
+- **Enable leaked-password protection** (Auth → Providers → Password): a Supabase
+  dashboard toggle, checks new passwords against HaveIBeenPwned. Not SQL, and an
+  account-settings change, so left for Derek.
+- **`supabase/026_drop_ad_records.sql` still needs a decision** — the 4 legacy
+  rows are now fully migrated, so it is safe data-wise, but it is destructive and
+  deliberately not a migration.
+
+### Session 34 addendum — 029 applied, legacy ad_records retired
+
+**Migration 029 is APPLIED and verified** against the live database: no client
+table grants remain in `public`, no function has a mutable `search_path`,
+`trg_guard_privileged_user_columns` is attached, the `users` and `subscriptions`
+policies are SELECT-only, and `consume_ai_credits` rejects negative amounts. All
+three exploitable holes are closed.
+
+**Retiring `ad_records` needed code changes first — it would have caused an
+outage.** Verified before touching the table: 025's copy is complete (1↔1
+campaigns, 3↔3 saved), `Ads.jsx` already reads the merged
+`/api/ads-manager/saved` endpoint, and `companyBrain.js` already tolerates the
+table's absence. Two things did not:
+
+- `AdsPublishModal.jsx` POSTed to `/api/ads/records` **before** calling
+  `onConfirm`, and only called it if the POST returned. That POST was already
+  broken in two ways: its body (`campaignData`, `isUpdate`) matched none of the
+  endpoint's allowed columns except `platform`, so every publish silently inserted
+  a near-empty legacy row; and it tested `res.success`, which that endpoint never
+  returns, so a real failure read as success. Once `ad_records` was gone the POST
+  would throw and `onConfirm` — which does the actual write to `ad_campaigns` —
+  would never run, so **campaigns could not be created at all**. The modal now
+  awaits `onConfirm` directly and surfaces its real error.
+- The five legacy `/api/ads/records` endpoints in `routes/ads.js` threw on any
+  error. They now degrade: GET returns an empty list, POST/PATCH return 410 with
+  `AD_RECORDS_RETIRED` pointing at the archive, DELETE reports success (deleting
+  from a table that is gone has already achieved the caller's goal).
+
+**`sanitizeUpdate` deny-list extended** with the privilege and billing columns
+(`accessible_company_ids`, `active_company_id`, username/handle + their
+`*_changed_at`, `plan`, `ai_credits_*`, `contacts_limit`, `stripe_*`). This path
+matters because migration 029's trigger deliberately exempts `service_role`, which
+is how the backend connects — so the trigger does NOT protect backend endpoints;
+only this list does. No current caller passes a `users`/`subscriptions` body
+through it, so this is latent-proofing.
+
+**Two keys were deliberately NOT added, both caught by checking the live schema:**
+`status` is a real client-editable column on leads, blog_posts and funnels, and
+`role` on `leads` is the lead contact's JOB TITLE. Adding either to this global
+deny-list would have silently broken lead editing and blog publishing — the exact
+class of silent write failure the helper exists to prevent. Privileged columns
+that collide with a legitimate name must be blocked per call site via `alsoBlock`.
+
+Verified: `node --check` on both backend files, full `eslint` (**0 errors**, and
+`no-undef` is the rule that catches crashing screens), `vite build` clean, and a
+`backend/`-rooted import test of ads.js, safeUpdate.js, adsManager.js and index.js.
+
+Note: `CLAUDE.md` lists `npm run build:frontend`; the actual script is
+`npm run build`. Same for `build:backend` / `install:all` — worth correcting.
