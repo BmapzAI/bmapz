@@ -2450,3 +2450,20 @@ Verified: `node --check` on both backend files, full `eslint` (**0 errors**, and
 
 Note: `CLAUDE.md` lists `npm run build:frontend`; the actual script is
 `npm run build`. Same for `build:backend` / `install:all` — worth correcting.
+
+**Migration 030 APPLIED and verified.** `ad_records` is renamed to
+`ad_records_backup_20260811` (rename, not drop — the data is still there if
+anything turns out to be missing; the DROP is left commented in the migration as a
+separate, later decision). Post-apply state confirmed against the live database:
+`public.ad_records` gone, backup holds all 4 rows, saved work still present (3 in
+`ai_outputs` + 1 in `ad_campaigns`), **zero** client table grants and **zero**
+client-executable functions left in `public`, and the backend answers healthy on
+the unauthenticated probe. The deploy carrying the AdsPublishModal fix was
+verified live BEFORE the rename by fetching the deployed Ads chunk and confirming
+the `ads/records` string is absent from it (chunk size also matches the local
+build byte-for-byte, allowing for the CI-injected env differing the hash).
+
+Supabase's security advisor now reports **all ten code/schema lints cleared**. The
+only remaining item is `auth_leaked_password_protection`, which is a dashboard
+Auth toggle (Auth → Providers → Password), left for Derek because it is an
+account-settings change rather than SQL.
