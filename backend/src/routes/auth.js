@@ -1,14 +1,9 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireJWT } from '../middleware/auth.js';
+import { flattenCompany, canSeeCompanySecrets } from '../lib/companyView.js';
 
 const router = Router();
-
-function flattenCompany(row) {
-  if (!row) return row;
-  const { api_keys, settings, ...rest } = row;
-  return { ...rest, ...(api_keys || {}), ...(settings || {}) };
-}
 
 /**
  * Fetch the company the user is CURRENTLY working in, flattened for the client.
@@ -17,12 +12,26 @@ function flattenCompany(row) {
  * (company_id and active_company_id since migration 021), so an embed is either
  * ambiguous — which took the app down — or pinned to the wrong one, which would
  * show the home company's branding for a whole session after switching.
+ *
+ * SECRET REDACTION IS DECIDED HERE, from the caller's own role, because every
+ * caller in this file passes the user row it just read.
+ *
+ * This file used to define its own `flattenCompany` that spread `api_keys`
+ * unconditionally. routes/companies.js gates that same spread behind
+ * `includeSecrets` and gives plain members presence booleans — but this was the
+ * unhardened twin, and `/api/auth/me` is called by the SPA on EVERY page load.
+ * So the redaction was bypassable: a role-'user' member who is deliberately
+ * denied credentials on /api/companies/current received the entire
+ * `companies.api_keys` blob here instead — the OpenAI/Anthropic billing keys,
+ * every social and ads OAuth token, SMTP/Resend/Gmail credentials, the WhatsApp
+ * token and the WordPress password. Both routers now share one definition
+ * (lib/companyView.js) so they cannot drift apart again.
  */
 async function activeCompanyFor(user) {
   const id = user?.active_company_id || user?.company_id;
   if (!id) return null;
   const { data } = await supabaseAdmin.from('companies').select('*').eq('id', id).single();
-  return flattenCompany(data);
+  return flattenCompany(data, { includeSecrets: canSeeCompanySecrets(user?.role) });
 }
 
 /** Slug a string into a legal handle: lowercase, [a-z0-9_], 3–30 chars. */

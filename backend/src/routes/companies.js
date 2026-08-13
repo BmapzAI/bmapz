@@ -4,6 +4,7 @@ import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
 import { invalidateCompanyBrain } from '../lib/companyBrain.js';
 import { invalidateAISettingsCache } from './ai.js';
 import { daysUntilHandleChange } from './users.js';
+import { flattenCompany } from '../lib/companyView.js';
 
 const router = Router();
 
@@ -88,43 +89,10 @@ const SETTINGS_FIELDS = new Set([
   'connected_integrations',
 ]);
 
-/**
- * Flatten a company row: spread api_keys and settings JSONB into top-level keys
- * so the frontend can read company.openai_api_key etc. transparently.
- */
-/**
- * Flatten a company row for the client.
- *
- * `includeSecrets` MUST be false for anyone who is not a company admin. This
- * used to always spread api_keys to the top level, so GET /companies/current —
- * gated by requireAuth only — handed every ordinary member of a company its
- * OpenAI/Anthropic/Meta/Google/SMTP credentials. Non-admins now get presence
- * booleans instead of values, so the UI can still show "connected" without the
- * secret being on the wire.
- */
-const SECRET_KEY_RE = /(_api_key|_secret|_token|_password|refresh_token)$/i;
-
-function flattenCompany(row, { includeSecrets = false } = {}) {
-  if (!row) return row;
-  const { api_keys, settings, ...rest } = row;
-  const keys = api_keys || {};
-
-  if (includeSecrets) {
-    return { ...rest, ...keys, ...(settings || {}) };
-  }
-
-  const safe = {};
-  for (const [k, v] of Object.entries(keys)) {
-    if (SECRET_KEY_RE.test(k)) {
-      // Presence only — never the value.
-      safe[`has_${k}`] = !!(v && String(v).trim());
-    } else {
-      // Non-secret config (chosen provider, model names, account ids…) is fine.
-      safe[k] = v;
-    }
-  }
-  return { ...rest, ...safe, ...(settings || {}) };
-}
+// flattenCompany / SECRET_KEY_RE now live in lib/companyView.js. They were moved
+// there because routes/auth.js had its own unhardened copy of this helper, so the
+// redaction below was bypassable by reading /api/auth/me instead. One shared
+// definition means the two cannot drift apart again.
 
 // GET /api/companies/current
 // ─── Multi-company switching ─────────────────────────────────────────────────

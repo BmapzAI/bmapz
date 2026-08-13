@@ -13,7 +13,7 @@
  */
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, filterCompanyMembers } from '../middleware/auth.js';
 import { runAIChat } from './ai.js';
 import { publishCampaign, resolveCredentials, PublishError } from '../lib/adPublisher.js';
 import { getPlatform, validateLevel, PLATFORM_KEYS } from '../lib/adPlatforms.js';
@@ -1249,8 +1249,27 @@ export async function handOneLeadToSales({
   companyId, leadId, ownerId = null, actorUserId = null, actorLabel = null,
   automatic = false, stage = null,
 }) {
-  let owner = ownerId;
+  // A client-supplied ownerId must be a member of this company. The lead itself was
+  // already company-scoped on the update below, but the OWNER never was, so this
+  // route was a second way to plant an arbitrary platform user as a lead's owner
+  // and read their email back through the owner embed on GET /api/leads — the same
+  // hole the create paths in routes/leads.js had. It also marked leads as owned and
+  // "qualified" by someone outside the company, corrupting routing and reporting.
+  //
+  // Validated HERE rather than in the route so every caller is covered, and via
+  // filterCompanyMembers so a legitimate guest member (accessible_company_ids) is
+  // still accepted.
+  let owner = null;
+  if (ownerId) {
+    const members = await filterCompanyMembers([ownerId], companyId);
+    if (!members.includes(ownerId)) {
+      throw new Error('That owner is not a member of this company.');
+    }
+    owner = ownerId;
+  }
   if (!owner) {
+    // pickNextOwner already queries within the company, so its result needs no
+    // re-check.
     const next = await pickNextOwner(companyId);
     owner = next?.id || null;
   }
@@ -1293,6 +1312,19 @@ router.post('/leads/handover', requireAuth, async (req, res) => {
     const ids = Array.isArray(req.body?.lead_ids) ? req.body.lead_ids : [req.body?.lead_id].filter(Boolean);
     if (!ids.length) return res.status(400).json({ error: 'Select at least one lead.' });
     const ownerId = req.body?.owner_id || null;
+
+    // Checked up front so a bad owner is a clean 400 rather than a 500 thrown from
+    // inside the per-lead loop after some leads were already handed over.
+    // handOneLeadToSales re-checks — it is the backstop for every other caller.
+    if (ownerId) {
+      const members = await filterCompanyMembers([ownerId], req.companyId);
+      if (!members.includes(ownerId)) {
+        return res.status(400).json({
+          error: 'That owner is not a member of this company.',
+          code: 'OWNER_NOT_IN_COMPANY',
+        });
+      }
+    }
 
     const handed = [];
     for (const id of ids) {

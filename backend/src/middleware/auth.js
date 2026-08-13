@@ -183,6 +183,25 @@ export function requireCompanyAdmin(req, res, next) {
 }
 
 /**
+ * App Owner ONLY — the platform owner, not a company admin and not system_admin.
+ *
+ * For confidential, unreleased surfaces. The frontend already hides these (see
+ * frontend-src/lib/featureFlags.js `canSeeDesign`, routes/search.js and
+ * routes/help.js), but hiding a route is not access control: the HTTP endpoint was
+ * still reachable by any authenticated customer who guessed the path.
+ *
+ * Answers 404, NOT 403, on purpose. A 403 says "this exists and you may not have
+ * it", which confirms the feature — exactly what confidentiality forbids. A 404 is
+ * indistinguishable from the endpoint not existing.
+ */
+export function requireAppOwner(req, res, next) {
+  if (req.dbUser?.role !== 'owner') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  next();
+}
+
+/**
  * Optional auth — attaches user if token present, continues either way.
  */
 export async function optionalAuth(req, res, next) {

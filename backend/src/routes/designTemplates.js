@@ -5,11 +5,31 @@
  */
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireAppOwner } from '../middleware/auth.js';
 
 const router = Router();
 
-router.get('/', requireAuth, async (req, res) => {
+/**
+ * THE WHOLE ROUTER IS APP-OWNER ONLY.
+ *
+ * The Design Studio is a confidential, unreleased section. The frontend hides the
+ * route, the sidebar entry, every cross-section shortcut, the global search
+ * destinations and the support assistant's page list — all from
+ * `canSeeDesign` / `role === 'owner'`. But these endpoints carried only
+ * `requireAuth`, so hiding the UI was the only thing protecting them: any
+ * authenticated customer who guessed `/api/design-templates` could confirm the
+ * feature exists and read or write their company's design presets.
+ *
+ * Applied router-wide rather than per route so a handler added later is covered by
+ * default instead of being forgotten. Returns 404, so the endpoint is
+ * indistinguishable from one that does not exist.
+ *
+ * The only caller is frontend-src/pages/Design.jsx, which is already unreachable
+ * for anyone but an App Owner — so this changes nothing for legitimate use.
+ */
+router.use(requireAuth, requireAppOwner);
+
+router.get('/', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('design_templates')
@@ -23,7 +43,7 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/:id', requireAuth, async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('design_templates')
@@ -38,7 +58,7 @@ router.get('/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name, config, thumbnail_url, is_brand_preset } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
@@ -61,7 +81,7 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-router.patch('/:id', requireAuth, async (req, res) => {
+router.patch('/:id', async (req, res) => {
   try {
     const { name, config, thumbnail_url, is_brand_preset } = req.body;
     const fields = { updated_at: new Date().toISOString() };
@@ -84,7 +104,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.delete('/:id', requireAuth, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { error } = await supabaseAdmin
       .from('design_templates')

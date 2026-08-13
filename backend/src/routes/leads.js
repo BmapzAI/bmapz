@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, filterCompanyMembers } from '../middleware/auth.js';
 import { runAIChat } from './ai.js';
 import { logLeadActivity, logLeadChanges, LEAD_ACTIVITY_TYPES } from '../lib/leadActivity.js';
 import { pickNextOwner } from '../lib/leadAssignment.js';
@@ -177,9 +177,41 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * A client-supplied owner_id must belong to this company.
+ *
+ * `owner_id` is in LEAD_FIELDS, so it flows straight from the request body into
+ * the insert. PATCH /:id and PATCH /:id/owner validate it; the two CREATE paths
+ * did not. That let anyone plant an arbitrary platform user as the owner of a lead
+ * in their own company and then read that user's EMAIL back out through the owner
+ * embed on GET /api/leads — email is deliberately withheld by GET
+ * /api/users/lookup, so this defeated that control and worked as reconnaissance
+ * against owner/system_admin staff accounts.
+ *
+ * Uses filterCompanyMembers, not `users.company_id === req.companyId`: the strict
+ * comparison wrongly rejects a legitimate guest member holding this company via
+ * accessible_company_ids — the exact divergence documented in middleware/auth.js.
+ */
+async function keepOwnerIfMember(ownerId, companyId) {
+  if (!ownerId) return null;
+  const members = await filterCompanyMembers([ownerId], companyId);
+  return members.includes(ownerId) ? ownerId : null;
+}
+
 router.post('/', requireAuth, async (req, res) => {
   try {
     const payload = { ...pickLeadFields(req.body), company_id: req.companyId };
+
+    // Reject rather than silently drop: a caller who names an owner deserves to
+    // know the assignment did not happen, and silently nulling it would hand the
+    // lead to auto-routing under a different name.
+    if (payload.owner_id && !(await keepOwnerIfMember(payload.owner_id, req.companyId))) {
+      return res.status(400).json({
+        error: 'That owner is not a member of this company.',
+        code: 'OWNER_NOT_IN_COMPANY',
+      });
+    }
+
     // No explicit owner? Route it to an ONLINE sales team member. If nobody is
     // online (everyone standby/offline) the lead stays unassigned so the SDR
     // agent works it — that is what "stand by" means.
@@ -259,9 +291,38 @@ router.post('/bulk', requireAuth, async (req, res) => {
       company_id: req.companyId,
     }));
 
+    // Same unvalidated owner_id hole as POST /, but batched — and this path writes
+    // no activity log, so a planted foreign owner left no trace at all. Resolve
+    // membership ONCE for the distinct ids rather than per row, then drop any owner
+    // that is not a member. Dropped (not rejected) here because one bad id in a
+    // 1000-row CSV import should not fail the whole file; the response reports it.
+    const requestedOwners = [...new Set(rows.map(r => r.owner_id).filter(Boolean))];
+    let rejectedOwners = [];
+    if (requestedOwners.length) {
+      const allowed = new Set(await filterCompanyMembers(requestedOwners, req.companyId));
+      rejectedOwners = requestedOwners.filter(id => !allowed.has(id));
+      if (rejectedOwners.length) {
+        for (const r of rows) {
+          if (r.owner_id && !allowed.has(r.owner_id)) {
+            delete r.owner_id;
+            delete r.owner_assigned_at;
+          }
+        }
+      }
+    }
+
     const { data, error } = await supabaseAdmin.from('leads').insert(rows).select();
     if (error) throw error;
-    res.json({ inserted: data.length, data });
+    res.json({
+      inserted: data.length,
+      data,
+      ...(rejectedOwners.length
+        ? {
+          owner_warnings: `${rejectedOwners.length} owner id(s) are not members of this company and were left unassigned.`,
+          rejected_owner_ids: rejectedOwners,
+        }
+        : {}),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -108,8 +108,12 @@ async function evalCondition(node, run) {
   // 'qualified' condition branches on whatever qualified the lead (SDR, a workflow,
   // or a human on the Sales board). Condition = read/branch; qualify action = write.
   if (cond === 'qualified' || cond === 'disqualified') {
+    // Company-scoped: unscoped, this turned a `condition` node into an oracle for
+    // a foreign lead's funnel_stage/status, readable via the run's current_node_id.
     const { data: lead } = await supabaseAdmin
-      .from('leads').select('funnel_stage, status').eq('id', run.lead_id).maybeSingle();
+      .from('leads').select('funnel_stage, status')
+      .eq('id', run.lead_id).eq('company_id', run.company_id)
+      .maybeSingle();
     const stageIdx = FUNNEL_STAGES.indexOf(lead?.funnel_stage || 'awareness');
     const isQualified = (lead?.status === 'qualified') || stageIdx >= FUNNEL_STAGES.indexOf('mql');
     const isDisqualified = ['disqualified', 'lost'].includes(lead?.status);
@@ -220,7 +224,15 @@ async function advanceRun(run, wf, companyKeys) {
   }
   let lead = null;
   if (run.lead_id) {
-    const { data } = await supabaseAdmin.from('leads').select('*').eq('id', run.lead_id).single();
+    // Company-scoped deliberately. enrollLead now refuses a foreign lead, but this
+    // read is what actually loaded another tenant's contact and fed it into message
+    // personalization, so it is scoped too: any run that predates that fix, or is
+    // created by some future path that forgets to validate, finds nothing here
+    // instead of leaking. The backend runs as service_role, so RLS is no backstop.
+    const { data } = await supabaseAdmin
+      .from('leads').select('*')
+      .eq('id', run.lead_id).eq('company_id', run.company_id)
+      .maybeSingle();
     lead = data;
   }
 
@@ -397,6 +409,26 @@ export async function enrollLead({ workflowId, companyId, leadId, context = {} }
   const { data: wf } = await supabaseAdmin.from('workflows').select('*').eq('id', workflowId).eq('company_id', companyId).single();
   if (!wf) throw new Error('Workflow not found');
   if (wf.status !== 'active') throw new Error('Workflow must be active before enrolling leads');
+
+  // THE LEAD MUST BELONG TO THE SAME COMPANY AS THE WORKFLOW.
+  //
+  // Only the WORKFLOW was scoped before, never the lead, so any caller could
+  // enroll an arbitrary lead UUID from another tenant. The run was then stored
+  // with the attacker's company_id, and the engine loaded the foreign lead and
+  // personalized a message with it — copying another company's contact name,
+  // company and email into a `messages` row the attacker can read in their own
+  // inbox. With a sendable channel it also messaged that contact using this
+  // company's own credentials.
+  //
+  // Checked here because this is the single choke point for all three entry
+  // paths: POST /workflows/:id/enroll, POST /workflows/:id/run, and
+  // POST /workflow-runs.
+  if (leadId) {
+    const { data: ownLead, error: leadErr } = await supabaseAdmin
+      .from('leads').select('id').eq('id', leadId).eq('company_id', companyId).maybeSingle();
+    if (leadErr) throw leadErr;               // never enrol on a failed check
+    if (!ownLead) throw new Error('Lead not found in this company');
+  }
 
   if (leadId) {
     // The "already enrolled" guard must not be able to fail open. maybeSingle()

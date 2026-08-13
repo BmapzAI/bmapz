@@ -39,8 +39,20 @@ const ADDONS = {
  * add-ons were never granted. Exporting the logic fixes that without giving the
  * webhook a fake session.
  */
+const MAX_ADDON_QUANTITY = 100;
+
 export async function grantAddon({ companyId, type, quantity = 1, paymentRef = null, grantedBy = null, provider = 'stripe' }) {
   if (!ADDONS[type]) throw new Error(`Unknown add-on type: ${type}`);
+
+  // Quantity was taken from the caller unchecked and multiplied straight into the
+  // credit grant, so `quantity: 1000` minted 15,000,000 credits in one request.
+  // Validated here rather than in the route so the Stripe webhook path is covered
+  // by the same bound.
+  const qty = Number(quantity);
+  if (!Number.isInteger(qty) || qty < 1 || qty > MAX_ADDON_QUANTITY) {
+    throw new Error(`quantity must be a whole number between 1 and ${MAX_ADDON_QUANTITY}`);
+  }
+  quantity = qty;
 
   // IDEMPOTENCY. Stripe delivers webhooks at-least-once, so a replayed
   // checkout.session.completed would grant the same credit pack again — free
@@ -91,11 +103,21 @@ export async function grantAddon({ companyId, type, quantity = 1, paymentRef = n
     txnDesc = `${type} ×${quantity} (handled by subscription billing)`;
   }
 
-  if (Object.keys(updates).length > 0) {
-    await supabaseAdmin.from('subscriptions').update(updates).eq('id', sub.id);
-  }
-
-  await supabaseAdmin.from('credit_transactions').insert({
+  // ── Write the LEDGER FIRST, then the balance. ──────────────────────────────
+  // The order used to be reversed, and the insert's error was discarded entirely
+  // (supabase-js returns { error } rather than throwing). Two bad consequences:
+  // a grant could be applied while its audit row silently failed the
+  // `uq_credit_tx_payment_ref` unique index from migration 028, leaving credits
+  // added with NO record — which also defeated the idempotency check above,
+  // because that check looks for exactly the row that failed to be written. The
+  // same payment_ref could then be replayed indefinitely.
+  //
+  // Inserting first turns that unique index into a durable CLAIM: the check above
+  // is a fast, friendly path, and this insert is the authority. A duplicate here
+  // means another delivery already granted it, so we stop before touching the
+  // balance. Writing the ledger and then failing to grant is the safe direction to
+  // fail; granting and failing to log is not.
+  const { error: txnErr } = await supabaseAdmin.from('credit_transactions').insert({
     company_id: companyId,
     subscription_id: sub.id,
     type: txnType,
@@ -105,30 +127,62 @@ export async function grantAddon({ companyId, type, quantity = 1, paymentRef = n
     description: txnDesc,
     metadata: { addon: type, quantity, payment_ref: paymentRef, granted_by: grantedBy, provider },
   });
+  if (txnErr) {
+    if (/duplicate key|uq_credit_tx_payment_ref/i.test(txnErr.message || '')) {
+      console.log(`[addons] payment_ref ${paymentRef} already granted (unique index) — skipping duplicate`);
+      return { success: true, type, quantity, credits_granted: 0, duplicate: true };
+    }
+    throw txnErr;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    const { error: subErr } = await supabaseAdmin
+      .from('subscriptions').update(updates).eq('id', sub.id);
+    if (subErr) throw subErr;
+  }
 
   return { success: true, type, quantity, credits_granted: creditsDelta };
 }
 
-router.post('/purchase', requireAuth, async (req, res) => {
+/**
+ * POST /api/addons/purchase — MANUAL GRANT, platform staff only.
+ *
+ * This was the worst hole in the billing path. The gate read:
+ *
+ *   if (!payment_ref && role !== 'owner' && role !== 'system_admin') -> 403
+ *
+ * `payment_ref` is an arbitrary client string that was never checked against
+ * Stripe, against `billing_purchases`, or against anything at all — merely being
+ * PRESENT satisfied the condition. So any authenticated customer (any role, since
+ * the route carried no role middleware) could POST
+ * `{"type":"extra_credit_pack","quantity":1000,"payment_ref":"anything"}` and
+ * grant themselves 15,000,000 spendable AI credits, then repeat with a different
+ * ref for as many as they wanted. `extra_full_scan` was worse: it granted the
+ * R$ 800 Full Scan, the most provider-expensive action in the product, to trial
+ * users for whom it is deliberately disabled.
+ *
+ * A client-supplied payment reference can never be evidence of payment. Only the
+ * signature-verified Stripe webhook may assert that, and it calls grantAddon()
+ * directly (routes/stripeWebhook.js) rather than coming through HTTP — so nothing
+ * legitimate needs this route to accept `payment_ref` from a customer.
+ */
+router.post('/purchase', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { type, quantity = 1, payment_ref } = req.body;
+    const { type, quantity = 1 } = req.body;
     if (!ADDONS[type]) {
       return res.status(400).json({ error: `Unknown add-on type: ${type}` });
-    }
-
-    // Only System Admin / Owner can directly grant; everyone else must go via
-    // billing (which calls this endpoint from the Stripe webhook).
-    // For now, require any payment_ref OR admin role.
-    if (!payment_ref && req.dbUser?.role !== 'owner' && req.dbUser?.role !== 'system_admin') {
-      return res.status(403).json({ error: 'Add-ons must be purchased via the Billing page. Direct grant requires admin role.' });
     }
 
     const result = await grantAddon({
       companyId: req.companyId,
       type,
       quantity,
-      paymentRef: payment_ref || null,
+      // A manual staff grant is not a payment. Recording a client-supplied string
+      // as the payment reference would also poison the idempotency key that the
+      // real webhook depends on.
+      paymentRef: null,
       grantedBy: req.dbUser?.email || null,
+      provider: 'manual',
     });
 
     res.json(result);
