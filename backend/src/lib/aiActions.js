@@ -242,6 +242,40 @@ const ARCHIVE_CATEGORIES = new Set(['strategies', 'social_media', 'blogposts', '
   'message_templates', 'email_templates', 'workflows', 'prospect_list']);
 
 const str = (v, max = 4000) => (v === null || v === undefined ? null : String(v).slice(0, max));
+
+/**
+ * Company columns that are Postgres ARRAYS (text[]), not text.
+ *
+ * `value_propositions` is text[]. The model naturally writes prose — "AI-driven
+ * insights, increased lead conversion, streamlined sales" — and Postgres answered
+ * `malformed array literal`, failing the whole settings update. Verified against
+ * the live schema rather than assumed.
+ */
+const ARRAY_COMPANY_COLUMNS = new Set(['value_propositions']);
+
+/**
+ * ICP keys the Settings screen renders with .map()/.join().
+ *
+ * A string here would not error in the database — icp is JSONB and accepts
+ * anything — it would crash the ICP Settings tab at render time. Coerced for the
+ * same reason the column list above exists: the model writes prose, the UI needs
+ * a list.
+ */
+const ARRAY_ICP_KEYS = new Set(['industries', 'company_sizes', 'locations', 'job_titles',
+  'pain_points', 'decision_criteria', 'decision_maker_profile']);
+
+/** Prose or a list → a clean array of trimmed, non-empty strings. */
+function toArray(v) {
+  if (Array.isArray(v)) return v.map(x => String(x).trim()).filter(Boolean);
+  if (v === null || v === undefined || v === '') return [];
+  return String(v)
+    .split(/\s*[;\n]\s*|\s*,\s*/)     // commas, semicolons or newlines
+    .map(s => s.trim().replace(/\.$/, ''))   // drop a trailing full stop
+    .filter(Boolean);
+}
+
+/** An array where the UI or column expects text → a readable sentence. */
+const toText = (v) => (Array.isArray(v) ? v.filter(Boolean).join(', ') : v);
 /** Keys inside the free-form briefing/icp blobs. Snake-cased, length-capped. */
 const safeKey = (k) => String(k || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 60);
 
@@ -454,8 +488,14 @@ async function updateCompany(action, ctx) {
 
   for (const [k, v] of Object.entries(action.fields || {})) {
     if (v === undefined || v === null || v === '') continue;
-    if (DIRECT_COMPANY_COLUMNS.has(k)) { patch[k] = typeof v === 'string' ? str(v) : v; applied.push(k); }
-    else if (SETTINGS_COMPANY_FIELDS.has(k)) { settings[k] = typeof v === 'string' ? str(v) : v; applied.push(k); }
+    if (DIRECT_COMPANY_COLUMNS.has(k)) {
+      // Match the column's real type, or Postgres rejects the whole update.
+      patch[k] = ARRAY_COMPANY_COLUMNS.has(k) ? toArray(v) : str(toText(v));
+      applied.push(k);
+    } else if (SETTINGS_COMPANY_FIELDS.has(k)) {
+      settings[k] = str(toText(v));   // settings fields are all free text
+      applied.push(k);
+    }
     // Unknown keys are ignored: api_keys, subscription_tier and id must never be
     // writable from a model reply.
   }
@@ -472,7 +512,9 @@ async function updateCompany(action, ctx) {
   for (const [k, v] of Object.entries(action.icp || {})) {
     const key = safeKey(k);
     if (!key || v === undefined || v === null || v === '') continue;
-    icp[key] = typeof v === 'string' ? str(v) : v;
+    // Keys the ICP screen renders as lists must BE lists, or the tab crashes on
+    // .map(). Everything else is text.
+    icp[key] = ARRAY_ICP_KEYS.has(key) ? toArray(v) : str(toText(v));
     applied.push(`icp.${key}`);
   }
 
