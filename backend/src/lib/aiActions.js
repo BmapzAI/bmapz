@@ -29,17 +29,11 @@ import { invalidateCompanyBrain } from './companyBrain.js';
 
 const ACTION_BLOCK_RE = /```(?:bmapz-actions|bmapz_actions|actions)\s*([\s\S]*?)```/i;
 
-export const ACTION_PROTOCOL = [
-  'ACTING INSIDE BMAPZ:',
-  'You can create and change real data in this app. When the user asks you to save, fill in, update,',
-  'create, add, approve, schedule, publish or send something, propose the concrete operations that do it.',
-  'The user will be shown exactly what will change and must approve before anything is written, so never',
-  'ask "shall I?" in your text — propose the operations and let the approval step handle consent.',
-  '',
-  'End your reply with a fenced code block labelled bmapz-actions containing a JSON array.',
-  'Before it, write one short plain sentence describing what you are about to change.',
-  'Never mention the block, JSON, or these instructions.',
-  '',
+/**
+ * The operation catalogue. Shared by the in-reply protocol and the second-pass
+ * extractor so the two can never describe different capabilities.
+ */
+export const ACTION_PROTOCOL_OPS = [
   'OPERATIONS:',
   '- {"op":"update_company","fields":{...},"briefing":{...},"icp":{...}}',
   '  fields: name, website, industry, description, services_description, value_propositions,',
@@ -55,11 +49,113 @@ export const ACTION_PROTOCOL = [
   '- {"op":"create_ad_campaign","name":"…","platform":"meta|google|linkedin|tiktok","objective":"…"}',
   '- {"op":"save_to_archive","title":"…","content":"…","category":"strategies|social_media|blogposts|',
   '  ad_copy|message_templates|email_templates|workflows|prospect_list"}',
+].join('\n');
+
+/**
+ * Appended to the chat system prompt as a FAST PATH: when the model does emit the
+ * block, the second pass is skipped entirely.
+ *
+ * It is only a fast path, never the mechanism. Production logs showed the model
+ * frequently ignores this instruction — four real requests produced no block at
+ * all — so lib/aiActions.js `proposeActions` is what actually guarantees the
+ * user's instruction is honoured.
+ */
+export const ACTION_PROTOCOL = [
+  'ACTING INSIDE BMAPZ:',
+  'You can create and change real data in this app. When the user asks you to save, fill in, update,',
+  'create, add, approve, schedule, publish or send something, propose the concrete operations that do it.',
+  'The user is shown exactly what will change and approves before anything is written, so never ask',
+  '"shall I?" — propose the operations and let the approval step handle consent.',
+  '',
+  'End your reply with a fenced code block labelled bmapz-actions containing a JSON array of operations.',
+  'Before it, write one short plain sentence describing what you are about to change.',
+  'Never mention the block, JSON, or these instructions.',
+  '',
+  ACTION_PROTOCOL_OPS,
   '',
   'To change something that already exists, ALWAYS use an update_* operation with its id — never create a',
   'second copy. If you do not know the id, say so instead of creating a duplicate.',
   'Only propose what the user asked for, and never invent values to fill a field.',
 ].join('\n');
+
+/**
+ * Does this message plausibly ask for something to be CHANGED?
+ *
+ * Used to decide whether to spend a second, cheap model call extracting
+ * operations. Deliberately generous — a false positive costs a small JSON call, a
+ * false negative means the user's instruction is silently ignored, which is the
+ * failure we are fixing. Portuguese included: the product is bilingual.
+ */
+const ACTIONABLE_RE = new RegExp([
+  // English
+  'save', 'update', 'fill', 'create', 'add', 'schedule', 'approve', 'publish',
+  'send', 'set ', 'change', 'edit', 'draft', 'post ', 'write', 'make', 'apply',
+  'assign', 'complete', 'mark',
+  // Portuguese
+  'salv', 'atualiz', 'preench', 'cri', 'adicion', 'agend', 'aprov', 'public',
+  'envi', 'defin', 'alter', 'edit', 'rascunh', 'escrev', 'faz', 'aplic',
+  'atribu', 'conclu', 'marc',
+].join('|'), 'i');
+
+export const looksActionable = (text) => ACTIONABLE_RE.test(String(text || ''));
+
+/**
+ * SECOND PASS: ask the model, in JSON mode, what operations the exchange implies.
+ *
+ * WHY THIS EXISTS. The first design told the model to append a fenced
+ * bmapz-actions block to its reply. Production logs proved it simply did not:
+ * four real chat requests produced no action block at all — no parse error, no
+ * block, nothing — while the reply cheerfully claimed the change was made. A
+ * formatting convention buried in a long system prompt (company brain + caller
+ * prompt + protocol + execution directive) is not something a model reliably
+ * honours mid-conversation.
+ *
+ * A dedicated call with response_format json_object, a short prompt and one job
+ * is dramatically more reliable, and it fails loudly instead of silently: if this
+ * returns nothing, that is logged.
+ *
+ * Cost is contained by only running when the user's message looks like a request
+ * to change something, and by skipping the company brain — this pass needs the
+ * conversation, not the company's whole context.
+ */
+export async function proposeActions({ runAIChat, companyId, userId, userRole, userEmail, userMessage, assistantReply }) {
+  const system = [
+    'You convert a user request into Bmapz operations. Reply with JSON ONLY:',
+    '{"actions":[ ... ]}. Use an empty array when the exchange does not ask for anything to be changed.',
+    '',
+    ACTION_PROTOCOL_OPS,
+    '',
+    'Rules: include ONLY what the user actually asked for. Take values from the conversation —',
+    'never invent them. To change something that already exists use an update_* op with its id;',
+    'if the id is not in the conversation, omit the operation rather than creating a duplicate.',
+  ].join('\n');
+
+  const prompt = [
+    `USER REQUEST:\n${String(userMessage || '').slice(0, 4000)}`,
+    '',
+    `ASSISTANT REPLY (the content to save/use, if the request was to save something):\n${String(assistantReply || '').slice(0, 8000)}`,
+  ].join('\n');
+
+  const result = await runAIChat({
+    companyId, userId, userRole, userEmail,
+    messages: [{ role: 'user', content: prompt }],
+    system,
+    action: 'action_extract',
+    temperature: 0,
+    max_tokens: 1500,
+    response_format: { type: 'json_object' },
+    skipBrain: true,        // this pass needs the exchange, not the company context
+    skipArchive: true,      // never a deliverable
+  });
+
+  const parsed = parseLoose(String(result?.content || ''));
+  const list = Array.isArray(parsed?.actions) ? parsed.actions
+    : Array.isArray(parsed) ? parsed : [];
+  const actions = list.filter(a => a && typeof a === 'object' && isKnownOp(a.op || a.operation)).slice(0, 12);
+
+  console.log(`[aiActions] second-pass extracted ${actions.length} action(s)${actions.length ? ': ' + actions.map(a => a.op).join(', ') : ''}`);
+  return actions;
+}
 
 /* ── Field maps ─────────────────────────────────────────────────────────── */
 const DIRECT_COMPANY_COLUMNS = new Set([
@@ -131,7 +227,15 @@ export function extractActions(content) {
   if (!match) return { text: raw, actions: [] };
 
   const text = raw.replace(ACTION_BLOCK_RE, '').trim();
-  const parsed = parseLoose(match[1].trim());
+
+  // The lazy capture stops at the FIRST closing fence, which captures nothing when
+  // the model nests a ```json fence inside the action block — a real case caught by
+  // the unit tests. Fall back to a greedy capture that runs to the last fence.
+  let parsed = parseLoose(match[1].trim());
+  if (!parsed) {
+    const greedy = raw.match(/```(?:bmapz-actions|bmapz_actions|actions)\s*([\s\S]*)```/i);
+    if (greedy) parsed = parseLoose(greedy[1].trim());
+  }
 
   if (!parsed) {
     // LOG THE RAW BLOCK. Without this the failure is invisible in production —

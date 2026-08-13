@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
-import { extractActions, applyActions, describeActions, isKnownOp, ACTION_PROTOCOL } from '../lib/aiActions.js';
+import {
+  extractActions, applyActions, describeActions, isKnownOp,
+  proposeActions, looksActionable, ACTION_PROTOCOL,
+} from '../lib/aiActions.js';
 import {
   computeCreditCost,
   resolveActionModel,
@@ -1032,14 +1035,40 @@ router.post('/chat', requireAuth, async (req, res) => {
     // chat. This is both what was asked for and safer: the previous version applied
     // whatever the model emitted, so a rejected write still read as "done" in the
     // reply, and there was no moment where the user could see or correct it.
-    const { text, actions, parseError } = extractActions(result.content);
-    if (!actions.length) {
-      return res.json({
-        ...result,
-        content: text,
-        ...(parseError ? { action_warning: 'The assistant tried to change something but its instructions were malformed, so nothing was proposed.' } : {}),
-      });
+    const { text, actions: inline } = extractActions(result.content);
+    let actions = inline;
+
+    // SECOND PASS. The in-reply block is only a fast path; production logs proved
+    // the model routinely omits it, which silently swallowed the user's
+    // instruction. When the request looks like it asks for a change and no block
+    // came back, extract the operations with a dedicated JSON-mode call.
+    const lastUserMessage = [...(messages || [])].reverse()
+      .find(m => m?.role === 'user')?.content;
+    const userText = typeof lastUserMessage === 'string'
+      ? lastUserMessage
+      : Array.isArray(lastUserMessage)
+        ? lastUserMessage.map(p => p?.text || '').join(' ')
+        : '';
+
+    if (!actions.length && looksActionable(userText)) {
+      try {
+        actions = await proposeActions({
+          runAIChat,
+          companyId: req.companyId,
+          userId: req.dbUser?.id,
+          userRole: req.dbUser?.role,
+          userEmail: req.dbUser?.email,
+          userMessage: userText,
+          assistantReply: text,
+        });
+      } catch (e) {
+        // Never fail the chat because the extractor failed — the reply is still
+        // useful. Logged so the failure is visible rather than silent.
+        console.error('[ai/chat] action extraction failed:', e.message);
+      }
     }
+
+    if (!actions.length) return res.json({ ...result, content: text });
 
     res.json({
       ...result,
