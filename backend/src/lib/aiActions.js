@@ -41,7 +41,13 @@ export const ACTION_PROTOCOL_OPS = [
   '  sales_structure, geographic_market, icp_description, target_audience, tone_of_voice, company_details.',
   '  briefing / icp: free-form objects merged key-by-key into the company briefing and ICP',
   '  (use snake_case keys, e.g. positioning_today, primary_objectives, key_kpis, main_challenge).',
-  '- {"op":"create_task",...} / {"op":"update_task","id":"…","status":"todo|doing|done|standby",...}',
+  // Spelled out in full: live testing showed "assign it to the AI agent" produced
+  // an unassigned task, because the abbreviated entry never named assign_to_ai.
+  '- {"op":"create_task","title":"…","description":"…","priority":"low|medium|high|urgent",',
+  '  "section":"general|ads|sales|workflow|inbox|blog|sdr|seo|social|dashboard",',
+  '  "assign_to_ai":true|false,"visibility":"company|private","due_at":"2026-09-01"}',
+  '  Set assign_to_ai TRUE whenever the user says to give it to the AI, the agent, or to do it automatically.',
+  '- {"op":"update_task","id":"…","status":"standby|todo|doing|done","priority":"…","title":"…"}',
   '- {"op":"create_social_post","title":"…","content":"…","platforms":["instagram"]}',
   '- {"op":"update_social_post","id":"…","content":"…","status":"draft|approved|scheduled|published",',
   '  "scheduled_for":"2026-09-01T14:00:00Z"}',
@@ -221,12 +227,52 @@ function parseLoose(src) {
   return null;
 }
 
+/**
+ * Remove operation JSON from the text the USER sees.
+ *
+ * Observed in live testing: the model writes the operations as a plain ```json
+ * fence, or as bare JSON, instead of the labelled bmapz-actions fence. The
+ * labelled-fence strip then misses it and the user reads a wall of
+ * `{"op":"create_task",...}` under an otherwise normal sentence.
+ *
+ * So strip by CONTENT, not by label: any fenced block, or bare JSON object/array,
+ * that parses and mentions a known operation is machinery and never belongs in the
+ * reply. Anything that does not parse is left alone — a code block the user
+ * actually asked for must survive.
+ */
+function stripOperationJson(text) {
+  let out = String(text || '');
+
+  const mentionsOp = (s) => /"\s*(op|operation)\s*"\s*:/.test(s);
+  const parsesToOps = (s) => {
+    if (!mentionsOp(s)) return false;
+    const parsed = parseLoose(s.trim());
+    if (!parsed) return false;
+    const list = Array.isArray(parsed) ? parsed : [parsed];
+    return list.some(a => a && typeof a === 'object' && isKnownOp(a.op || a.operation));
+  };
+
+  // 1. Fenced blocks of any label.
+  out = out.replace(/```[a-z-]*\s*([\s\S]*?)```/gi, (whole, inner) => (parsesToOps(inner) ? '' : whole));
+
+  // 2. Bare JSON array or object sitting on its own in the prose.
+  out = out.replace(/(^|\n)\s*(\[[\s\S]*?\]|\{[\s\S]*?\})\s*(?=\n|$)/g,
+    (whole, lead, json) => (parsesToOps(json) ? lead : whole));
+
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function extractActions(content) {
   const raw = String(content || '');
   const match = raw.match(ACTION_BLOCK_RE);
-  if (!match) return { text: raw, actions: [] };
+  // No labelled block: the operations may still be in the text as a plain json
+  // fence. Strip anything that parses to real operations so it never reaches the
+  // user, and let the second pass do the extracting.
+  if (!match) return { text: stripOperationJson(raw), actions: [] };
 
-  const text = raw.replace(ACTION_BLOCK_RE, '').trim();
+  // Strip the labelled block, then sweep for any stray operation JSON the model
+  // also left in the prose.
+  const text = stripOperationJson(raw.replace(ACTION_BLOCK_RE, ''));
 
   // The lazy capture stops at the FIRST closing fence, which captures nothing when
   // the model nests a ```json fence inside the action block — a real case caught by
