@@ -39,8 +39,17 @@ export const ACTION_PROTOCOL_OPS = [
   '  fields: name, website, industry, description, services_description, value_propositions,',
   '  years_in_business, business_model, average_ticket, repurchase_cycle, marketing_structure,',
   '  sales_structure, geographic_market, icp_description, target_audience, tone_of_voice, company_details.',
-  '  briefing / icp: free-form objects merged key-by-key into the company briefing and ICP',
-  '  (use snake_case keys, e.g. positioning_today, primary_objectives, key_kpis, main_challenge).',
+  '  icp: use EXACTLY these keys, which are the ones the ICP Settings screen reads —',
+  '    primary_audience (text), secondary_audience (text), main_desires (text),',
+  '    common_objections (text), awareness_level (text), budget_range (text),',
+  '    industries (array), company_sizes (array), locations (array), job_titles (array),',
+  '    pain_points (array), decision_criteria (array),',
+  '    decision_maker_profile (array from: Founder, Director, CMO, CTO, VP Marketing, Buyer,',
+  '    End consumer, Manager).',
+  '  briefing: free-form snake_case keys, e.g. positioning_today, primary_objectives, key_kpis,',
+  '    main_challenge, target_market, messaging_strategy, channel_strategy, success_metrics.',
+  '  When asked to "fill in the settings" from a discussion, populate EVERY field the conversation',
+  '  supports across fields, icp and briefing — not just one or two.',
   // Spelled out in full: live testing showed "assign it to the AI agent" produced
   // an unassigned task, because the abbreviated entry never named assign_to_ai.
   '- {"op":"create_task","title":"…","description":"…","priority":"low|medium|high|urgent",',
@@ -124,6 +133,44 @@ export const looksActionable = (text) => ACTIONABLE_RE.test(String(text || ''));
  * to change something, and by skipping the company brain — this pass needs the
  * conversation, not the company's whole context.
  */
+/**
+ * Recent records the user might be referring to, with their real ids.
+ *
+ * WITHOUT THIS, update_* can never work. "approve and schedule the post for 3pm"
+ * gives the model no id, so it emitted a placeholder — literally `"..."` — and
+ * Postgres answered "invalid input syntax for type uuid". Handing it the last few
+ * records by id and title is what turns "the post" into a real target.
+ *
+ * Company-scoped, tiny, and titles only — never content.
+ */
+async function recentRecordsContext(companyId) {
+  const [posts, blogs, tasks] = await Promise.all([
+    supabaseAdmin.from('social_posts').select('id, title, status, scheduled_for')
+      .eq('company_id', companyId).order('created_at', { ascending: false }).limit(8),
+    supabaseAdmin.from('blog_posts').select('id, title, status')
+      .eq('company_id', companyId).order('created_at', { ascending: false }).limit(5),
+    supabaseAdmin.from('tasks').select('id, title, status')
+      .eq('company_id', companyId).order('created_at', { ascending: false }).limit(8),
+  ]);
+
+  const lines = [];
+  const add = (label, rows, extra = () => '') => {
+    for (const r of rows || []) {
+      lines.push(`- ${label} id=${r.id} · "${String(r.title || '').slice(0, 80)}" · ${r.status || ''}${extra(r)}`);
+    }
+  };
+  add('SOCIAL_POST', posts.data, (r) => (r.scheduled_for ? ` · scheduled ${r.scheduled_for}` : ''));
+  add('BLOG_POST', blogs.data);
+  add('TASK', tasks.data);
+
+  if (!lines.length) return '';
+  return [
+    'EXISTING RECORDS you may reference by id (most recent first).',
+    'Use the id EXACTLY as written. If what the user means is not in this list, omit the operation.',
+    ...lines,
+  ].join('\n');
+}
+
 export async function proposeActions({ runAIChat, companyId, userId, userRole, userEmail, userMessage, assistantReply }) {
   const system = [
     'You convert a user request into Bmapz operations. Reply with JSON ONLY:',
@@ -136,11 +183,22 @@ export async function proposeActions({ runAIChat, companyId, userId, userRole, u
     'if the id is not in the conversation, omit the operation rather than creating a duplicate.',
   ].join('\n');
 
+  // Real ids, so "schedule the post" can resolve to an actual row instead of a
+  // placeholder the database rejects.
+  let records = '';
+  try {
+    records = await recentRecordsContext(companyId);
+  } catch (e) {
+    console.error('[aiActions] record context failed:', e.message);
+  }
+
   const prompt = [
+    records,
+    records ? '' : null,
     `USER REQUEST:\n${String(userMessage || '').slice(0, 4000)}`,
     '',
     `ASSISTANT REPLY (the content to save/use, if the request was to save something):\n${String(assistantReply || '').slice(0, 8000)}`,
-  ].join('\n');
+  ].filter(v => v !== null).join('\n');
 
   const result = await runAIChat({
     companyId, userId, userRole, userEmail,
@@ -430,6 +488,20 @@ async function updateCompany(action, ctx) {
   // The brain caches company context for 5 minutes; without this the agent keeps
   // answering from the version it just replaced.
   invalidateCompanyBrain(ctx.companyId);
+
+  // File it in AI Outputs. A settings change made through the agent is work the
+  // user should be able to review later like any other output — it was reported
+  // missing from the archive.
+  await archive({
+    companyId: ctx.companyId,
+    userId: ctx.userId,
+    title: `Company settings updated (${applied.length} field${applied.length === 1 ? '' : 's'})`,
+    content: applied.map(f => `• ${f}`).join('\n'),
+    category: 'strategies',
+    type: 'settings_update',
+    meta: { fields: applied },
+  });
+
   return { ok: true, summary: `Updated ${applied.length} company field(s)`, fields: applied, link: '/Settings' };
 }
 
@@ -461,9 +533,18 @@ async function createTask(action, ctx) {
     id: data.id, link: `/AIChat?tab=tasks&task=${data.id}` };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Look a row up inside THIS company before touching it. */
 async function ownRow(table, id, companyId, columns = '*') {
   if (!id) return { error: 'No id supplied.' };
+  // The model will happily emit a placeholder like "..." or "<post id>" when it
+  // does not know the real id. Postgres then rejects it with "invalid input syntax
+  // for type uuid", which is both ugly and useless to the user. Catch it here and
+  // say what actually went wrong.
+  if (!UUID_RE.test(String(id))) {
+    return { error: 'I do not know which record you mean — open it, or say its exact name, and try again.' };
+  }
   const { data, error } = await supabaseAdmin
     .from(table).select(columns).eq('id', id).eq('company_id', companyId).maybeSingle();
   if (error) return { error: error.message };
