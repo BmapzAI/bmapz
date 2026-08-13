@@ -2467,3 +2467,64 @@ Supabase's security advisor now reports **all ten code/schema lints cleared**. T
 only remaining item is `auth_leaked_password_protection`, which is a dashboard
 Auth toggle (Auth → Providers → Password), left for Derek because it is an
 account-settings change rather than SQL.
+
+---
+
+## Session 34 (part 3) — Task management (migration 031)
+
+**Schema.** `tasks`, `task_followers`, `task_activity`, plus
+`users.auto_assign_tasks_to_ai`. Applied and verified.
+
+**A foreign-key note that matters.** `tasks` references `users` THREE times
+(created_by, assignee_id, completed_by). That makes any PostgREST embed
+`tasks(*, users(*))` ambiguous — the same failure mode migration 021 caused when
+it gave `users` a second FK to `companies` and took the app down. So
+`routes/tasks.js` NEVER implicitly embeds users: `attachPeople()` resolves every
+referenced person in one extra query and merges in memory, the pattern
+`middleware/auth.js loadDbUser` adopted after that outage. If an embed is ever
+needed it must name the constraint (`users!tasks_assignee_id_fkey`). No new FK was
+added to an existing table pair, so nothing already in the app can break.
+
+**029's protection proved itself.** The three new tables were born with ZERO
+anon/authenticated grants, because 029 set `alter default privileges … revoke all
+on tables`. Verified explicitly after applying. RLS is enabled with company-scoped
+read policies as a second layer.
+
+**Visibility.** A `private` task is visible only to its creator and assignee;
+`company` tasks to everyone in the company. Enforced in the backend, since every
+query runs as service_role and bypasses RLS — the policy is defence in depth, not
+the guard. Reads go through one `visibleTo()` helper applied on top of the company
+filter, so it can only narrow within a tenant, never widen.
+
+**Assignment is validated.** An assignee must be a member of the company, checked
+with `filterCompanyMembers` (not a `users.company_id` comparison, which would
+wrongly reject guest members). Completion bookkeeping (`completed_by*`,
+`ai_result`) is decided server-side and is NOT client-writable — otherwise a
+client could claim the AI did work it never did.
+
+**AI execution** goes through `lib/taskRunner.js` → `runAIChat`, the single choke
+point, so tasks inherit credit accounting, plan gating, BYOK, the company brain
+and archiving into AI Outputs rather than re-implementing any of it. Fire-and-
+forget from the HTTP handlers (a model call takes seconds; the task row is the
+progress indicator). Failures set `ai_error`, move the task to `blocked` and
+notify — including a clear "needs AI credits" message for CREDITS_EXHAUSTED.
+The runner passes `userRole: 'user'` deliberately, so a task can never become a
+route to owner-only behaviour through the agent.
+
+**Frontend.** `components/tasks/`: `MyTasks` (kanban / list / calendar),
+`TaskCard`, `TasksWidget` (Home), `TaskTableInput` (AI-chat table mode),
+`taskMeta.js` (shared vocabulary, bilingual). AI Chat gained a Chat ⇄ My Tasks
+tab and a Table-mode toggle; `?tab=tasks&task=<id>` deep-links from the Home
+widget and from task notifications.
+
+Kanban uses explicit "→ column" move buttons rather than drag-and-drop: they work
+on touch, with a keyboard and with a screen reader.
+
+#### Still to build (NOT done in this session)
+- Scheduling tasks inside **AI Automations** (recurring / future-dated runs via
+  `lib/automationScheduler.js`).
+- The AI chat **proposing** tasks from a conversation.
+- "Create a task from here" entry points inside Ads / Sales / Inbox / Blog / SEO /
+  Social / SDR. The `section` + `linked_type` / `linked_id` columns exist and the
+  agent already tailors its work per section, so these are wiring, not redesign.
+- Drag-and-drop on the kanban (deliberately deferred, see above).

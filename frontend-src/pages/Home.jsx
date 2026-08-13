@@ -11,6 +11,7 @@ import ActivityFeed from '@/components/dashboard/ActivityFeed';
 import GettingStarted from '@/components/dashboard/GettingStarted';
 import DrillDownModal from '@/components/dashboard/DrillDownModal';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
+import TasksWidget from '@/components/tasks/TasksWidget';
 import { Activity, Lead, Message, Workflow, Company, Notification } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -188,6 +189,10 @@ export default function Home() {
         </div>
       </div>
 
+      {/* My Tasks + Notifications side by side: what I owe, and what just happened. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TasksWidget />
+
       {/* Notifications */}
       <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
         <div className="flex items-center justify-between mb-4">
@@ -200,6 +205,7 @@ export default function Home() {
           <Link to="/Notifications" className="text-[#38b6ff] text-sm hover:underline">{isPt ? 'Ver tudo' : 'View all'}</Link>
         </div>
         <HomeNotifications isPt={isPt} />
+      </div>
       </div>
 
       {/* Getting Started */}

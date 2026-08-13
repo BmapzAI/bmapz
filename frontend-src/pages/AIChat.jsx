@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { useLanguage } from '@/components/ui/LanguageContext';
+import MyTasks from '@/components/tasks/MyTasks';
+import TaskTableInput from '@/components/tasks/TaskTableInput';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -8,7 +11,8 @@ import {
   Send, Plus, Trash2, MessageSquare, Bot,
   Loader2, Sparkles, ChevronLeft,
   Paperclip, Image, X, File, Video,
-  Pin, PinOff, Edit3, Check, Mic, MicOff, LayoutDashboard
+  Pin, PinOff, Edit3, Check, Mic, MicOff, LayoutDashboard,
+  CheckSquare, Table2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import MessageBubble from '@/components/chat/MessageBubble';
@@ -44,7 +48,20 @@ const CONTEXTUAL_SUGGESTIONS = {
 };
 
 export default function AIChat() {
-  const { t } = useLanguage();
+  const { t, isPt } = useLanguage();
+
+  // Chat ⇄ My Tasks, plus the task-table entry mode. Both read from the URL so
+  // the Home widget and task notifications can deep-link straight to a task.
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') === 'tasks' ? 'tasks' : 'chat');
+  const [tableMode, setTableMode] = useState(false);
+  const focusTaskId = searchParams.get('task') || null;
+
+  // A later navigation to ?tab=tasks (the widget while already on this page)
+  // must switch the tab too, not only the first render.
+  useEffect(() => {
+    if (searchParams.get('tab') === 'tasks') setActiveTab('tasks');
+  }, [searchParams]);
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -506,6 +523,56 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
     // Mobile:  header h-14 (56px) + pt-16 (64px) + pb-28 (112px) + bottom nav = ~14rem → vh - 14rem
     // 100dvh handles mobile browser URL-bar collapse correctly.
     <div className="flex flex-col h-[calc(100dvh-14rem)] md:h-[calc(100dvh-2.5rem)]">
+      {/* Chat ⇄ My Tasks. `?tab=tasks&task=<id>` deep-links here from the Home
+          widget and from task notifications, so a notification opens the task. */}
+      <div className="flex items-center gap-2 mb-3 flex-shrink-0 flex-wrap">
+        <div className="flex items-center gap-1 rounded-xl bg-white/5 p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab('chat')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+              activeTab === 'chat' ? 'bg-[#38b6ff]/20 text-[#38b6ff]' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <MessageSquare size={14} /> {isPt ? 'Conversa' : 'Chat'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('tasks')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+              activeTab === 'tasks' ? 'bg-[#38b6ff]/20 text-[#38b6ff]' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <CheckSquare size={14} /> {isPt ? 'Minhas tarefas' : 'My Tasks'}
+          </button>
+        </div>
+
+        {/* Task-table interface mode — only meaningful while chatting. */}
+        {activeTab === 'chat' ? (
+          <button
+            type="button"
+            onClick={() => setTableMode(m => !m)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+              tableMode ? 'bg-[#38b6ff]/20 text-[#38b6ff]' : 'bg-white/5 text-gray-400 hover:text-white'
+            }`}
+            title={isPt ? 'Inserir tarefas como tabela' : 'Enter tasks as a table'}
+          >
+            <Table2 size={14} /> {isPt ? 'Modo tabela' : 'Table mode'}
+          </button>
+        ) : null}
+      </div>
+
+      {activeTab === 'tasks' ? (
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+          <MyTasks initialTaskId={focusTaskId} />
+        </div>
+      ) : (
+      <>
+      {tableMode ? (
+        <div className="mb-3 flex-shrink-0">
+          <TaskTableInput onClose={() => setTableMode(false)} />
+        </div>
+      ) : null}
       {noApiKey && (
         <div className="flex items-center justify-between gap-3 px-4 py-3 bg-amber-500/15 border border-amber-500/30 rounded-xl mb-3 flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -687,6 +754,8 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
         </div>
       </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

@@ -224,12 +224,17 @@ router.get('/me', requireAuth, (req, res) => {
 // PATCH /api/users/me — update own profile
 router.patch('/me', requireAuth, async (req, res) => {
   try {
-    const { full_name, profile_picture, username } = req.body;
+    const { full_name, profile_picture, username, auto_assign_tasks_to_ai } = req.body;
     const updates = {};
     // Only assign fields that were actually sent — the old version always wrote
     // both, so patching one silently nulled the other.
     if (full_name !== undefined) updates.full_name = full_name;
     if (profile_picture !== undefined) updates.profile_picture = profile_picture;
+    // "Auto-assign new tasks to the AI agent" (migration 031). Coerced to a real
+    // boolean so a stray string cannot land in the column.
+    if (auto_assign_tasks_to_ai !== undefined) {
+      updates.auto_assign_tasks_to_ai = !!auto_assign_tasks_to_ai;
+    }
 
     if (username !== undefined) {
       const clean = normHandle(username);

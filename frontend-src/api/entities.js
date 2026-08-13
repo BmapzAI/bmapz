@@ -313,3 +313,33 @@ export const WorkflowRun = {
   create: (data) => api.post('/api/workflow-runs', data),
   update: (id, data) => api.patch(`/api/workflow-runs/${id}`, data),
 };
+// ─── Tasks ─────────────────────────────────────────────────────────────────────
+// Work management: the My Tasks tab in AI Chat (kanban / list / calendar), the
+// Home widget, and the table-entry mode in AI chat.
+//
+// `list` unwraps `{ data }` so callers get a plain array, matching the other
+// entities here. Server-side the rows already carry `creator` / `assignee` /
+// `completer` profiles and a `done_by_label`, resolved in a separate query rather
+// than a PostgREST embed — `tasks` has three foreign keys to `users`, so an embed
+// would be ambiguous (the migration-021 failure mode).
+
+export const Task = {
+  list: (params) => api.get('/api/tasks', params).then(r => r.data ?? r),
+  filter: (params) => api.get('/api/tasks', params).then(r => r.data ?? r),
+  get: (id) => api.get(`/api/tasks/${id}`),
+  create: (data) => api.post('/api/tasks', data),
+  update: (id, data) => api.patch(`/api/tasks/${id}`, data),
+  delete: (id) => api.delete(`/api/tasks/${id}`),
+
+  /** Counts for the Home widget. */
+  summary: () => api.get('/api/tasks/summary'),
+  /** Create many at once — the AI-chat table mode. */
+  bulkCreate: (tasks) => api.post('/api/tasks/bulk', { tasks }),
+  /** Hand an existing task to the AI agent now. */
+  runWithAI: (id) => api.post(`/api/tasks/${id}/run-ai`, {}),
+  activity: (id) => api.get(`/api/tasks/${id}/activity`).then(r => r.data ?? r),
+
+  follow: (id) => api.post(`/api/tasks/${id}/follow`, {}),
+  unfollow: (id) => api.delete(`/api/tasks/${id}/follow`),
+  followedIds: () => api.get('/api/tasks/followed/ids').then(r => r.data ?? r),
+};
