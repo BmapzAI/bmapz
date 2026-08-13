@@ -5,6 +5,7 @@ import {
   extractActions, applyActions, describeActions, isKnownOp,
   proposeActions, looksActionable, ACTION_PROTOCOL,
 } from '../lib/aiActions.js';
+import { webSearch, formatForPrompt } from '../lib/webSearch.js';
 import {
   computeCreditCost,
   resolveActionModel,
@@ -638,6 +639,32 @@ const EXECUTION_DIRECTIVE = [
  */
 const CONVERSATIONAL_ACTIONS = new Set(['help_assistant', 'sdr_chat', 'whatsapp_chat']);
 
+/**
+ * Should this message trigger a live web lookup?
+ *
+ * Gated rather than always-on: a search costs money and latency, and most chat
+ * turns are about the company's own data, which the brain already supplies. Fires
+ * on explicit research verbs, on competitor/market questions, and on anything
+ * time-sensitive — in both languages, since the product is bilingual.
+ *
+ * A false positive costs one lookup; a false negative just means the agent answers
+ * from what it already knows, which is the pre-existing behaviour.
+ */
+const WEB_SEARCH_RE = new RegExp([
+  // explicit
+  'search', 'google', 'look up', 'lookup', 'research', 'find out', 'browse', 'online',
+  'pesquis', 'busca', 'procur', 'na internet',
+  // external subjects
+  'competitor', 'competitors', 'concorrent', 'market share', 'mercado',
+  'industry trend', 'tend[êe]ncia', 'benchmark', 'best practice',
+  'news', 'not[íi]cia', 'pricing of', 'their website', 'site deles',
+  // time-sensitive
+  'latest', 'current', 'recent', 'today', 'this year', '20\\d\\d',
+  '[úu]ltim', 'atual', 'recente', 'hoje', 'este ano',
+].join('|'), 'i');
+
+export const needsWebSearch = (text) => WEB_SEARCH_RE.test(String(text || ''));
+
 async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action, skipBrain = false, archiveTitle, skipArchive = false, skipExecutionDirective = false }) {
   // ── Pre-flight: settings + brain + plan are independent reads — fetch them
   // in PARALLEL. They used to run sequentially, costing 3 back-to-back DB
@@ -1015,9 +1042,36 @@ router.post('/chat', requireAuth, async (req, res) => {
     // caller's role and company, and executes — see lib/aiActions.js. Skipped for
     // JSON-shaped calls, where the caller's schema owns the output.
     const canAct = !response_format;
+
+    // LIVE WEB ACCESS. When the question needs current or external facts — a
+    // competitor, a market, a price, anything time-sensitive — look it up first and
+    // hand the findings to the model as context. Done as a pre-pass rather than a
+    // tool loop so it works identically across both providers and the fallback
+    // chain, matching how action extraction works.
+    //
+    // Degrades silently and deliberately: webSearch returns null when no provider
+    // is configured or all fail, and the reply proceeds exactly as it did before.
+    // Web access must never be able to break a chat.
+    let webContext = '';
+    const lastUserForSearch = [...(messages || [])].reverse().find(m => m?.role === 'user')?.content;
+    const searchText = typeof lastUserForSearch === 'string'
+      ? lastUserForSearch
+      : Array.isArray(lastUserForSearch)
+        ? lastUserForSearch.map(p => p?.text || '').join(' ')
+        : '';
+
+    if (!response_format && needsWebSearch(searchText)) {
+      try {
+        const found = await webSearch({ companyId: req.companyId, query: searchText });
+        if (found) webContext = formatForPrompt(found);
+      } catch (e) {
+        console.error('[ai/chat] web search failed, continuing without it:', e.message);
+      }
+    }
+
     const systemWithActions = canAct
-      ? [system, ACTION_PROTOCOL].filter(Boolean).join('\n\n')
-      : system;
+      ? [system, webContext, ACTION_PROTOCOL].filter(Boolean).join('\n\n')
+      : [system, webContext].filter(Boolean).join('\n\n');
 
     const result = await runAIChat({
       companyId: req.companyId,
