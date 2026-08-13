@@ -93,20 +93,58 @@ const isoOrNull = (v) => {
 
 /* ── Parsing + preview ──────────────────────────────────────────────────── */
 
+/**
+ * Best-effort JSON recovery.
+ *
+ * Models produce JSON that is *nearly* valid with tiresome regularity: a trailing
+ * comma, a nested ```json fence, smart quotes pasted from the conversation. A
+ * strict parse turns each of those into "nothing was proposed", which is
+ * indistinguishable to the user from the agent ignoring them — so try the cheap
+ * repairs before giving up.
+ */
+function parseLoose(src) {
+  const attempts = [
+    (s) => s,
+    (s) => s.replace(/```[a-z]*\s*/gi, '').replace(/```/g, ''),   // a fence inside the fence
+    (s) => s.replace(/,(\s*[}\]])/g, '$1'),                        // trailing commas
+    (s) => s.replace(/[“”]/g, '"').replace(/[‘’]/g, "'"),
+    (s) => {
+      // Last resort: take the outermost [...] or {...} and ignore any prose
+      // the model wrapped around it.
+      const arr = s.match(/\[[\s\S]*\]/);
+      if (arr) return arr[0];
+      const obj = s.match(/\{[\s\S]*\}/);
+      return obj ? obj[0] : s;
+    },
+  ];
+  let current = src;
+  for (const step of attempts) {
+    current = step(current);
+    try { return JSON.parse(current); } catch { /* try the next repair */ }
+  }
+  return null;
+}
+
 export function extractActions(content) {
   const raw = String(content || '');
   const match = raw.match(ACTION_BLOCK_RE);
   if (!match) return { text: raw, actions: [] };
 
   const text = raw.replace(ACTION_BLOCK_RE, '').trim();
-  let parsed = null;
-  try {
-    parsed = JSON.parse(match[1].trim());
-  } catch {
+  const parsed = parseLoose(match[1].trim());
+
+  if (!parsed) {
+    // LOG THE RAW BLOCK. Without this the failure is invisible in production —
+    // which is exactly why the first round of this bug could not be diagnosed
+    // from the logs and had to be guessed at.
+    console.error('[aiActions] could not parse action block:', match[1].trim().slice(0, 800));
     return { text, actions: [], parseError: true };
   }
+
   const list = Array.isArray(parsed) ? parsed : [parsed];
-  return { text, actions: list.filter(a => a && typeof a === 'object').slice(0, 12) };
+  const actions = list.filter(a => a && typeof a === 'object').slice(0, 12);
+  console.log(`[aiActions] parsed ${actions.length} proposed action(s): ${actions.map(a => a.op).join(', ')}`);
+  return { text, actions };
 }
 
 /**
@@ -460,9 +498,14 @@ export async function applyActions(actions, ctx) {
       continue;
     }
     try {
-      results.push({ op, ...(await handler(action, ctx)) });
+      const result = await handler(action, ctx);
+      // Logged either way: a refused write ("no recognised fields") is the exact
+      // failure that previously reached the user as a cheerful confirmation, and it
+      // must be visible in the server logs.
+      console.log(`[aiActions] ${op} → ${result.ok ? 'ok' : 'REFUSED'}: ${result.summary || result.error}`);
+      results.push({ op, ...result });
     } catch (err) {
-      console.error(`[aiActions] ${op} failed:`, err.message);
+      console.error(`[aiActions] ${op} threw:`, err.message);
       results.push({ op, ok: false, error: err.message });
     }
   }

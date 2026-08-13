@@ -76,7 +76,7 @@ export default function AIChat() {
       for (const a of applied.filter(x => x.ok)) {
         toast.success(a.summary || (isPt ? 'Alteração aplicada' : 'Change applied'));
       }
-      if (res.warning) toast.error(res.warning);
+      if (res.warning) toast.error(res.warning, { duration: 30000, closeButton: true });
 
       // Whatever changed may be on screen elsewhere right now.
       if (applied.some(a => a.ok)) {
@@ -367,7 +367,12 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
       const finalMessages = [...updatedMessages, assistantMsg];
       setMessages(finalMessages);
 
-      if (res.action_warning) toast.error(res.action_warning);
+      // Long duration + dismissible: the previous 4s default meant an action
+      // failure flashed past before it could be read, which is precisely why the
+      // real cause stayed hidden through two rounds of testing.
+      if (res.action_warning) {
+        toast.error(res.action_warning, { duration: 30000, closeButton: true });
+      }
 
       // Update convo in state
       // Auto-title on first exchange
