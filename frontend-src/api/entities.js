@@ -345,6 +345,19 @@ export const Task = {
   suggest: (body) => api.post('/api/tasks/suggest', body).then(r => r.data ?? r),
   activity: (id) => api.get(`/api/tasks/${id}/activity`).then(r => r.data ?? r),
 
+  /** Comments. `direct_to_ai` re-runs the task with the comment as feedback. */
+  comments: (id) => api.get(`/api/tasks/${id}/comments`).then(r => r.data ?? r),
+  comment: (id, body, directToAI = false) =>
+    api.post(`/api/tasks/${id}/comments`, { body, direct_to_ai: directToAI }),
+
+  /**
+   * Turn a finished task's output into a real record in its section — a social
+   * draft, a blog draft, a campaign, or an archive entry. `content` is optional so
+   * the user can edit the AI's result before sending it.
+   */
+  sendToSection: (id, { section, content } = {}) =>
+    api.post(`/api/tasks/${id}/send-to-section`, { section, content }),
+
   follow: (id) => api.post(`/api/tasks/${id}/follow`, {}),
   unfollow: (id) => api.delete(`/api/tasks/${id}/follow`),
   followedIds: () => api.get('/api/tasks/followed/ids').then(r => r.data ?? r),

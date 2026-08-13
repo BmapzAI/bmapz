@@ -19,6 +19,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { Task, User } from '@/api/entities';
 import TaskCard from './TaskCard';
 import TaskSuggestions from './TaskSuggestions';
+import TaskResultPanel from './TaskResultPanel';
 import {
   BOARD_STATUSES, ALL_STATUSES, PRIORITIES, SECTIONS,
   statusLabel, priorityLabel, sectionLabel, assigneeLabel, formatDue,
@@ -724,15 +725,9 @@ function TaskDetailDialog({
             ) : null}
           </div>
 
-          {/* What the AI produced. */}
-          {task.ai_result?.content ? (
-            <div className="rounded-xl bg-black/30 border border-[#38b6ff]/20 p-3">
-              <div className="flex items-center gap-1.5 mb-2 text-[#38b6ff] text-xs">
-                <Sparkles size={12} /> {isPt ? 'Resultado da IA' : 'AI result'}
-              </div>
-              <p className="text-gray-200 text-sm whitespace-pre-wrap">{task.ai_result.content}</p>
-            </div>
-          ) : null}
+          {/* The AI result (editable), the comment thread, and send-to-section.
+              A finished task stays correctable and its output can be moved on. */}
+          <TaskResultPanel task={task} />
 
           {task.ai_error ? (
             <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-red-300 text-sm">

@@ -135,12 +135,16 @@ async function notifyOutcome(task, { title, body, icon, priority = 'normal' }) {
  * unhandled rejection. Failures set `ai_error`, move the task to 'blocked' and
  * notify, so nothing silently disappears.
  */
-export async function runTaskWithAI({ task, actorUserId = null }) {
+export async function runTaskWithAI({ task, actorUserId = null, feedback = null }) {
   if (!task?.id || !task?.company_id) return null;
 
   // Guard against double-running the same task (two clicks, a retry, an automation
   // firing while a manual run is in flight).
-  if (task.status === 'done' || task.status === 'cancelled') return null;
+  //
+  // A REVISION is the deliberate exception: when someone comments "redo it like
+  // this", the task is finished by definition, and refusing to re-run would make
+  // "done" a dead end with no way to correct a wrong result.
+  if (!feedback && (task.status === 'done' || task.status === 'cancelled')) return null;
 
   await setTask(task.id, { status: 'doing', ai_error: null });
 
@@ -167,6 +171,15 @@ export async function runTaskWithAI({ task, actorUserId = null }) {
     task.description ? `Details: ${task.description}` : null,
     task.due_at ? `Due: ${new Date(task.due_at).toISOString().slice(0, 10)}` : null,
     task.priority ? `Priority: ${task.priority}` : null,
+    // A revision: show the agent what it produced last time and what to change, so
+    // it corrects that work rather than starting from a blank page and losing the
+    // parts that were already right.
+    feedback && task.ai_result?.content
+      ? `\nYOUR PREVIOUS RESULT:\n${String(task.ai_result.content).slice(0, 6000)}`
+      : null,
+    feedback
+      ? `\nWHAT TO FIX (feedback from the person who asked):\n${String(feedback).slice(0, 2000)}\n\nProduce the corrected deliverable in full. Do not describe the changes — return the whole revised result.`
+      : null,
   ].filter(Boolean).join('\n');
 
   try {
@@ -199,15 +212,29 @@ export async function runTaskWithAI({ task, actorUserId = null }) {
     });
 
     await logActivity({
-      taskId: task.id, companyId: task.company_id, type: 'ai_completed',
-      summary: 'Completed by the Bmapz AI agent',
-      details: { model: result?.model || null, section, action },
+      taskId: task.id, companyId: task.company_id, type: feedback ? 'ai_revised' : 'ai_completed',
+      summary: feedback ? 'Revised by the Bmapz AI agent after feedback' : 'Completed by the Bmapz AI agent',
+      details: { model: result?.model || null, section, action, revision: !!feedback },
     });
 
+    // A revision answers a comment, so the agent replies IN the thread — otherwise
+    // the person who asked for the change has no sign it was acted on beyond the
+    // result quietly changing underneath them.
+    if (feedback) {
+      const { error: replyErr } = await supabaseAdmin.from('task_comments').insert({
+        task_id: task.id,
+        company_id: task.company_id,
+        body: 'Revised the result based on your feedback.',
+        author_type: 'ai',
+        directed_to_ai: false,
+      });
+      if (replyErr) console.error('[taskRunner] could not post revision comment:', replyErr.message);
+    }
+
     await notifyOutcome(updated || task, {
-      title: 'The AI finished a task',
+      title: feedback ? 'The AI revised a task' : 'The AI finished a task',
       body: task.title,
-      icon: '✅',
+      icon: feedback ? '🔄' : '✅',
     });
 
     return updated;

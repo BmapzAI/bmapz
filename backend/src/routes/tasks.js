@@ -24,6 +24,7 @@ import { requireAuth, filterCompanyMembers } from '../middleware/auth.js';
 import { createNotification } from '../lib/notify.js';
 import { runTaskWithAI } from '../lib/taskRunner.js';
 import { runAIChat } from './ai.js';
+import { applyActions } from '../lib/aiActions.js';
 
 const router = Router();
 
@@ -630,6 +631,179 @@ router.post('/:id/run-ai', requireAuth, async (req, res) => {
 
     res.json({ success: true, task: await attachPeople(data) });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Which operation turns a finished task into a real record in each section.
+ *
+ * Sections that own a concrete entity get one; the rest file the work into the AI
+ * Outputs archive under the right category, because "send it to SEO" has no SEO
+ * row to create but the deliverable still needs somewhere to live.
+ */
+const SECTION_TARGET = {
+  social: (task, content) => ({ op: 'create_social_post', title: task.title, content, platforms: [] }),
+  blog: (task, content) => ({ op: 'create_blog_post', title: task.title, content }),
+  ads: (task, content) => ({ op: 'create_ad_campaign', name: task.title, strategy: { summary: content } }),
+  seo: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'strategies' }),
+  sales: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'strategies' }),
+  workflow: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'workflows' }),
+  inbox: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'message_templates' }),
+  sdr: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'message_templates' }),
+  dashboard: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'strategies' }),
+  general: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'strategies' }),
+};
+
+/**
+ * POST /api/tasks/:id/send-to-section
+ * Body: { section?, content? }
+ *
+ * Turns a finished task's output into a real record in the section it belongs to —
+ * a social draft, a blog draft, a campaign, or an archive entry. `content` is
+ * optional so the user can EDIT the AI's output before sending it, which is the
+ * point: the result is a starting draft, not a fait accompli.
+ *
+ * Routed through applyActions rather than writing here, so it inherits the same
+ * authorisation, company scoping, draft-only rules and archiving as every other
+ * write the agent makes. One creation path, one set of guarantees.
+ */
+router.post('/:id/send-to-section', requireAuth, async (req, res) => {
+  try {
+    const task = await getVisibleTask(req.params.id, req.companyId, req.dbUser.id);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    const section = SECTIONS.includes(req.body?.section) ? req.body.section : (task.section || 'general');
+    const content = String(req.body?.content ?? task.ai_result?.content ?? '').trim();
+    if (!content) {
+      return res.status(400).json({
+        error: 'This task has no result to send yet. Run it with the AI first, or write the content yourself.',
+        code: 'NO_CONTENT',
+      });
+    }
+
+    const build = SECTION_TARGET[section] || SECTION_TARGET.general;
+    const [result] = await applyActions([build(task, content)], {
+      companyId: req.companyId,
+      userId: req.dbUser.id,
+      userRole: req.dbUser.role,
+    });
+
+    if (!result?.ok) {
+      return res.status(400).json({ error: result?.error || 'Could not send this to the section.' });
+    }
+
+    await logActivity({
+      taskId: task.id, companyId: req.companyId, type: 'sent_to_section',
+      summary: `Sent to ${section}`,
+      details: { section, op: result.op, created_id: result.id || null },
+      actorUserId: req.dbUser.id,
+      actorLabel: req.dbUser.full_name || req.dbUser.email,
+    });
+
+    // Record where it went, so the card can link straight to it and the same work
+    // is not sent twice by accident.
+    await supabaseAdmin.from('tasks').update({
+      metadata: { ...(task.metadata || {}), sent_to: { section, id: result.id || null, at: new Date().toISOString() } },
+    }).eq('id', task.id).eq('company_id', req.companyId);
+
+    res.json({ success: true, section, ...result });
+  } catch (err) {
+    console.error('[tasks] send-to-section failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Comments ────────────────────────────────────────────────────────────────
+// GET /api/tasks/:id/comments
+router.get('/:id/comments', requireAuth, async (req, res) => {
+  try {
+    const task = await getVisibleTask(req.params.id, req.companyId, req.dbUser.id);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    const { data, error } = await supabaseAdmin
+      .from('task_comments').select('*')
+      .eq('task_id', task.id).eq('company_id', req.companyId)
+      .order('created_at', { ascending: true }).limit(200);
+    if (error) throw error;
+
+    // Same no-embed rule as tasks: resolve authors separately.
+    const ids = [...new Set((data || []).map(c => c.author_id).filter(Boolean))];
+    const byId = {};
+    if (ids.length) {
+      const { data: people } = await supabaseAdmin
+        .from('users').select('id, full_name, email, username').in('id', ids);
+      for (const u of people || []) byId[u.id] = u;
+    }
+
+    res.json({
+      data: (data || []).map(c => ({
+        ...c,
+        author_label: c.author_type === 'ai'
+          ? 'Bmapz AI'
+          : (byId[c.author_id]?.username ? `@${byId[c.author_id].username}`
+            : byId[c.author_id]?.full_name || byId[c.author_id]?.email || 'Someone'),
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/tasks/:id/comments
+ * Body: { body, direct_to_ai }
+ *
+ * A comment is a comment. But `direct_to_ai` makes it an INSTRUCTION: the agent
+ * re-runs the task with that feedback in hand, which is what makes a finished-but
+ * wrong result correctable instead of disposable. Works whatever the task's
+ * status, so "done" is never a dead end.
+ */
+router.post('/:id/comments', requireAuth, async (req, res) => {
+  try {
+    const task = await getVisibleTask(req.params.id, req.companyId, req.dbUser.id);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    const body = String(req.body?.body || '').trim();
+    if (!body) return res.status(400).json({ error: 'Write something first.' });
+    const directToAI = req.body?.direct_to_ai === true;
+
+    const { data: comment, error } = await supabaseAdmin.from('task_comments').insert({
+      task_id: task.id,
+      company_id: req.companyId,
+      body: body.slice(0, 4000),
+      author_type: 'user',
+      author_id: req.dbUser.id,
+      directed_to_ai: directToAI,
+    }).select().single();
+    if (error) throw error;
+
+    const actorLabel = req.dbUser.full_name || req.dbUser.email;
+    await logActivity({
+      taskId: task.id, companyId: req.companyId, type: 'commented',
+      summary: directToAI ? 'Asked the AI to revise the result' : 'Commented',
+      details: { directed_to_ai: directToAI },
+      actorUserId: req.dbUser.id, actorLabel,
+    });
+
+    // Tell the people watching — but not the person who just typed it.
+    await notifyAudience(task, {
+      exclude: req.dbUser.id,
+      title: directToAI ? 'A task was sent back to the AI' : 'New comment on a task',
+      body: `${task.title}: ${body.slice(0, 120)}`,
+      icon: directToAI ? '🔄' : '💬',
+    });
+
+    if (directToAI) {
+      // Re-run WITH the feedback. Fire-and-forget like every other AI run: the
+      // comment posts immediately and the task row reports progress.
+      runTaskWithAI({ task, actorUserId: req.dbUser.id, feedback: body })
+        .catch(e => console.error('[tasks] revision run failed:', e.message));
+    }
+
+    res.json({ ...comment, author_label: req.dbUser.username ? `@${req.dbUser.username}` : actorLabel });
+  } catch (err) {
+    console.error('[tasks] comment failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
