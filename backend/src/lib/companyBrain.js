@@ -52,6 +52,37 @@ function summarizeMessages(msgs) {
  * Build (or return cached) brain block for a company.
  * Returns '' when the company doesn't exist — callers can always concat safely.
  */
+/**
+ * Render every filled field of a settings blob (ICP, Briefing) into one compact
+ * line-per-field block the model can read.
+ *
+ * Bounded on purpose: the brain is injected into EVERY AI call, so an unbounded
+ * briefing with 57 long answers would dominate the prompt and cost. Each value is
+ * truncated and the whole block is capped; empty values are skipped entirely so a
+ * half-filled form costs nothing.
+ */
+function serializeSettingsBlock(label, obj, maxChars = 1800) {
+  if (!obj || typeof obj !== 'object') return null;
+
+  const lines = [];
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === null || v === undefined || v === '') continue;
+    const value = Array.isArray(v)
+      ? v.filter(Boolean).join(', ')
+      : (typeof v === 'object' ? JSON.stringify(v) : String(v));
+    if (!value.trim()) continue;
+    lines.push(`  ${k.replace(/_/g, ' ')}: ${value.length > 220 ? `${value.slice(0, 220)}…` : value}`);
+  }
+  if (!lines.length) return null;
+
+  let block = `${label} (from the ${label} settings tab):`;
+  for (const line of lines) {
+    if (block.length + line.length > maxChars) { block += '\n  …'; break; }
+    block += `\n${line}`;
+  }
+  return block;
+}
+
 export async function getCompanyBrain(companyId) {
   if (!companyId) return '';
   const hit = cache.get(companyId);
@@ -106,8 +137,20 @@ export async function getCompanyBrain(companyId) {
       `Company: ${c.name || 'Unknown'} | Industry: ${c.industry || 'n/a'} | Website: ${c.website || 'n/a'}`,
       c.services_description ? `Offering: ${trunc(c.services_description, 400)}` : null,
       c.value_propositions?.length ? `Value propositions: ${trunc(c.value_propositions.join('; '), 300)}` : null,
+      // EVERY filled ICP and Briefing field, not a hand-picked few.
+      //
+      // This used to render six chosen keys out of ICP's thirteen and Briefing's
+      // ~57, so the agent could not see most of what the user had actually filled
+      // in — it answered as if those tabs were empty, and its outputs were poorer
+      // for it. The whole point of those screens is to steer the agent, so the
+      // agent has to be able to read all of them.
+      //
+      // Serialised generically and bounded, so new fields appear automatically
+      // instead of needing a line added here every time the form grows.
+      serializeSettingsBlock('ICP', icp),
+      serializeSettingsBlock('Briefing', briefing),
       icp.primary_audience || icp.job_titles?.length
-        ? `ICP: ${trunc([icp.primary_audience, icp.job_titles?.join(', '), icp.industries?.join(', ')].filter(Boolean).join(' | '), 300)}`
+        ? `ICP summary: ${trunc([icp.primary_audience, icp.job_titles?.join(', '), icp.industries?.join(', ')].filter(Boolean).join(' | '), 300)}`
         : null,
       icp.pain_points?.length ? `Pain points: ${trunc(icp.pain_points.join('; '), 250)}` : null,
       briefing.tone_of_voice?.length ? `Tone of voice: ${briefing.tone_of_voice.join(', ')}` : null,
