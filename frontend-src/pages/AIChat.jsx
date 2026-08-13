@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { useLanguage } from '@/components/ui/LanguageContext';
 import MyTasks from '@/components/tasks/MyTasks';
@@ -49,6 +50,9 @@ const CONTEXTUAL_SUGGESTIONS = {
 
 export default function AIChat() {
   const { t, isPt } = useLanguage();
+  // Needed so a change the agent makes from chat (company settings, a new task)
+  // refreshes the rest of the app immediately rather than showing stale data.
+  const queryClient = useQueryClient();
 
   // Chat ⇄ My Tasks, plus the task-table entry mode. Both read from the URL so
   // the Home widget and task notifications can deep-link straight to a task.
@@ -308,6 +312,23 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
       const assistantMsg = { role: 'assistant', content: res.content, created_at: new Date().toISOString() };
       const finalMessages = [...updatedMessages, assistantMsg];
       setMessages(finalMessages);
+
+      // The agent can now CHANGE things (fill in settings, create a task, draft a
+      // post) — report what actually landed rather than letting the user take the
+      // reply's word for it. A failed write is surfaced, not swallowed.
+      const applied = Array.isArray(res.actions_applied) ? res.actions_applied : [];
+      for (const a of applied.filter(x => x.ok)) {
+        toast.success(a.summary || (isPt ? 'Alteração aplicada' : 'Change applied'));
+      }
+      if (res.action_warning) {
+        toast.error(res.action_warning);
+      }
+      // Anything the agent changed can be visible elsewhere in the app right now.
+      if (applied.some(a => a.ok)) {
+        queryClient.invalidateQueries({ queryKey: ['companies'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['taskSummary'] });
+      }
 
       // Update convo in state
       // Auto-title on first exchange

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { extractActions, applyActions, ACTION_PROTOCOL } from '../lib/aiActions.js';
 import {
   computeCreditCost,
   resolveActionModel,
@@ -961,15 +962,52 @@ router.get('/diagnose', requireAuth, async (req, res) => {
 router.post('/chat', requireAuth, async (req, res) => {
   try {
     const { messages, model, temperature = 0.7, max_tokens, response_format, system, action, archive_title } = req.body;
+
+    // The agent may CHANGE things from chat, not just describe them. It emits a
+    // bmapz-actions block, which the backend parses, authorises against this
+    // caller's role and company, and executes — see lib/aiActions.js. Skipped for
+    // JSON-shaped calls, where the caller's schema owns the output.
+    const canAct = !response_format;
+    const systemWithActions = canAct
+      ? [system, ACTION_PROTOCOL].filter(Boolean).join('\n\n')
+      : system;
+
     const result = await runAIChat({
       companyId: req.companyId,
       userId: req.dbUser?.id,
       userRole: req.dbUser?.role,
       userEmail: req.dbUser?.email,
-      messages, model, temperature, max_tokens, response_format, system, action,
+      messages, model, temperature, max_tokens, response_format, action,
+      system: systemWithActions,
       archiveTitle: archive_title,
     });
-    res.json(result);
+
+    if (!canAct) return res.json(result);
+
+    const { text, actions, parseError } = extractActions(result.content);
+    if (!actions.length) {
+      return res.json({
+        ...result,
+        content: text,
+        ...(parseError ? { action_warning: 'The assistant tried to change something but its instructions were malformed, so nothing was applied.' } : {}),
+      });
+    }
+
+    const applied = await applyActions(actions, {
+      companyId: req.companyId,
+      userId: req.dbUser?.id,
+      userRole: req.dbUser?.role,
+    });
+
+    // Report the real outcome rather than the model's claim about it. If the
+    // agent said "saved" and the write failed, the user must see the failure.
+    const failures = applied.filter(a => !a.ok);
+    res.json({
+      ...result,
+      content: text,
+      actions_applied: applied,
+      ...(failures.length ? { action_warning: failures.map(f => `${f.op}: ${f.error}`).join(' · ') } : {}),
+    });
   } catch (err) {
     console.error('[ai/chat]', err.code || 'ERR', err.publicMessage || err.message, err._errors || '');
     const status =

@@ -17,11 +17,30 @@ export default function TaskCard({ task, isPt, isFollowing = false, onClick }) {
   const overdue = isOverdue(task);
   const due = formatDue(task.due_at, isPt);
 
+  // NOT a <button>, deliberately.
+  //
+  // @hello-pangea/dnd refuses to start a drag when the pointer goes down on an
+  // interactive element — button, a, input, select, textarea — because dragging
+  // those would fight the browser's own behaviour. This card WAS a <button>, so
+  // every drag attempt on the kanban was swallowed before it began, even though
+  // the Draggable and its handle props were wired correctly.
+  //
+  // A div with an explicit role, tabIndex and key handler keeps the card
+  // clickable and reachable by keyboard while leaving the drag sensor free.
+  const activate = () => onClick?.(task);
+
   return (
-    <button
-      type="button"
-      onClick={() => onClick?.(task)}
-      className="w-full text-left p-3 rounded-xl bg-black/30 border border-white/10 hover:border-[#38b6ff]/40 hover:bg-black/40 transition-colors"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={activate}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();   // stop Space scrolling the board
+          activate();
+        }
+      }}
+      className="w-full text-left p-3 rounded-xl bg-black/30 border border-white/10 hover:border-[#38b6ff]/40 hover:bg-black/40 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38b6ff]/60"
     >
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <span className="text-white text-sm font-medium line-clamp-2">{task.title}</span>
@@ -73,6 +92,6 @@ export default function TaskCard({ task, isPt, isFollowing = false, onClick }) {
           <span className="line-clamp-2">{task.ai_error}</span>
         </div>
       ) : null}
-    </button>
+    </div>
   );
 }
