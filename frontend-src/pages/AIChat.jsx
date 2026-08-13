@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import MessageBubble from '@/components/chat/MessageBubble';
+import ActionApproval from '@/components/chat/ActionApproval';
 import { useAuth } from '@/lib/AuthContext';
 import { api } from '@/api/apiClient';
 import { TranscribeAudio, UploadFile } from '@/api/integrations';
@@ -53,6 +54,50 @@ export default function AIChat() {
   // Needed so a change the agent makes from chat (company settings, a new task)
   // refreshes the rest of the app immediately rather than showing stale data.
   const queryClient = useQueryClient();
+
+  // Which message's proposed changes are currently being written.
+  const [applyingIndex, setApplyingIndex] = useState(null);
+
+  /**
+   * Apply the changes the user just approved.
+   *
+   * `actions` comes from the card rather than from state, because the user may have
+   * edited them before approving. The result stored on the message is the SERVER's
+   * answer — what actually happened — not the model's claim about it.
+   */
+  const approveActions = async (index, actions) => {
+    setApplyingIndex(index);
+    try {
+      const res = await api.post('/api/ai/actions/apply', { actions });
+      const applied = Array.isArray(res.applied) ? res.applied : [];
+
+      setMessages(prev => prev.map((m, i) => (i === index ? { ...m, action_result: applied } : m)));
+
+      for (const a of applied.filter(x => x.ok)) {
+        toast.success(a.summary || (isPt ? 'Alteração aplicada' : 'Change applied'));
+      }
+      if (res.warning) toast.error(res.warning);
+
+      // Whatever changed may be on screen elsewhere right now.
+      if (applied.some(a => a.ok)) {
+        for (const key of ['companies', 'tasks', 'taskSummary', 'socialPosts', 'blogPosts', 'aiOutputs', 'adCampaigns']) {
+          queryClient.invalidateQueries({ queryKey: [key] });
+        }
+      }
+    } catch (e) {
+      toast.error((isPt ? 'Falha ao aplicar: ' : 'Could not apply: ') + (e?.message || ''));
+    } finally {
+      setApplyingIndex(null);
+    }
+  };
+
+  /** Declining drops the proposal from the message so the card cannot be re-fired. */
+  const declineActions = (index) => {
+    setMessages(prev => prev.map((m, i) => (
+      i === index ? { ...m, proposed_actions: undefined, action_preview: undefined } : m
+    )));
+    toast.info(isPt ? 'Alterações recusadas' : 'Changes declined');
+  };
 
   // Chat ⇄ My Tasks, plus the task-table entry mode. Both read from the URL so
   // the Home widget and task notifications can deep-link straight to a task.
@@ -309,26 +354,20 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
         system: systemPrompt,
       });
 
-      const assistantMsg = { role: 'assistant', content: res.content, created_at: new Date().toISOString() };
+      // The agent PROPOSES changes; nothing is written until the user approves them
+      // on the card attached to this message.
+      const assistantMsg = {
+        role: 'assistant',
+        content: res.content,
+        created_at: new Date().toISOString(),
+        ...(res.proposed_actions?.length
+          ? { proposed_actions: res.proposed_actions, action_preview: res.action_preview }
+          : {}),
+      };
       const finalMessages = [...updatedMessages, assistantMsg];
       setMessages(finalMessages);
 
-      // The agent can now CHANGE things (fill in settings, create a task, draft a
-      // post) — report what actually landed rather than letting the user take the
-      // reply's word for it. A failed write is surfaced, not swallowed.
-      const applied = Array.isArray(res.actions_applied) ? res.actions_applied : [];
-      for (const a of applied.filter(x => x.ok)) {
-        toast.success(a.summary || (isPt ? 'Alteração aplicada' : 'Change applied'));
-      }
-      if (res.action_warning) {
-        toast.error(res.action_warning);
-      }
-      // Anything the agent changed can be visible elsewhere in the app right now.
-      if (applied.some(a => a.ok)) {
-        queryClient.invalidateQueries({ queryKey: ['companies'] });
-        queryClient.invalidateQueries({ queryKey: ['tasks'] });
-        queryClient.invalidateQueries({ queryKey: ['taskSummary'] });
-      }
+      if (res.action_warning) toast.error(res.action_warning);
 
       // Update convo in state
       // Auto-title on first exchange
@@ -700,7 +739,25 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
             </div>
           ) : (
             <>
-              {messages.map((msg, i) => <MessageBubble key={i} message={msg} />)}
+              {messages.map((msg, i) => (
+                <div key={i}>
+                  <MessageBubble message={msg} />
+                  {/* Approval sits with the message that proposed it, so the user
+                      can read the reply and the exact change list together. */}
+                  {msg.proposed_actions?.length ? (
+                    <div className="pl-11">
+                      <ActionApproval
+                        preview={msg.action_preview}
+                        actions={msg.proposed_actions}
+                        isApplying={applyingIndex === i}
+                        result={msg.action_result}
+                        onApprove={(actions) => approveActions(i, actions)}
+                        onDecline={() => declineActions(i)}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ))}
               {isLoading && (
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3572b9] to-[#cb6ce6] flex items-center justify-center">

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
-import { extractActions, applyActions, ACTION_PROTOCOL } from '../lib/aiActions.js';
+import { extractActions, applyActions, describeActions, isKnownOp, ACTION_PROTOCOL } from '../lib/aiActions.js';
 import {
   computeCreditCost,
   resolveActionModel,
@@ -958,6 +958,50 @@ router.get('/diagnose', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/ai/actions/apply — execute actions the USER approved in the chat.
+ *
+ * Separate from /chat on purpose. The model's proposal and the user's consent are
+ * two different events, and only this endpoint writes. It re-validates everything
+ * rather than trusting that the payload came from a proposal we made: the body is
+ * client-supplied like any other, so ops are re-checked against the whitelist and
+ * every write is re-scoped to this caller's company and role inside aiActions.js.
+ *
+ * The user may have EDITED the actions before approving, which is why the payload
+ * is taken as given and re-validated rather than looked up from a stored proposal.
+ */
+router.post('/actions/apply', requireAuth, async (req, res) => {
+  try {
+    const actions = Array.isArray(req.body?.actions) ? req.body.actions.slice(0, 12) : null;
+    if (!actions?.length) return res.status(400).json({ error: 'No actions supplied.' });
+
+    const unknown = actions.filter(a => !isKnownOp(a?.op || a?.operation));
+    if (unknown.length) {
+      return res.status(400).json({
+        error: `Unsupported operation: ${unknown.map(u => u?.op || '(missing)').join(', ')}`,
+        code: 'UNKNOWN_OPERATION',
+      });
+    }
+
+    const applied = await applyActions(actions, {
+      companyId: req.companyId,
+      userId: req.dbUser?.id,
+      userRole: req.dbUser?.role,
+    });
+
+    const failures = applied.filter(a => !a.ok);
+    res.json({
+      applied,
+      ok_count: applied.length - failures.length,
+      failed_count: failures.length,
+      ...(failures.length ? { warning: failures.map(f => `${f.op}: ${f.error}`).join(' · ') } : {}),
+    });
+  } catch (err) {
+    console.error('[ai/actions/apply]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/ai/chat
 router.post('/chat', requireAuth, async (req, res) => {
   try {
@@ -984,29 +1028,24 @@ router.post('/chat', requireAuth, async (req, res) => {
 
     if (!canAct) return res.json(result);
 
+    // PROPOSE, do not execute. Nothing is written until the user approves it in the
+    // chat. This is both what was asked for and safer: the previous version applied
+    // whatever the model emitted, so a rejected write still read as "done" in the
+    // reply, and there was no moment where the user could see or correct it.
     const { text, actions, parseError } = extractActions(result.content);
     if (!actions.length) {
       return res.json({
         ...result,
         content: text,
-        ...(parseError ? { action_warning: 'The assistant tried to change something but its instructions were malformed, so nothing was applied.' } : {}),
+        ...(parseError ? { action_warning: 'The assistant tried to change something but its instructions were malformed, so nothing was proposed.' } : {}),
       });
     }
 
-    const applied = await applyActions(actions, {
-      companyId: req.companyId,
-      userId: req.dbUser?.id,
-      userRole: req.dbUser?.role,
-    });
-
-    // Report the real outcome rather than the model's claim about it. If the
-    // agent said "saved" and the write failed, the user must see the failure.
-    const failures = applied.filter(a => !a.ok);
     res.json({
       ...result,
       content: text,
-      actions_applied: applied,
-      ...(failures.length ? { action_warning: failures.map(f => `${f.op}: ${f.error}`).join(' · ') } : {}),
+      proposed_actions: actions,
+      action_preview: describeActions(actions),
     });
   } catch (err) {
     console.error('[ai/chat]', err.code || 'ERR', err.publicMessage || err.message, err._errors || '');
