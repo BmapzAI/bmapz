@@ -2528,3 +2528,49 @@ on touch, with a keyboard and with a screen reader.
   Social / SDR. The `section` + `linked_type` / `linked_id` columns exist and the
   agent already tailors its work per section, so these are wiring, not redesign.
 - Drag-and-drop on the kanban (deliberately deferred, see above).
+
+### Session 34 (part 4) — Task feature wiring completed
+
+**Scheduled tasks in AI Automations (migration 032).** Reuses the existing
+`ai_automations.task_type` discriminator rather than adding a parallel flag: set it
+to `create_task` and the automation raises a real task from a new `task_template`
+JSONB column on each run, instead of writing an `ai_outputs` row. If the template
+assigns the agent, the task runs immediately through the SAME `runTaskWithAI` the
+board uses — so a scheduled task and a hand-created one behave identically
+(credits, brain, archiving, notifications). Assigned to a person instead, they get
+a notification.
+
+Two care points in that code: `taskRunner` is imported **dynamically** inside the
+branch, because the scheduler deliberately takes `runAIChat` by injection to avoid
+an ai.js ↔ scheduler cycle and taskRunner imports ai.js — a lazy import keeps that
+guarantee whatever the load order. And a template's `assignee_id` is re-validated
+with `filterCompanyMembers` at run time, since the named person may have left the
+company since the automation was written.
+
+`task_template` is whitelisted in `routes/automations.js` (`TEMPLATE_KEYS`), not
+stored verbatim, so a template cannot smuggle in `company_id`, `created_by` or the
+`completed_*` / `ai_*` columns that record what actually happened.
+
+**AI suggests tasks.** `POST /api/tasks/suggest` takes a prompt or the tail of a
+conversation and returns candidate tasks — it deliberately does NOT create them.
+The model is good at breaking work down and bad at knowing what belongs on
+someone's board, so `TaskSuggestions.jsx` shows them as a checklist and only ticked
+items are created, through the same `/bulk` endpoint the table mode uses (one
+creation path, one set of validation rules). Suggestions pass `skipArchive: true`
+so throwaway candidates never pollute the AI Outputs archive. The endpoint recovers
+JSON from fenced or prose-wrapped replies rather than failing, and the model's own
+"could the agent finish this alone?" judgement becomes the assignee.
+
+**Per-section entry points.** `CreateTaskButton` is a reusable component taking
+`section` plus optional `linkedType`/`linkedId`. Wired into **SEO, Blog, Inbox and
+SDR** headers. The section travels with the task, and `lib/taskRunner.js` briefs the
+agent per section, so a task raised from SEO is answered as an SEO task.
+
+#### Still open
+- `CreateTaskButton` is not yet placed in Ads, Sales/LeadDetails, Social Media,
+  Workflows or Dashboards. The component takes `linkedType`/`linkedId`, so per-record
+  tasks ("follow up on THIS lead") are a one-line addition per page.
+- No UI yet for BUILDING a `create_task` automation — the backend and schema accept
+  it, but AIAutomations.jsx still only offers the `ai_prompt` type.
+- Drag-and-drop kanban (deliberately deferred; move buttons work on touch, keyboard
+  and screen readers).

@@ -19,6 +19,7 @@ import { canSeeDesign } from '@/lib/featureFlags';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AIContextField from '@/components/ui/AIContextField';
 import { Company, BlogPost } from '@/api/entities';
+import CreateTaskButton from '@/components/tasks/CreateTaskButton';
 import { InvokeLLM } from '@/api/integrations';
 
 const SEO_CHECKLIST = [
@@ -198,6 +199,7 @@ Return JSON with: content (full article in markdown), meta_description (155 char
           <p className="text-gray-400 mt-1">{t('blogDescription')}</p>
         </div>
         <div className="flex gap-2">
+          <CreateTaskButton section="blog" />
           {view === 'list' ? (
             <Button onClick={() => { setPost(emptyPost); setEditing(null); setView('editor'); }}
               className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">

@@ -12,8 +12,37 @@ const router = Router();
 
 const SCHEDULE_TYPES = new Set(['every_minutes', 'hourly', 'daily', 'weekly', 'monthly']);
 
+// 'ai_prompt' writes an output for review; 'create_task' raises a real task on the
+// board each run (migration 032) and, when the template assigns the agent, has it
+// complete the work immediately.
+const TASK_TYPES = new Set(['ai_prompt', 'create_task']);
+
+// Only these keys are kept from a client-supplied task_template. Whitelisted
+// rather than stored verbatim so a template cannot smuggle in fields the tasks
+// table treats as trustworthy — company_id, created_by, or the completed_*/ai_*
+// columns that record what actually happened.
+const TEMPLATE_KEYS = ['title', 'description', 'priority', 'section', 'visibility',
+  'assignee_type', 'assignee_id', 'due_in_days'];
+
+function sanitizeTemplate(tpl) {
+  if (!tpl || typeof tpl !== 'object' || Array.isArray(tpl)) return {};
+  const out = {};
+  for (const k of TEMPLATE_KEYS) if (tpl[k] !== undefined && tpl[k] !== '') out[k] = tpl[k];
+  if (out.title) out.title = String(out.title).slice(0, 300);
+  if (out.description) out.description = String(out.description).slice(0, 4000);
+  if (out.due_in_days !== undefined) {
+    const n = parseInt(out.due_in_days, 10);
+    // A year of lead time is plenty; a negative value would create a task that is
+    // overdue the moment it appears.
+    out.due_in_days = Number.isFinite(n) ? Math.min(365, Math.max(0, n)) : 0;
+  }
+  return out;
+}
+
 function sanitize(body) {
   const out = {};
+  if (body.task_type !== undefined && TASK_TYPES.has(body.task_type)) out.task_type = body.task_type;
+  if (body.task_template !== undefined) out.task_template = sanitizeTemplate(body.task_template);
   if (body.name !== undefined) out.name = String(body.name).slice(0, 120);
   if (body.description !== undefined) out.description = body.description ? String(body.description).slice(0, 500) : null;
   if (body.prompt !== undefined) out.prompt = String(body.prompt).slice(0, 8000);

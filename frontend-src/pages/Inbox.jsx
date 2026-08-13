@@ -14,6 +14,7 @@ import {
   ThumbsUp, ThumbsDown, Minus, Clock, User, ArrowLeft, Instagram
 } from 'lucide-react';
 import { Company, Lead, Message } from '@/api/entities';
+import CreateTaskButton from '@/components/tasks/CreateTaskButton';
 
 const CHANNEL_CONFIG = {
   email:     { label: 'Email',     icon: Mail,          color: '#38b6ff', bg: 'bg-[#38b6ff]/10',  border: 'border-[#38b6ff]/30'  },
@@ -349,10 +350,13 @@ export default function Inbox() {
             Gmail and Instagram sync, plus WhatsApp webhook messages. LinkedIn DMs require approved API access.
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        <CreateTaskButton section="inbox" />
         <Button onClick={(e) => { e.preventDefault(); syncInbox(channelFilter); }} disabled={syncing} variant="outline" className="gap-2 border-white/10">
           <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
           {syncing ? 'Syncing...' : channelFilter === 'all' ? 'Sync Inbox' : `Sync ${CHANNEL_CONFIG[channelFilter]?.label || channelFilter}`}
         </Button>
+        </div>
       </div>
 
       {/* Main layout */}

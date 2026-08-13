@@ -23,6 +23,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, filterCompanyMembers } from '../middleware/auth.js';
 import { createNotification } from '../lib/notify.js';
 import { runTaskWithAI } from '../lib/taskRunner.js';
+import { runAIChat } from './ai.js';
 
 const router = Router();
 
@@ -409,6 +410,94 @@ router.post('/bulk', requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('[tasks] bulk failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/tasks/suggest — the agent PROPOSES tasks; it does not create them.
+ * Body: { prompt } or { messages: [{ role, content }] }
+ *
+ * Deliberately read-only. The AI is good at breaking work down and bad at knowing
+ * what the user actually wants on their board, so this returns candidates for the
+ * user to accept (which then go through POST /bulk like any other table entry).
+ * Suggesting and creating in one step would fill someone's board with work they
+ * never asked for.
+ */
+router.post('/suggest', requireAuth, async (req, res) => {
+  try {
+    const { prompt, messages } = req.body || {};
+    // Accept either a direct instruction or the tail of a conversation, so AI chat
+    // can ask "turn what we just discussed into tasks".
+    const conversation = Array.isArray(messages) && messages.length
+      ? messages.slice(-12).map(m => `${m.role === 'assistant' ? 'AI' : 'User'}: ${String(m.content || '').slice(0, 2000)}`).join('\n')
+      : null;
+    const basis = conversation || String(prompt || '').trim();
+    if (!basis) return res.status(400).json({ error: 'Send a prompt or some messages to work from.' });
+
+    const system = [
+      'You break work down into a short list of concrete, actionable tasks for a',
+      'marketing and sales team. Reply with JSON ONLY, in this exact shape:',
+      '{"tasks":[{"title":"…","description":"…","priority":"low|medium|high|urgent",',
+      '"section":"general|ads|sales|workflow|inbox|blog|sdr|seo|social|dashboard",',
+      '"due_in_days":0,"suggest_ai":true}]}',
+      'Rules: at most 8 tasks. Each title is one clear action under 90 characters.',
+      'Set suggest_ai true only when the agent could genuinely finish it alone',
+      '(writing, planning, drafting) and false when it needs a human (calls, approvals,',
+      'spending money, anything touching a real account).',
+      'Never invent people or assign owners.',
+    ].join(' ');
+
+    const result = await runAIChat({
+      companyId: req.companyId,
+      userId: req.dbUser.id,
+      userRole: req.dbUser.role,
+      userEmail: req.dbUser.email,
+      messages: [{ role: 'user', content: `Break this down into tasks:\n\n${basis}` }],
+      system,
+      action: 'task_suggest',
+      temperature: 0.4,
+      max_tokens: 1200,
+      // Suggestions are throwaway candidates, not a deliverable — keep them out of
+      // the AI Outputs archive so it stays a record of real work.
+      skipArchive: true,
+    });
+
+    // Models wrap JSON in prose or fences no matter how firmly you ask. Recover the
+    // object rather than failing the request.
+    const raw = String(result?.content || '');
+    let parsed = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) { try { parsed = JSON.parse(match[0]); } catch { parsed = null; } }
+    }
+    if (!parsed?.tasks || !Array.isArray(parsed.tasks)) {
+      return res.status(502).json({
+        error: 'The AI did not return a usable task list. Try rephrasing.',
+        code: 'SUGGEST_UNPARSEABLE',
+      });
+    }
+
+    // Normalise to exactly what the create endpoints accept, dropping anything else
+    // the model decided to include.
+    const suggestions = parsed.tasks.slice(0, 8).map(t => ({
+      title: String(t.title || '').slice(0, 300),
+      description: t.description ? String(t.description).slice(0, 2000) : null,
+      priority: PRIORITIES.includes(t.priority) ? t.priority : 'medium',
+      section: SECTIONS.includes(t.section) ? t.section : 'general',
+      due_in_days: Number.isFinite(Number(t.due_in_days))
+        ? Math.min(365, Math.max(0, parseInt(t.due_in_days, 10))) : null,
+      suggest_ai: !!t.suggest_ai,
+    })).filter(t => t.title);
+
+    res.json({ data: suggestions });
+  } catch (err) {
+    if (err?.code === 'CREDITS_EXHAUSTED') {
+      return res.status(402).json({ error: 'Out of AI credits.', code: 'CREDITS_EXHAUSTED' });
+    }
+    console.error('[tasks] suggest failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

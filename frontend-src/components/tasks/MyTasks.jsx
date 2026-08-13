@@ -17,6 +17,7 @@ import { useLanguage } from '@/components/ui/LanguageContext';
 import { useAuth } from '@/lib/AuthContext';
 import { Task, User } from '@/api/entities';
 import TaskCard from './TaskCard';
+import TaskSuggestions from './TaskSuggestions';
 import {
   BOARD_STATUSES, ALL_STATUSES, PRIORITIES, SECTIONS,
   statusLabel, priorityLabel, sectionLabel, assigneeLabel, formatDue,
@@ -44,6 +45,7 @@ export default function MyTasks({ initialTaskId = null }) {
   const [view, setView] = useState('kanban');
   const [scope, setScope] = useState('all');            // all | me | ai
   const [creating, setCreating] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [openTaskId, setOpenTaskId] = useState(initialTaskId);
   const [monthOffset, setMonthOffset] = useState(0);
 
@@ -200,6 +202,14 @@ export default function MyTasks({ initialTaskId = null }) {
           </label>
 
           <Button
+            variant="outline"
+            onClick={() => setSuggesting(s => !s)}
+            className="h-9 border-[#38b6ff]/30 text-[#38b6ff] hover:bg-[#38b6ff]/10 gap-1.5 text-xs"
+          >
+            <Sparkles size={14} /> {isPt ? 'Sugerir com IA' : 'Suggest with AI'}
+          </Button>
+
+          <Button
             onClick={() => setCreating(c => !c)}
             className="h-9 bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-1.5 text-xs"
           >
@@ -207,6 +217,9 @@ export default function MyTasks({ initialTaskId = null }) {
           </Button>
         </div>
       </div>
+
+      {/* ── AI suggestions ────────────────────────────────────────────────── */}
+      {suggesting ? <TaskSuggestions onClose={() => setSuggesting(false)} /> : null}
 
       {/* ── Create form ───────────────────────────────────────────────────── */}
       {creating ? (

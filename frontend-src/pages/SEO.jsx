@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Company, SEOAnalysis } from '@/api/entities';
+import CreateTaskButton from '@/components/tasks/CreateTaskButton';
 import { usePersistentDraft } from '@/lib/usePersistentDraft';
 
 const PLAIN_ENGLISH_LABELS = {
@@ -323,6 +324,9 @@ Be realistic and specific based on what you know about the URL. If it's an HTTPS
           </h1>
           <p className="text-gray-400 mt-1">Full SEO, AEO and GEO analysis • Simple explanations for every issue</p>
         </div>
+        {/* Turn an SEO finding into tracked work. `section="seo"` travels with the
+            task, so the agent is briefed as an SEO task if the AI picks it up. */}
+        <CreateTaskButton section="seo" />
       </div>
 
 

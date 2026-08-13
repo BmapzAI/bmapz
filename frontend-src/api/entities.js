@@ -337,6 +337,12 @@ export const Task = {
   bulkCreate: (tasks) => api.post('/api/tasks/bulk', { tasks }),
   /** Hand an existing task to the AI agent now. */
   runWithAI: (id) => api.post(`/api/tasks/${id}/run-ai`, {}),
+  /**
+   * Ask the agent to break work down into candidate tasks. Returns proposals
+   * only — nothing is created until the user accepts them, which then goes
+   * through bulkCreate like any other entry.
+   */
+  suggest: (body) => api.post('/api/tasks/suggest', body).then(r => r.data ?? r),
   activity: (id) => api.get(`/api/tasks/${id}/activity`).then(r => r.data ?? r),
 
   follow: (id) => api.post(`/api/tasks/${id}/follow`, {}),

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SDR, Company } from '@/api/entities';
+import CreateTaskButton from '@/components/tasks/CreateTaskButton';
 import SalesStatusSwitcher from '@/components/sales/SalesStatusSwitcher';
 
 const STATUS_STYLE = {
@@ -76,6 +77,7 @@ export default function SDRPage() {
           </p>
         </div>
         <div className="flex items-center gap-4 flex-wrap">
+          <CreateTaskButton section="sdr" />
           {/* Shortcut so a rep can change their own availability without
               leaving the SDR section. Hidden for non-sales-team users. */}
           <SalesStatusSwitcher />

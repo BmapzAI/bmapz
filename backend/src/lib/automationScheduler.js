@@ -57,8 +57,113 @@ export function computeNextRunAt(a, from = new Date()) {
   }
 }
 
+/**
+ * A scheduled automation whose job is to RAISE A TASK rather than write an output.
+ *
+ * This is how "tasks can be scheduled in AI automations" works: the automation
+ * carries a `task_template`, and each run creates a real task from it. If the
+ * template assigns the agent, the task is executed immediately through the same
+ * runner the My Tasks board uses — so a scheduled task and a hand-created one
+ * behave identically, including credits, the company brain, archiving and
+ * notifications.
+ *
+ * `taskRunner` is imported dynamically, not at module load. The scheduler already
+ * takes runAIChat by injection specifically to avoid an ai.js ↔ scheduler import
+ * cycle, and taskRunner imports ai.js — so importing it lazily keeps that
+ * guarantee intact regardless of module load order.
+ */
+async function executeTaskAutomation(a) {
+  const tpl = a.task_template || {};
+  const title = String(tpl.title || a.name || 'Scheduled task').slice(0, 300);
+
+  const dueInDays = Number(tpl.due_in_days);
+  const due_at = Number.isFinite(dueInDays) && dueInDays >= 0
+    ? new Date(Date.now() + dueInDays * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+
+  // Only 'ai' and 'user' are honoured; anything else becomes unassigned. A
+  // template naming a person who has since left the company would otherwise
+  // insert a dangling assignee — validated below.
+  let assigneeType = ['ai', 'user'].includes(tpl.assignee_type) ? tpl.assignee_type : 'unassigned';
+  let assigneeId = assigneeType === 'user' ? (tpl.assignee_id || null) : null;
+  if (assigneeType === 'user' && assigneeId) {
+    const { filterCompanyMembers } = await import('../middleware/auth.js');
+    const members = await filterCompanyMembers([assigneeId], a.company_id);
+    if (!members.includes(assigneeId)) {
+      console.warn(`[automations] task_template assignee ${assigneeId} is not in company ${a.company_id} — leaving unassigned`);
+      assigneeType = 'unassigned';
+      assigneeId = null;
+    }
+  }
+
+  const { data: task, error } = await supabaseAdmin.from('tasks').insert({
+    company_id: a.company_id,
+    title,
+    description: tpl.description || a.prompt || null,
+    priority: ['low', 'medium', 'high', 'urgent'].includes(tpl.priority) ? tpl.priority : 'medium',
+    section: tpl.section || 'general',
+    visibility: tpl.visibility === 'private' ? 'private' : 'company',
+    assignee_type: assigneeType,
+    assignee_id: assigneeId,
+    due_at,
+    created_by: a.created_by || null,
+    metadata: { created_by_automation: a.id, automation_name: a.name },
+  }).select().single();
+  if (error) return { status: 'error', error: error.message };
+
+  await supabaseAdmin.from('task_activity').insert({
+    task_id: task.id,
+    company_id: a.company_id,
+    activity_type: 'created',
+    summary: `Raised by the scheduled automation "${a.name}"`,
+    details: { automation_id: a.id },
+    actor_type: 'system',
+    actor_label: 'AI automation',
+  });
+
+  // The agent owns it — do the work now.
+  if (task.assignee_type === 'ai') {
+    const { runTaskWithAI } = await import('./taskRunner.js');
+    const done = await runTaskWithAI({ task, actorUserId: a.created_by || null });
+    return {
+      status: done?.status === 'done' ? 'success' : 'error',
+      task_id: task.id,
+      task_status: done?.status || task.status,
+      error: done?.ai_error || null,
+    };
+  }
+
+  // Assigned to a person (or nobody): tell them it exists.
+  if (task.assignee_id) {
+    const { createNotification } = await import('./notify.js');
+    await createNotification({
+      companyId: a.company_id,
+      userId: task.assignee_id,
+      type: 'task',
+      title: 'A scheduled task was assigned to you',
+      body: task.title,
+      icon: '⏰',
+      link: '/AIChat?tab=tasks&task=' + task.id,
+      metadata: { task_id: task.id, automation_id: a.id },
+    });
+  }
+
+  return { status: 'success', task_id: task.id, task_status: task.status };
+}
+
 async function executeAutomation(a) {
   const startedAt = new Date();
+
+  // Task-producing automations take a different path entirely.
+  if (a.task_type === 'create_task') {
+    try {
+      return await executeTaskAutomation(a);
+    } catch (err) {
+      console.error(`[automations] task automation "${a.name}" (${a.id}) failed:`, err.message);
+      return { status: 'error', error: err.publicMessage || err.message, code: err.code || null };
+    }
+  }
+
   try {
     const result = await runAIChatRef({
       companyId: a.company_id,
