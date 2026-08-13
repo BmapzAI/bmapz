@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Task } from '@/api/entities';
 import { PRIORITIES, priorityLabel } from './taskMeta';
+import OwnerPicker from './OwnerPicker';
 
 const emptyRow = () => ({ title: '', owner: '', priority: 'medium', deadline: '' });
 
@@ -99,10 +100,11 @@ export default function TaskTableInput({ onClose, onSent }) {
                   />
                 </td>
                 <td className="pr-2 pb-2">
-                  <Input
+                  {/* @mention autocomplete: teammates by @username, the AI agent by
+                      its configured name, and everyone. */}
+                  <OwnerPicker
                     value={r.owner}
-                    onChange={(e) => setRow(i, { owner: e.target.value })}
-                    placeholder={isPt ? '@usuario / IA' : '@user / AI'}
+                    onChange={(v) => setRow(i, { owner: v })}
                     className="h-8 bg-black/30 border-white/10 text-white text-xs"
                   />
                 </td>

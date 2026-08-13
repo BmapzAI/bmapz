@@ -375,9 +375,13 @@ router.post('/bulk', requireAuth, async (req, res) => {
     const problems = [];
     for (const [i, r] of rows.entries()) {
       const rawOwner = String(r.owner ?? r.assignee ?? '').trim().replace(/^@+/, '').toLowerCase();
-      const wantsAI = /^(ai|bmapz|agent|bmapz ai)$/i.test(rawOwner);
-      const ownerId = wantsAI ? null : (ownerByKey[rawOwner] || null);
-      if (rawOwner && !wantsAI && !ownerId) {
+      const wantsAI = /^(ai|ia|bmapz|agent|agente|bmapz ai)$/i.test(rawOwner);
+      // "@all" / "@todos" means the whole company, and a task has exactly one
+      // assignee — so it stays unassigned but company-visible, which IS "everyone's
+      // to pick up". Recognised explicitly so it does not report as a bad handle.
+      const wantsEveryone = /^(all|everyone|todos|equipe|team)$/i.test(rawOwner);
+      const ownerId = (wantsAI || wantsEveryone) ? null : (ownerByKey[rawOwner] || null);
+      if (rawOwner && !wantsAI && !wantsEveryone && !ownerId) {
         problems.push({ row: i + 1, owner: r.owner, reason: 'not a member of this company — left unassigned' });
       }
 
