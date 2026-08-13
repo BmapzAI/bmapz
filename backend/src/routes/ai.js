@@ -254,6 +254,11 @@ const ARCHIVE_CATEGORY_BY_ACTION = {
   workflow_node: 'workflows',
   seo_plan: 'strategies',
   marketing_plan: 'strategies',
+  // Work the agent completed from the task board. Archived like any other
+  // generation so a task result is reviewable where every other output lives —
+  // section-specific tasks map to their own category above, and anything general
+  // lands here rather than disappearing once the task card is closed.
+  task_execution: 'strategies',
   sales_marketing_plan: 'strategies',
   campaign_plan: 'strategies',
   prospect_list: 'prospect_list',
@@ -588,7 +593,48 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
  *   5. Call providers in order, with fallback. Track tokens.
  *   6. On success: deduct credits based on model multiplier × tokens used.
  */
-async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action, skipBrain = false, archiveTitle, skipArchive = false }) {
+/**
+ * EXECUTION-FIRST. Prepended to every generation that goes through this choke
+ * point, so chat, tasks, automations and every generator behave the same way.
+ *
+ * WHY: the agent's default failure was answering "Find 10 qualified leads" with
+ * an explanation of HOW to find leads, and "fill in the company settings from
+ * that task" with a description of what could be filled in. Users asked for work
+ * and got a lecture. The rule is simple: if the request can be carried out,
+ * carry it out and return the finished artifact.
+ *
+ * The second half matters just as much. Pushed to execute, a model will happily
+ * invent "Marketing Manager at Software Company A — [LinkedIn Profile]" and call
+ * it a lead list. Fabricated contacts are WORSE than a refusal: they look like
+ * work, they get imported into a CRM, and someone tries to email them. So the
+ * directive pairs "do the work" with "never invent facts you were not given" —
+ * when real-world data is genuinely required and unavailable, say precisely what
+ * is missing and what to connect.
+ */
+const EXECUTION_DIRECTIVE = [
+  'HOW YOU WORK:',
+  '1. EXECUTE, do not explain. If the request is something you can produce, produce the finished,',
+  'ready-to-use deliverable — the actual copy, plan, list, reply, structure or content. Never answer a',
+  'request for work with a method, a checklist of steps the user should take, or an offer to help.',
+  '"Here is how you could…" is a failure unless the user explicitly asked how, why, or for an explanation.',
+  '2. Use what you were given. The company context above is real data — use it instead of placeholders.',
+  '3. NEVER FABRICATE REAL-WORLD FACTS. Do not invent people, companies, contact details, email',
+  'addresses, phone numbers, URLs, links, prices, statistics or citations. Do not emit placeholders like',
+  '"Company A", "[LinkedIn Profile]", "[Link]" or "example@company.com" and present them as findings.',
+  'If a request needs real external data you do not have (for example finding NEW prospects outside the',
+  "CRM), do the part you genuinely can, then state in one short line exactly what is missing and which",
+  'integration or input would supply it. A short honest answer beats an invented one.',
+  '4. Be concise. No preamble, no restating the request, no closing offer of further help.',
+].join(' ');
+
+/**
+ * Actions where explaining IS the job, so the directive above would be wrong.
+ * The support assistant answers questions about the product; the SDR and
+ * WhatsApp agents hold conversations with a human on the other end.
+ */
+const CONVERSATIONAL_ACTIONS = new Set(['help_assistant', 'sdr_chat', 'whatsapp_chat']);
+
+async function runAIChat({ companyId, userId, userRole, userEmail, messages, model, temperature = 0.7, max_tokens, response_format, system, action, skipBrain = false, archiveTitle, skipArchive = false, skipExecutionDirective = false }) {
   // ── Pre-flight: settings + brain + plan are independent reads — fetch them
   // in PARALLEL. They used to run sequentially, costing 3 back-to-back DB
   // round-trips before the model call could start.
@@ -605,6 +651,14 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
     getCompanyPlan(companyId),
   ]);
   if (brain) system = system ? `${brain}\n\n${system}` : brain;
+
+  // Execution directive LAST, so it is the closest instruction to the request and
+  // cannot be diluted by a caller's own wording. Skipped for conversational
+  // actions, and for JSON-shaped calls where the caller's schema already dictates
+  // the output and prose rules would only confuse it.
+  if (!skipExecutionDirective && !CONVERSATIONAL_ACTIONS.has(action) && !response_format) {
+    system = system ? `${system}\n\n${EXECUTION_DIRECTIVE}` : EXECUTION_DIRECTIVE;
+  }
   const { planId, creditsTotal, creditsUsed, status: planStatus, scanTokensRemaining, subscriptionId } = planInfo;
   const remainingCredits = Math.max(0, creditsTotal - creditsUsed);
 

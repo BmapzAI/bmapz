@@ -7,11 +7,17 @@
  * CHECK constraints in migration 031 exactly.
  */
 
-/** The three columns the board shows, in order. */
-export const BOARD_STATUSES = ['todo', 'doing', 'done'];
+/**
+ * The columns the board shows, in order.
+ *
+ * 'standby' comes first: work that is real and agreed but not yet actionable —
+ * waiting on someone else, on a date, or on a decision. Keeping it out of "To do"
+ * is what makes "To do" mean "can be started now".
+ */
+export const BOARD_STATUSES = ['standby', 'todo', 'doing', 'done'];
 
 /** Every legal status, including the two that live off the board. */
-export const ALL_STATUSES = ['todo', 'doing', 'done', 'blocked', 'cancelled'];
+export const ALL_STATUSES = ['standby', 'todo', 'doing', 'done', 'blocked', 'cancelled'];
 
 export const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 
@@ -19,6 +25,7 @@ export const SECTIONS = ['general', 'ads', 'sales', 'workflow', 'inbox', 'blog',
   'sdr', 'seo', 'social', 'dashboard'];
 
 export const statusLabel = (status, isPt) => ({
+  standby: isPt ? 'Em espera' : 'Standby',
   todo: isPt ? 'A fazer' : 'To do',
   doing: isPt ? 'Fazendo' : 'Doing',
   done: isPt ? 'Concluído' : 'Done',
@@ -54,6 +61,7 @@ export const PRIORITY_CLASS = {
 };
 
 export const STATUS_CLASS = {
+  standby: 'bg-amber-500/20 text-amber-300',
   todo: 'bg-gray-500/20 text-gray-300',
   doing: 'bg-[#38b6ff]/20 text-[#38b6ff]',
   done: 'bg-green-500/20 text-green-400',

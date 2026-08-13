@@ -49,6 +49,38 @@ const ACTION_BY_SECTION = {
   sdr: 'message_template',
 };
 
+/**
+ * Work out which part of the product a task belongs to when the user did not say.
+ *
+ * Keyword matching rather than an extra model call: it is free, instant and
+ * predictable, and getting it wrong only changes which brief the agent gets and
+ * where the result is filed — not whether the work happens. The section is what
+ * lets a result be sent on to the right section afterwards, so guessing beats
+ * leaving everything as 'general'.
+ *
+ * Ordered most-specific first: "ad copy for instagram" is an ads task, not a
+ * social one.
+ */
+const SECTION_HINTS = [
+  ['ads', /\b(ad|ads|advert|campaign|adwords|google ads|meta ads|facebook ads|cpc|cpm|roas|creative|ad copy|anúncio|anuncios|campanha)\b/i],
+  ['seo', /\b(seo|keyword|keywords|backlink|serp|ranking|meta description|on-page|palavra-chave)\b/i],
+  ['blog', /\b(blog|article|post de blog|artigo|long-form)\b/i],
+  ['social', /\b(social|instagram|linkedin|tiktok|twitter|reels|carousel|caption|hashtag|rede social|postagem)\b/i],
+  ['sdr', /\b(sdr|qualify|qualification|outbound|prospect|cold call|qualificar)\b/i],
+  ['inbox', /\b(inbox|reply|respond|email response|caixa de entrada|responder)\b/i],
+  ['workflow', /\b(workflow|automation|sequence|cadence|nurture|automação|fluxo)\b/i],
+  ['sales', /\b(lead|leads|pipeline|crm|deal|funnel|follow[- ]?up|venda|vendas|funil)\b/i],
+  ['dashboard', /\b(dashboard|metric|metrics|report|kpi|painel|relatório)\b/i],
+];
+
+export function inferSection(task) {
+  const text = `${task?.title || ''} ${task?.description || ''}`;
+  for (const [section, re] of SECTION_HINTS) {
+    if (re.test(text)) return section;
+  }
+  return 'general';
+}
+
 async function setTask(taskId, patch) {
   const { data, error } = await supabaseAdmin
     .from('tasks').update(patch).eq('id', taskId).select().single();
@@ -112,17 +144,22 @@ export async function runTaskWithAI({ task, actorUserId = null }) {
 
   await setTask(task.id, { status: 'doing', ai_error: null });
 
-  const section = task.section || 'general';
+  // The user may not have picked a section — infer one so the agent gets the right
+  // brief and the finished result can be routed to the right place afterwards.
+  const section = (task.section && task.section !== 'general')
+    ? task.section
+    : inferSection(task);
   const action = ACTION_BY_SECTION[section] || 'task_execution';
 
   const system = [
-    'You are the Bmapz AI agent completing a work task for this company.',
+    'You are the Bmapz AI agent COMPLETING a work task for this company — not advising on it.',
     SECTION_BRIEF[section] || '',
-    'Do the task as far as it can be done in a single response. Be concrete and',
-    'immediately usable — produce the actual deliverable (the copy, the plan, the',
-    'reply, the list), not a description of how you would do it.',
-    'If the task genuinely cannot be completed without information you do not have,',
-    'say exactly what is missing in one short paragraph and stop.',
+    'Return the finished deliverable itself, ready for someone to use or publish as-is.',
+    'Do not describe your approach, do not list the steps you would take, and do not ask',
+    'clarifying questions — the task has already been assigned to you.',
+    'If part of the task needs real data you genuinely do not have, complete every part you',
+    'can and add one short final line naming exactly what is missing. Never fill a gap with',
+    'invented names, companies, contacts, links or numbers.',
   ].filter(Boolean).join(' ');
 
   const prompt = [
@@ -156,6 +193,9 @@ export async function runTaskWithAI({ task, actorUserId = null }) {
       completed_by: null,
       ai_result: { content, model: result?.model || null, at: new Date().toISOString() },
       ai_error: null,
+      // Write the inferred section back, so the card shows where this belongs and
+      // "send to section" has a target without asking the user again.
+      ...(section !== task.section ? { section } : {}),
     });
 
     await logActivity({

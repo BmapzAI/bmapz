@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -368,9 +369,29 @@ export default function MyTasks({ initialTaskId = null }) {
 }
 
 /* ── Kanban ─────────────────────────────────────────────────────────────── */
+/**
+ * Drag a card between columns to change its status.
+ *
+ * The move buttons are KEPT alongside the drag handles rather than replaced.
+ * Drag-and-drop is unusable with a keyboard or a screen reader and awkward on a
+ * phone, so the buttons stay as the accessible path to the same action — they
+ * simply reveal on hover/focus instead of taking up room.
+ */
 function KanbanView({ byStatus, isPt, followedIds, onOpen, onMove }) {
+  const handleDragEnd = (result) => {
+    const { destination, source, draggableId } = result;
+    // Dropped outside a column, or back where it started — nothing to do.
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId) return;
+
+    const task = (byStatus[source.droppableId] || []).find(t => t.id === draggableId);
+    if (!task) return;
+    onMove(task, destination.droppableId);
+  };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <DragDropContext onDragEnd={handleDragEnd}>
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
       {BOARD_STATUSES.map(status => (
         <div key={status} className="rounded-2xl bg-white/5 border border-white/10 p-3">
           <div className="flex items-center justify-between mb-3">
@@ -380,42 +401,63 @@ function KanbanView({ byStatus, isPt, followedIds, onOpen, onMove }) {
             <span className="text-gray-500 text-xs">{(byStatus[status] || []).length}</span>
           </div>
 
-          <div className="space-y-2">
-            {(byStatus[status] || []).length === 0 ? (
-              <p className="text-gray-600 text-xs py-6 text-center">
-                {isPt ? 'Nada aqui' : 'Nothing here'}
-              </p>
-            ) : (byStatus[status] || []).map(task => (
-              <div key={task.id} className="group">
-                <TaskCard
-                  task={task}
-                  isPt={isPt}
-                  isFollowing={followedIds.includes(task.id)}
-                  onClick={onOpen}
-                />
-                {/* Move buttons instead of drag-and-drop: they work on touch,
-                    with a keyboard, and in a screen reader. */}
-                <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                  {BOARD_STATUSES.filter(s => s !== status).map(s => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => onMove(task, s)}
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 hover:text-white hover:bg-white/10"
-                    >
-                      → {statusLabel(s, isPt)}
-                    </button>
-                  ))}
-                </div>
+          <Droppable droppableId={status}>
+            {(dropProvided, dropSnapshot) => (
+              <div
+                ref={dropProvided.innerRef}
+                {...dropProvided.droppableProps}
+                className={`space-y-2 min-h-[80px] rounded-xl transition-colors ${
+                  dropSnapshot.isDraggingOver ? 'bg-[#38b6ff]/5 ring-1 ring-[#38b6ff]/30' : ''
+                }`}
+              >
+                {(byStatus[status] || []).length === 0 && !dropSnapshot.isDraggingOver ? (
+                  <p className="text-gray-600 text-xs py-6 text-center">
+                    {isPt ? 'Nada aqui' : 'Nothing here'}
+                  </p>
+                ) : null}
+
+                {(byStatus[status] || []).map((task, index) => (
+                  <Draggable key={task.id} draggableId={task.id} index={index}>
+                    {(dragProvided, dragSnapshot) => (
+                      <div
+                        ref={dragProvided.innerRef}
+                        {...dragProvided.draggableProps}
+                        {...dragProvided.dragHandleProps}
+                        className={`group ${dragSnapshot.isDragging ? 'opacity-90 rotate-1' : ''}`}
+                      >
+                        <TaskCard
+                          task={task}
+                          isPt={isPt}
+                          isFollowing={followedIds.includes(task.id)}
+                          onClick={onOpen}
+                        />
+                        {/* The accessible equivalent of dragging. */}
+                        <div className="flex flex-wrap gap-1 mt-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                          {BOARD_STATUSES.filter(s => s !== status).map(s => (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => onMove(task, s)}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 hover:text-white hover:bg-white/10"
+                            >
+                              → {statusLabel(s, isPt)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {dropProvided.placeholder}
               </div>
-            ))}
-          </div>
+            )}
+          </Droppable>
         </div>
       ))}
 
       {/* Blocked and cancelled live off the board but must not vanish. */}
       {['blocked', 'cancelled'].some(s => (byStatus[s] || []).length) ? (
-        <div className="md:col-span-3 rounded-2xl bg-white/5 border border-white/10 p-3">
+        <div className="md:col-span-2 xl:col-span-4 rounded-2xl bg-white/5 border border-white/10 p-3">
           <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300">
             {isPt ? 'Bloqueadas / canceladas' : 'Blocked / cancelled'}
           </span>
@@ -433,6 +475,7 @@ function KanbanView({ byStatus, isPt, followedIds, onOpen, onMove }) {
         </div>
       ) : null}
     </div>
+    </DragDropContext>
   );
 }
 

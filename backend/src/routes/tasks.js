@@ -27,7 +27,8 @@ import { runAIChat } from './ai.js';
 
 const router = Router();
 
-const STATUSES = ['todo', 'doing', 'done', 'blocked', 'cancelled'];
+// Must match the CHECK constraint on tasks.status (migrations 031 + 033).
+const STATUSES = ['standby', 'todo', 'doing', 'done', 'blocked', 'cancelled'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 const VISIBILITIES = ['company', 'private'];
 const ASSIGNEE_TYPES = ['user', 'ai', 'unassigned'];
@@ -245,6 +246,7 @@ router.get('/summary', requireAuth, async (req, res) => {
     const count = (fn) => rows.filter(fn).length;
 
     res.json({
+      standby: count(t => t.status === 'standby'),
       todo: count(t => t.status === 'todo'),
       doing: count(t => t.status === 'doing'),
       done: count(t => t.status === 'done'),
