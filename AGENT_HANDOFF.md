@@ -2606,3 +2606,46 @@ Verified 2026-08-14:
 KNOWN COLLISION: a real user account has username `bmapz`, which is also an AI-agent
 alias. Per the product decision, agent aliases win, so that account is not
 mentionable by handle. Flagged for Derek.
+
+## SEO analyses — schema fix + runnable from chat (Claude, 2026-08-14)
+
+SCHEMA CHANGE. Migration `seo_analyses_store_full_result` adds `url`, `scan_type`,
+`overall_score`, `results jsonb`, `analyzed_at` to `public.seo_analyses`, plus a
+`(company_id, created_at desc)` index. Additive only; the table held 0 rows.
+
+WHY. The feature had never persisted a single analysis. `POST /api/seo` did
+`insert({...req.body})` and the browser sent the model's report keys (`top_issues`,
+`checklist_results`, `overall_score`, `url`, …), none of which were columns. Every
+insert was rejected, the mutation had no `onError`, and the screen still said
+"Analysis complete!". Confirmed against production: `select count(*) from
+seo_analyses` returned 0. The "Recent Analyses" UI already existed — twice — and had
+simply never had anything to show.
+
+The report shape is model-generated, so only the fields the history list reads are
+columns; the rest lives in `results`. `lib/seoAnalysis.js` `toRow()` is the single
+place that maps a report onto the schema.
+
+The legacy `issues` / `recommendations` / `top_keywords` columns are `jsonb[]`, NOT
+`text[]`. Writing string arrays to them fails with 42804. Nothing reads them and the
+full report is in `results`, so `toRow` deliberately does not write them.
+
+Analysis now runs server-side in `lib/seoAnalysis.js`, shared by:
+- `POST /api/seo/analyze` (the SEO screen), and
+- the `run_seo_analysis` chat action.
+
+That second one is the fix for "an SEO analysis is not being sent from the chat":
+the agent used to answer that it had no external tools, because the capability
+genuinely existed only in the SEO page's click handler. `runAIChat` is imported
+dynamically inside the function — `routes/ai.js` → `aiActions.js` → `seoAnalysis.js`
+would otherwise close an import cycle.
+
+Verified 2026-08-14:
+- Migration applied; all five columns present.
+- The exact row `toRow()` produces INSERTs successfully against production, and
+  `results` round-trips (checklist + top_issues read back intact). Test row deleted;
+  table back to 0.
+- `isKnownOp('run_seo_analysis')` true, `describeAction` renders, op present in the
+  protocol catalogue.
+- Backend boots; `npm run lint` 0 errors; `npm run build` passes.
+NOT verified end-to-end: an actual model-backed analysis run (needs the production
+service key + credits). First real run in production is the remaining check.

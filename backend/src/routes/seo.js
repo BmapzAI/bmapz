@@ -2,16 +2,21 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sanitizeUpdate } from '../lib/safeUpdate.js';
+import { runSeoAnalysis, toRow, normalizeUrl } from '../lib/seoAnalysis.js';
 
 const router = Router();
 
 router.get('/', requireAuth, async (req, res) => {
   try {
+    // Each row carries a full report, so the history list is bounded rather than
+    // fetching every analysis the company has ever run.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
     const { data, error } = await supabaseAdmin
       .from('seo_analyses')
       .select('*')
       .eq('company_id', req.companyId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(limit);
     if (error) throw error;
     res.json(data);
   } catch (err) {
@@ -19,16 +24,46 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/seo/analyze — run an analysis server-side and store it.
+// The SEO screen and the AI chat action both come through here, so there is one
+// prompt and one save path.
+router.post('/analyze', requireAuth, async (req, res) => {
+  try {
+    const saved = await runSeoAnalysis({
+      companyId: req.companyId,
+      userId: req.dbUser?.id,
+      userRole: req.dbUser?.role,
+      url: req.body?.url,
+      scanType: req.body?.scan_type || req.body?.scanType,
+    });
+    res.json(saved);
+  } catch (err) {
+    console.error('[seo/analyze] failed:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.post('/', requireAuth, async (req, res) => {
   try {
+    // Deliberately NOT `{...req.body}`. The old spread pushed the model's report
+    // keys (top_issues, checklist_results, …) in as columns, PostgREST rejected
+    // the row, and the failure surfaced nowhere — the table held 0 rows for the
+    // life of the feature. toRow keeps the payload and the schema in step.
+    const { url, scan_type: scanType, ...analysis } = req.body || {};
     const { data, error } = await supabaseAdmin
       .from('seo_analyses')
-      .insert({ ...req.body, company_id: req.companyId })
+      .insert(toRow({
+        companyId: req.companyId,
+        url: normalizeUrl(url || analysis.url),
+        scanType,
+        analysis,
+      }))
       .select()
       .single();
     if (error) throw error;
     res.json(data);
   } catch (err) {
+    console.error('[seo] save failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

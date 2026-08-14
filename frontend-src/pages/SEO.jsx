@@ -1,7 +1,7 @@
 import { api } from '@/api/apiClient';
 import React, { useState } from 'react';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -11,7 +11,6 @@ import {
 import { toast } from 'sonner';
 import { Company, SEOAnalysis } from '@/api/entities';
 import CreateTaskButton from '@/components/tasks/CreateTaskButton';
-import SEOHistory from '@/components/seo/SEOHistory';
 import { usePersistentDraft } from '@/lib/usePersistentDraft';
 
 const PLAIN_ENGLISH_LABELS = {
@@ -174,14 +173,17 @@ export default function SEO() {
 
   const { data: savedAnalyses = [] } = useQuery({
     queryKey: ['seoAnalyses', company?.id],
-    queryFn: () => company?.id ? SEOAnalysis.filter({ company_id: company.id }, '-created_date', 5) : [],
+    // SEOAnalysis.filter ignores its arguments — the route scopes to the caller's
+    // company and orders newest-first, so the company_id/sort/limit that used to
+    // be passed here were doing nothing. The list is capped where it renders.
+    queryFn: () => (company?.id ? SEOAnalysis.filter() : []),
     enabled: !!company?.id,
   });
 
-  const saveMutation = useMutation({
-    mutationFn: (data) => SEOAnalysis.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['seoAnalyses'] }); },
-  });
+  // The save used to live here and never worked: it spread the model's report
+  // straight into the table, none of those keys were columns, and the mutation
+  // had no onError — so the screen said "Analysis complete!" over a rejected
+  // insert. /api/seo/analyze now runs and stores the analysis in one step.
 
   const normalizeUrl = (raw) => {
     let u = raw.trim();
@@ -203,69 +205,28 @@ export default function SEO() {
     setUrl(normalizedUrl);
     setIsAnalyzing(true);
     try {
-      // Fetch SEO analysis
-      const seoPrompt = `You are an expert SEO auditor. Analyze the SEO of this URL: ${normalizedUrl} (scan type: ${scanType === 'site' ? 'entire site' : 'single page'}).
+      // The prompt, the model call and the save all live server-side in
+      // backend/src/lib/seoAnalysis.js. Inlining them here had two costs: the AI
+      // agent could not run an analysis, because the capability existed only in
+      // this click handler; and nothing was ever stored, because the insert sent
+      // report keys that were not columns and seo_analyses stayed empty.
+      const saved = await api.post('/api/seo/analyze', {
+        url: normalizedUrl,
+        scan_type: scanType,
+      });
+      if (saved?.error) throw new Error(saved.error);
 
-Based on your knowledge of the URL and best practices, return a JSON object with EXACTLY this structure (no extra keys at the top level):
-{
-  "overall_score": <0-100 integer>,
-  "seo_score": <0-100>,
-  "technical_score": <0-100>,
-  "aeo_score": <0-100>,
-  "geo_score": <0-100>,
-  "page_title": "<detected or inferred page title>",
-  "primary_keyword_detected": "<main keyword>",
-  "estimated_traffic_impact": "<e.g. +15-20% with fixes>",
-  "top_issues": [
-    { "issue": "<issue title>", "severity": "high|medium|low", "plain_english": "<simple explanation>", "recommendation": "<specific fix step>" }
-  ],
-  "strengths": ["<strength 1>", "<strength 2>"],
-  "quick_wins": [
-    { "action": "<action>", "plain_english": "<why it matters>", "difficulty": "easy|medium|hard", "expected_impact": "high|medium|low" }
-  ],
-  "checklist_results": {
-    "title_tag": true|false,
-    "meta_desc": true|false,
-    "h1_present": true|false,
-    "subheadings": true|false,
-    "keyword_density": true|false,
-    "internal_links": true|false,
-    "alt_text": true|false,
-    "url_structure": true|false,
-    "page_speed": true|false,
-    "mobile_friendly": true|false,
-    "https": true|false,
-    "sitemap": true|false,
-    "robots_txt": true|false,
-    "structured_data": true|false,
-    "canonical": true|false,
-    "featured_snippet": true|false,
-    "faq_schema": true|false,
-    "question_keywords": true|false,
-    "direct_answers": true|false,
-    "voice_search": true|false,
-    "e_eeat": true|false,
-    "author_bio": true|false,
-    "citations": true|false,
-    "comprehensive": true|false,
-    "entity_mentions": true|false,
-    "ai_friendly": true|false
-  }
-}
-Be realistic and specific based on what you know about the URL. If it's an HTTPS URL, set https: true. If it's a well-known site, use your knowledge about their SEO. Provide at least 3 top_issues and 3 quick_wins.`;
-
-      // `action` does two things: routes the model tier, and files the result in
-      // the AI Outputs archive (ARCHIVE_CATEGORY_BY_ACTION in routes/ai.js).
-      // Without it an SEO analysis was archived nowhere.
-      const res = await api.post('/api/ai/chat', {
-        messages: [{ role: 'user', content: seoPrompt }],
-        response_format: { type: 'json_object' },
-        action: 'seo_plan',
-        archive_title: `SEO analysis — ${normalizedUrl}`,
-      }).then(r => JSON.parse(r.content));
-      const response = res;
-      if (response.error) throw new Error(response.error);
-      const analysisResult = { ...response, url: normalizedUrl, scanType, analyzed_at: new Date().toISOString() };
+      // The row promotes only the fields the history list needs; the rest of the
+      // report is in `results`.
+      const analysisResult = {
+        ...(saved.results || {}),
+        id: saved.id,
+        url: saved.url || normalizedUrl,
+        overall_score: saved.overall_score,
+        scan_type: saved.scan_type,
+        scanType: saved.scan_type,
+        analyzed_at: saved.analyzed_at || saved.created_at,
+      };
 
       // Try to fetch Google Search Console data if connected
       try {
@@ -279,9 +240,8 @@ Be realistic and specific based on what you know about the URL. If it's an HTTPS
       }
 
       setResults(analysisResult);
-      if (company?.id) {
-        saveMutation.mutate({ company_id: company.id, url: normalizedUrl, scan_type: scanType, ...analysisResult });
-      }
+      // The analysis is already stored by /api/seo/analyze — just refresh the list.
+      queryClient.invalidateQueries({ queryKey: ['seoAnalyses'] });
       toast.success('Analysis complete!');
     } catch (e) {
       if (e.message?.includes('API') || e.message?.includes('key') || e.message?.includes('auth')) {
@@ -294,8 +254,18 @@ Be realistic and specific based on what you know about the URL. If it's an HTTPS
   };
 
   const loadSavedAnalysis = (analysis) => {
-    setResults({ ...analysis, scanType: analysis.scan_type });
-    setUrl(analysis.url);
+    // The variable part of the report — sub-scores, top_issues, quick_wins,
+    // checklist_results — lives in the `results` blob; the row promotes only what
+    // the history list needs. Spread the blob first so the row's own columns win
+    // on any key they share.
+    setResults({
+      ...(analysis.results || {}),
+      ...analysis,
+      scanType: analysis.scan_type,
+    });
+    setUrl(analysis.url || '');
+    if (analysis.scan_type) setScanType(analysis.scan_type);
+    toast.success('Analysis loaded');
   };
 
   const scoreColor = (score) => {
@@ -333,22 +303,6 @@ Be realistic and specific based on what you know about the URL. If it's an HTTPS
 
 
       {/* AI Unavailable Warning */}
-      {/* The last five analyses, reloadable. They were already being saved and
-          fetched — there was just no way to load one back, so revisiting an old
-          result meant paying to run it again. */}
-      <SEOHistory
-        analyses={savedAnalyses}
-        currentUrl={results?.url}
-        onLoad={(a) => {
-          setResults(a);
-          setUrl(a.url || '');
-          if (a.scan_type) setScanType(a.scan_type);
-          // This page has no useLanguage hook — the rest of its copy is English
-          // only, so an isPt reference here would be an undefined variable.
-          toast.success('Analysis loaded');
-        }}
-      />
-
       {aiUnavailable && (
         <div className="rounded-2xl bg-yellow-500/10 border border-yellow-500/30 p-4 flex items-start gap-3">
           <span className="text-yellow-400 text-lg">⚠️</span>
@@ -399,7 +353,7 @@ Be realistic and specific based on what you know about the URL. If it's an HTTPS
             <Clock size={16} className="text-[#38b6ff]" /> Recent Analyses
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-            {savedAnalyses.map((a) => (
+            {savedAnalyses.slice(0, 5).map((a) => (
               <button key={a.id} onClick={() => loadSavedAnalysis(a)}
                 className="flex items-center gap-3 p-3 rounded-xl bg-black/30 border border-white/10 hover:border-[#38b6ff]/30 hover:bg-white/10 transition-all text-left group">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 ${scoreBg(a.overall_score || 0)} bg-opacity-20`}>
@@ -407,7 +361,7 @@ Be realistic and specific based on what you know about the URL. If it's an HTTPS
                 </div>
                 <div className="min-w-0">
                   <p className="text-white text-xs font-medium truncate">{a.url}</p>
-                  <p className="text-gray-500 text-xs">{new Date(a.created_date).toLocaleDateString()}</p>
+                  <p className="text-gray-500 text-xs">{new Date(a.created_at).toLocaleDateString()}</p>
                 </div>
               </button>
             ))}
@@ -678,7 +632,7 @@ Be realistic and specific based on what you know about the URL. If it's an HTTPS
             <Clock size={16} className="text-[#38b6ff]" /> Recent Analyses
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-            {savedAnalyses.map((a) => (
+            {savedAnalyses.slice(0, 5).map((a) => (
               <button key={a.id} onClick={() => loadSavedAnalysis(a)}
                 className="flex items-center gap-3 p-3 rounded-xl bg-black/30 border border-white/10 hover:border-[#38b6ff]/30 hover:bg-white/10 transition-all text-left group">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 ${scoreBg(a.overall_score || 0)} bg-opacity-20`}>
@@ -686,7 +640,7 @@ Be realistic and specific based on what you know about the URL. If it's an HTTPS
                 </div>
                 <div className="min-w-0">
                   <p className="text-white text-xs font-medium truncate">{a.url}</p>
-                  <p className="text-gray-500 text-xs">{new Date(a.created_date).toLocaleDateString()}</p>
+                  <p className="text-gray-500 text-xs">{new Date(a.created_at).toLocaleDateString()}</p>
                 </div>
               </button>
             ))}

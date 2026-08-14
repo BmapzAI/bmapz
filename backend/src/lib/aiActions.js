@@ -64,6 +64,13 @@ export const ACTION_PROTOCOL_OPS = [
   '- {"op":"create_ad_campaign","name":"…","platform":"meta|google|linkedin|tiktok","objective":"…"}',
   '- {"op":"save_to_archive","title":"…","content":"…","category":"strategies|social_media|blogposts|',
   '  ad_copy|message_templates|email_templates|workflows|prospect_list"}',
+  // Spelled out because the model kept refusing outright — "I have no access to
+  // external tools to run a real-time SEO analysis" — when the capability was
+  // simply not in this catalogue.
+  '- {"op":"run_seo_analysis","url":"https://example.com","scan_type":"page|site"}',
+  '  Use this whenever the user asks for an SEO analysis, audit, review or score of a site or page.',
+  '  You CAN run these: it scores the page and files it in the SEO section. Never reply that you',
+  '  lack the tools to analyse a site — propose this operation instead.',
 ].join('\n');
 
 /**
@@ -473,6 +480,10 @@ export function describeAction(action) {
         changes: [action.platform || 'no platform'], destructive: false };
     case 'save_to_archive':
       return { op, title: `Save "${str(action.title, 120) || ''}" to AI Outputs`, changes: [], destructive: false };
+    case 'run_seo_analysis':
+      return { op, title: `Run an SEO analysis of ${str(action.url, 200) || '(no URL)'}`,
+        changes: [action.scan_type === 'site' ? 'entire site' : 'single page', 'uses AI credits'],
+        destructive: false };
     default:
       return { op: op || '(unknown)', title: 'Unrecognised operation', changes: [], unknown: true };
   }
@@ -797,6 +808,41 @@ async function createAdCampaign(action, ctx) {
   return { ok: true, summary: `Created draft campaign "${name}"`, id: data.id, link: '/Ads' };
 }
 
+/**
+ * Run a real SEO analysis and file it in the SEO section.
+ *
+ * Unlike the other handlers this one costs AI credits and takes seconds rather
+ * than milliseconds, which is precisely why it goes through the approval step
+ * like everything else — the user sees the URL before it runs.
+ *
+ * The library is imported at call time: routes/ai.js imports this file, and the
+ * library reaches back into routes/ai.js for runAIChat, so a static import here
+ * would close that cycle.
+ */
+async function runSeoAnalysisAction(action, ctx) {
+  const url = str(action.url, 500);
+  if (!url) return { ok: false, error: 'No URL to analyse.' };
+  try {
+    const { runSeoAnalysis } = await import('./seoAnalysis.js');
+    const saved = await runSeoAnalysis({
+      companyId: ctx.companyId,
+      userId: ctx.userId,
+      userRole: ctx.userRole,
+      url,
+      scanType: action.scan_type === 'site' ? 'site' : 'page',
+    });
+    const score = saved?.overall_score;
+    return {
+      ok: true,
+      summary: `Analysed ${saved?.url || url}${score != null ? ` — score ${score}/100` : ''}`,
+      id: saved?.id,
+      link: '/SEO',
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 async function saveToArchive(action, ctx) {
   const title = str(action.title, 300);
   const content = str(action.content, 60000);
@@ -819,6 +865,7 @@ const HANDLERS = {
   update_blog_post: updateBlogPost,
   create_ad_campaign: createAdCampaign,
   save_to_archive: saveToArchive,
+  run_seo_analysis: runSeoAnalysisAction,
 };
 
 export const isKnownOp = (op) => Object.prototype.hasOwnProperty.call(HANDLERS, String(op || ''));
