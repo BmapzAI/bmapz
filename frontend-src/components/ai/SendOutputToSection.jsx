@@ -18,23 +18,30 @@ import { api } from '@/api/apiClient';
  * decided what kind of thing it was, but stays overridable because that guess can
  * be wrong.
  */
+// SEO is deliberately absent. It is not an editable section — an analysis is a
+// scored report, not a draft — and "sending" one there only filed it in the
+// archive as a strategy, which is where it already was.
 const SECTIONS = [
   { value: 'ads', en: 'Ads', pt: 'Anúncios' },
   { value: 'social', en: 'Social Media', pt: 'Redes sociais' },
   { value: 'blog', en: 'Blog', pt: 'Blog' },
-  { value: 'seo', en: 'SEO', pt: 'SEO' },
   { value: 'sales', en: 'Sales', pt: 'Vendas' },
   { value: 'workflow', en: 'Workflows', pt: 'Automações' },
   { value: 'inbox', en: 'Inbox', pt: 'Caixa de entrada' },
   { value: 'sdr', en: 'SDR', pt: 'SDR' },
 ];
 
-/** The agent's own category is the best default destination. */
+/**
+ * The agent's own category is the best default destination.
+ *
+ * `strategies` has no entry: it used to default to SEO, which is not a
+ * destination you can send anything to. It falls through to the first option so
+ * the user picks deliberately.
+ */
 const SECTION_FOR_CATEGORY = {
   social_media: 'social',
   blogposts: 'blog',
   ad_copy: 'ads',
-  strategies: 'seo',
   message_templates: 'inbox',
   email_templates: 'inbox',
   workflows: 'workflow',
@@ -47,7 +54,7 @@ export default function SendOutputToSection({ output }) {
 
   const sentTo = output?.sent_to || output?.metadata?.sent_to || null;
   const [section, setSection] = useState(
-    () => SECTION_FOR_CATEGORY[output?.category || output?.metadata?.category] || 'seo',
+    () => SECTION_FOR_CATEGORY[output?.category || output?.metadata?.category] || SECTIONS[0].value,
   );
 
   const sendMutation = useMutation({

@@ -3,12 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-  Search, Copy, Eye, RotateCcw, Archive, Loader2, Sparkles,
-  CheckCircle2, XCircle, Clock, PencilLine, Save,
+  Search, Eye, RotateCcw, Archive, Loader2, Sparkles,
+  CheckCircle2, XCircle, Clock, PencilLine,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AIOutput } from '@/api/entities';
@@ -67,7 +66,6 @@ export default function AIOutputsArchive() {
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [viewing, setViewing] = useState(null);
-  const [draft, setDraft] = useState('');
 
   // Debounce the search box so typing doesn't fire a query per keystroke.
   React.useEffect(() => {
@@ -98,33 +96,13 @@ export default function AIOutputsArchive() {
     onError: (e) => toast.error('Save failed: ' + (e?.response?.data?.error || e.message)),
   });
 
-  const copy = async (output) => {
-    try {
-      await navigator.clipboard.writeText(asText(output.content ?? output.output));
-      toast.success(isPt ? 'Copiado para a área de transferência' : 'Copied to clipboard');
-    } catch {
-      toast.error(isPt ? 'Não foi possível copiar' : 'Could not copy');
-    }
-  };
+  const openViewer = (output) => setViewing(output);
 
-  const openViewer = (output) => {
-    setViewing(output);
-    setDraft(asText(output.content ?? output.output));
-  };
-
-  // Save an edit WITHOUT deciding the outcome — the user keeps a draft of their
-  // edits and can choose to use it later. The backend preserves the original AI
-  // text (metadata.original_content) the first time it's edited.
-  const saveDraft = () => {
-    updateMutation.mutate(
-      { id: viewing.id, patch: { content: draft, draft_saved_at: new Date().toISOString() } },
-      { onSuccess: () => { toast.success(isPt ? 'Rascunho salvo' : 'Draft saved'); setViewing(null); } },
-    );
-  };
-
-  // saveAndApprove was removed with the new approval flow — see the dialog footer.
-  // Left out rather than kept unused so the file does not carry a second, dead
-  // definition of "approve" for someone to wire up again by mistake.
+  // "Reuse" (copy to clipboard), saveDraft and saveAndApprove were all removed:
+  // this tab is the record of what was produced, and editing belongs to the
+  // Review tab. They are deleted rather than left unused so nobody rewires a
+  // second editing path into a view-only screen. `setOutcome` stays — moving an
+  // item back to pending is a filing decision, not an edit.
 
   const setOutcome = (output, next) => {
     updateMutation.mutate({ id: output.id, patch: { status: next } }, {
@@ -254,10 +232,6 @@ export default function AIOutputsArchive() {
                     className="border-white/10 text-white hover:bg-white/5 gap-1 h-8">
                     <Eye size={13} /> {isPt ? 'Ver' : 'View'}
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => copy(output)}
-                    className="border-white/10 text-white hover:bg-white/5 gap-1 h-8">
-                    <Copy size={13} /> {isPt ? 'Copiar' : 'Reuse'}
-                  </Button>
                   {output.status !== 'pending' && (
                     <Button size="sm" variant="outline" onClick={() => setOutcome(output, 'pending')}
                       className="border-white/10 text-gray-400 hover:bg-white/5 h-8" title={isPt ? 'Voltar para pendente' : 'Move back to pending'}>
@@ -289,11 +263,12 @@ export default function AIOutputsArchive() {
               {viewing?.model && <span>· {viewing.model}</span>}
               {viewing?.category && <span>· {String(viewing.category).replace(/_/g, ' ')}</span>}
             </div>
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              className="min-h-[280px] bg-black/30 border-white/10 text-white font-mono text-xs"
-            />
+            {/* Read-only. The archive is the record of what was produced; editing
+                lives in the Review tab, so the same text is not editable in two
+                places with two different save paths. */}
+            <pre className="min-h-[280px] max-h-[50vh] overflow-y-auto rounded-md bg-black/30 border border-white/10 p-3 text-white font-mono text-xs whitespace-pre-wrap">
+              {asText(viewing?.content ?? viewing?.output)}
+            </pre>
             {viewing?.original_content !== undefined && viewing?.original_content !== null && (
               <details className="rounded-xl bg-black/20 border border-white/10 p-3">
                 <summary className="text-gray-400 text-xs cursor-pointer">
@@ -305,18 +280,12 @@ export default function AIOutputsArchive() {
               </details>
             )}
           </div>
-          {/* "Save draft" and "Save & approve" were removed with the new approval
-              flow. Work arriving here has ALREADY been approved on the chat card,
-              so a second approve step asked for the same permission twice — the
-              confusion that made the flow feel broken. Editing then saving is the
-              one action that remains meaningful. */}
+          {/* The archive is view-only. Approval already happened on the chat card,
+              and editing happens in the Review tab — keeping a second editor here
+              meant two save paths for one piece of text. */}
           <DialogFooter className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={() => setViewing(null)} className="border-white/10 text-white hover:bg-white/5">
               {isPt ? 'Fechar' : 'Close'}
-            </Button>
-            <Button onClick={saveDraft} disabled={updateMutation.isPending}
-              className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
-              <Save size={15} /> {isPt ? 'Salvar alterações' : 'Save changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
