@@ -12,6 +12,33 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { AGENT_ALIASES, getAgentHandle } from '../lib/mentions.js';
+
+/**
+ * The AI agent as a search result, when the typed handle refers to it.
+ *
+ * The agent answers to the company's configured "Personal AI Agent Name" and to
+ * the generic aliases, matching lib/mentions.js exactly — a handle that works in
+ * a task comment has to work in the search box too.
+ *
+ * Prefix matching, not equality, because search runs as the user types.
+ */
+async function resolveAgentMatch(companyId, handle) {
+  const h = String(handle || '').trim().toLowerCase();
+  if (h.length < 2) return null;
+
+  const configured = await getAgentHandle(companyId);
+  const names = [...AGENT_ALIASES, ...(configured ? [configured] : [])];
+  if (!names.some(n => n.startsWith(h))) return null;
+
+  const label = configured || 'AI';
+  return {
+    id: `agent:${companyId}`,
+    title: `@${label}`,
+    subtitle: 'Your AI agent · ask it anything in AI Chat',
+    path: '/AIChat',
+  };
+}
 
 const router = Router();
 
@@ -176,12 +203,20 @@ router.get('/', requireAuth, async (req, res) => {
         u.company_id === companyId
         || (Array.isArray(u.accessible_company_ids) && u.accessible_company_ids.includes(companyId)));
 
-      return take(members, 4).map(u => ({
+      const results = take(members, 4).map(u => ({
         id: u.id,
         title: u.username ? `@${u.username}` : (u.full_name || u.email),
         subtitle: [u.full_name, u.email, u.role].filter(Boolean).join(' · '),
         path: '/Settings',
       }));
+
+      // The AI agent is searchable by the company's own name for it, and by the
+      // generic aliases — the same set lib/mentions.js resolves, so a handle means
+      // the same thing in the search bar as it does in a comment or in chat.
+      const agent = await resolveAgentMatch(companyId, handle);
+      if (agent) results.unshift(agent);
+
+      return results.slice(0, 5);
     }),
   ]);
 

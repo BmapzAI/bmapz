@@ -15,7 +15,32 @@ import { createNotification } from './notify.js';
  * Handles that mean "the AI agent" whatever the company renamed it to.
  * The company's own `personal_agent_name` is added at resolve time.
  */
-const AGENT_ALIASES = new Set(['ai', 'ia', 'agent', 'agente', 'bmapz', 'bmapzai']);
+export const AGENT_ALIASES = new Set(['ai', 'ia', 'agent', 'agente', 'bmapz', 'bmapzai']);
+
+/**
+ * The company's own name for the agent, as a handle (lowercased, spaces removed).
+ * Returns null when unset or unreadable — callers fall back to the aliases.
+ */
+export async function getAgentHandle(companyId) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('companies').select('api_keys').eq('id', companyId).maybeSingle();
+    if (error) throw error;
+    const name = data?.api_keys?.personal_agent_name;
+    return name ? String(name).trim().replace(/\s+/g, '').toLowerCase() : null;
+  } catch (e) {
+    console.error('[mentions] could not read agent name:', e.message);
+    return null;
+  }
+}
+
+/** True when `handle` refers to the AI agent in this company. */
+export async function isAgentHandle(companyId, handle) {
+  const h = String(handle || '').trim().toLowerCase();
+  if (!h) return false;
+  if (AGENT_ALIASES.has(h)) return true;
+  return h === await getAgentHandle(companyId);
+}
 
 /** Handles that mean "the whole company". */
 const EVERYONE_ALIASES = new Set(['all', 'everyone', 'todos', 'equipe', 'team']);
@@ -46,15 +71,7 @@ export async function resolveMentions({ text, companyId }) {
   if (!handles.length) return { userIds: [], mentionsAgent: false, mentionsEveryone: false };
 
   // The company's own name for the agent counts as its handle.
-  let agentHandle = null;
-  try {
-    const { data: company } = await supabaseAdmin
-      .from('companies').select('api_keys').eq('id', companyId).maybeSingle();
-    const name = company?.api_keys?.personal_agent_name;
-    if (name) agentHandle = String(name).trim().replace(/\s+/g, '').toLowerCase();
-  } catch (e) {
-    console.error('[mentions] could not read agent name:', e.message);
-  }
+  const agentHandle = await getAgentHandle(companyId);
 
   const mentionsAgent = handles.some(h => AGENT_ALIASES.has(h) || (agentHandle && h === agentHandle));
   const mentionsEveryone = handles.some(h => EVERYONE_ALIASES.has(h));
