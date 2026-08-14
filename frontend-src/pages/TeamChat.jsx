@@ -12,6 +12,7 @@ import {
 import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
 import { User } from '@/api/entities';
+import MentionTextarea from '@/components/mentions/MentionTextarea';
 import { useAuth } from '@/lib/AuthContext';
 
 /**
@@ -230,11 +231,14 @@ export default function TeamChat() {
                     className="px-2.5 rounded-xl bg-black/30 border border-white/10 text-gray-400 hover:text-[#38b6ff] hover:border-[#38b6ff]/40">
                     <Paperclip size={15} />
                   </button>
-                  <Input
+                  {/* singleLine keeps this an Input, so Enter still sends — the
+                      mention list intercepts Enter only while it is open. */}
+                  <MentionTextarea
+                    singleLine
                     value={draft}
-                    onChange={e => setDraft(e.target.value)}
+                    onChange={setDraft}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (draft.trim() || pendingShare) send.mutate(); } }}
-                    placeholder={isPt ? 'Escreva para a equipe…' : 'Message your team…'}
+                    placeholder={isPt ? 'Escreva para a equipe — use @ para mencionar…' : 'Message your team — use @ to mention…'}
                     className="bg-black/30 border-white/10 text-white text-sm"
                   />
                   <Button onClick={() => send.mutate()} disabled={send.isPending || (!draft.trim() && !pendingShare)}

@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { useAuth } from '@/lib/AuthContext';
 import { Task, User } from '@/api/entities';
+import MentionTextarea from '@/components/mentions/MentionTextarea';
 import TaskCard from './TaskCard';
 import TaskSuggestions from './TaskSuggestions';
 import TaskResultPanel from './TaskResultPanel';
@@ -257,10 +258,11 @@ export default function MyTasks({ initialTaskId = null }) {
             placeholder={isPt ? 'O que precisa ser feito?' : 'What needs to be done?'}
             className="bg-black/30 border-white/10 text-white"
           />
-          <Textarea
+          {/* @ mentions a teammate, the agent by its configured name, or everyone. */}
+          <MentionTextarea
             value={draft.description}
-            onChange={(e) => setDraft(d => ({ ...d, description: e.target.value }))}
-            placeholder={isPt ? 'Detalhes (opcional)' : 'Details (optional)'}
+            onChange={(v) => setDraft(d => ({ ...d, description: v }))}
+            placeholder={isPt ? 'Detalhes — use @ para mencionar (opcional)' : 'Details — use @ to mention someone (optional)'}
             className="bg-black/30 border-white/10 text-white min-h-[70px]"
           />
 

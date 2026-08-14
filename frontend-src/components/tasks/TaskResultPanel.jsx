@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Task } from '@/api/entities';
 import { SECTIONS, sectionLabel } from './taskMeta';
+import MentionTextarea from '@/components/mentions/MentionTextarea';
 
 /**
  * The AI result, its comment thread, and the button that sends the work onward.
@@ -153,12 +154,13 @@ export default function TaskResultPanel({ task }) {
           </div>
         ))}
 
-        <Textarea
+        {/* @mentions: teammates, the agent by its configured name, or everyone. */}
+        <MentionTextarea
           value={comment}
-          onChange={(e) => setComment(e.target.value)}
+          onChange={setComment}
           placeholder={isPt
-            ? 'Comente, ou diga à IA o que corrigir…'
-            : 'Comment, or tell the AI what to fix…'}
+            ? 'Comente, use @ para mencionar, ou diga à IA o que corrigir…'
+            : 'Comment, use @ to mention someone, or tell the AI what to fix…'}
           className="bg-black/30 border-white/10 text-white text-sm min-h-[60px]"
         />
         <div className="flex flex-wrap gap-2">

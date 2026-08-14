@@ -154,11 +154,33 @@ router.get('/', requireAuth, async (req, res) => {
       }));
     }),
     safe(async () => {
+      // Search people by @handle as well as name and email.
+      //
+      // Three gaps this closes: `username` was never matched, so the @handle the
+      // product uses as its primary identifier found nobody; a leading "@" was
+      // taken literally, so typing a mention returned nothing; and the company
+      // filter used company_id alone, which excludes a guest working here through
+      // accessible_company_ids — the divergence documented in middleware/auth.js.
+      const handle = q.replace(/^@+/, '').trim();
+      if (!handle) return [];
+      const handleLike = `%${esc(handle)}%`;
+
       const { data } = await supabaseAdmin.from('users')
-        .select('id, full_name, email, role').eq('company_id', companyId)
-        .or(`full_name.ilike.${like},email.ilike.${like}`).limit(4);
-      return take(data, 4).map(u => ({
-        id: u.id, title: u.full_name || u.email, subtitle: `Team · ${u.role}`, path: '/Settings',
+        .select('id, full_name, email, username, role, company_id, accessible_company_ids')
+        .or(`full_name.ilike.${handleLike},email.ilike.${handleLike},username.ilike.${handleLike}`)
+        .limit(12);
+
+      // Never leak a person from another tenant: filter to this company AFTER the
+      // match, using the same membership rule the rest of the app uses.
+      const members = (data || []).filter(u =>
+        u.company_id === companyId
+        || (Array.isArray(u.accessible_company_ids) && u.accessible_company_ids.includes(companyId)));
+
+      return take(members, 4).map(u => ({
+        id: u.id,
+        title: u.username ? `@${u.username}` : (u.full_name || u.email),
+        subtitle: [u.full_name, u.email, u.role].filter(Boolean).join(' · '),
+        path: '/Settings',
       }));
     }),
   ]);
