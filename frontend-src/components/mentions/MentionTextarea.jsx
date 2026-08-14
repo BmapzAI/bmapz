@@ -59,11 +59,19 @@ export default function MentionTextarea({
     const list = [
       {
         key: 'ai',
+        // The company's own name for the agent IS its handle — "@Alfred" when the
+        // company called it Alfred. The generic aliases still resolve to the same
+        // agent, so "@AI", "@bmapz" and "@bmapzai" all reach it whatever it was
+        // renamed to.
         handle: agentHandle || 'AI',
         label: agentName,
         hint: isPt ? 'agente de IA' : 'AI agent',
         icon: 'bot',
-        aliases: ['ai', 'ia', 'agent', 'agente', 'bmapz', String(agentName).toLowerCase(), agentHandle.toLowerCase()],
+        aliases: [
+          'ai', 'ia', 'agent', 'agente', 'bmapz', 'bmapzai', 'bmapz ai',
+          String(agentName).toLowerCase(),
+          agentHandle.toLowerCase(),
+        ].filter(Boolean),
       },
       {
         key: 'all',
@@ -177,10 +185,20 @@ export default function MentionTextarea({
             <li key={opt.key}>
               <button
                 type="button"
-                onClick={() => choose(opt)}
+                /**
+                 * onMouseDown, NOT onClick — and preventDefault.
+                 *
+                 * mousedown fires BEFORE the field loses focus. With onClick the
+                 * blur landed first, the caret position was gone by the time the
+                 * handler ran, and the pick silently did nothing: the list looked
+                 * like it accepted the click while the text never changed.
+                 * preventDefault stops focus leaving at all, so the caret is still
+                 * where the user left it.
+                 */
+                onMouseDown={(e) => { e.preventDefault(); choose(opt); }}
                 onMouseEnter={() => setHighlight(i)}
-                className={`w-full text-left px-2.5 py-1.5 flex items-center gap-2 text-xs ${
-                  i === highlight ? 'bg-[#38b6ff]/15 text-white' : 'text-gray-300 hover:bg-white/5'
+                className={`w-full text-left px-2.5 py-1.5 flex items-center gap-2 text-xs transition-colors ${
+                  i === highlight ? 'bg-[#38b6ff]/25 text-white' : 'text-gray-300 hover:bg-white/10'
                 }`}
               >
                 {opt.icon === 'bot' ? <Bot size={13} className="text-[#38b6ff] shrink-0" />

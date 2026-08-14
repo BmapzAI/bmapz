@@ -18,6 +18,7 @@ import {
 import { toast } from 'sonner';
 import MessageBubble from '@/components/chat/MessageBubble';
 import ActionApproval from '@/components/chat/ActionApproval';
+import MentionTextarea from '@/components/mentions/MentionTextarea';
 import { useAuth } from '@/lib/AuthContext';
 import { api } from '@/api/apiClient';
 import { TranscribeAudio, UploadFile } from '@/api/integrations';
@@ -878,8 +879,11 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
               {isTranscribing ? <Loader2 size={20} className="animate-spin" /> : isRecording ? <MicOff size={20} /> : <Mic size={20} />}
             </Button>
             <div className="flex-1 relative min-w-0">
-              <Textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                placeholder="Ask me anything…"
+              {/* @ mentions here too: address the agent by its own name, a
+                  teammate, or everyone. handleKeyDown still owns Enter-to-send —
+                  the mention list only intercepts it while open. */}
+              <MentionTextarea value={input} onChange={setInput} onKeyDown={handleKeyDown}
+                placeholder={isPt ? 'Peça qualquer coisa — use @ para mencionar…' : 'Ask me anything — use @ to mention…'}
                 className="min-h-[52px] max-h-[200px] resize-none bg-white/5 border-white/10 text-white placeholder:text-gray-500 pr-12 focus:border-[#38b6ff]/50 text-sm md:text-base"
                 rows={1} />
             </div>

@@ -2574,3 +2574,35 @@ agent per section, so a task raised from SEO is answered as an SEO task.
   it, but AIAutomations.jsx still only offers the `ai_prompt` type.
 - Drag-and-drop kanban (deliberately deferred; move buttons work on touch, keyboard
   and screen readers).
+
+## Mentions — notification + tenant isolation (Claude, 2026-08-14)
+
+`backend/src/lib/mentions.js` is the single parser for `@handles` in internal text.
+Used by task comments, task descriptions (`routes/tasks.js`) and team chat
+(`routes/internalChat.js`).
+
+Tenant isolation is by construction, not by post-filtering: the member lookup only
+ever reads rows belonging to the requesting company
+(`or=(company_id.eq.<id>,accessible_company_ids.cs.{<id>})`), then matches handles in
+JS. A handle therefore cannot notify — or confirm the existence of — a user in
+another company. Guests are reachable via `accessible_company_ids`, matching how
+membership works elsewhere.
+
+Handle matching is case-insensitive and exact. It is deliberately NOT done with
+`ilike`, because `_` and `.` are legal handle characters and would act as LIKE
+wildcards (`@john_doe` would match `johnXdoe`).
+
+Verified 2026-08-14:
+- `notifications.type` has no CHECK constraint (only `priority` does), so
+  `type: 'mention'` inserts cleanly. Confirmed against the live schema.
+- The PostgREST `or=(...cs.{uuid})` filter parses — probed live: the filter returns
+  42501 permission-denied under anon (parsed, then blocked), while a deliberately
+  malformed operator returns PGRST100. Under the service role it executes.
+- Member-fetch semantics confirmed by SQL: returns both members of the test company
+  and excludes users of other companies.
+- `extractHandles` unit tests: 8/8 (email addresses not treated as mentions,
+  case-folding, dedup, min length, newline-adjacent).
+
+KNOWN COLLISION: a real user account has username `bmapz`, which is also an AI-agent
+alias. Per the product decision, agent aliases win, so that account is not
+mentionable by handle. Flagged for Derek.

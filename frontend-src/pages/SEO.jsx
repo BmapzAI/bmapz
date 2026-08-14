@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner';
 import { Company, SEOAnalysis } from '@/api/entities';
 import CreateTaskButton from '@/components/tasks/CreateTaskButton';
+import SEOHistory from '@/components/seo/SEOHistory';
 import { usePersistentDraft } from '@/lib/usePersistentDraft';
 
 const PLAIN_ENGLISH_LABELS = {
@@ -332,6 +333,22 @@ Be realistic and specific based on what you know about the URL. If it's an HTTPS
 
 
       {/* AI Unavailable Warning */}
+      {/* The last five analyses, reloadable. They were already being saved and
+          fetched — there was just no way to load one back, so revisiting an old
+          result meant paying to run it again. */}
+      <SEOHistory
+        analyses={savedAnalyses}
+        currentUrl={results?.url}
+        onLoad={(a) => {
+          setResults(a);
+          setUrl(a.url || '');
+          if (a.scan_type) setScanType(a.scan_type);
+          // This page has no useLanguage hook — the rest of its copy is English
+          // only, so an isPt reference here would be an undefined variable.
+          toast.success('Analysis loaded');
+        }}
+      />
+
       {aiUnavailable && (
         <div className="rounded-2xl bg-yellow-500/10 border border-yellow-500/30 p-4 flex items-start gap-3">
           <span className="text-yellow-400 text-lg">⚠️</span>

@@ -13,6 +13,7 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, filterCompanyMembers } from '../middleware/auth.js';
 import { createNotification } from '../lib/notify.js';
+import { resolveMentions } from '../lib/mentions.js';
 
 const router = Router();
 
@@ -220,6 +221,28 @@ router.post('/conversations/:id/messages', requireAuth, async (req, res) => {
         body: sharedRef ? `Shared ${sharedRef.kind || 'an item'}: ${sharedRef.title || ''}` : '',
         link: `/TeamChat?c=${req.params.id}`,
       });
+    }
+
+    // A mention reaches you even if you muted the thread, because being named is
+    // a direct request for your attention rather than general thread traffic.
+    // Members already notified above are skipped so nobody gets it twice.
+    if (body) {
+      const alreadyNotified = new Set(members.filter(m => m.user_id !== me && !m.muted).map(m => m.user_id));
+      const { userIds } = await resolveMentions({ text: body, companyId: req.companyId });
+      await Promise.all(
+        userIds
+          .filter(id => id !== me && !alreadyNotified.has(id))
+          .map(userId => createNotification({
+            companyId: req.companyId,
+            userId,
+            type: 'mention',
+            icon: '@',
+            priority: 'normal',
+            title: `${senderName} mentioned you in team chat`,
+            body: preview.slice(0, 140),
+            link: `/TeamChat?c=${req.params.id}`,
+          })),
+      );
     }
 
     res.json(message);

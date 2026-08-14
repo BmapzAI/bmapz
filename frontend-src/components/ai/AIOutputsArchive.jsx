@@ -122,12 +122,9 @@ export default function AIOutputsArchive() {
     );
   };
 
-  const saveAndApprove = () => {
-    updateMutation.mutate(
-      { id: viewing.id, patch: { content: draft, status: 'approved' } },
-      { onSuccess: () => { toast.success(isPt ? 'Salvo e aprovado' : 'Saved and approved'); setViewing(null); } },
-    );
-  };
+  // saveAndApprove was removed with the new approval flow — see the dialog footer.
+  // Left out rather than kept unused so the file does not carry a second, dead
+  // definition of "approve" for someone to wire up again by mistake.
 
   const setOutcome = (output, next) => {
     updateMutation.mutate({ id: output.id, patch: { status: next } }, {
@@ -308,16 +305,18 @@ export default function AIOutputsArchive() {
               </details>
             )}
           </div>
+          {/* "Save draft" and "Save & approve" were removed with the new approval
+              flow. Work arriving here has ALREADY been approved on the chat card,
+              so a second approve step asked for the same permission twice — the
+              confusion that made the flow feel broken. Editing then saving is the
+              one action that remains meaningful. */}
           <DialogFooter className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={() => setViewing(null)} className="border-white/10 text-white hover:bg-white/5">
               {isPt ? 'Fechar' : 'Close'}
             </Button>
-            <Button variant="outline" onClick={saveDraft} disabled={updateMutation.isPending}
-              className="border-[#38b6ff]/40 text-[#38b6ff] hover:bg-[#38b6ff]/10 gap-2">
-              <Save size={15} /> {isPt ? 'Salvar rascunho' : 'Save draft'}
-            </Button>
-            <Button onClick={saveAndApprove} disabled={updateMutation.isPending} className="bg-green-600 hover:bg-green-700 gap-2">
-              <CheckCircle2 size={15} /> {isPt ? 'Salvar e aprovar' : 'Save & approve'}
+            <Button onClick={saveDraft} disabled={updateMutation.isPending}
+              className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">
+              <Save size={15} /> {isPt ? 'Salvar alterações' : 'Save changes'}
             </Button>
           </DialogFooter>
         </DialogContent>

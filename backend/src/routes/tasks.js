@@ -25,6 +25,7 @@ import { createNotification } from '../lib/notify.js';
 import { runTaskWithAI } from '../lib/taskRunner.js';
 import { runAIChat } from './ai.js';
 import { applyActions, buildSectionAction } from '../lib/aiActions.js';
+import { notifyMentions } from '../lib/mentions.js';
 
 const router = Router();
 
@@ -359,6 +360,21 @@ async function createOneTask({ body, req }) {
     actorUserId: req.dbUser.id,
     actorLabel: req.dbUser.full_name || req.dbUser.email,
   });
+
+  // @mentions in the description notify those people, separately from the
+  // assignee: being named in the details is a request for your attention even when
+  // the task belongs to someone else.
+  if (data.description) {
+    await notifyMentions({
+      text: data.description,
+      companyId: req.companyId,
+      actorUserId: req.dbUser.id,
+      actorLabel: req.dbUser.full_name || req.dbUser.email,
+      title: `${req.dbUser.full_name || req.dbUser.email} mentioned you in a task`,
+      link: `/AIChat?tab=tasks&task=${data.id}`,
+      icon: '@',
+    });
+  }
 
   // Tagging someone notifies them. Never notify yourself for your own action.
   if (data.assignee_type === 'user' && data.assignee_id && data.assignee_id !== req.dbUser.id) {
@@ -863,6 +879,18 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
       title: directToAI ? 'A task was sent back to the AI' : 'New comment on a task',
       body: `${task.title}: ${body.slice(0, 120)}`,
       icon: directToAI ? '🔄' : '💬',
+    });
+
+    // Anyone named with @ hears about it directly, whether or not they follow the
+    // task — that is the whole point of typing their handle.
+    await notifyMentions({
+      text: body,
+      companyId: req.companyId,
+      actorUserId: req.dbUser.id,
+      actorLabel,
+      title: `${actorLabel} mentioned you on a task`,
+      link: `/AIChat?tab=tasks&task=${task.id}`,
+      icon: '@',
     });
 
     if (directToAI) {
