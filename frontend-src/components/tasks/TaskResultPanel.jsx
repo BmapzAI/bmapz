@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,9 +25,36 @@ export default function TaskResultPanel({ task }) {
   const [section, setSection] = useState(task.section || 'general');
   const [comment, setComment] = useState('');
 
+  /**
+   * Re-seed the editable draft when a NEW result arrives — and only then.
+   *
+   * The draft was seeded once at mount. This dialog stays mounted across refetches,
+   * so after the AI revised a task the textarea still held the previous result:
+   * "Send to section" then shipped the superseded text into a real blog/social/
+   * campaign record. And when the dialog was already open while the agent worked,
+   * the result landed but the box stayed blank — the output was invisible and Send
+   * stayed disabled by the empty check.
+   *
+   * Keyed on `ai_result.at` (the result's timestamp) rather than on `task`,
+   * because syncing on every task change would discard edits the user is part-way
+   * through typing — and editing before sending is the whole point of this box.
+   */
+  const resultStamp = task.ai_result?.at || null;
+  useEffect(() => {
+    if (resultStamp) setDraft(task.ai_result?.content || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultStamp]);
+
+  // While the agent is working, poll — the run is fire-and-forget on the backend,
+  // so the reply and the revised result arrive seconds AFTER the request that
+  // started them returns. Without this the thread showed the comment and then
+  // nothing, forever.
+  const agentWorking = task.status === 'doing' || task.metadata?.awaiting_ai === true;
+
   const { data: comments = [] } = useQuery({
     queryKey: ['taskComments', task.id],
     queryFn: () => Task.comments(task.id),
+    refetchInterval: agentWorking ? 4000 : false,
   });
 
   const refresh = () => {

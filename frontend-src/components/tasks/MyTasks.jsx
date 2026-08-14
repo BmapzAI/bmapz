@@ -64,6 +64,24 @@ export default function MyTasks({ initialTaskId = null }) {
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ['tasks', scope],
     queryFn: () => Task.list(scope === 'all' ? {} : { assignee: scope === 'me' ? 'me' : 'ai' }),
+    /**
+     * Poll while the agent is mid-task.
+     *
+     * Every AI run is fire-and-forget on the backend, so the result lands seconds
+     * after the request that started it returns. This query is invalidated once at
+     * that moment — which fetches the PRE-run row — and then never again, because
+     * refetchOnWindowFocus is off globally and nothing else refetches it. The
+     * effect was that a task the AI completed sat on "Doing" and showed no result
+     * until an unrelated action or a page reload.
+     *
+     * Polls only while something is actually running, so an idle board costs
+     * nothing.
+     */
+    refetchInterval: (query) => {
+      const rows = query?.state?.data;
+      const working = Array.isArray(rows) && rows.some(t => t.status === 'doing');
+      return working ? 4000 : false;
+    },
   });
 
   const { data: followedIds = [] } = useQuery({
