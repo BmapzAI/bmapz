@@ -87,6 +87,10 @@ const SETTINGS_FIELDS = new Set([
   'icp_description', 'target_audience', 'tone_of_voice',
   'company_details', 'plan_features', 'custom_fields',
   'connected_integrations',
+  // Up to 5 ranked competitors (1 = most important). Lives in settings rather than
+  // its own table: it is a short, company-scoped list read as a whole, so a column
+  // buys nothing and a new table would add another FK pair for no benefit.
+  'competitors',
 ]);
 
 // flattenCompany / SECRET_KEY_RE now live in lib/companyView.js. They were moved

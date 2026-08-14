@@ -83,6 +83,35 @@ function serializeSettingsBlock(label, obj, maxChars = 1800) {
   return block;
 }
 
+/**
+ * The company's ranked competitors, in priority order.
+ *
+ * Rank matters and is stated explicitly: "competitor 1" should carry more weight
+ * than "competitor 5" when the agent positions a message or plans a campaign, and
+ * a bare list gives it no way to know that.
+ */
+function serializeCompetitors(competitors) {
+  if (!Array.isArray(competitors) || !competitors.length) return null;
+
+  const lines = competitors
+    .filter(c => c && (c.name || c.website))
+    .slice(0, 5)
+    .map((c, i) => {
+      const bits = [
+        c.website ? `site: ${c.website}` : null,
+        c.social ? `social: ${c.social}` : null,
+        c.notes ? String(c.notes).slice(0, 160) : null,
+      ].filter(Boolean);
+      return `  ${i + 1}. ${c.name || c.website}${bits.length ? ` — ${bits.join(' · ')}` : ''}`;
+    });
+
+  if (!lines.length) return null;
+  return [
+    'Main competitors (ranked, 1 = most important — weight them accordingly):',
+    ...lines,
+  ].join('\n');
+}
+
 export async function getCompanyBrain(companyId) {
   if (!companyId) return '';
   const hit = cache.get(companyId);
@@ -90,7 +119,10 @@ export async function getCompanyBrain(companyId) {
 
   try {
     const [companyRes, leadsRes, msgsRes, postsRes, adsRes, wfRes, blogRes, outputsRes, seoRes, learningsRes] = await Promise.all([
-      supabaseAdmin.from('companies').select('name, industry, services_description, value_propositions, icp, briefing, website').eq('id', companyId).single(),
+      // `settings` is selected for the competitor list. NOT `select('*')`, which
+      // would pull api_keys into the brain and risk company credentials reaching a
+      // model prompt.
+      supabaseAdmin.from('companies').select('name, industry, services_description, value_propositions, icp, briefing, website, settings').eq('id', companyId).single(),
       supabaseAdmin.from('leads').select('funnel_stage, estimated_value, status').eq('company_id', companyId).limit(500),
       supabaseAdmin.from('messages').select('channel, direction').eq('company_id', companyId).order('created_at', { ascending: false }).limit(200),
       supabaseAdmin.from('social_posts').select('title, platforms, status, content').eq('company_id', companyId).order('created_at', { ascending: false }).limit(8),
@@ -149,6 +181,10 @@ export async function getCompanyBrain(companyId) {
       // instead of needing a line added here every time the form grows.
       serializeSettingsBlock('ICP', icp),
       serializeSettingsBlock('Briefing', briefing),
+      // Ranked competitors (1 = most important). Given to the agent on every call
+      // so positioning, ads, SEO and content are written against the real
+      // competitive set instead of a generic market.
+      serializeCompetitors(c.settings?.competitors),
       icp.primary_audience || icp.job_titles?.length
         ? `ICP summary: ${trunc([icp.primary_audience, icp.job_titles?.join(', '), icp.industries?.join(', ')].filter(Boolean).join(' | '), 300)}`
         : null,

@@ -514,11 +514,14 @@ Return JSON with: visual_concept, color_palette (array of hex codes), typography
           </h1>
           <p className="text-gray-400 mt-1">{t('socialMediaSubtitle')}</p>
         </div>
-        <Button onClick={analyzeAndOptimize} disabled={isOptimizing}
-          className="bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-2">
-          {isOptimizing ? <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : <Zap size={16} />}
-          {t('aiOptimize')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <CreateTaskButton section="social" />
+          <Button onClick={analyzeAndOptimize} disabled={isOptimizing}
+            className="bg-gradient-to-r from-[#cb6ce6] to-[#38b6ff] gap-2">
+            {isOptimizing ? <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : <Zap size={16} />}
+            {t('aiOptimize')}
+          </Button>
+        </div>
 
         {/* Meta/LinkedIn connection status hints */}
         {!integrationStatus.meta && !integrationStatus.linkedin && (

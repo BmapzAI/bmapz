@@ -280,10 +280,13 @@ Return JSON with "ads" array, each object has: stage, angle, hook, body, cta, pl
             style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.05em' }}>{t('ads')}</h1>
           <p className="text-gray-400 mt-1">{t('adsPowered')}</p>
         </div>
-        <Button variant="outline" onClick={() => setShowSaved(!showSaved)}
-          className="border-white/10 text-white hover:bg-white/5 gap-2">
-          <BookOpen size={16} /> {t('saved')} ({adRecords.length})
-        </Button>
+        <div className="flex items-center gap-2">
+          <CreateTaskButton section="ads" />
+          <Button variant="outline" onClick={() => setShowSaved(!showSaved)}
+            className="border-white/10 text-white hover:bg-white/5 gap-2">
+            <BookOpen size={16} /> {t('saved')} ({adRecords.length})
+          </Button>
+        </div>
       </div>
 
       <QuickStartGuide

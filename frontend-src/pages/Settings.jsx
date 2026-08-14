@@ -12,7 +12,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from 'react-router-dom';
-import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, Plus, X, FileText, ArrowRight, Zap, ScanLine, KeyRound, Sparkles, Users } from 'lucide-react';
+import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, Plus, X, FileText, ArrowRight, Zap, ScanLine, KeyRound, Sparkles, Users, Swords } from 'lucide-react';
+import CompetitorsTab from '@/components/settings/CompetitorsTab';
 // KeyRound used in TabsTrigger
 import { toast } from 'sonner';
 import ApiKeysTab from '@/components/settings/ApiKeysTab';
@@ -135,6 +136,7 @@ export default function Settings() {
           <TabsTrigger value="company" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Building2 size={14} className="mr-1.5" />{t('company')}</TabsTrigger>
           <TabsTrigger value="briefing" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><FileText size={14} className="mr-1.5" />{t('briefing')}</TabsTrigger>
           <TabsTrigger value="icp" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Target size={14} className="mr-1.5" />{t('icpTab')}</TabsTrigger>
+          <TabsTrigger value="competitors" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Swords size={14} className="mr-1.5" />{isPt ? 'Concorrentes' : 'Competitors'}</TabsTrigger>
           <TabsTrigger value="api-keys" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><KeyRound size={14} className="mr-1.5" />{t('apiKeysTab')}</TabsTrigger>
           <TabsTrigger value="ai-settings" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Sparkles size={14} className="mr-1.5" />{t('aiSettingsTab')}</TabsTrigger>
           <TabsTrigger value="sales-team" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Users size={14} className="mr-1.5" />{isPt ? 'Time de Vendas' : 'Sales Team'}</TabsTrigger>
@@ -342,6 +344,13 @@ export default function Settings() {
         </TabsContent>
 
         {/* ICP Settings */}
+        {/* Ranked competitors — fed to the company brain on every generation. */}
+        <TabsContent value="competitors" className="space-y-6">
+          <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
+            <CompetitorsTab company={company} />
+          </div>
+        </TabsContent>
+
         <TabsContent value="icp" className="space-y-6">
           <div className="rounded-2xl bg-white/5 border border-white/10 p-6 space-y-6">
             <div>

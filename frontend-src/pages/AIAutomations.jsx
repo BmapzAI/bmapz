@@ -28,6 +28,7 @@ const CATEGORY_OPTIONS = [
 
 const EMPTY_FORM = {
   name: '', description: '', prompt: '', output_category: 'strategies',
+  task_type: 'ai_prompt', task_template: {},
   schedule_type: 'daily', interval_minutes: 60, run_minute: 0, run_hour: 9,
   run_day_of_week: 1, run_day_of_month: 1, enabled: true,
 };
@@ -127,6 +128,7 @@ export default function AIAutomations() {
     setForm({
       name: a.name || '', description: a.description || '', prompt: a.prompt || '',
       output_category: a.output_category || 'strategies',
+      task_type: a.task_type || 'ai_prompt', task_template: a.task_template || {},
       schedule_type: a.schedule_type || 'daily',
       interval_minutes: a.interval_minutes || 60,
       run_minute: a.run_minute ?? 0, run_hour: a.run_hour ?? 9,
@@ -288,6 +290,85 @@ export default function AIAutomations() {
                   : 'Describe the task as you would ask in AI Chat. The AI already knows the full company context.'}
                 className="bg-black/30 border-white/10 text-white mt-1.5 min-h-[110px]" />
             </div>
+            {/* What this automation PRODUCES. 'ai_prompt' writes an output for
+                review; 'create_task' raises a real task on the board each run and,
+                when handed to the agent, has it do the work immediately. */}
+            <div className="rounded-xl bg-black/20 border border-white/10 p-3">
+              <Label className="text-gray-400">{isPt ? 'O que esta automação faz' : 'What this automation does'}</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {[
+                  { v: 'ai_prompt', en: 'Produce a result for review', pt: 'Gerar um resultado para revisão' },
+                  { v: 'create_task', en: 'Create a task on the board', pt: 'Criar uma tarefa no quadro' },
+                ].map(o => (
+                  <button
+                    key={o.v}
+                    type="button"
+                    onClick={() => F('task_type')(o.v)}
+                    className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                      (form.task_type || 'ai_prompt') === o.v
+                        ? 'bg-[#38b6ff]/20 text-[#38b6ff]'
+                        : 'bg-white/5 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {isPt ? o.pt : o.en}
+                  </button>
+                ))}
+              </div>
+
+              {form.task_type === 'create_task' ? (
+                <div className="mt-3 space-y-2">
+                  <Input
+                    value={form.task_template?.title || ''}
+                    onChange={(e) => F('task_template')({ ...(form.task_template || {}), title: e.target.value })}
+                    placeholder={isPt ? 'Título da tarefa (padrão: o nome da automação)' : 'Task title (defaults to the automation name)'}
+                    className="bg-black/30 border-white/10 text-white text-sm"
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <select
+                      value={form.task_template?.priority || 'medium'}
+                      onChange={(e) => F('task_template')({ ...(form.task_template || {}), priority: e.target.value })}
+                      className="h-9 rounded-md bg-black/30 border border-white/10 text-white text-xs px-2"
+                    >
+                      {['low', 'medium', 'high', 'urgent'].map(p => (
+                        <option key={p} value={p} className="bg-[#1a1a1a]">{p}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={form.task_template?.section || 'general'}
+                      onChange={(e) => F('task_template')({ ...(form.task_template || {}), section: e.target.value })}
+                      className="h-9 rounded-md bg-black/30 border border-white/10 text-white text-xs px-2"
+                    >
+                      {['general', 'ads', 'sales', 'workflow', 'inbox', 'blog', 'sdr', 'seo', 'social', 'dashboard'].map(s => (
+                        <option key={s} value={s} className="bg-[#1a1a1a]">{s}</option>
+                      ))}
+                    </select>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={form.task_template?.due_in_days ?? ''}
+                      onChange={(e) => F('task_template')({ ...(form.task_template || {}), due_in_days: e.target.value })}
+                      placeholder={isPt ? 'Prazo (dias)' : 'Due in (days)'}
+                      className="bg-black/30 border-white/10 text-white text-xs"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={form.task_template?.assignee_type === 'ai'}
+                      onChange={(e) => F('task_template')({
+                        ...(form.task_template || {}),
+                        assignee_type: e.target.checked ? 'ai' : 'unassigned',
+                      })}
+                      className="accent-[#38b6ff]"
+                    />
+                    {isPt
+                      ? 'Entregar à IA, que executa a tarefa assim que ela é criada'
+                      : 'Hand it to the AI, which does the work as soon as it is created'}
+                  </label>
+                </div>
+              ) : null}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-gray-400">{isPt ? 'Categoria do resultado' : 'Result category'}</Label>

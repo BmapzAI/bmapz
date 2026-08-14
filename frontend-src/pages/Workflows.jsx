@@ -199,9 +199,12 @@ export default function Workflows() {
           </h1>
           <p className="text-gray-400 mt-1">{t('buildAutomateOptimize')}</p>
         </div>
-        <Button onClick={() => openBuilder(null)} disabled={!company} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] hover:opacity-90 gap-2 disabled:opacity-50">
-          <Plus size={18} /> {!company ? t('loading') : t('newWorkflow')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <CreateTaskButton section="workflow" />
+          <Button onClick={() => openBuilder(null)} disabled={!company} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] hover:opacity-90 gap-2 disabled:opacity-50">
+            <Plus size={18} /> {!company ? t('loading') : t('newWorkflow')}
+          </Button>
+        </div>
       </div>
 
       <QuickStartGuide

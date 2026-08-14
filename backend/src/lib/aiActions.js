@@ -229,7 +229,28 @@ const SETTINGS_COMPANY_FIELDS = new Set([
   'icp_description', 'target_audience', 'tone_of_voice', 'business_model',
   'average_ticket', 'years_in_business', 'geographic_market', 'repurchase_cycle',
   'marketing_structure', 'sales_structure', 'company_details', 'owner_email',
+  'competitors',
 ]);
+
+/**
+ * Competitors are a ranked list of objects, so they need shaping rather than the
+ * text/array coercion the other settings fields get: capped at 5, only the fields
+ * the Competitors tab actually renders, and re-indexed so rank always reflects
+ * position rather than whatever the model sent.
+ */
+function toCompetitors(v) {
+  const list = Array.isArray(v) ? v : (v && typeof v === 'object' ? [v] : []);
+  return list
+    .filter(c => c && typeof c === 'object' && (c.name || c.website))
+    .slice(0, 5)
+    .map((c, i) => ({
+      rank: i + 1,
+      name: str(c.name, 120) || '',
+      website: str(c.website, 200) || '',
+      social: str(c.social, 300) || '',
+      notes: str(c.notes, 500) || '',
+    }));
+}
 
 const PRIORITIES = new Set(['low', 'medium', 'high', 'urgent']);
 const TASK_STATUSES = new Set(['standby', 'todo', 'doing', 'done', 'blocked', 'cancelled']);
@@ -492,8 +513,11 @@ async function updateCompany(action, ctx) {
       // Match the column's real type, or Postgres rejects the whole update.
       patch[k] = ARRAY_COMPANY_COLUMNS.has(k) ? toArray(v) : str(toText(v));
       applied.push(k);
+    } else if (k === 'competitors') {
+      settings.competitors = toCompetitors(v);
+      applied.push('competitors');
     } else if (SETTINGS_COMPANY_FIELDS.has(k)) {
-      settings[k] = str(toText(v));   // settings fields are all free text
+      settings[k] = str(toText(v));   // the rest of settings is free text
       applied.push(k);
     }
     // Unknown keys are ignored: api_keys, subscription_tier and id must never be

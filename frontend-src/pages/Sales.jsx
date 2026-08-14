@@ -34,6 +34,7 @@ import LeadListManagerFull from '@/components/sales/LeadListManagerFull.jsx';
 import LeadListView from '@/components/sales/LeadListView.jsx';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
 import { Company, Lead, LeadList, Funnel } from '@/api/entities';
+import CreateTaskButton from '@/components/tasks/CreateTaskButton';
 
 const FUNNEL_STAGES_ORDERED = [
   { id: 'prospect', name: 'Prospect', color: '#9ca3af' },
@@ -170,7 +171,8 @@ export default function Sales() {
         </div>
         
 <div className="flex gap-2">
-          <Button 
+          <CreateTaskButton section="sales" />
+          <Button
             onClick={() => setShowListManager(true)}
             variant="outline"
             className={`gap-2 ${tc.outlineBtn}`}
