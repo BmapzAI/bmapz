@@ -489,7 +489,20 @@ export const describeActions = (actions) => (actions || []).map(describeAction);
  * title/content/category/status columns — they live in metadata (inserting them
  * top-level makes PostgREST reject the row).
  */
-async function archive({ companyId, userId, title, content, category, type, meta = {} }) {
+/**
+ * ...continued: `status` defaults to 'approved', NOT 'pending'.
+ *
+ * Everything that reaches this function has already been approved by the user on
+ * the chat card — applyActions runs only after that. Filing it as 'pending' made
+ * AI Outputs demand a SECOND approval for work the user had just authorised, which
+ * is the confusing double-approval that made the whole flow feel broken. The
+ * archive should record what happened, not gate it again.
+ *
+ * 'pending' remains correct for content the agent produced on its own initiative —
+ * scheduled automations, background generations — which archive through
+ * routes/ai.js, not through here.
+ */
+async function archive({ companyId, userId, title, content, category, type, meta = {}, status = 'approved' }) {
   if (!content) return null;
   const { data, error } = await supabaseAdmin.from('ai_outputs').insert({
     company_id: companyId,
@@ -499,7 +512,7 @@ async function archive({ companyId, userId, title, content, category, type, meta
       title: title || 'AI chat result',
       content: typeof content === 'string' ? content : JSON.stringify(content, null, 2),
       category: ARCHIVE_CATEGORIES.has(category) ? category : 'strategies',
-      status: 'pending',
+      status,
       created_by: userId || null,
       source: 'ai_chat',
       ...meta,
