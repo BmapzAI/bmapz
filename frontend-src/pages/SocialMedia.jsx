@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
 import { canSeeDesign } from '@/lib/featureFlags';
 import { Company, SocialPost } from '@/api/entities';
+import CreateTaskButton from '@/components/tasks/CreateTaskButton';
 import { InvokeLLM, GenerateImage, UploadFile } from '@/api/integrations';
 import PlatformIcon from '@/components/ui/PlatformIcon';
 import { usePersistentDraft } from '@/lib/usePersistentDraft';

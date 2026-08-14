@@ -20,6 +20,7 @@ import AdsOptimizationTab from '@/components/ads/AdsOptimizationTab';
 import AdsLeadsTab from '@/components/ads/AdsLeadsTab';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
 import { Company, AdsManager } from '@/api/entities';
+import CreateTaskButton from '@/components/tasks/CreateTaskButton';
 import { InvokeLLM } from '@/api/integrations';
 import { usePersistentDraft } from '@/lib/usePersistentDraft';
 

@@ -288,7 +288,11 @@ export default function Settings() {
               <div><Label className="text-gray-400">{t('competitiveAdvantages')}</Label><Textarea value={bf.competitive_advantages || ''} onChange={(e) => setBf('competitive_advantages', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" /></div>
               <div><Label className="text-gray-400">{t('doNotCommunicate')}</Label><Textarea value={bf.do_not_communicate || ''} onChange={(e) => setBf('do_not_communicate', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" /></div>
               <CheckboxGroup label={t('toneOfVoice')} options={['Technical', 'Informal', 'Premium', 'Provocative', 'Institutional', 'Consultative', 'Strong authority', 'Educational']} values={bf.tone_of_voice} onChange={(v) => setBf('tone_of_voice', v)} />
-              <div><Label className="text-gray-400">{t('directCompetitors')}</Label><Input value={bf.direct_competitors || ''} onChange={(e) => setBf('direct_competitors', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" placeholder="e.g., HubSpot, Salesforce" /></div>
+              {/* "Direct competitors" was removed here — the Competitors tab now
+                  owns that, with up to five ranked entries the company brain reads.
+                  A second free-text field would be a competing source of truth.
+                  The briefing.direct_competitors VALUE is deliberately left in the
+                  database rather than deleted, so nothing already written is lost. */}
               <div><Label className="text-gray-400">{t('marketReferences')}</Label><Input value={bf.market_references || ''} onChange={(e) => setBf('market_references', e.target.value)} className="bg-black/30 border-white/10 text-white mt-1.5" /></div>
             </div>
 

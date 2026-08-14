@@ -13,6 +13,7 @@ import WorkflowBuilderModal from '@/components/workflows/WorkflowBuilderModal';
 import { WORKFLOW_TEMPLATE_LIST } from '@/components/workflows/workflowTemplates';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
 import { Company, Workflow, Lead } from '@/api/entities';
+import CreateTaskButton from '@/components/tasks/CreateTaskButton';
 import { api } from '@/api/apiClient';
 
 export default function Workflows() {
