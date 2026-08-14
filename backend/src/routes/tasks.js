@@ -418,17 +418,38 @@ router.post('/bulk', requireAuth, async (req, res) => {
     const handles = [...new Set(rows.map(r => String(r.owner ?? r.assignee ?? '').trim()).filter(Boolean))];
     const ownerByKey = {};
     if (handles.length) {
-      const cleaned = handles.map(h => h.replace(/^@+/, ''));
-      const { data: found, error: lookErr } = await supabaseAdmin
-        .from('users').select('id, username, email, full_name, company_id, accessible_company_ids, role')
-        .or(`username.in.(${cleaned.map(c => JSON.stringify(c)).join(',')}),email.in.(${cleaned.map(c => JSON.stringify(c)).join(',')})`);
-      if (lookErr) throw lookErr;
-      // Only people who are actually in this company may be assigned.
-      const allowed = new Set(await filterCompanyMembers((found || []).map(u => u.id), req.companyId));
-      for (const u of found || []) {
-        if (!allowed.has(u.id)) continue;
-        if (u.username) ownerByKey[u.username.toLowerCase()] = u.id;
-        if (u.email) ownerByKey[u.email.toLowerCase()] = u.id;
+      // Build the filter from SAFE values only.
+      //
+      // This used to interpolate the raw handles into a PostgREST `.or()` string
+      // via JSON.stringify. That escapes quotes with backslashes, but PostgREST
+      // expects doubled quotes inside `in.(…)` — so an owner containing a quote,
+      // comma or parenthesis (the field is free text, the user can type anything)
+      // produced a malformed filter and failed the ENTIRE batch import, not just
+      // that row.
+      //
+      // Handles are now restricted to the characters a username or email can
+      // legally contain before they are ever interpolated. Anything else cannot
+      // match a real user anyway, so dropping it early loses nothing — and the row
+      // still reports as unresolved further down rather than vanishing silently.
+      const SAFE_HANDLE = /^[A-Za-z0-9_.+@-]{1,254}$/;
+      const cleaned = [...new Set(
+        handles.map(h => h.replace(/^@+/, '').trim()).filter(h => SAFE_HANDLE.test(h)),
+      )];
+
+      if (cleaned.length) {
+        const inList = cleaned.map(c => `"${c}"`).join(',');
+        const { data: found, error: lookErr } = await supabaseAdmin
+          .from('users').select('id, username, email, full_name, company_id, accessible_company_ids, role')
+          .or(`username.in.(${inList}),email.in.(${inList})`);
+        if (lookErr) throw lookErr;
+
+        // Only people who are actually in this company may be assigned.
+        const allowed = new Set(await filterCompanyMembers((found || []).map(u => u.id), req.companyId));
+        for (const u of found || []) {
+          if (!allowed.has(u.id)) continue;
+          if (u.username) ownerByKey[u.username.toLowerCase()] = u.id;
+          if (u.email) ownerByKey[u.email.toLowerCase()] = u.id;
+        }
       }
     }
 
