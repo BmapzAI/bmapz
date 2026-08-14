@@ -239,9 +239,33 @@ const SETTINGS_COMPANY_FIELDS = new Set([
  * position rather than whatever the model sent.
  */
 function toCompetitors(v) {
-  const list = Array.isArray(v) ? v : (v && typeof v === 'object' ? [v] : []);
-  return list
-    .filter(c => c && typeof c === 'object' && (c.name || c.website))
+  // Accept the shapes a model actually produces, not just the ideal one.
+  //
+  // The model frequently sends plain names — ["HubSpot", "RD Station"] — or a
+  // single comma-separated string. This previously required objects, filtered
+  // every string out, and stored an EMPTY list while still reporting "1 field
+  // updated": the user was told their competitors were saved and the list was
+  // silently wiped instead.
+  const raw = Array.isArray(v)
+    ? v
+    : typeof v === 'string'
+      ? v.split(/\s*[;,\n]\s*/)          // "HubSpot, RD Station"
+      : (v && typeof v === 'object' ? [v] : []);
+
+  const looksLikeUrl = (s) => /^(https?:\/\/|www\.)/i.test(s) || /\.[a-z]{2,}(\/|$)/i.test(s);
+
+  return raw
+    .map((c) => {
+      // A bare string is a name — unless it is obviously a URL, in which case it
+      // is the site and the name is left for the user to fill in.
+      if (typeof c === 'string') {
+        const s = c.trim();
+        if (!s) return null;
+        return looksLikeUrl(s) ? { website: s } : { name: s };
+      }
+      return c && typeof c === 'object' ? c : null;
+    })
+    .filter(c => c && (c.name || c.website))
     .slice(0, 5)
     .map((c, i) => ({
       rank: i + 1,
@@ -514,7 +538,16 @@ async function updateCompany(action, ctx) {
       patch[k] = ARRAY_COMPANY_COLUMNS.has(k) ? toArray(v) : str(toText(v));
       applied.push(k);
     } else if (k === 'competitors') {
-      settings.competitors = toCompetitors(v);
+      const parsed = toCompetitors(v);
+      // Refuse rather than wipe. An empty result here means nothing in the payload
+      // could be read as a competitor, and overwriting a real list with [] while
+      // reporting success is exactly how "it said it saved and nothing changed"
+      // happens. Clearing the list is a deliberate act, done from the Competitors
+      // tab.
+      if (!parsed.length) {
+        return { ok: false, error: 'Could not read any competitor from that — name them explicitly, or edit the Competitors tab directly.' };
+      }
+      settings.competitors = parsed;
       applied.push('competitors');
     } else if (SETTINGS_COMPANY_FIELDS.has(k)) {
       settings[k] = str(toText(v));   // the rest of settings is free text
