@@ -236,7 +236,7 @@ router.get('/summary', requireAuth, async (req, res) => {
   try {
     const { data, error } = await visibleTo(
       supabaseAdmin.from('tasks')
-        .select('id, status, due_at, priority, assignee_type, assignee_id')
+        .select('id, status, due_at, priority, assignee_type, assignee_id, completed_by_type, created_at, completed_at')
         .eq('company_id', req.companyId),
       req.dbUser.id,
     ).limit(1000);
@@ -245,6 +245,44 @@ router.get('/summary', requireAuth, async (req, res) => {
     const rows = data || [];
     const now = Date.now();
     const count = (fn) => rows.filter(fn).length;
+
+    /* ── Who is actually doing the work, and what it saves ─────────────────
+     * The headline number is AI vs human completion. "Time saved" is deliberately
+     * modest in its claim: it compares each AI-completed task against the MEDIAN
+     * time humans on this company took to finish theirs, so it is grounded in the
+     * team's own pace rather than an invented industry benchmark. With no human
+     * completions to compare against there is no honest baseline, so it reports
+     * null instead of guessing — an inflated saving would be worse than none.
+     */
+    const done = rows.filter(t => t.status === 'done' && t.completed_at && t.created_at);
+    const minutesToComplete = (t) =>
+      (Date.parse(t.completed_at) - Date.parse(t.created_at)) / 60000;
+
+    const aiDone = done.filter(t => t.completed_by_type === 'ai');
+    const humanDone = done.filter(t => t.completed_by_type === 'user');
+
+    const median = (nums) => {
+      if (!nums.length) return null;
+      const s = [...nums].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    };
+
+    const humanMedian = median(humanDone.map(minutesToComplete).filter(n => Number.isFinite(n) && n >= 0));
+    const aiMedian = median(aiDone.map(minutesToComplete).filter(n => Number.isFinite(n) && n >= 0));
+
+    // Only count a saving where the AI was genuinely faster; a slower AI task
+    // should not quietly subtract from the total either, so it contributes zero.
+    const minutesSaved = (humanMedian === null)
+      ? null
+      : Math.round(aiDone.reduce((sum, t) => {
+        const actual = minutesToComplete(t);
+        if (!Number.isFinite(actual)) return sum;
+        return sum + Math.max(0, humanMedian - actual);
+      }, 0));
+
+    const totalDone = done.length;
+    const pct = (n) => (totalDone ? Math.round((n / totalDone) * 100) : 0);
 
     res.json({
       standby: count(t => t.status === 'standby'),
@@ -256,6 +294,29 @@ router.get('/summary', requireAuth, async (req, res) => {
       with_ai: count(t => t.assignee_type === 'ai' && !['done', 'cancelled'].includes(t.status)),
       overdue: count(t => t.due_at && !['done', 'cancelled'].includes(t.status) && Date.parse(t.due_at) < now),
       total: rows.length,
+
+      // Item 6 — the metrics the Dashboards section shows.
+      metrics: {
+        total: rows.length,
+        completed: totalDone,
+        pending: count(t => !['done', 'cancelled'].includes(t.status)),
+        // Completion rate excludes cancelled work: abandoning a task is not a
+        // failure to complete it, and counting it as one makes the number lie.
+        completion_rate: (() => {
+          const considered = rows.filter(t => t.status !== 'cancelled').length;
+          return considered ? Math.round((totalDone / considered) * 100) : 0;
+        })(),
+        done_by_ai: aiDone.length,
+        done_by_human: humanDone.length,
+        ai_share_pct: pct(aiDone.length),
+        human_share_pct: pct(humanDone.length),
+        median_minutes_ai: aiMedian === null ? null : Math.round(aiMedian),
+        median_minutes_human: humanMedian === null ? null : Math.round(humanMedian),
+        minutes_saved_by_ai: minutesSaved,
+        // Tells the UI whether "time saved" rests on a real comparison, so it can
+        // stay quiet rather than show an unfounded figure.
+        has_human_baseline: humanMedian !== null,
+      },
     });
   } catch (err) {
     console.error('[tasks] summary failed:', err.message);

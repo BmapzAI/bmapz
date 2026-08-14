@@ -20,6 +20,7 @@ import { Task, User } from '@/api/entities';
 import TaskCard from './TaskCard';
 import TaskSuggestions from './TaskSuggestions';
 import TaskResultPanel from './TaskResultPanel';
+import TaskCalendar from './TaskCalendar';
 import {
   BOARD_STATUSES, ALL_STATUSES, PRIORITIES, SECTIONS,
   statusLabel, priorityLabel, sectionLabel, assigneeLabel, formatDue,
@@ -49,7 +50,6 @@ export default function MyTasks({ initialTaskId = null }) {
   const [creating, setCreating] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [openTaskId, setOpenTaskId] = useState(initialTaskId);
-  const [monthOffset, setMonthOffset] = useState(0);
 
   const [draft, setDraft] = useState({
     title: '', description: '', priority: 'medium', due_at: '',
@@ -341,13 +341,9 @@ export default function MyTasks({ initialTaskId = null }) {
           onOpen={(t) => setOpenTaskId(t.id)}
         />
       ) : (
-        <CalendarView
-          tasks={tasks}
-          isPt={isPt}
-          monthOffset={monthOffset}
-          setMonthOffset={setMonthOffset}
-          onOpen={(t) => setOpenTaskId(t.id)}
-        />
+        // Day / week / month / year with public holidays, matching the Social
+        // Media calendar so the two surfaces behave the same way.
+        <TaskCalendar tasks={tasks} onOpen={(t) => setOpenTaskId(t.id)} />
       )}
 
       {/* ── Detail ────────────────────────────────────────────────────────── */}
@@ -526,116 +522,6 @@ function ListView({ tasks, isPt, followedIds, onOpen }) {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-/* ── Calendar ───────────────────────────────────────────────────────────── */
-function CalendarView({ tasks, isPt, monthOffset, setMonthOffset, onOpen }) {
-  const base = new Date();
-  const shown = new Date(base.getFullYear(), base.getMonth() + monthOffset, 1);
-  const year = shown.getFullYear();
-  const month = shown.getMonth();
-
-  const firstWeekday = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  // Group by local calendar day so a deadline lands on the day the user sees.
-  const byDay = {};
-  for (const t of tasks) {
-    if (!t.due_at) continue;
-    const ms = Date.parse(t.due_at);
-    if (Number.isNaN(ms)) continue;
-    const d = new Date(ms);
-    if (d.getFullYear() !== year || d.getMonth() !== month) continue;
-    (byDay[d.getDate()] || (byDay[d.getDate()] = [])).push(t);
-  }
-
-  const undated = tasks.filter(t => !t.due_at);
-  const weekdays = isPt
-    ? ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-white text-sm font-semibold">
-          {shown.toLocaleDateString(isPt ? 'pt-BR' : 'en-US', { month: 'long', year: 'numeric' })}
-        </span>
-        <div className="flex gap-1">
-          <Button size="sm" variant="outline" onClick={() => setMonthOffset(monthOffset - 1)}
-            className="h-8 border-white/10 text-white hover:bg-white/5 text-xs">←</Button>
-          <Button size="sm" variant="outline" onClick={() => setMonthOffset(0)}
-            className="h-8 border-white/10 text-white hover:bg-white/5 text-xs">
-            {isPt ? 'Hoje' : 'Today'}
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setMonthOffset(monthOffset + 1)}
-            className="h-8 border-white/10 text-white hover:bg-white/5 text-xs">→</Button>
-        </div>
-      </div>
-
-      <div className="rounded-2xl bg-white/5 border border-white/10 p-3">
-        <div className="grid grid-cols-7 gap-1 mb-1">
-          {weekdays.map(d => (
-            <div key={d} className="text-center text-gray-500 text-[11px] py-1">{d}</div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {Array.from({ length: firstWeekday }).map((_, i) => (
-            <div key={`pad-${i}`} className="min-h-[76px] rounded-lg bg-transparent" />
-          ))}
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1;
-            const isToday = monthOffset === 0 && day === base.getDate();
-            const items = byDay[day] || [];
-            return (
-              <div
-                key={day}
-                className={`min-h-[76px] rounded-lg border p-1.5 ${
-                  isToday ? 'border-[#38b6ff]/50 bg-[#38b6ff]/5' : 'border-white/5 bg-black/20'
-                }`}
-              >
-                <div className={`text-[11px] mb-1 ${isToday ? 'text-[#38b6ff]' : 'text-gray-500'}`}>{day}</div>
-                <div className="space-y-1">
-                  {items.slice(0, 3).map(t => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => onOpen(t)}
-                      className="w-full text-left text-[10px] px-1 py-0.5 rounded bg-white/10 text-white truncate hover:bg-white/20"
-                    >
-                      {t.title}
-                    </button>
-                  ))}
-                  {items.length > 3 ? (
-                    <span className="text-[10px] text-gray-500">+{items.length - 3}</span>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {undated.length ? (
-        <div className="rounded-2xl bg-white/5 border border-white/10 p-3">
-          <p className="text-gray-400 text-xs mb-2">
-            {isPt ? 'Sem prazo definido' : 'No deadline set'} ({undated.length})
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {undated.map(t => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => onOpen(t)}
-                className="text-[11px] px-2 py-1 rounded bg-black/30 border border-white/10 text-white hover:border-[#38b6ff]/40"
-              >
-                {t.title}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

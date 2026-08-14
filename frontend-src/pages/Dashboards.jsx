@@ -16,6 +16,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import StatsCard from '@/components/dashboard/StatsCard';
 import { toast } from 'sonner';
 import OperationsMetrics from '@/components/dashboard/OperationsMetrics';
+import TaskMetricsCard from '@/components/tasks/TaskMetricsCard';
 import DrillDownModal from '@/components/dashboard/DrillDownModal';
 import { Company, Lead, Message, Activity, DashboardConfig } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
@@ -632,6 +633,9 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
       {/* Operational metrics computed from everything the account holds —
           response times, availability, funnel velocity, touchpoints. Always
           visible, above the user's own custom dashboards. */}
+      {/* Task metrics: AI vs human execution, completion rate, time saved. */}
+      <TaskMetricsCard />
+
       <OperationsMetrics />
 
       {/* Dashboard Tabs */}
