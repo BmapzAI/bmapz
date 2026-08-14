@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Check, X, Pencil, Loader2, AlertTriangle, Zap } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Check, X, Pencil, Loader2, AlertTriangle, Zap, ExternalLink } from 'lucide-react';
 import { useLanguage } from '@/components/ui/LanguageContext';
 
 /**
@@ -13,9 +14,13 @@ import { useLanguage } from '@/components/ui/LanguageContext';
  * Now the user sees the concrete list first, and the result reported afterwards is
  * the database's answer, not the model's.
  *
- * Edit drops to raw JSON deliberately. It is an escape hatch for the rare case
- * where a proposal is nearly right, not the main path — the main path is Approve or
- * Decline, and both are one click.
+ * Edit opens a typed form over the proposed values — see EDITABLE_FIELDS below. It
+ * is the escape hatch for a proposal that is nearly right; the main path is Approve
+ * or Decline, both one click.
+ *
+ * The card persists: once approved it becomes a receipt carrying links to whatever
+ * was created, and that receipt is stored on the message, so a reload cannot turn
+ * an applied change back into a pending proposal and let it be applied twice.
  */
 /**
  * Which fields of an operation a human may edit, and how to render each.
@@ -73,14 +78,15 @@ const EDITABLE_FIELDS = {
   ],
 };
 
-export default function ActionApproval({ preview, actions, onApprove, onDecline, isApplying, result }) {
+export default function ActionApproval({ preview, actions, onApprove, onDecline, isApplying, result, declined = false }) {
   const { isPt } = useLanguage();
   const [editing, setEditing] = useState(false);
   // Edits are held as a structured copy of the actions, never as text. There is
   // nothing to re-parse, so an edit cannot silently fail to apply.
   const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(actions)));
 
-  // Once applied, the card becomes the receipt.
+  // Once applied, the card becomes the receipt — and stays that way after a
+  // reload, because the result is persisted onto the message.
   if (result) {
     const failures = result.filter(r => !r.ok);
     return (
@@ -88,7 +94,19 @@ export default function ActionApproval({ preview, actions, onApprove, onDecline,
         {result.map((r, i) => (
           <div key={i} className={`flex items-start gap-2 text-xs ${r.ok ? 'text-green-400' : 'text-red-400'}`}>
             {r.ok ? <Check size={13} className="mt-0.5 shrink-0" /> : <AlertTriangle size={13} className="mt-0.5 shrink-0" />}
-            <span>{r.ok ? r.summary : `${r.op}: ${r.error}`}</span>
+            <span className="flex-1">
+              {r.ok ? r.summary : `${r.op}: ${r.error}`}
+              {/* Take me to what you just made. Without this the user is told a
+                  draft exists somewhere and has to go hunting for it. */}
+              {r.ok && r.link ? (
+                <Link
+                  to={r.link}
+                  className="ml-2 inline-flex items-center gap-0.5 text-[#38b6ff] hover:underline"
+                >
+                  {isPt ? 'ver' : 'view'} <ExternalLink size={11} />
+                </Link>
+              ) : null}
+            </span>
           </div>
         ))}
         {failures.length === 0 ? (
@@ -99,6 +117,20 @@ export default function ActionApproval({ preview, actions, onApprove, onDecline,
       </div>
     );
   }
+
+  // Declined earlier: say so rather than silently showing nothing, so the record
+  // of the decision survives too.
+  if (declined) {
+    return (
+      <div className="mt-2 rounded-xl border border-white/10 bg-black/20 p-2.5">
+        <p className="text-[11px] text-gray-500">
+          {isPt ? 'Alterações recusadas.' : 'Changes declined.'}
+        </p>
+      </div>
+    );
+  }
+
+  if (!actions?.length) return null;
 
   // Approving sends the edited copy when the user has been editing, so a change
   // made in the form is always what gets applied — the old version could lose

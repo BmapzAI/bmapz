@@ -824,6 +824,37 @@ const HANDLERS = {
 export const isKnownOp = (op) => Object.prototype.hasOwnProperty.call(HANDLERS, String(op || ''));
 
 /**
+ * Turn a title + body into the operation that puts it in a given section.
+ *
+ * Shared by "send a task to its section" and "send an approved AI Output to its
+ * section" so both produce the same record from the same input. Sections that own
+ * a concrete entity get one; the rest file into the archive under the right
+ * category, because "send it to SEO" has no SEO row to create while the
+ * deliverable still needs a home.
+ *
+ * Returns null for an unknown section, so callers can reject rather than guess.
+ */
+export function buildSectionAction({ section, title, content }) {
+  const t = str(title, 300) || 'Untitled';
+  const body = str(content, 60000) || '';
+  if (!body) return null;
+
+  switch (section) {
+    case 'social': return { op: 'create_social_post', title: t, content: body, platforms: [] };
+    case 'blog': return { op: 'create_blog_post', title: t, content: body };
+    case 'ads': return { op: 'create_ad_campaign', name: t, strategy: { summary: body } };
+    case 'workflow': return { op: 'save_to_archive', title: t, content: body, category: 'workflows' };
+    case 'inbox':
+    case 'sdr': return { op: 'save_to_archive', title: t, content: body, category: 'message_templates' };
+    case 'seo':
+    case 'sales':
+    case 'dashboard':
+    case 'general': return { op: 'save_to_archive', title: t, content: body, category: 'strategies' };
+    default: return null;
+  }
+}
+
+/**
  * Execute an approved action list.
  *
  * Never throws: a failed operation becomes a reported result, and one entry is

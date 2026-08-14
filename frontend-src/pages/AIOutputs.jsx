@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { AIOutput, Company } from '@/api/entities';
+import SendOutputToSection from '@/components/ai/SendOutputToSection';
 import AIOutputsArchive from '@/components/ai/AIOutputsArchive';
 
 const CATEGORIES = [
@@ -295,6 +296,12 @@ export default function AIOutputs() {
                     </Button>
                   </div>
                 )}
+
+                {/* Approving filed it; this is what puts it in the section it
+                    belongs to. Without it an approved output stayed in the archive
+                    and never appeared in Ads/Social/Blog, which is what made the
+                    flow feel like it had done nothing. */}
+                <SendOutputToSection output={output} />
                 {output.status !== 'pending' && (
                 <Button
                   size="sm"

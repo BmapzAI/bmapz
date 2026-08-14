@@ -24,7 +24,7 @@ import { requireAuth, filterCompanyMembers } from '../middleware/auth.js';
 import { createNotification } from '../lib/notify.js';
 import { runTaskWithAI } from '../lib/taskRunner.js';
 import { runAIChat } from './ai.js';
-import { applyActions } from '../lib/aiActions.js';
+import { applyActions, buildSectionAction } from '../lib/aiActions.js';
 
 const router = Router();
 
@@ -722,26 +722,6 @@ router.post('/:id/run-ai', requireAuth, async (req, res) => {
 });
 
 /**
- * Which operation turns a finished task into a real record in each section.
- *
- * Sections that own a concrete entity get one; the rest file the work into the AI
- * Outputs archive under the right category, because "send it to SEO" has no SEO
- * row to create but the deliverable still needs somewhere to live.
- */
-const SECTION_TARGET = {
-  social: (task, content) => ({ op: 'create_social_post', title: task.title, content, platforms: [] }),
-  blog: (task, content) => ({ op: 'create_blog_post', title: task.title, content }),
-  ads: (task, content) => ({ op: 'create_ad_campaign', name: task.title, strategy: { summary: content } }),
-  seo: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'strategies' }),
-  sales: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'strategies' }),
-  workflow: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'workflows' }),
-  inbox: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'message_templates' }),
-  sdr: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'message_templates' }),
-  dashboard: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'strategies' }),
-  general: (task, content) => ({ op: 'save_to_archive', title: task.title, content, category: 'strategies' }),
-};
-
-/**
  * POST /api/tasks/:id/send-to-section
  * Body: { section?, content? }
  *
@@ -768,8 +748,13 @@ router.post('/:id/send-to-section', requireAuth, async (req, res) => {
       });
     }
 
-    const build = SECTION_TARGET[section] || SECTION_TARGET.general;
-    const [result] = await applyActions([build(task, content)], {
+    // Shared with AI Outputs' send-to-section, so both produce the same record.
+    const action = buildSectionAction({ section, title: task.title, content });
+    if (!action) {
+      return res.status(400).json({ error: `Cannot send to "${section}".`, code: 'BAD_SECTION' });
+    }
+
+    const [result] = await applyActions([action], {
       companyId: req.companyId,
       userId: req.dbUser.id,
       userRole: req.dbUser.role,

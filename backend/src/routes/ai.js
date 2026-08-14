@@ -3,7 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
   extractActions, applyActions, describeActions, isKnownOp,
-  proposeActions, looksActionable, ACTION_PROTOCOL,
+  proposeActions, looksActionable, buildSectionAction, ACTION_PROTOCOL,
 } from '../lib/aiActions.js';
 import { webSearch, formatForPrompt } from '../lib/webSearch.js';
 import {
@@ -1517,6 +1517,67 @@ router.get('/outputs', requireAuth, async (req, res) => {
 
 // GET /api/ai/outputs/:id — single record (entities.js AIOutput.get targeted
 // this route but it never existed; every call 404'd).
+/**
+ * POST /api/ai/outputs/:id/send-to-section
+ * Body: { section, content? }
+ *
+ * Closes the gap that made the whole flow feel broken: an approved output sat in
+ * the archive and never appeared in the section it belonged to, because filing a
+ * record and creating one in a section were two unconnected paths. This connects
+ * them, using the SAME builder the task board uses, so "send this to Ads" produces
+ * the same record whichever surface it came from.
+ *
+ * `content` is optional so the user can edit before sending — the archived text is
+ * a draft, not a final artefact.
+ */
+router.post('/outputs/:id/send-to-section', requireAuth, async (req, res) => {
+  try {
+    const { data: output, error } = await supabaseAdmin
+      .from('ai_outputs').select('*')
+      .eq('id', req.params.id).eq('company_id', req.companyId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!output) return res.status(404).json({ error: 'Output not found' });
+
+    const meta = output.metadata || {};
+    const content = String(req.body?.content ?? meta.content ?? output.output ?? '').trim();
+    if (!content) return res.status(400).json({ error: 'This output has no content to send.' });
+
+    const action = buildSectionAction({
+      section: req.body?.section,
+      title: meta.title || 'AI output',
+      content,
+    });
+    if (!action) {
+      return res.status(400).json({ error: `Cannot send to "${req.body?.section}".`, code: 'BAD_SECTION' });
+    }
+
+    const [result] = await applyActions([action], {
+      companyId: req.companyId,
+      userId: req.dbUser?.id,
+      userRole: req.dbUser?.role,
+    });
+    if (!result?.ok) {
+      return res.status(400).json({ error: result?.error || 'Could not send this to the section.' });
+    }
+
+    // Record where it went so the card can link to it and the same output is not
+    // sent twice by accident.
+    await supabaseAdmin.from('ai_outputs').update({
+      metadata: {
+        ...meta,
+        status: 'approved',
+        sent_to: { section: req.body.section, id: result.id || null, at: new Date().toISOString() },
+      },
+    }).eq('id', output.id).eq('company_id', req.companyId);
+
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[ai/outputs/send-to-section]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/outputs/:id', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin

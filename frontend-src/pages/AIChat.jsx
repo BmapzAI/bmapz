@@ -65,13 +65,60 @@ export default function AIChat() {
    * edited them before approving. The result stored on the message is the SERVER's
    * answer — what actually happened — not the model's claim about it.
    */
+  /**
+   * Write the conversation back so an outcome survives a reload.
+   *
+   * Without this, approving a change updated the message only in memory: after a
+   * refresh the card reappeared as an un-approved proposal, and clicking Approve
+   * again created a SECOND social post / blog draft / campaign from the same
+   * request. Persisting the applied result is what makes the action idempotent
+   * from the user's side.
+   */
+  const persistMessages = async (msgs) => {
+    const convo = activeConversation;
+    if (!convo) return;
+    try {
+      const payload = {
+        type: 'conversation',
+        title: convo.metadata?.name || 'Conversation',
+        name: convo.metadata?.name || 'Conversation',
+        pinned: !!convo.metadata?.pinned,
+        client_id: convo.id,
+        content: { messages: msgs },
+      };
+      const saved = convo.dbId
+        ? await api.patch(`/api/ai/outputs/${convo.dbId}`, payload)
+        : await api.post('/api/ai/outputs', payload);
+
+      const next = { ...convo, dbId: saved?.id || convo.dbId, messages: msgs };
+      setActiveConversation(next);
+      setConversations(prev => prev.map(c => (c.id === convo.id ? next : c)));
+    } catch (e) {
+      // The change itself already succeeded — only the record of it failed, so say
+      // so rather than implying the write was lost.
+      console.error('[AIChat] could not persist conversation:', e?.message);
+      toast.error(isPt
+        ? 'A alteração foi aplicada, mas não consegui salvar o histórico da conversa.'
+        : 'The change was applied, but I could not save the conversation history.');
+    }
+  };
+
   const approveActions = async (index, actions) => {
     setApplyingIndex(index);
     try {
       const res = await api.post('/api/ai/actions/apply', { actions });
       const applied = Array.isArray(res.applied) ? res.applied : [];
 
-      setMessages(prev => prev.map((m, i) => (i === index ? { ...m, action_result: applied } : m)));
+      // Drop the proposal at the same time as recording the result: a message that
+      // has been acted on must never offer Approve again, in this session or after
+      // a reload.
+      const next = messages.map((m, i) => (
+        i === index
+          ? { ...m, action_result: applied, proposed_actions: undefined, action_preview: undefined }
+          : m
+      ));
+      setMessages(next);
+      await persistMessages(next);
 
       for (const a of applied.filter(x => x.ok)) {
         toast.success(a.summary || (isPt ? 'Alteração aplicada' : 'Change applied'));
@@ -91,11 +138,15 @@ export default function AIChat() {
     }
   };
 
-  /** Declining drops the proposal from the message so the card cannot be re-fired. */
-  const declineActions = (index) => {
-    setMessages(prev => prev.map((m, i) => (
-      i === index ? { ...m, proposed_actions: undefined, action_preview: undefined } : m
-    )));
+  /** Declining drops the proposal so the card cannot be re-fired, now or after a reload. */
+  const declineActions = async (index) => {
+    const next = messages.map((m, i) => (
+      i === index
+        ? { ...m, proposed_actions: undefined, action_preview: undefined, action_declined: true }
+        : m
+    ));
+    setMessages(next);
+    await persistMessages(next);
     toast.info(isPt ? 'Alterações recusadas' : 'Changes declined');
   };
 
@@ -749,13 +800,17 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
                   <MessageBubble message={msg} />
                   {/* Approval sits with the message that proposed it, so the user
                       can read the reply and the exact change list together. */}
-                  {msg.proposed_actions?.length ? (
+                  {/* Shown while a proposal is pending AND afterwards as the
+                      receipt — approving clears proposed_actions so the card can
+                      never be fired twice, but the outcome must stay visible. */}
+                  {msg.proposed_actions?.length || msg.action_result?.length || msg.action_declined ? (
                     <div className="pl-11">
                       <ActionApproval
                         preview={msg.action_preview}
-                        actions={msg.proposed_actions}
+                        actions={msg.proposed_actions || []}
                         isApplying={applyingIndex === i}
                         result={msg.action_result}
+                        declined={!!msg.action_declined}
                         onApprove={(actions) => approveActions(i, actions)}
                         onDecline={() => declineActions(i)}
                       />
