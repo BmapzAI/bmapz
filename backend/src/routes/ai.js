@@ -116,6 +116,11 @@ async function getCompanyPlan(companyId) {
         ai_credits_used: 0,
         topup_credits_purchased: 0,
         trial_ends_at: trialEnds,
+        // Stamped at creation so the cycle machinery has a starting point. A
+        // subscription with no cycle dates can never renew — that, plus the
+        // columns being absent entirely, is why the monthly reset had never run.
+        cycle_started_at: new Date().toISOString(),
+        cycle_ends_at: new Date(Date.now() + 30 * 86400_000).toISOString(),
       })
       .select()
       .single();
@@ -166,7 +171,15 @@ async function getCompanyPlan(companyId) {
   // ─── Auto-reset on monthly cycle rollover ─────────────────────────────────
   // If the subscription's cycle has ended, reset AI credits + scan tokens to
   // their per-plan defaults. Idempotent: only fires once per cycle.
-  if (sub && sub.cycle_ends_at && new Date(sub.cycle_ends_at) <= new Date()) {
+  // A trial is time-boxed by trial_ends_at, not a recurring cycle. Rolling it into
+  // a new cycle would hand out a fresh grant every 30 days forever — the product
+  // free, indefinitely, to anyone who never upgrades. Only paying subscriptions
+  // renew.
+  const isRenewablePlan = sub
+    && !['trial', 'free'].includes(planOf(sub))
+    && ['active', 'past_due'].includes(sub.status);
+
+  if (isRenewablePlan && sub.cycle_ends_at && new Date(sub.cycle_ends_at) <= new Date()) {
     const planId = planOf(sub);
     const monthlyCredits = PLAN_MONTHLY_CREDITS[planId] || 0;
     const monthlyScanTokens = PLAN_SCAN_TOKENS[planId] || 0;

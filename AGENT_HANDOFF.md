@@ -2891,3 +2891,44 @@ individual operations already enforce — nothing new was granted.
 NOT DONE in this pass: scheduled automations generated FROM a scan (the ops
 catalogue has no create_automation verb), and market research is only as deep as
 the scan prompt already goes.
+
+## BILLING FIX — monthly cycle + scan add-ons (Claude, 2026-08-15)
+
+SCHEMA CHANGE. Migration `subscriptions_cycle_and_scan_addon` adds
+`cycle_started_at`, `cycle_ends_at`, `last_reset_at` (timestamptz) and
+`scan_tokens_addon` (integer not null default 0) to `public.subscriptions`.
+
+WHY. The billing code had always written all four; none existed.
+- `getCompanyPlan()` gates the monthly reset on `sub.cycle_ends_at`, which was
+  permanently undefined, so the reset NEVER fired. A paying customer would have
+  received their first month's credits and never another.
+- The reset UPDATE itself wrote three of the missing columns, so it would have
+  failed even if the condition had been reached.
+- `routes/addons.js` writes `scan_tokens_addon` when someone buys "extra full
+  scan", so that purchase failed outright.
+
+BACKFILL DIRECTION MATTERS. Existing cycles were started from NOW, not from the
+subscription's creation date. Backdating would have put `cycle_ends_at` in the past
+and fired a "reset" on the next AI call — which REDUCES anyone holding more than
+their plan's monthly grant. The live trial holds 9000 credits and 2 scan tokens
+against a trial grant of 8000 and 0, so a backdated reset would have taken balance
+away because of a missing column. Nobody lost anything.
+
+BUSINESS RULE ADDED: trials no longer roll into a new cycle. `planOf(sub)` of
+trial/free, or a status outside active/past_due, is skipped. Without this the
+now-working reset would have granted a fresh 8000 credits every 30 days forever to
+anyone who never upgraded — the product free, indefinitely. Flagged to Derek.
+
+Cycle dates are now stamped where subscriptions BEGIN: on trial auto-create
+(routes/ai.js) and on Stripe checkout completion (routes/stripeWebhook.js, both the
+update and insert branches). Paying starts the cycle; without it a customer's
+subscription would still have had no cycle end.
+
+VERIFIED 2026-08-15 against production, on a throwaway company + subscription
+(both deleted afterwards; the three real subscriptions were never touched and their
+balances are unchanged):
+- The exact rollover UPDATE now succeeds: credits refilled 39500 used -> 0,
+  scan tokens cleared, `last_reset_at` stamped, next cycle in the future.
+- The add-on write succeeds: `scan_tokens_addon` 0 -> 2, remaining computed as 3.
+Credits are still NOT deducted on trial — that is deliberate and unchanged
+(logged to credit_transactions for visibility, never enforced).

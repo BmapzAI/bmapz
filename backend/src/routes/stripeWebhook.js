@@ -95,6 +95,17 @@ router.post('/api/stripe/webhook', async (req, res) => {
           return res.status(503).json({ error: 'subscription read failed' });
         }
 
+        // Paying starts the billing cycle. Without these the subscription has no
+        // cycle end, the monthly reset can never fire, and the customer would
+        // receive their first month's credits and never another.
+        const cycleStart = new Date();
+        const cycleEnd = new Date(cycleStart.getTime() + 30 * 86400_000);
+        const cycleFields = {
+          cycle_started_at: cycleStart.toISOString(),
+          cycle_ends_at: cycleEnd.toISOString(),
+          last_reset_at: cycleStart.toISOString(),
+        };
+
         if (existing) {
           await supabaseAdmin.from('subscriptions').update({
             plan,
@@ -106,6 +117,7 @@ router.post('/api/stripe/webhook', async (req, res) => {
             contacts_limit: contactsLimit,
             scan_tokens_total: scanTokens,
             scan_tokens_used: 0,
+            ...cycleFields,
           }).eq('id', existing.id);
         } else {
           await supabaseAdmin.from('subscriptions').insert({
@@ -119,6 +131,7 @@ router.post('/api/stripe/webhook', async (req, res) => {
             contacts_limit: contactsLimit,
             scan_tokens_total: scanTokens,
             scan_tokens_used: 0,
+            ...cycleFields,
           });
         }
 
