@@ -2997,3 +2997,52 @@ the ordering that matters is what the route applies, plus these client sorts.
 
 REPO SWEEP: undefined-JSX-component check across every .jsx returned only two hits,
 both `<Platform>` / `<Page…>` written inside COMMENTS. No real undefined components.
+
+## Brain connectivity audit + housekeeping (Claude, 2026-08-15)
+
+DB HOUSEKEEPING (migration `drop_ad_records_backup_and_pin_search_path`):
+- Dropped `ad_records_backup_20260811`. Verified first: `ad_records` itself was
+  already gone, no FK/view/trigger depended on the backup, nothing referenced it by
+  name, and its 4 rows are superseded by 2 ad_campaigns / 4 ads / 40 ai_outputs.
+  Public tables 44 -> 43; live ad data intact.
+- `handle_new_user()` now pins `search_path = public, pg_temp`, matching the other
+  three SECURITY DEFINER triggers. All four are now pinned.
+
+REAL BUG FOUND BY THE CONNECTIVITY CHECK. `companyBrain.js` was querying
+`ad_records`, which migration 026 renamed away. The error was discarded, so
+`adsRes.data?.length` was falsy and the "Recent ads work" line was simply omitted:
+the agent has had NO ads context since that migration and nothing reported it.
+Now reads `ad_campaigns` (name/platform/objective/status).
+
+ROOT CAUSE FIXED, not just the instance: every brain source result is now checked
+and a failing one is logged by name. A source that fails is otherwise invisible —
+{data:null,error} makes the line silently disappear — which is exactly how this hid.
+All 10 sources were then verified column-by-column against the live schema: zero
+mismatches remain.
+
+TASKS ADDED AS A BRAIN SOURCE. The agent could CREATE tasks but never SEE them, so
+it could not notice it was proposing work already on the board. Company-visible,
+non-completed tasks only — private tasks stay private, including from the agent.
+
+Removed an unused `invalidateCompanyBrain` import from routes/brandScans.js
+(applyActions already invalidates when proposals are approved).
+
+CONNECTION MAP as it now stands:
+- READ (brain -> agent): companies (name/industry/services/value props/ICP/briefing/
+  competitors/region), leads, messages, social_posts, ad_campaigns, workflows,
+  blog_posts, ai_outputs, seo_analyses, tasks, brain_learnings.
+- `skipBrain: true` appears 4 times, all deliberate: the action second-pass, brain
+  self-distillation, routes/help.js (product help, not company data), and
+  lib/sdrEngine.js — the SDR talks to PROSPECTS and must never carry internal
+  context. That one is a security decision, not an oversight.
+- WRITE (agent -> app): update_company (fields/ICP/briefing/competitors), create and
+  update task, social post, blog post, ad campaign, save_to_archive,
+  run_seo_analysis, save_seo_analysis.
+- Brain cache invalidated on company settings PATCH and after any applied action.
+
+KNOWN GAPS, flagged for Derek rather than silently widened (adding agent write verbs
+expands what an AI can change without a human writing the code):
+- No verb for LEADS — the agent cannot create or update a CRM record.
+- No verb for WORKFLOWS — it cannot build or amend an automation.
+- Design Studio is deliberately absent (owner-only business secret).
+- internal_messages / team chat deliberately absent (private chatter).

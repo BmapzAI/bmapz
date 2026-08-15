@@ -150,7 +150,7 @@ export async function getCompanyBrain(companyId) {
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.block;
 
   try {
-    const [companyRes, leadsRes, msgsRes, postsRes, adsRes, wfRes, blogRes, outputsRes, seoRes, learningsRes] = await Promise.all([
+    const [companyRes, leadsRes, msgsRes, postsRes, adsRes, wfRes, blogRes, outputsRes, seoRes, tasksRes, learningsRes] = await Promise.all([
       // `settings` is selected for the competitor list. NOT `select('*')`, which
       // would pull api_keys into the brain and risk company credentials reaching a
       // model prompt.
@@ -158,17 +158,46 @@ export async function getCompanyBrain(companyId) {
       supabaseAdmin.from('leads').select('funnel_stage, estimated_value, status').eq('company_id', companyId).limit(500),
       supabaseAdmin.from('messages').select('channel, direction').eq('company_id', companyId).order('created_at', { ascending: false }).limit(200),
       supabaseAdmin.from('social_posts').select('title, platforms, status, content').eq('company_id', companyId).order('created_at', { ascending: false }).limit(8),
-      supabaseAdmin.from('ad_records').select('title, platform, type').eq('company_id', companyId).order('created_at', { ascending: false }).limit(8),
+      // `ad_records` was renamed away by migration 026, so this query has been
+      // failing ever since — and because the error was discarded, the brain simply
+      // had NO ads context and nobody could tell. Reads the live table now.
+      supabaseAdmin.from('ad_campaigns').select('name, platform, objective, status').eq('company_id', companyId).order('created_at', { ascending: false }).limit(8),
       supabaseAdmin.from('workflows').select('name, type, status').eq('company_id', companyId).eq('is_template', false).limit(15),
       supabaseAdmin.from('blog_posts').select('title, tags, status').eq('company_id', companyId).order('created_at', { ascending: false }).limit(5),
       supabaseAdmin.from('ai_outputs').select('type, metadata').eq('company_id', companyId).order('created_at', { ascending: false }).limit(40),
       supabaseAdmin.from('seo_analyses').select('domain, score').eq('company_id', companyId).order('created_at', { ascending: false }).limit(3),
+      // What work is actually in flight. The agent could CREATE tasks but could not
+      // SEE them, so it had no way to notice it was proposing something already on
+      // the board, or to reason about what the team is currently doing.
+      // Company-visible only: private tasks stay private, including from the agent.
+      supabaseAdmin.from('tasks')
+        .select('title, status, priority, section, due_at')
+        .eq('company_id', companyId)
+        .eq('visibility', 'company')
+        .not('status', 'in', '("done","cancelled")')
+        .order('created_at', { ascending: false }).limit(12),
       // Distilled lessons: this company's own + platform-wide aggregates.
       // Degrades to empty until migration 019 creates the table.
       supabaseAdmin.from('brain_learnings').select('scope, category, lesson, evidence')
         .or(`company_id.eq.${companyId},scope.eq.global`)
         .order('updated_at', { ascending: false }).limit(10),
     ]);
+
+    // A source that fails is INVISIBLE otherwise: supabase-js resolves with
+    // {data:null,error}, `data?.length` is falsy, and the corresponding line is
+    // simply omitted from the brain. That is exactly how the ads query kept
+    // querying a table renamed away by migration 026 — for weeks the agent had no
+    // ads context at all and nothing said so. Now every failed source is named.
+    for (const [name, res] of [
+      ['companies', companyRes], ['leads', leadsRes], ['messages', msgsRes],
+      ['social_posts', postsRes], ['ad_campaigns', adsRes], ['workflows', wfRes],
+      ['blog_posts', blogRes], ['ai_outputs', outputsRes], ['seo_analyses', seoRes],
+      ['tasks', tasksRes], ['brain_learnings', learningsRes],
+    ]) {
+      if (res?.error) {
+        console.error(`[companyBrain] source "${name}" failed for company ${companyId}: ${res.error.message}`);
+      }
+    }
 
     const c = companyRes.data;
     if (!c) return '';
@@ -238,9 +267,14 @@ export async function getCompanyBrain(companyId) {
       `Messaging: ${summarizeMessages(msgsRes.data)}`,
       wfRes.data?.length ? `Workflows: ${wfRes.data.map(w => `${w.name}[${w.status}]`).slice(0, 8).join(', ')}` : null,
       postsRes.data?.length ? `Recent social posts: ${postsRes.data.map(p => trunc(p.title || p.content, 40)).join(' | ')}` : null,
-      adsRes.data?.length ? `Recent ads work: ${adsRes.data.map(a => `${trunc(a.title, 35)}(${a.platform || a.type || '?'})`).join(', ')}` : null,
+      adsRes.data?.length ? `Ad campaigns: ${adsRes.data.map(a => `${trunc(a.name, 35)}[${a.platform || '?'}${a.status ? `/${a.status}` : ''}]`).join(', ')}` : null,
       blogRes.data?.length ? `Blog posts: ${blogRes.data.map(b => `"${trunc(b.title, 40)}"[${b.status}]`).join(', ')}` : null,
       seoRes.data?.length ? `SEO scores: ${seoRes.data.map(s => `${trunc(s.domain, 40)}=${s.score ?? '?'}`).join(', ')}` : null,
+      tasksRes.data?.length
+        ? `Work in flight (${tasksRes.data.length} open task(s)): ${tasksRes.data
+          .map(t => `${trunc(t.title, 40)}[${t.status}${t.section && t.section !== 'general' ? `/${t.section}` : ''}]`)
+          .join(', ')}`
+        : null,
       approvedTitles.length ? `Previously APPROVED outputs (match this style): ${approvedTitles.join(' | ')}` : null,
       rejectedTitles.length ? `Previously REJECTED outputs (avoid this style): ${rejectedTitles.join(' | ')}` : null,
       editedTitles.length ? `Outputs the user had to EDIT before using (raise first-pass quality): ${editedTitles.join(' | ')}` : null,

@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { proposeActions, describeActions, friendlyError } from '../lib/aiActions.js';
-import { invalidateCompanyBrain } from '../lib/companyBrain.js';
+// The brain is invalidated by applyActions when the proposals are approved, so
+// this route does not need to do it itself.
 
 const router = Router();
 
