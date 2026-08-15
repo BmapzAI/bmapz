@@ -2859,3 +2859,35 @@ engine never writes (it uses `active` / `queued`), so that number was always 0.
 STILL OPEN: region is not yet applied to task due-dates / automation scheduling
 (they still use server time), and item 8 (Brand scan into the brain + approval
 flow) is not started.
+
+## Item 8 — Brand scan connected to the brain and the approval flow (Claude, 2026-08-15)
+
+WHAT IT WAS. A dead end. The scan ran client-side through InvokeLLM, wrote to
+`brand_scans`, and stopped. `brand_scan` was absent from
+`ARCHIVE_CATEGORY_BY_ACTION`, so scans were never archived and never reached the
+Review tab's approve / edit / reject. Nothing could act on the findings: it could
+not fill in the settings it had just researched, nor raise the work it recommended.
+
+WHAT IT IS NOW.
+- `brand_scan` archives as a `strategies` output, so a scan lands in AI Outputs >
+  Review with the same approve / edit / reject as everything else.
+- `POST /api/brand-scans/:id/actions` turns a finished scan into a proposed action
+  list, using the SAME `proposeActions` pipeline the AI chat uses. Settings writes
+  and task creation therefore go through the existing whitelisted operations —
+  the scan gets no privileges of its own, and `company_id` still comes from the
+  session, never from the scan.
+- Nothing is written by that endpoint. Proposing and applying stay separate, and
+  `POST /api/ai/actions/apply` executes only after the user approves, so a scan can
+  never silently rewrite a company's settings.
+- The JSON report is flattened to prose (`reportToBrief`) before the agent sees it.
+  Feeding raw JSON is what made other screens unreadable.
+- Reading FROM settings already worked: the scan goes through `runAIChat`, which
+  prepends the Company Brain (which now includes region).
+
+AUTHORISATION. The scan is fetched with `.eq('company_id', req.companyId)`, so an
+id from another tenant returns 404 rather than leaking. Role gates are whatever the
+individual operations already enforce — nothing new was granted.
+
+NOT DONE in this pass: scheduled automations generated FROM a scan (the ops
+catalogue has no create_automation verb), and market research is only as deep as
+the scan prompt already goes.

@@ -259,6 +259,10 @@ const ARCHIVE_CATEGORY_BY_ACTION = {
   workflow_node: 'workflows',
   seo_plan: 'strategies',
   marketing_plan: 'strategies',
+  // A brand scan is a strategy document. It was absent here, so scans were never
+  // archived and so never reached the Review tab's approve / edit / reject flow —
+  // the report existed only on its own screen.
+  brand_scan: 'strategies',
   // Work the agent completed from the task board. Archived like any other
   // generation so a task result is reviewable where every other output lives —
   // section-specific tasks map to their own category above, and anything general

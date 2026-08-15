@@ -1,8 +1,99 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { proposeActions, describeActions, friendlyError } from '../lib/aiActions.js';
+import { invalidateCompanyBrain } from '../lib/companyBrain.js';
 
 const router = Router();
+
+/**
+ * Turn a finished brand scan into a readable brief.
+ *
+ * The scan is stored as a JSON report. Handing that JSON to the agent — or showing
+ * it in the archive — is what made other screens unreadable, so the parts that
+ * carry meaning are flattened into prose first.
+ */
+function reportToBrief(report, companyData) {
+  if (!report || typeof report !== 'object') return '';
+  const list = (v, pick) => (Array.isArray(v)
+    ? v.map(x => (typeof x === 'string' ? x : pick(x))).filter(Boolean).join('; ')
+    : '');
+
+  return [
+    companyData?.name ? `Brand: ${companyData.name}` : null,
+    companyData?.industry ? `Industry: ${companyData.industry}` : null,
+    report.overview ? `Overview: ${report.overview}` : null,
+    report.brand_attributes?.length ? `Brand attributes: ${list(report.brand_attributes, a => a.attribute || a.name)}` : null,
+    report.brand_pillars?.length ? `Brand pillars: ${list(report.brand_pillars, p => p.pillar || p.name || p.title)}` : null,
+    report.personas?.length ? `Personas: ${list(report.personas, p => p.name || p.title)}` : null,
+    report.seo_keywords?.length ? `SEO keywords: ${list(report.seo_keywords, k => k.keyword || k.term)}` : null,
+    report.competitors?.length ? `Competitors: ${list(report.competitors, c => c.name || c.competitor)}` : null,
+    report.recommendations?.length ? `Recommendations: ${list(report.recommendations, r => r.recommendation || r.action || r.title)}` : null,
+    report.opportunities?.length ? `Opportunities: ${list(report.opportunities, o => o.opportunity || o.title)}` : null,
+  ].filter(Boolean).join('\n');
+}
+
+/**
+ * POST /api/brand-scans/:id/actions
+ *
+ * Propose what to DO with a finished scan.
+ *
+ * A brand scan used to be a dead end: it produced a report, saved it to its own
+ * table, and nothing else in the app could act on it — it was not archived, it
+ * could not fill in the settings it had just researched, and it could not raise
+ * the work it recommended.
+ *
+ * This runs the scan's findings through the SAME proposal pipeline the AI chat
+ * uses, so the result is a normal action list — settings updates, tasks, saved
+ * strategies — which the user approves, edits or rejects with the existing
+ * approval UI, and which `POST /api/ai/actions/apply` executes. Nothing is
+ * written here: proposing and applying stay separate, so a scan can never
+ * silently rewrite a company's settings.
+ */
+router.post('/:id/actions', requireAuth, async (req, res) => {
+  try {
+    const { data: scan, error } = await supabaseAdmin
+      .from('brand_scans')
+      .select('id, company_id, domain, results, status')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)   // company-scoped: an id alone is not access
+      .maybeSingle();
+    if (error) throw error;
+    if (!scan) return res.status(404).json({ error: 'Scan not found.' });
+    if (scan.status !== 'completed') {
+      return res.status(400).json({ error: 'This scan has not finished yet.' });
+    }
+
+    const brief = reportToBrief(scan.results?.report, scan.results?.company_data);
+    if (!brief) return res.status(400).json({ error: 'This scan has no findings to act on.' });
+
+    // Imported at call time — routes/ai.js imports aiActions.js, and this route is
+    // mounted from the same graph; deferring keeps the cycle open.
+    const { runAIChat } = await import('./ai.js');
+
+    const actions = await proposeActions({
+      runAIChat,
+      companyId: req.companyId,
+      userId: req.dbUser?.id,
+      userRole: req.dbUser?.role,
+      userEmail: req.dbUser?.email,
+      userMessage:
+        'Apply the findings of this brand scan to the company: fill in the settings it '
+        + 'establishes (positioning, ICP, tone, competitors), and raise a task for each '
+        + 'concrete piece of work it recommends. Do not invent anything the scan does not support.',
+      assistantReply: brief,
+    });
+
+    res.json({
+      actions: actions || [],
+      descriptions: describeActions(actions || []),
+      brief,
+    });
+  } catch (err) {
+    console.error('[brandScans/actions]', err.message);
+    res.status(500).json({ error: friendlyError(err) });
+  }
+});
 
 // Map frontend status values → DB CHECK values
 function mapStatusIn(status) {

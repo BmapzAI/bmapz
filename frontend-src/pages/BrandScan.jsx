@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import BrandScanSetup from '@/components/brandscan/BrandScanSetup';
 import BrandScanReport from '@/components/brandscan/BrandScanReport';
+import BrandScanActions from '@/components/brandscan/BrandScanActions';
 import { toast } from 'sonner';
 import { Company, BrandScanData } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
@@ -309,7 +310,13 @@ Generate 3-4 buyer personas, 5-8 brand attributes, 4 brand pillars, 10+ SEO keyw
       </div>
 
       {activeScan ? (
-        <BrandScanReport scan={activeScan} onReset={() => setShowSetup(true)} language={language} />
+        <div className="space-y-4">
+          <BrandScanReport scan={activeScan} onReset={() => setShowSetup(true)} language={language} />
+          {/* The scan was a dead end until now: a report nothing else could act on.
+              Proposals go through the same approval flow as the chat, so it gets
+              no privileges of its own. */}
+          {activeScan.status === 'complete' && <BrandScanActions scanId={activeScan.id} />}
+        </div>
       ) : (
         <div className="text-center py-16 text-gray-400">
           <FileSearch className="w-12 h-12 mx-auto mb-3 opacity-30" />
