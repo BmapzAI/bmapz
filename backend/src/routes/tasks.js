@@ -25,6 +25,7 @@ import { createNotification } from '../lib/notify.js';
 import { runTaskWithAI } from '../lib/taskRunner.js';
 import { runAIChat } from './ai.js';
 import { applyActions, buildSectionAction, friendlyError } from '../lib/aiActions.js';
+import { dueInstant, regionCodeForCompany } from '../lib/regions.js';
 import { notifyMentions } from '../lib/mentions.js';
 
 const router = Router();
@@ -325,10 +326,25 @@ router.get('/summary', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * A due date means the end of that day WHERE THE COMPANY IS.
+ *
+ * The date pickers send a plain "2026-09-01", which Date.parse reads as UTC
+ * midnight — 21:00 on 31 August in São Paulo. Tasks displayed a day early and went
+ * overdue before their day had begun. Values that already carry a time are kept
+ * exactly as sent.
+ */
+async function resolveDueAt(value, companyId) {
+  if (!value) return null;
+  const code = await regionCodeForCompany(supabaseAdmin, companyId);
+  const d = dueInstant(value, code);
+  return d ? d.toISOString() : null;
+}
+
 // ─── Create ──────────────────────────────────────────────────────────────────
 async function createOneTask({ body, req }) {
   const fields = pickTaskFields(body);
-  fields.due_at = nullIfBlank(fields.due_at);
+  fields.due_at = await resolveDueAt(nullIfBlank(fields.due_at), req.companyId);
   fields.linked_id = nullIfBlank(fields.linked_id);
 
   const invalid = validateTaskFields(fields);
@@ -640,7 +656,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
     if (!before) return res.status(404).json({ error: 'Task not found' });
 
     const fields = pickTaskFields(req.body);
-    if ('due_at' in fields) fields.due_at = nullIfBlank(fields.due_at);
+    if ('due_at' in fields) fields.due_at = await resolveDueAt(nullIfBlank(fields.due_at), req.companyId);
     if ('linked_id' in fields) fields.linked_id = nullIfBlank(fields.linked_id);
 
     const invalid = validateTaskFields(fields);

@@ -2932,3 +2932,41 @@ balances are unchanged):
 - The add-on write succeeds: `scan_tokens_addon` 0 -> 2, remaining computed as 3.
 Credits are still NOT deducted on trial — that is deliberate and unchanged
 (logged to credit_transactions for visibility, never enforced).
+
+## Region applied to scheduling (Claude, 2026-08-15)
+
+TWO REAL OFF-BY-A-TIMEZONE BUGS, both from building times in the SERVER's zone
+(UTC on Railway) rather than the company's.
+
+1. DUE DATES. Pickers and the agent send a plain "2026-09-01". `Date.parse` reads
+   that as UTC midnight, which is 21:00 on 31 AUGUST in Sao Paulo — so tasks showed
+   a day early and went overdue three hours before their day had even started.
+   `dueInstant()` now resolves a bare date to the END of that day in the company's
+   region (23:59:59.999 local). A value that already carries a time is passed
+   through untouched.
+
+2. AUTOMATIONS. `computeNextRunAt` used `setHours(run_hour)`, so a "daily at 9am"
+   automation fired at 06:00 in Sao Paulo, and a "Monday" weekly could resolve
+   against the server's day-of-week. Daily / hourly / weekly / monthly are all
+   computed in the company's zone now. `every_minutes` is a pure interval with no
+   wall-clock meaning and is deliberately untouched.
+
+`zonedTimeToUtc` measures the zone's offset AT the target instant instead of
+assuming a fixed one, so it follows DST rather than drifting an hour for half the
+year.
+
+Region is resolved ONCE per batch (`applyActions` puts `regionCode` on ctx) and
+once per automation tick, not per row.
+
+VERIFIED 2026-08-15 across BR / US / AU:
+- "2026-09-01" -> 2026-09-01 23:59:59 local (old behaviour printed for contrast:
+  2026-08-31 21:00 in BR).
+- An explicit instant is preserved exactly.
+- daily 9am lands at 09:00 local in all three zones and is always in the future.
+- weekly Monday 9am lands on a Monday at 09:00 local.
+- monthly on the 1st at 9am lands on the 1st at 09:00 local.
+- every_minutes is unchanged by zone.
+
+NOT CHANGED: the frontend's `isOverdue`/`formatDue` still use the BROWSER's zone.
+That is correct for a person travelling, and now that the stored instant is right
+the two agree for anyone sitting in the company's market.

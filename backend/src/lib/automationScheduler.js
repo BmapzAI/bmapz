@@ -12,15 +12,38 @@
  * prevents overlapping ticks if a batch runs long.
  */
 import { supabaseAdmin } from './supabase.js';
+import {
+  DEFAULT_REGION_CODE, zonedTimeToUtc, partsInRegion, regionCodeForCompany,
+} from './regions.js';
 
 const TICK_MS = 60 * 1000;
 let running = false;
 let runAIChatRef = null; // injected at start to avoid a circular import
 
-/** Compute the next run time strictly AFTER `from` for an automation row. */
-export function computeNextRunAt(a, from = new Date()) {
-  const next = new Date(from);
-  next.setSeconds(0, 0);
+/**
+ * Compute the next run time strictly AFTER `from`, in the company's own timezone.
+ *
+ * `run_hour` is a wall-clock hour the user picked — "send the weekly report at 9".
+ * This used `setHours()`, which builds the time in the SERVER's zone (UTC on
+ * Railway), so a São Paulo company's 9am automation fired at 06:00 local, and a
+ * "Monday" weekly could land on Sunday evening. Both are computed in `regionCode`
+ * now, so the hour the user chose is the hour they get.
+ *
+ * `every_minutes` is a pure interval and has no wall-clock meaning, so it is
+ * unaffected by timezone.
+ */
+export function computeNextRunAt(a, from = new Date(), regionCode = DEFAULT_REGION_CODE) {
+  const hour = a.run_hour ?? 9;
+  const minute = a.run_minute ?? 0;
+
+  // A candidate instant for a local wall-clock time, offset by whole days.
+  const at = (parts, addDays = 0) => zonedTimeToUtc({
+    ...parts,
+    day: parts.day + addDays,
+    hour, minute, second: 0, ms: 0,
+  }, regionCode);
+
+  const local = partsInRegion(regionCode, from);
 
   switch (a.schedule_type) {
     case 'every_minutes': {
@@ -28,29 +51,33 @@ export function computeNextRunAt(a, from = new Date()) {
       return new Date(from.getTime() + interval * 60 * 1000);
     }
     case 'hourly': {
-      next.setMinutes(a.run_minute ?? 0);
-      if (next <= from) next.setHours(next.getHours() + 1);
-      return next;
+      const next = zonedTimeToUtc({ ...local, minute, second: 0, ms: 0 }, regionCode);
+      return next > from ? next : new Date(next.getTime() + 60 * 60 * 1000);
     }
     case 'daily': {
-      next.setHours(a.run_hour ?? 9, a.run_minute ?? 0);
-      if (next <= from) next.setDate(next.getDate() + 1);
-      return next;
+      const today = at(local);
+      return today > from ? today : at(local, 1);
     }
     case 'weekly': {
       const targetDow = a.run_day_of_week ?? 1; // Monday default
-      next.setHours(a.run_hour ?? 9, a.run_minute ?? 0);
-      let delta = (targetDow - next.getDay() + 7) % 7;
-      if (delta === 0 && next <= from) delta = 7;
-      next.setDate(next.getDate() + delta);
-      return next;
+      // Day-of-week as seen in the region, not on the server.
+      const localDow = new Date(zonedTimeToUtc({ ...local, hour: 12, minute: 0 }, regionCode))
+        .getUTCDay();
+      let delta = (targetDow - localDow + 7) % 7;
+      if (delta === 0 && at(local) <= from) delta = 7;
+      return at(local, delta);
     }
     case 'monthly': {
       const dom = Math.min(28, Math.max(1, a.run_day_of_month ?? 1));
-      next.setDate(dom);
-      next.setHours(a.run_hour ?? 9, a.run_minute ?? 0);
-      if (next <= from) next.setMonth(next.getMonth() + 1, dom);
-      return next;
+      const thisMonth = zonedTimeToUtc(
+        { year: local.year, month: local.month, day: dom, hour, minute, second: 0, ms: 0 },
+        regionCode,
+      );
+      if (thisMonth > from) return thisMonth;
+      const nextMonth = local.month === 12
+        ? { year: local.year + 1, month: 1 }
+        : { year: local.year, month: local.month + 1 };
+      return zonedTimeToUtc({ ...nextMonth, day: dom, hour, minute, second: 0, ms: 0 }, regionCode);
     }
     default:
       return new Date(from.getTime() + 24 * 60 * 60 * 1000);
@@ -76,10 +103,19 @@ async function executeTaskAutomation(a) {
   const tpl = a.task_template || {};
   const title = String(tpl.title || a.name || 'Scheduled task').slice(0, 300);
 
+  // "Due in 2 days" means the end of that day where the company is, not this exact
+  // clock time 48 hours from now — otherwise a task created at 09:00 is overdue at
+  // 09:00 on its due date, hours before that day is actually over.
   const dueInDays = Number(tpl.due_in_days);
-  const due_at = Number.isFinite(dueInDays) && dueInDays >= 0
-    ? new Date(Date.now() + dueInDays * 24 * 60 * 60 * 1000).toISOString()
-    : null;
+  let due_at = null;
+  if (Number.isFinite(dueInDays) && dueInDays >= 0) {
+    const regionCode = await regionCodeForCompany(supabaseAdmin, a.company_id);
+    const local = partsInRegion(regionCode, new Date(Date.now() + dueInDays * 86400_000));
+    due_at = zonedTimeToUtc(
+      { ...local, hour: 23, minute: 59, second: 59, ms: 999 },
+      regionCode,
+    ).toISOString();
+  }
 
   // Only 'ai' and 'user' are honoured; anything else becomes unassigned. A
   // template naming a person who has since left the company would otherwise
@@ -225,7 +261,10 @@ async function tick() {
       //
       // `.eq('next_run_at', a.next_run_at)` makes this a compare-and-swap: only
       // the worker that still sees the value it read wins the claim.
-      const nextRun = computeNextRunAt(a, new Date());
+      // The hour the user picked is a wall-clock hour in THEIR market, so the
+      // company's region decides when it actually fires.
+      const regionCode = await regionCodeForCompany(supabaseAdmin, a.company_id);
+      const nextRun = computeNextRunAt(a, new Date(), regionCode);
       const { data: claimed, error: claimErr } = await supabaseAdmin
         .from('ai_automations')
         .update({ next_run_at: nextRun.toISOString() })

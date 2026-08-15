@@ -26,6 +26,7 @@
  */
 import { supabaseAdmin } from './supabase.js';
 import { invalidateCompanyBrain } from './companyBrain.js';
+import { dueInstant } from './regions.js';
 
 const ACTION_BLOCK_RE = /```(?:bmapz-actions|bmapz_actions|actions)\s*([\s\S]*?)```/i;
 
@@ -361,6 +362,18 @@ const isoOrNull = (v) => {
   return Number.isNaN(ms) ? null : new Date(ms).toISOString();
 };
 
+/**
+ * A due date, resolved in the company's market.
+ *
+ * The model writes plain dates ("2026-09-01"). `Date.parse` reads those as UTC
+ * midnight, which in São Paulo is 21:00 the previous evening — so the task showed
+ * a day early and went overdue before its day had started.
+ */
+const dueAt = (v, regionCode) => {
+  const d = dueInstant(v, regionCode);
+  return d ? d.toISOString() : null;
+};
+
 /* ── Parsing + preview ──────────────────────────────────────────────────── */
 
 /**
@@ -668,7 +681,7 @@ async function createTask(action, ctx) {
     section: SECTIONS.has(action.section) ? action.section : 'general',
     assignee_type: assignToAI ? 'ai' : 'unassigned',
     visibility: action.visibility === 'private' ? 'private' : 'company',
-    due_at: isoOrNull(action.due_at || action.deadline),
+    due_at: dueAt(action.due_at || action.deadline, ctx.regionCode),
     metadata: { created_by_ai_chat: true },
   }).select().single();
   if (error) return { ok: false, error: error.message };
@@ -711,7 +724,7 @@ async function updateTask(action, ctx) {
   if (TASK_STATUSES.has(action.status)) patch.status = action.status;
   if (PRIORITIES.has(action.priority)) patch.priority = action.priority;
   if (SECTIONS.has(action.section)) patch.section = action.section;
-  if (action.due_at !== undefined) patch.due_at = isoOrNull(action.due_at);
+  if (action.due_at !== undefined) patch.due_at = dueAt(action.due_at, ctx.regionCode);
   if (!Object.keys(patch).length) return { ok: false, error: 'Nothing to update.' };
 
   // Completion bookkeeping is decided here, never taken from the model.
@@ -1002,6 +1015,14 @@ export function buildSectionAction({ section, title, content }) {
  */
 export async function applyActions(actions, ctx) {
   const results = [];
+
+  // Resolved once for the whole batch: due dates are wall-clock dates in the
+  // company's market, and "1 September" must not become 21:00 on 31 August.
+  if (!ctx.regionCode) {
+    const { regionCodeForCompany } = await import('./regions.js');
+    ctx = { ...ctx, regionCode: await regionCodeForCompany(supabaseAdmin, ctx.companyId) };
+  }
+
   for (const action of actions || []) {
     const op = String(action.op || action.operation || '').trim();
     const handler = HANDLERS[op];
