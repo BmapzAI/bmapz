@@ -392,12 +392,75 @@ async function advanceRun(run, wf, companyKeys) {
   await updateRun(run.id, { current_node_id: currentId, next_action_at: new Date().toISOString(), steps_completed: steps });
 }
 
+/** Run states that end the run — nothing further will happen on its own. */
+const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'canceled', 'cancelled']);
+
+/**
+ * Put a finished run into the lead's own history, with WHY it ended.
+ *
+ * Until now a run's outcome lived only on the run row, so opening a lead gave no
+ * sign that a workflow had reached them, succeeded, or failed — the timeline is
+ * where someone actually looks when asking "what happened to this lead?".
+ *
+ * Never throws: a history entry must not be able to fail a workflow.
+ */
+async function recordRunOutcome(runId, fields) {
+  try {
+    const { data: run, error } = await supabaseAdmin
+      .from('workflow_runs')
+      .select('id, company_id, lead_id, workflow_id, status, error, steps_completed, current_node_id, started_at')
+      .eq('id', runId)
+      .maybeSingle();
+    if (error || !run?.lead_id || !run.company_id) return;
+
+    const { data: wf } = await supabaseAdmin
+      .from('workflows').select('name').eq('id', run.workflow_id).maybeSingle();
+    const name = wf?.name || 'Workflow';
+
+    const status = fields.status;
+    const reason = fields.error || run.error || null;
+    const succeeded = status === 'completed';
+
+    const summary = succeeded
+      ? `${name} completed — ${run.steps_completed || 0} step(s) run`
+      : `${name} ${status === 'failed' ? 'failed' : 'was cancelled'}${reason ? `: ${String(reason).slice(0, 200)}` : ''}`;
+
+    await logLeadActivity({
+      companyId: run.company_id,
+      leadId: run.lead_id,
+      activityType: LEAD_ACTIVITY_TYPES.WORKFLOW,
+      summary,
+      actorType: 'workflow',
+      actorLabel: name,
+      details: {
+        workflow_id: run.workflow_id,
+        run_id: run.id,
+        status,
+        outcome: succeeded ? 'success' : 'failure',
+        reason,
+        // Where it stopped, so a failure can be traced to a step rather than
+        // just reported as "failed".
+        stopped_at_node: run.current_node_id || null,
+        steps_completed: run.steps_completed || 0,
+      },
+    });
+  } catch (err) {
+    console.error('[workflowEngine] could not record run outcome:', err.message);
+  }
+}
+
 async function updateRun(id, fields) {
   const { error } = await supabaseAdmin
     .from('workflow_runs')
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw error;
+
+  // Every terminal transition goes through here, so this is the one place that
+  // catches all of them — success, failure, loop guard, deleted workflow, cancel.
+  if (fields.status && TERMINAL_RUN_STATES.has(fields.status)) {
+    await recordRunOutcome(id, fields);
+  }
 }
 
 // ── enrollment ───────────────────────────────────────────────────────────────

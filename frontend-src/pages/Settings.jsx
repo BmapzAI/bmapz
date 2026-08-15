@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from 'react-router-dom';
-import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, Plus, X, FileText, ArrowRight, Zap, ScanLine, KeyRound, Sparkles, Users, Swords } from 'lucide-react';
+import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, Plus, X, FileText, ArrowRight, Zap, ScanLine, KeyRound, Sparkles, Users, Swords, MapPin } from 'lucide-react';
 import CompetitorsTab from '@/components/settings/CompetitorsTab';
 // KeyRound used in TabsTrigger
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ import UsageTab from '@/components/settings/UsageTab';
 import SalesTeamTab from '@/components/settings/SalesTeamTab';
 import { Company } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
+import { REGIONS, DEFAULT_REGION_CODE } from '@shared/regions';
 
 function TagInput({ label, values = [], onChange, placeholder }) {
   const [input, setInput] = useState('');
@@ -93,7 +94,7 @@ export default function Settings() {
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
   const company = companies[0];
 
-  const [companyForm, setCompanyForm] = useState({ name: '', website: '', industry: '', services_description: '', value_propositions: [], years_in_business: '', business_model: '', average_ticket: '', repurchase_cycle: '', marketing_structure: '', sales_structure: '', geographic_market: '' });
+  const [companyForm, setCompanyForm] = useState({ name: '', website: '', industry: '', services_description: '', value_propositions: [], years_in_business: '', business_model: '', average_ticket: '', repurchase_cycle: '', marketing_structure: '', sales_structure: '', geographic_market: '', region: DEFAULT_REGION_CODE });
   const [icpForm, setIcpForm] = useState({ industries: [], company_sizes: [], locations: [], job_titles: [], pain_points: [], budget_range: '', decision_criteria: [], primary_audience: '', secondary_audience: '', decision_maker_profile: [], main_desires: '', common_objections: '', awareness_level: '' });
   const [briefingForm, setBriefingForm] = useState({ current_marketing: false, marketing_channels: [], main_challenge: [], funnel_structure: [], historical_data: [], primary_objectives: [], revenue_target: '', lead_target: '', expected_roi: '', positioning_today: '', desired_perception: '', competitive_advantages: '', do_not_communicate: '', tone_of_voice: [], direct_competitors: '', market_references: '', what_sold: '', transformation: '', recurrence: false, upsell: false, technical_differentiator: '', primary_platform: [], content_formats: [], content_frequency: '', content_focus: [], content_types: [], hook_type: [], monthly_budget: '', campaign_structure: '', key_kpis: [], main_bottlenecks: '', retention_strategy: false, discover_brand: '', research: '', compare: '', purchase_decision: '', repurchase: '', aov_drivers: '', important_dates: '', strategic_events: '', sales_peaks: '', low_demand: '', brand_perception: [], mandatory_visuals: '', avoid_visuals: '', video_style: '', believe_sentence: '', exists_sentence: '', unlike_sentence: '', not_for: '', not_priority: '', attract: '', avoid_client: '', success_metrics: '', timeframe: '', ideal_6_months: '' });
 
@@ -104,6 +105,8 @@ export default function Settings() {
         ...prev,
         name: company.name || '', website: company.website || '', industry: company.industry || '',
         services_description: company.services_description || '', value_propositions: company.value_propositions || [],
+        // Lives in the settings JSONB and is flattened onto the company record.
+        region: company.region || company.settings?.region || DEFAULT_REGION_CODE,
         ...(company.company_details || {})
       }));
       setIcpForm(company.icp || icpForm);
@@ -164,6 +167,44 @@ export default function Settings() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Region sits with language but is NOT the same kind of setting:
+                language is a personal preference, region is a property of the
+                business, so it is saved on the company and everyone sees it. */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#cb6ce6]/20 flex items-center justify-center">
+                  <MapPin size={20} className="text-[#cb6ce6]" />
+                </div>
+                <div>
+                  <p className="font-medium text-white">{isPt ? 'Região' : 'Region'}</p>
+                  <p className="text-sm text-gray-400">
+                    {isPt
+                      ? 'Define o fuso horário, os feriados e o contexto de mercado usado pela IA.'
+                      : 'Sets local time, public holidays, and the market context the AI writes for.'}
+                  </p>
+                </div>
+              </div>
+              <Select
+                value={companyForm.region || DEFAULT_REGION_CODE}
+                onValueChange={(v) => setCompanyForm(p => ({ ...p, region: v }))}
+              >
+                <SelectTrigger className="w-[180px] bg-black/30 border-white/10 text-white"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-[#1a1a1a] border-white/10 max-h-72">
+                  {REGIONS.map(r => (
+                    <SelectItem key={r.code} value={r.code} className="text-white">
+                      {isPt ? r.namePt : r.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <p className="text-gray-500 text-xs">
+              {isPt
+                ? 'A região é salva junto com os dados da empresa — use Salvar na aba Empresa.'
+                : 'Region is saved with your company details — use Save on the Company tab.'}
+            </p>
           </div>
         </TabsContent>
 

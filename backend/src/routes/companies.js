@@ -91,6 +91,10 @@ const SETTINGS_FIELDS = new Set([
   // its own table: it is a short, company-scoped list read as a whole, so a column
   // buys nothing and a new table would add another FK pair for no benefit.
   'competitors',
+  // The market the company operates in (ISO 3166-1 alpha-2). Drives local time for
+  // scheduling, which public holidays the calendars show, and the seasonal and
+  // market context the Company Brain gives the agent.
+  'region',
 ]);
 
 // flattenCompany / SECRET_KEY_RE now live in lib/companyView.js. They were moved

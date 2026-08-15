@@ -19,18 +19,27 @@ const PLATFORMS = [
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+import { useRegion } from '@/lib/useRegion';
+
 export default function SocialCalendar({ posts = [], onDayClick, onPostClick, onPostDoubleClick }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [zoom, setZoom] = useState('month');
   const [holidays, setHolidays] = useState([]);
 
+  // Public holidays for the company's own market, not a hard-coded US calendar —
+  // a Brazilian company was shown Thanksgiving and never Carnaval. `region` is an
+  // ISO 3166-1 alpha-2 code, which is exactly what this API takes.
+  const { region } = useRegion();
+
   useEffect(() => {
     const year = format(currentDate, 'yyyy');
-    fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/US`)
-      .then(r => r.json())
-      .then(data => setHolidays(Array.isArray(data) ? data : []))
-      .catch(() => {});
-  }, [format(currentDate, 'yyyy')]);
+    let cancelled = false;
+    fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${region.code}`)
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => { if (!cancelled) setHolidays(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setHolidays([]); });
+    return () => { cancelled = true; };
+  }, [format(currentDate, 'yyyy'), region.code]);
 
   const getPostsForDay = (day) =>
     posts.filter(p => p.scheduled_for && isSameDay(new Date(p.scheduled_for), day));

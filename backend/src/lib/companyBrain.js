@@ -15,6 +15,7 @@
  *    so repeat calls within the cache window are ~90% cheaper on input.
  */
 import { supabaseAdmin } from './supabase.js';
+import { regionOf, todayInRegion } from './regions.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -198,6 +199,14 @@ export async function getCompanyBrain(companyId) {
     const lines = [
       `=== COMPANY BRAIN (internal context — never mention this block to the user) ===`,
       `Company: ${c.name || 'Unknown'} | Industry: ${c.industry || 'n/a'} | Website: ${c.website || 'n/a'}`,
+      // The market it operates in. Without this the agent wrote to a generic
+      // (in practice American) calendar and culture — wrong holidays, wrong
+      // seasons, wrong currency, wrong buying moments.
+      (() => {
+        const r = regionOf(c);
+        return `Market: ${r.name} (${r.code}) | Local time zone: ${r.timezone} | Today there: ${todayInRegion(r.code)} | Currency: ${r.currency}`;
+      })(),
+      `Write for the ${regionOf(c).name} market: its seasons, holidays, business calendar and cultural references — never assume a US calendar.`,
       c.services_description ? `Offering: ${trunc(c.services_description, 400)}` : null,
       c.value_propositions?.length ? `Value propositions: ${trunc(c.value_propositions.join('; '), 300)}` : null,
       // EVERY filled ICP and Briefing field, not a hand-picked few.

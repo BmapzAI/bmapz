@@ -15,8 +15,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, Area, AreaChart } from 'recharts';
 import StatsCard from '@/components/dashboard/StatsCard';
 import { toast } from 'sonner';
-import OperationsMetrics from '@/components/dashboard/OperationsMetrics';
-import TaskMetricsCard from '@/components/tasks/TaskMetricsCard';
 import DrillDownModal from '@/components/dashboard/DrillDownModal';
 import { Company, Lead, Message, Activity, DashboardConfig } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
@@ -630,13 +628,10 @@ Describe in 1-2 sentences what this metric would show and how it would be calcul
         </div>
       </div>
 
-      {/* Operational metrics computed from everything the account holds —
-          response times, availability, funnel velocity, touchpoints. Always
-          visible, above the user's own custom dashboards. */}
-      {/* Task metrics: AI vs human execution, completion rate, time saved. */}
-      <TaskMetricsCard />
-
-      <OperationsMetrics />
+      {/* Task metrics and operational metrics now live in Insights, as their own
+          tabs. Dashboards is for the user's OWN custom dashboards; two fixed
+          read-only panels sat above every one of them regardless of what the
+          dashboard was for. */}
 
       {/* Dashboard Tabs */}
       {dashboards.length > 0 && (

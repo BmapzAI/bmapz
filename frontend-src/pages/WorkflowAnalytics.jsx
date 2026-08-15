@@ -7,10 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, Clock, CheckCircle2, XCircle, Zap, AlertCircle, Calendar, Share2, MessageSquare, Mail, Linkedin, BarChart3, ExternalLink, Instagram, Users, FileText, Filter } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Clock, CheckCircle2, XCircle, Zap, AlertCircle, Calendar, Share2, MessageSquare, Mail, Linkedin, BarChart3, ExternalLink, Instagram, Users, FileText, Filter, CheckSquare, Gauge } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Company, Workflow, WorkflowRun } from '@/api/entities';
+import TaskMetricsCard from '@/components/tasks/TaskMetricsCard';
+import OperationsMetrics from '@/components/dashboard/OperationsMetrics';
+import WorkflowRunBreakdown from '@/components/workflows/WorkflowRunBreakdown';
 import { InvokeLLM } from '@/api/integrations';
 import { usePersistentDraft } from '@/lib/usePersistentDraft';
 
@@ -78,7 +81,9 @@ export default function WorkflowAnalytics() {
     const total = workflowRuns.length;
     const completed = workflowRuns.filter(r => r.status === 'completed').length;
     const failed = workflowRuns.filter(r => r.status === 'failed').length;
-    const running = workflowRuns.filter(r => r.status === 'running').length;
+    // The engine writes 'active' and 'queued'; there is no 'running' status, so
+    // this counter read 0 no matter how many leads were mid-flow.
+    const running = workflowRuns.filter(r => r.status === 'active' || r.status === 'queued').length;
     const avgDuration = workflowRuns.filter(r => r.duration_minutes).reduce((sum, r) => sum + r.duration_minutes, 0) / (workflowRuns.filter(r => r.duration_minutes).length || 1);
     const successRate = total > 0 ? ((completed / total) * 100).toFixed(1) : 0;
     const avgOptScore = workflowRuns.filter(r => r.optimization_score).reduce((sum, r) => sum + r.optimization_score, 0) / (workflowRuns.filter(r => r.optimization_score).length || 1);
@@ -185,7 +190,24 @@ Return structured JSON.`,
           <TabsTrigger value="marketing" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
             <Share2 size={16} className="mr-2" /> Channel Performance
           </TabsTrigger>
+          {/* Moved out of Dashboards: these read the whole account, so they belong
+              with the other account-wide reporting rather than sitting on top of
+              every custom dashboard. */}
+          <TabsTrigger value="tasks" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
+            <CheckSquare size={16} className="mr-2" /> Tasks
+          </TabsTrigger>
+          <TabsTrigger value="operations" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]">
+            <Gauge size={16} className="mr-2" /> Operations
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="tasks" className="space-y-6">
+          <TaskMetricsCard />
+        </TabsContent>
+
+        <TabsContent value="operations" className="space-y-6">
+          <OperationsMetrics />
+        </TabsContent>
 
         {/* Workflow Runs Tab */}
         <TabsContent value="workflows" className="space-y-6">
@@ -207,6 +229,11 @@ Return structured JSON.`,
               </SelectContent>
             </Select>
           </div>
+
+          {/* Step distribution, failure reasons and outcomes — all derived from the
+              runs already loaded above, so these can never disagree with the
+              totals beside them. */}
+          <WorkflowRunBreakdown runs={workflowRuns} workflows={workflows} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {[

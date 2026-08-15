@@ -2817,3 +2817,45 @@ never reach a model prompt. The General tab (language, agent name) is not in the
 brain; it is UI preference, not company context. NOTE: when the region selector
 lands it SHOULD be added, since region changes holidays, seasonality and market
 context.
+
+## Insights tabs, region, workflow outcomes (Claude, 2026-08-15)
+
+ITEM 1 — Tasks and Operations moved out of Dashboards into Insights
+(`pages/WorkflowAnalytics.jsx`, which is what the "Insights" sidebar entry points
+at) as their own tabs. They read the whole account, so they belong with the
+account-wide reporting rather than pinned above every custom dashboard.
+
+ITEM 2 — Region. `lib/regions.js` is shared by both sides via the `@shared` alias
+(vite maps `@shared` -> `backend/src/lib`). Stored as `settings.region` (ISO
+3166-1 alpha-2) and added to `SETTINGS_FIELDS` so the existing company PATCH
+persists it. Selector sits under the language selector in Settings > General, but
+it is saved with the COMPANY (region is a property of the business; language stays
+a personal preference), which is stated in the UI.
+- `SocialCalendar` fetched `.../PublicHolidays/${year}/US` hard-coded — a Brazilian
+  company saw Thanksgiving and never Carnaval. Now uses `region.code`.
+- The Company Brain gains a Market line (region, timezone, today's local date,
+  currency) plus an instruction to write for that market's calendar and culture.
+  This is why region belongs on the company: it must be readable server-side.
+- `nowInRegion` / `todayInRegion` exist for scheduling; the task/automation
+  scheduler has NOT been switched to them yet — see below.
+
+ITEM 7 — Workflow run outcomes.
+(a) `updateRun` in lib/workflowEngine.js is the single choke point for every run
+    status change, so `recordRunOutcome` hangs off it and catches all terminal
+    states (completed, failed, loop guard, deleted workflow, cancel). It writes a
+    `workflow` entry to the LEAD's history with the outcome, the reason, the node
+    it stopped at and steps completed. Never throws — a history entry must not be
+    able to fail a workflow.
+(b) `components/workflows/WorkflowRunBreakdown.jsx` adds three charts to Insights >
+    Workflow Analytics: where leads currently sit (live runs only — a finished run
+    is not "at" a step), why runs failed, and outcome distribution. All derived
+    from the runs the page already loads, so they cannot disagree with the totals
+    beside them. Raw error strings are grouped by `classifyFailure` — charting them
+    verbatim gives one slice per failure and says nothing.
+
+FIXED IN PASSING: the "Running" metric counted `status === 'running'`, which the
+engine never writes (it uses `active` / `queued`), so that number was always 0.
+
+STILL OPEN: region is not yet applied to task due-dates / automation scheduling
+(they still use server time), and item 8 (Brand scan into the brain + approval
+flow) is not started.
