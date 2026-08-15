@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Play, Pause, Trash2, Edit2, Copy, GitBranch, Users, Zap, MoreVertical, CheckCircle2, LayoutTemplate, UserPlus, Loader2 } from 'lucide-react';
+import { Plus, Search, Play, Pause, Trash2, Edit2, Copy, GitBranch, Users, Zap, MoreVertical, CheckCircle2, LayoutTemplate, UserPlus, Loader2, List } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,7 +12,8 @@ import { toast } from 'sonner';
 import WorkflowBuilderModal from '@/components/workflows/WorkflowBuilderModal';
 import { WORKFLOW_TEMPLATE_LIST } from '@/components/workflows/workflowTemplates';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
-import { Company, Workflow, Lead } from '@/api/entities';
+import { Company, Workflow, Lead, LeadList } from '@/api/entities';
+import { resolveListLeads, resolveListCount } from '@/lib/leadLists';
 import CreateTaskButton from '@/components/tasks/CreateTaskButton';
 import { api } from '@/api/apiClient';
 
@@ -26,6 +27,8 @@ export default function Workflows() {
   const [enrollWorkflow, setEnrollWorkflow] = useState(null); // workflow being enrolled into
   const [enrollSelected, setEnrollSelected] = useState([]);   // selected lead ids
   const [enrollSearch, setEnrollSearch] = useState('');
+  const [enrollTab, setEnrollTab] = useState('leads');        // 'leads' | 'lists'
+  const [enrollListIds, setEnrollListIds] = useState([]);     // selected list ids
   const [enrolling, setEnrolling] = useState(false);
 
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
@@ -92,6 +95,14 @@ export default function Workflows() {
     enabled: !!enrollWorkflow,
   });
 
+  // Lead lists are the other way people think about "who goes into this flow" —
+  // fetched alongside the leads, and only while the modal is open.
+  const { data: enrollLists = [] } = useQuery({
+    queryKey: ['leadListsForEnroll'],
+    queryFn: () => LeadList.filter(),
+    enabled: !!enrollWorkflow,
+  });
+
   const openEnroll = (w) => {
     if (w.status !== 'active') {
       toast.error(isPt ? 'Ative o fluxo antes de inscrever leads.' : 'Activate the workflow before enrolling leads.');
@@ -100,10 +111,43 @@ export default function Workflows() {
     setEnrollWorkflow(w);
     setEnrollSelected([]);
     setEnrollSearch('');
+    setEnrollTab('leads');
+    setEnrollListIds([]);
   };
 
   const toggleEnrollLead = (id) => {
     setEnrollSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  /**
+   * Picking a list selects the leads it currently contains.
+   *
+   * Membership comes from lib/leadLists, the same rule the Sales screen displays,
+   * so a dynamic list enrols exactly what it says it holds rather than whatever
+   * `lead_ids` happened to be at the last sync. Selections are merged, so a lead in
+   * two chosen lists is enrolled once.
+   */
+  const toggleEnrollList = (list) => {
+    const ids = resolveListLeads(list, leadsForEnroll).map(l => l.id);
+    setEnrollListIds((prev) => {
+      const picked = prev.includes(list.id);
+      const next = picked ? prev.filter(x => x !== list.id) : [...prev, list.id];
+
+      setEnrollSelected((sel) => {
+        if (picked) {
+          // Deselecting a list only drops leads no OTHER selected list still claims.
+          const stillClaimed = new Set(
+            enrollLists
+              .filter(l => next.includes(l.id))
+              .flatMap(l => resolveListLeads(l, leadsForEnroll).map(x => x.id)),
+          );
+          return sel.filter(id => !ids.includes(id) || stillClaimed.has(id));
+        }
+        return [...new Set([...sel, ...ids])];
+      });
+
+      return next;
+    });
   };
 
   const submitEnroll = async () => {
@@ -325,6 +369,22 @@ export default function Workflows() {
               ? 'Os leads selecionados entram no fluxo agora. Mensagens e esperas agendadas rodam automaticamente em segundo plano.'
               : 'Selected leads enter the workflow now. Scheduled messages and waits run automatically in the background.'}
           </p>
+          {/* Leads and lead lists are two ways of naming the same audience. */}
+          <div className="flex gap-1 p-1 rounded-xl bg-white/5 border border-white/10 w-fit">
+            {[
+              { key: 'leads', icon: Users, en: 'Leads', pt: 'Leads' },
+              { key: 'lists', icon: List, en: 'Lead lists', pt: 'Listas' },
+            ].map(t => (
+              <button key={t.key} onClick={() => setEnrollTab(t.key)}
+                className={`px-3 py-1.5 rounded-lg text-sm inline-flex items-center gap-1.5 transition-all ${
+                  enrollTab === t.key ? 'bg-[#38b6ff]/20 text-[#38b6ff]' : 'text-gray-400 hover:text-white'}`}>
+                <t.icon size={14} /> {isPt ? t.pt : t.en}
+              </button>
+            ))}
+          </div>
+
+          {enrollTab === 'leads' ? (
+          <>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <Input value={enrollSearch} onChange={(e) => setEnrollSearch(e.target.value)}
@@ -352,6 +412,40 @@ export default function Workflows() {
               );
             })}
           </div>
+          </>
+          ) : (
+          <div className="flex-1 overflow-y-auto space-y-1.5 min-h-[120px] max-h-[45vh]">
+            {enrollLists.length === 0 ? (
+              <p className="text-gray-500 text-sm text-center py-8">
+                {isPt ? 'Nenhuma lista ainda. Crie uma em Vendas.' : 'No lead lists yet. Create one in Sales.'}
+              </p>
+            ) : enrollLists.map(list => {
+              const sel = enrollListIds.includes(list.id);
+              const count = resolveListCount(list, leadsForEnroll);
+              return (
+                <button key={list.id} onClick={() => toggleEnrollList(list)}
+                  className={`w-full flex items-center gap-3 p-2.5 rounded-xl border text-left transition-all ${sel ? 'bg-[#38b6ff]/15 border-[#38b6ff]/40' : 'bg-white/5 border-white/10 hover:border-white/20'}`}>
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${sel ? 'bg-[#38b6ff] border-[#38b6ff]' : 'border-white/30'}`}>
+                    {sel && <CheckCircle2 size={12} className="text-white" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white text-sm truncate flex items-center gap-1.5">
+                      {list.name}
+                      {list.type === 'dynamic' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#cb6ce6]/20 text-[#cb6ce6]">
+                          {isPt ? 'dinâmica' : 'dynamic'}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-gray-500 text-xs truncate">
+                      {count} {isPt ? 'lead(s)' : 'lead(s)'}{list.description ? ` · ${list.description}` : ''}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          )}
           <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10">
             <span className="text-gray-400 text-sm">{enrollSelected.length} {isPt ? 'selecionado(s)' : 'selected'}</span>
             <div className="flex gap-2">

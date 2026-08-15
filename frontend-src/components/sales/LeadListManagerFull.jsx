@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { RefreshCw, Plus, List, Trash2, Users, Edit, Zap, UserMinus, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { LeadList } from '@/api/entities';
+import { resolveListCount } from '@/lib/leadLists';
 
 const SOURCE_CATEGORIES = ['inbound', 'outbound', 'offline'];
 const FUNNEL_STAGES = ['prospect', 'awareness', 'consideration', 'mql', 'sql', 'opportunity', 'customer', 'retention', 'advocacy'];
@@ -44,19 +45,37 @@ export default function LeadListManagerFull({ companyId, leads = [] }) {
 
   const resetForm = () => { setFormData({ name: '', description: '', is_dynamic: false, filters: {} }); setEditingList(null); };
 
+  // `is_dynamic` is form state only — there is no such column. The table stores
+  // `type` ('static' | 'dynamic'), and sending is_dynamic is what produced
+  // "Could not find the 'is_dynamic' column of 'lead_lists' in the schema cache"
+  // and failed every create and update.
+  const toPayload = ({ is_dynamic, ...rest }) => ({
+    ...rest,
+    type: is_dynamic ? 'dynamic' : 'static',
+    // A static list has no rules; keeping stale filters would make it re-populate
+    // itself the next time it was read as dynamic.
+    filters: is_dynamic ? (rest.filters || {}) : {},
+  });
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name) { toast.error('Name required'); return; }
+    const payload = toPayload(formData);
     if (editingList) {
-      updateMutation.mutate({ id: editingList.id, data: formData });
+      updateMutation.mutate({ id: editingList.id, data: payload });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(payload);
     }
   };
 
   const handleEdit = (list) => {
     setEditingList(list);
-    setFormData({ name: list.name, description: list.description || '', is_dynamic: list.is_dynamic || false, filters: list.filters || {} });
+    setFormData({
+      name: list.name,
+      description: list.description || '',
+      is_dynamic: list.type === 'dynamic',
+      filters: list.filters || {},
+    });
     setShowCreateDialog(true);
   };
 
@@ -84,20 +103,10 @@ export default function LeadListManagerFull({ companyId, leads = [] }) {
     }
   };
 
-  // Compute live lead counts for dynamic lists from current leads data (no DB lag)
-  const getLiveCount = (list) => {
-    if (!list.is_dynamic || !list.filters || Object.keys(list.filters).length === 0) {
-      return list.lead_count || 0;
-    }
-    const f = list.filters;
-    return leads.filter(lead => {
-      if (f.funnel_stages?.length && !f.funnel_stages.includes(lead.funnel_stage)) return false;
-      if (f.icp_score_min != null && lead.icp_score != null && lead.icp_score < f.icp_score_min) return false;
-      if (f.sources?.length && lead.source_category != null && !f.sources.includes(lead.source_category)) return false;
-      if (f.status?.length && !f.status.includes(lead.status)) return false;
-      return true;
-    }).length;
-  };
+  // Live count for dynamic lists, computed from current leads rather than the last
+  // synced number. The rule lives in lib/leadLists so workflow enrolment selects
+  // exactly the set this screen displays.
+  const getLiveCount = (list) => resolveListCount(list, leads);
 
   const getListLeads = (list) => leads.filter(l => (list.lead_ids || []).includes(l.id));
   const getUnlistedLeads = (list) => leads.filter(l => !(list.lead_ids || []).includes(l.id));
@@ -129,12 +138,12 @@ export default function LeadListManagerFull({ companyId, leads = [] }) {
                 <div className="flex items-center gap-2 mb-1">
                   <List size={16} className="text-[#38b6ff]" />
                   <h4 className="text-white font-medium">{list.name}</h4>
-                  {list.is_dynamic && <span className="text-xs px-1.5 py-0.5 rounded-full bg-[#cb6ce6]/20 text-[#cb6ce6] flex items-center gap-1"><Zap size={10} />Dynamic</span>}
+                  {list.type === 'dynamic' && <span className="text-xs px-1.5 py-0.5 rounded-full bg-[#cb6ce6]/20 text-[#cb6ce6] flex items-center gap-1"><Zap size={10} />Dynamic</span>}
                 </div>
                 {list.description && <p className="text-sm text-gray-400 mb-2">{list.description}</p>}
                 <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
                   <span className="flex items-center gap-1"><Users size={12} />{getLiveCount(list)} leads</span>
-                  {list.is_dynamic && list.filters && Object.keys(list.filters).length > 0 && (
+                  {list.type === 'dynamic' && list.filters && Object.keys(list.filters).length > 0 && (
                     <span className="text-[#cb6ce6]">Auto-filters: {Object.keys(list.filters).join(', ')}</span>
                   )}
                 </div>
