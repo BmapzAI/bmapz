@@ -10,6 +10,21 @@
  * symptom would be a workflow enrolling a different set than the list displays.
  */
 
+/**
+ * Read a sort field off a lead, translating the legacy Base44 date aliases.
+ *
+ * The sort UI still calls these fields `created_date` / `updated_date`, but the
+ * columns are `created_at` / `updated_at`. Reading the alias returned undefined for
+ * every lead, so every row compared equal and "sort by date added" — the DEFAULT
+ * sort on both the Sales board and the list view — did nothing at all.
+ */
+export function leadSortValue(lead, field) {
+  if (!lead || !field) return '';
+  if (field === 'created_date') return lead.created_at || lead.created_date || '';
+  if (field === 'updated_date') return lead.updated_at || lead.updated_date || '';
+  return lead[field] ?? '';
+}
+
 /** Does one lead satisfy a dynamic list's rules? */
 export function matchesListFilters(lead, filters) {
   const f = filters || {};

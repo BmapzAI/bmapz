@@ -170,7 +170,7 @@ export default function BrandScanReport({ scan, onReset, language = 'en' }) {
       <div className="flex items-center justify-between mb-8 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-white">Brand Scan — {cd.name}</h1>
-          <p className="text-gray-400 text-sm mt-0.5">{L('Relatório gerado por IA', 'AI-generated report')} • {new Date(scan.updated_date).toLocaleDateString(isPt ? 'pt-BR' : 'en-US')}</p>
+          <p className="text-gray-400 text-sm mt-0.5">{L('Relatório gerado por IA', 'AI-generated report')} • {new Date(scan.updated_at || scan.created_date || scan.created_at).toLocaleDateString(isPt ? 'pt-BR' : 'en-US')}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={onReset} className="border-white/10 text-gray-300 hover:text-white hover:bg-white/5">

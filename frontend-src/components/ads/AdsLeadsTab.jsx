@@ -110,7 +110,9 @@ export default function AdsLeadsTab() {
           l.lead_company_name || '',
           l.source || '',
           l.status || '',
-          new Date(l.created_date).toLocaleDateString(),
+          // The column is created_at; created_date is a Base44 alias that does not
+          // exist here, so this rendered "Invalid Date".
+          new Date(l.created_at || l.created_date).toLocaleDateString(),
         ].map(v => `"${(v || '').toString().replace(/"/g, '""')}"`).join(',')
       ),
     ].join('\n');
@@ -285,7 +287,7 @@ export default function AdsLeadsTab() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-gray-400 text-xs">
-                      {new Date(lead.created_date).toLocaleDateString()}
+                      {new Date(lead.created_at || lead.created_date).toLocaleDateString()}
                     </td>
                   </tr>
                 ))}

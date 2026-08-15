@@ -2970,3 +2970,30 @@ VERIFIED 2026-08-15 across BR / US / AU:
 NOT CHANGED: the frontend's `isOverdue`/`formatDue` still use the BROWSER's zone.
 That is correct for a person travelling, and now that the stored instant is right
 the two agree for anyone sitting in the company's market.
+
+## Legacy Base44 date aliases — swept (Claude, 2026-08-15)
+
+`created_date` / `updated_date` are Base44 aliases. Supabase has `created_at` /
+`updated_at`. Three files already carried comments about this; the rest had not
+been found. Confirmed against the live schema that NONE of leads, brand_scans,
+credit_transactions, billing_purchases or ai_outputs has a *_date column.
+
+DISPLAY BUGS FIXED (these rendered "Invalid Date" or nothing at all):
+- `AdsLeadsTab` — lead date in the CSV export AND in the table (Invalid Date).
+- `BrandScanReport` — the report's own generated-on date (Invalid Date).
+- `Billing` — every credit-transaction row and every purchase row (Invalid Date).
+- `AIOutputs` — the date was guarded by a ternary, so it silently showed nothing.
+- `LeadListView` — the Created / Updated columns always showed a dash.
+
+FUNCTIONAL BUG FIXED: lead sorting is client-side on `a[sortBy.field]`, and the
+default field on BOTH the Sales board and the list view is `created_date`. That key
+is undefined on every lead, so every row compared equal and "sort by date added"
+did nothing. `leadSortValue()` in lib/leadLists.js translates the aliases and is
+shared by both screens so they cannot drift.
+
+Entity `filter()` helpers ignore their sort/limit arguments entirely (e.g.
+`Lead.filter({...}, '-created_date', 20)`), so those arguments were already inert —
+the ordering that matters is what the route applies, plus these client sorts.
+
+REPO SWEEP: undefined-JSX-component check across every .jsx returned only two hits,
+both `<Platform>` / `<Page…>` written inside COMMENTS. No real undefined components.

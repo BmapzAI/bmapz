@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import { useNavigate } from 'react-router-dom';
 import { Lead, Workflow, LeadList } from '@/api/entities';
+import { leadSortValue } from '@/lib/leadLists';
 
 // ALL_COLUMNS is now built inside the component to support translations
 
@@ -88,8 +89,8 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
   });
 
   const sortedLeads = useMemo(() => [...leads].sort((a, b) => {
-    const aVal = a[sortBy.field] || '';
-    const bVal = b[sortBy.field] || '';
+    const aVal = leadSortValue(a, sortBy.field);
+    const bVal = leadSortValue(b, sortBy.field);
     if (sortBy.direction === 'asc') return aVal > bVal ? 1 : -1;
     return aVal < bVal ? 1 : -1;
   }), [leads, sortBy]);
@@ -211,8 +212,16 @@ export default function LeadListView({ leads, stages, onDisqualify, companyId })
         </span>
       );
       case 'is_decision_maker': return lead.is_decision_maker ? <span className="text-yellow-400 text-xs flex items-center gap-1"><Crown size={10} />{t('yes')}</span> : <span className="text-gray-600 text-xs">{t('no')}</span>;
-      case 'created_date': return <span className="text-gray-400 text-xs">{lead.created_date ? new Date(lead.created_date).toLocaleDateString() : '—'}</span>;
-      case 'updated_date': return <span className="text-gray-400 text-xs">{lead.updated_date ? new Date(lead.updated_date).toLocaleDateString() : '—'}</span>;
+      // The columns are created_at / updated_at. The created_date / updated_date
+      // aliases do not exist here, so both of these always rendered a dash.
+      case 'created_date': {
+        const v = lead.created_at || lead.created_date;
+        return <span className="text-gray-400 text-xs">{v ? new Date(v).toLocaleDateString() : '—'}</span>;
+      }
+      case 'updated_date': {
+        const v = lead.updated_at || lead.updated_date;
+        return <span className="text-gray-400 text-xs">{v ? new Date(v).toLocaleDateString() : '—'}</span>;
+      }
       case 'email': return <span className="text-gray-400 text-xs truncate max-w-[180px]">{lead.email || '—'}</span>;
       case 'phone': return <span className="text-gray-400 text-xs">{lead.phone || '—'}</span>;
       case 'source': return <span className="text-gray-400 text-xs capitalize truncate max-w-[120px]">{lead.source || '—'}</span>;

@@ -35,6 +35,7 @@ import LeadListView from '@/components/sales/LeadListView.jsx';
 import QuickStartGuide from '@/components/ui/QuickStartGuide';
 import { Company, Lead, LeadList, Funnel } from '@/api/entities';
 import CreateTaskButton from '@/components/tasks/CreateTaskButton';
+import { leadSortValue } from '@/lib/leadLists';
 
 const FUNNEL_STAGES_ORDERED = [
   { id: 'prospect', name: 'Prospect', color: '#9ca3af' },
@@ -117,8 +118,8 @@ export default function Sales() {
     })();
     return matchesSearch && matchesStage && matchesICP && matchesValue && matchesDecisionMaker && matchesSource && matchesList;
   }).sort((a, b) => {
-    const aVal = a[sortBy.field] || '';
-    const bVal = b[sortBy.field] || '';
+    const aVal = leadSortValue(a, sortBy.field);
+    const bVal = leadSortValue(b, sortBy.field);
     if (sortBy.direction === 'asc') {
       return aVal > bVal ? 1 : -1;
     }

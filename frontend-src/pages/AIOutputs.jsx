@@ -257,7 +257,11 @@ export default function AIOutputs() {
                         {output.status}
                       </span>
                       <span className="text-gray-400 text-xs">
-                        {output.created_date ? new Date(output.created_date).toLocaleDateString() : ''}
+                        {/* created_at is the column; created_date never existed,
+                            so no date was ever shown here. */}
+                        {output.created_at || output.created_date
+                          ? new Date(output.created_at || output.created_date).toLocaleDateString()
+                          : ''}
                       </span>
                       <span className="text-gray-400 text-xs capitalize">
                         {CATEGORIES.find(c => c.value === output.category)?.label}

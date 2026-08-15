@@ -375,7 +375,9 @@ export default function Billing() {
                   <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-white/5">
                     <div>
                       <p className="text-white text-sm">{tx.description || tx.feature || tx.type}</p>
-                      <p className="text-gray-500 text-xs">{new Date(tx.created_date).toLocaleString(isPt ? 'pt-BR' : 'en-US')}</p>
+                      {/* The column is created_at — created_date rendered "Invalid Date"
+                          on every transaction row. */}
+                      <p className="text-gray-500 text-xs">{new Date(tx.created_at || tx.created_date).toLocaleString(isPt ? 'pt-BR' : 'en-US')}</p>
                     </div>
                     <span className={`font-mono font-medium ${tx.credits_delta > 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {tx.credits_delta > 0 ? '+' : ''}{tx.credits_delta.toLocaleString('pt-BR')}
@@ -417,7 +419,7 @@ export default function Billing() {
                       <div className={`w-2 h-2 rounded-full ${p.status === 'paid' ? 'bg-green-400' : p.status === 'pending' ? 'bg-yellow-400' : 'bg-red-400'}`} />
                       <div>
                         <p className="text-white text-sm font-medium">{p.description || p.type}</p>
-                        <p className="text-gray-500 text-xs">{new Date(p.created_date).toLocaleDateString(isPt ? 'pt-BR' : 'en-US')}</p>
+                        <p className="text-gray-500 text-xs">{new Date(p.created_at || p.created_date).toLocaleDateString(isPt ? 'pt-BR' : 'en-US')}</p>
                       </div>
                     </div>
                     <div className="text-right">
