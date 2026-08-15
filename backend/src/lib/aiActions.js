@@ -30,6 +30,30 @@ import { invalidateCompanyBrain } from './companyBrain.js';
 const ACTION_BLOCK_RE = /```(?:bmapz-actions|bmapz_actions|actions)\s*([\s\S]*?)```/i;
 
 /**
+ * Turn a database error into something a person can act on.
+ *
+ * Users were being shown raw Postgres, e.g. 'null value in column "platform" of
+ * relation "ad_campaigns" violates not-null constraint'. That names the defect
+ * but tells the reader nothing about what to do, and leaks the schema.
+ */
+export function friendlyError(err) {
+  const msg = String(err?.message || err || '');
+
+  const missing = msg.match(/null value in column "([^"]+)"/i);
+  if (missing) return `This needs a ${missing[1].replace(/_/g, ' ')} before it can be created.`;
+
+  if (/duplicate key|already exists/i.test(msg)) return 'That already exists.';
+  if (/violates foreign key/i.test(msg)) return 'Something it refers to no longer exists.';
+  if (/violates check constraint/i.test(msg)) return 'One of the values is not allowed here.';
+  if (/permission denied|row-level security/i.test(msg)) return 'You do not have access to do that.';
+  if (/invalid input syntax|malformed/i.test(msg)) return 'One of the values is in the wrong format.';
+
+  // Anything still shaped like raw Postgres is withheld rather than shown.
+  if (/relation "|column "|constraint/i.test(msg)) return 'That could not be saved.';
+  return msg || 'That could not be saved.';
+}
+
+/**
  * The operation catalogue. Shared by the in-reply protocol and the second-pass
  * extractor so the two can never describe different capabilities.
  */
@@ -480,6 +504,8 @@ export function describeAction(action) {
         changes: [action.platform || 'no platform'], destructive: false };
     case 'save_to_archive':
       return { op, title: `Save "${str(action.title, 120) || ''}" to AI Outputs`, changes: [], destructive: false };
+    case 'save_seo_analysis':
+      return { op, title: 'File this as an SEO analysis', changes: [], destructive: false };
     case 'run_seo_analysis':
       return { op, title: `Run an SEO analysis of ${str(action.url, 200) || '(no URL)'}`,
         changes: [action.scan_type === 'site' ? 'entire site' : 'single page', 'uses AI credits'],
@@ -790,22 +816,36 @@ async function createAdCampaign(action, ctx) {
   const name = str(action.name, 200);
   if (!name) return { ok: false, error: 'A campaign needs a name.' };
 
+  // ad_campaigns.platform is NOT NULL, so passing null failed EVERY create with a
+  // raw constraint error — which is what "send to section → Ads" hit every time.
+  // A draft that has not picked a platform yet is a real state, so it is recorded
+  // as multi-platform (the term the Ads screens already use) rather than guessing
+  // a network on the user's behalf. getPlatform() returns null for it and every
+  // caller optional-chains, so it renders safely.
+  const platform = AD_PLATFORMS.has(action.platform) ? action.platform : 'multi';
+
   const { data, error } = await supabaseAdmin.from('ad_campaigns').insert({
     company_id: ctx.companyId,
     created_by: ctx.userId,
     name,
-    platform: AD_PLATFORMS.has(action.platform) ? action.platform : null,
+    platform,
     objective: str(action.objective, 120),
     status: 'draft',          // an agent must never start spending an ad budget
     strategy: action.strategy && typeof action.strategy === 'object' ? action.strategy : {},
     settings: { created_by_ai_chat: true },
   }).select().single();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyError(error) };
 
   await archive({ companyId: ctx.companyId, userId: ctx.userId, title: name,
     content: action.strategy ? JSON.stringify(action.strategy, null, 2) : name,
     category: 'strategies', type: 'campaign_plan', meta: { ad_campaign_id: data.id } });
-  return { ok: true, summary: `Created draft campaign "${name}"`, id: data.id, link: '/Ads' };
+  return {
+    ok: true,
+    summary: `Created draft campaign "${name}"`
+      + (platform === 'multi' ? ' — pick a platform in Ads Manager' : ` on ${platform}`),
+    id: data.id,
+    link: '/Ads',
+  };
 }
 
 /**
@@ -819,6 +859,53 @@ async function createAdCampaign(action, ctx) {
  * library reaches back into routes/ai.js for runAIChat, so a static import here
  * would close that cycle.
  */
+/**
+ * File an analysis that already exists into the SEO section.
+ *
+ * This is what "send to section → SEO" runs. It used to map to save_to_archive,
+ * so the banner said the work had been sent while the SEO section stayed empty —
+ * the report was simply filed back into the archive it came from.
+ *
+ * If the text is not a report but does carry a URL, the analysis is run for real
+ * rather than refusing on a technicality.
+ */
+async function saveSeoAnalysisAction(action, ctx) {
+  const body = str(action.content, 60000);
+  if (!body) return { ok: false, error: 'There is nothing here to file as an SEO analysis.' };
+
+  const { parseAnalysis, storeAnalysis, runSeoAnalysis } = await import('./seoAnalysis.js');
+  const { analysis, url } = parseAnalysis(body);
+  const target = str(action.url, 500) || url;
+
+  if (!target) {
+    return {
+      ok: false,
+      error: analysis
+        // A real report that never names the page it scored.
+        ? 'This analysis does not say which page it was for, so it cannot be filed under SEO. '
+          + 'Add the website address and try again.'
+        : 'SEO is not an editable section — it holds analyses, not documents. This text has no '
+          + 'website address to analyse, so send it to another section, or run an SEO analysis.',
+    };
+  }
+
+  try {
+    const saved = analysis
+      ? await storeAnalysis({ companyId: ctx.companyId, url: target, scanType: action.scan_type, analysis })
+      : await runSeoAnalysis({ companyId: ctx.companyId, userId: ctx.userId, userRole: ctx.userRole, url: target });
+    const score = saved?.overall_score;
+    return {
+      ok: true,
+      summary: `${analysis ? 'Filed' : 'Ran'} an SEO analysis for ${saved?.url || target}`
+        + `${score != null ? ` — score ${score}/100` : ''}`,
+      id: saved?.id,
+      link: '/SEO',
+    };
+  } catch (err) {
+    return { ok: false, error: friendlyError(err) };
+  }
+}
+
 async function runSeoAnalysisAction(action, ctx) {
   const url = str(action.url, 500);
   if (!url) return { ok: false, error: 'No URL to analyse.' };
@@ -866,6 +953,7 @@ const HANDLERS = {
   create_ad_campaign: createAdCampaign,
   save_to_archive: saveToArchive,
   run_seo_analysis: runSeoAnalysisAction,
+  save_seo_analysis: saveSeoAnalysisAction,
 };
 
 export const isKnownOp = (op) => Object.prototype.hasOwnProperty.call(HANDLERS, String(op || ''));
@@ -893,7 +981,10 @@ export function buildSectionAction({ section, title, content }) {
     case 'workflow': return { op: 'save_to_archive', title: t, content: body, category: 'workflows' };
     case 'inbox':
     case 'sdr': return { op: 'save_to_archive', title: t, content: body, category: 'message_templates' };
-    case 'seo':
+    // SEO holds analyses, not documents. Sending here used to archive the text
+    // under "strategies" and report success, which is why a task could say it had
+    // sent an analysis while the SEO section stayed empty.
+    case 'seo': return { op: 'save_seo_analysis', title: t, content: body };
     case 'sales':
     case 'dashboard':
     case 'general': return { op: 'save_to_archive', title: t, content: body, category: 'strategies' };

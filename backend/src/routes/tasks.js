@@ -24,7 +24,7 @@ import { requireAuth, filterCompanyMembers } from '../middleware/auth.js';
 import { createNotification } from '../lib/notify.js';
 import { runTaskWithAI } from '../lib/taskRunner.js';
 import { runAIChat } from './ai.js';
-import { applyActions, buildSectionAction } from '../lib/aiActions.js';
+import { applyActions, buildSectionAction, friendlyError } from '../lib/aiActions.js';
 import { notifyMentions } from '../lib/mentions.js';
 
 const router = Router();
@@ -797,7 +797,7 @@ router.post('/:id/send-to-section', requireAuth, async (req, res) => {
     res.json({ success: true, section, ...result });
   } catch (err) {
     console.error('[tasks] send-to-section failed:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: friendlyError(err) });
   }
 });
 

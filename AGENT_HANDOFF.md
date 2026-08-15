@@ -2685,3 +2685,44 @@ with it; that category now falls through to the first option so the user picks.
 NOTE: `TaskResultPanel` still offers SEO as a send-to destination because it reuses
 `taskMeta.SECTIONS`, which is the task CATEGORISATION list (tasks legitimately live
 in SEO). Left alone deliberately; flagged for Derek.
+
+## Send-to-section repairs (Claude, 2026-08-14)
+
+CONFIRMED WORKING: the SEO save fix is now proven end-to-end in production —
+`seo_analyses` holds three real analyses run from the app (ai.bmapz.com and
+bmapz.com), each with full `results`, checklist and issues. The table had held 0
+rows for the life of the feature before this.
+
+THREE DEFECTS FIXED.
+
+1. `ad_campaigns.platform` is NOT NULL with no default, and `createAdCampaign`
+   passed `platform: null` whenever the caller did not name one — which
+   `buildSectionAction('ads')` never does. So EVERY "send to section -> Ads" failed,
+   and the raw constraint error was shown to the user. A draft that has not chosen a
+   network yet is a real state, so it is stored as `'multi'` (the "Multi-platform"
+   wording the Ads screens already use) instead of guessing a network. Safe to
+   render: `getPlatform()` returns null for unknown keys and every caller
+   optional-chains; `AdsManagerTab` does not filter by platform.
+
+2. Sending to SEO archived the text under "strategies" and reported success, so a
+   task could say it had sent an analysis while the SEO section stayed empty. New
+   `save_seo_analysis` op: it parses a report out of the text (raw JSON, fenced
+   JSON, or prose carrying a URL), stores it via `storeAnalysis`, and — if the text
+   is not a report but does carry a URL — runs the analysis for real rather than
+   refusing on a technicality. Only accepted as a report when `overall_score`,
+   `checklist_results` or `top_issues` is present, so an unrelated JSON blob is not
+   filed as an SEO analysis.
+
+3. Raw Postgres reached users. `friendlyError()` in lib/aiActions.js maps the common
+   constraint failures to plain sentences and withholds anything still shaped like
+   raw SQL (which also stops the schema leaking). Applied in `createAdCampaign`, the
+   SEO handler, and the catch blocks of both send-to-section routes.
+
+Note on the previous entry: removing the `strategies -> seo` default made SEO
+outputs fall through to Ads, which is how defect 1 surfaced. Defect 1 predates that
+change; the default change only exposed it.
+
+Verified 2026-08-14: `parseAnalysis` across 5 text shapes (raw JSON, fenced JSON,
+prose+URL, prose without URL, JSON without a URL key); `friendlyError` across 6 real
+Postgres messages; the exact row a task-send produces INSERTs and round-trips
+(test row deleted); all ops known to the registry; boot, lint 0 errors, build pass.

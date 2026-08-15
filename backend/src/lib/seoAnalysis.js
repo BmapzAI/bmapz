@@ -113,6 +113,59 @@ export function toRow({ companyId, url, scanType, analysis }) {
 }
 
 /**
+ * Store an analysis that already exists — no model call, no credits.
+ *
+ * Used when a task or a chat message already produced the report and it just
+ * needs to land in the SEO section.
+ */
+export async function storeAnalysis({ companyId, url, scanType = 'page', analysis }) {
+  const target = normalizeUrl(url);
+  if (!target || !domainOf(target)) throw new Error(`"${url}" is not a valid URL.`);
+
+  const { data, error } = await supabaseAdmin
+    .from('seo_analyses')
+    .insert(toRow({ companyId, url: target, scanType, analysis }))
+    .select()
+    .single();
+  if (error) throw new Error(`Could not save the SEO analysis: ${error.message}`);
+  return data;
+}
+
+/**
+ * Pull an SEO report out of arbitrary text.
+ *
+ * Task results and chat replies arrive as prose, or as JSON inside a fenced
+ * block, or as raw JSON. Returns { analysis, url } — either may be null.
+ */
+export function parseAnalysis(text) {
+  const raw = String(text || '');
+  let analysis = null;
+
+  // Prefer a fenced block, then the widest brace span.
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidates = [fenced?.[1], raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1), raw];
+  for (const c of candidates) {
+    if (!c || !c.trim().startsWith('{')) continue;
+    try {
+      const parsed = JSON.parse(c);
+      // Only treat it as a report if it actually looks like one, so a random
+      // JSON blob is not filed as an SEO analysis.
+      if (parsed && typeof parsed === 'object'
+        && (parsed.overall_score !== undefined || parsed.checklist_results || parsed.top_issues)) {
+        analysis = parsed;
+        break;
+      }
+    } catch { /* try the next shape */ }
+  }
+
+  const url = analysis?.url
+    || (raw.match(/https?:\/\/[^\s"'<>)\]]+/) || [])[0]
+    || null;
+
+  return { analysis, url };
+}
+
+/**
  * Run an analysis and store it. Returns the saved row.
  *
  * Throws on failure rather than returning a half-result: a caller that reports
@@ -147,16 +200,9 @@ export async function runSeoAnalysis({ companyId, userId, userRole, url, scanTyp
   }
   if (analysis?.error) throw new Error(String(analysis.error));
 
-  const { data, error } = await supabaseAdmin
-    .from('seo_analyses')
-    .insert(toRow({ companyId, url: target, scanType, analysis }))
-    .select()
-    .single();
   // supabase-js resolves with {data:null,error} instead of throwing — an ignored
   // error here is precisely how this table stayed empty.
-  if (error) throw new Error(`Could not save the SEO analysis: ${error.message}`);
-
-  return data;
+  return storeAnalysis({ companyId, url: target, scanType, analysis });
 }
 
-export default { buildSeoPrompt, normalizeUrl, toRow, runSeoAnalysis };
+export default { buildSeoPrompt, normalizeUrl, toRow, runSeoAnalysis, storeAnalysis, parseAnalysis };

@@ -3,7 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
   extractActions, applyActions, describeActions, isKnownOp,
-  proposeActions, looksActionable, buildSectionAction, ACTION_PROTOCOL,
+  proposeActions, looksActionable, buildSectionAction, ACTION_PROTOCOL, friendlyError,
 } from '../lib/aiActions.js';
 import { webSearch, formatForPrompt } from '../lib/webSearch.js';
 import {
@@ -1574,7 +1574,9 @@ router.post('/outputs/:id/send-to-section', requireAuth, async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('[ai/outputs/send-to-section]', err.message);
-    res.status(500).json({ error: err.message });
+    // The full error goes to the logs; the user gets something actionable rather
+    // than raw Postgres.
+    res.status(500).json({ error: friendlyError(err) });
   }
 });
 
