@@ -2755,3 +2755,27 @@ Verified 2026-08-15: extractUrl 9/9 including the exact failing title from Derek
 screenshot and four filename false-positives; the prose result already sitting on
 his task now yields a URL, so "send to section -> SEO" on it runs a real analysis;
 boot, lint 0 errors.
+
+## SEO paths, and a note on "stuck" tasks (Claude, 2026-08-15)
+
+CONFIRMED IN PRODUCTION — both SEO routes work, from the Railway logs:
+- `00:48:25 [aiActions] save_seo_analysis → ok: Ran an SEO analysis for
+  https://bmapz.com — score 75/100` (send to section, from a task)
+- `00:51:16 action=seo_plan` → task `803a4651` finished with
+  `ai_result.model = 'seo_analysis'` and `seo_analysis_id` set — the direct
+  task-run branch.
+
+BUG FOUND BY THAT TEST. The task "SEO analysis of the bmapz.com/pricing page"
+analysed the HOMEPAGE. `extractUrl` captured the host and discarded the path, so
+`bmapz.com/pricing` became `https://bmapz.com`. The stored report's page_title
+confirms it ("BmapzAI - AI-Driven Marketing and Sales Solutions"). Fixed: the bare
+domain match now keeps an optional path/query, and it iterates over every candidate
+instead of only the first, so a filename earlier in the sentence ("Update README.md
+then audit bmapz.com") no longer hides a real domain later in it. 12/12 cases,
+including four filename false-positives.
+
+NOT A BUG: two SEO tasks sat in status 'doing' with a prose result. `task_activity`
+shows `status_changed: done → doing` performed by the USER on both — Derek moved the
+cards while testing. No hung run: the logs account for every seo_plan call in that
+window, and `ai_error` is null on both. Recorded here because "task stuck in doing"
+looks alarming and the activity log is the place that settles it.

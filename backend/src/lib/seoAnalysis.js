@@ -107,9 +107,17 @@ export function extractUrl(text) {
   const schemed = raw.match(/https?:\/\/[^\s"'<>)\]]+/);
   if (schemed) return schemed[0].replace(/[.,;:]+$/, '');
 
-  const bare = raw.match(/\b((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,})\b/i);
-  if (bare && !NOT_A_TLD.has(bare[1].split('.').pop().toLowerCase())) {
-    return `https://${bare[1]}`;
+  // The path is part of the address: "bmapz.com/pricing" asked about the pricing
+  // page, and capturing only the host silently analysed the homepage instead.
+  //
+  // Every candidate is checked rather than just the first, so a filename earlier
+  // in the sentence does not hide a real domain later in it.
+  const all = raw.matchAll(/\b((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,})(\/[^\s"'<>)\]]*)?/gi);
+  for (const m of all) {
+    const host = m[1];
+    if (NOT_A_TLD.has(host.split('.').pop().toLowerCase())) continue;
+    const path = (m[2] || '').replace(/[.,;:]+$/, '');
+    return `https://${host}${path}`;
   }
   return null;
 }
