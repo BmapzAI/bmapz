@@ -3046,3 +3046,37 @@ expands what an AI can change without a human writing the code):
 - No verb for WORKFLOWS — it cannot build or amend an automation.
 - Design Studio is deliberately absent (owner-only business secret).
 - internal_messages / team chat deliberately absent (private chatter).
+
+## Agent gains lead + workflow verbs; dashboards join the brain (Claude, 2026-08-15)
+
+DASHBOARDS WERE NOT CONNECTED. `companyBrain.js` never read `dashboard_configs`,
+and there is no dashboard write verb — "send to section: dashboard" just archives
+under strategies. The brain now includes the dashboards a company keeps and how
+many widgets each has: a dashboard is a statement about what the business watches,
+which is context the agent had no access to. Creating/editing dashboards from chat
+is still NOT possible; flagged rather than built.
+
+FOUR NEW OPERATIONS, at Derek's request. Same posture as the existing ones:
+`company_id` always from the session, ids resolved company-scoped before any write,
+values whitelisted against the real CHECK constraints.
+
+- `create_lead` / `update_lead` — the agent can finally touch the CRM. Fields are
+  whitelisted; `status` and `funnel_stage` are validated against
+  `leads_status_check` and the funnel enum. `owner_id` is verified through
+  `filterCompanyMembers` so a model-invented uuid cannot attach a lead to a
+  stranger. `update_lead` reads the lead company-scoped FIRST, so an id alone can
+  never reach another tenant's record. Both write to the lead's timeline as actor
+  'ai', so the agent's edits are as auditable as a person's.
+- `create_workflow` / `update_workflow` — new workflows are ALWAYS created as
+  `draft`, never active. An active workflow sends real messages to real prospects
+  on a schedule; the agent proposes the shape and a human turns it on. This is the
+  same rule as ad campaigns ("never start spending a budget").
+
+APPROVAL-CARD SAFETY. `describeAction` marks two things destructive so they stand
+out before approval: marking a lead lost/disqualified (it ends the pursuit), and
+setting a workflow to `active`, whose change line reads "ACTIVATING: enrolled leads
+will start receiving real messages".
+
+Verified: all four ops resolve through `isKnownOp`, each renders a correct approval
+card with the right destructive flag, both appear in the catalogue the model reads,
+and the dashboards query returns real rows.

@@ -150,7 +150,7 @@ export async function getCompanyBrain(companyId) {
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.block;
 
   try {
-    const [companyRes, leadsRes, msgsRes, postsRes, adsRes, wfRes, blogRes, outputsRes, seoRes, tasksRes, learningsRes] = await Promise.all([
+    const [companyRes, leadsRes, msgsRes, postsRes, adsRes, wfRes, blogRes, outputsRes, seoRes, dashRes, tasksRes, learningsRes] = await Promise.all([
       // `settings` is selected for the competitor list. NOT `select('*')`, which
       // would pull api_keys into the brain and risk company credentials reaching a
       // model prompt.
@@ -166,6 +166,11 @@ export async function getCompanyBrain(companyId) {
       supabaseAdmin.from('blog_posts').select('title, tags, status').eq('company_id', companyId).order('created_at', { ascending: false }).limit(5),
       supabaseAdmin.from('ai_outputs').select('type, metadata').eq('company_id', companyId).order('created_at', { ascending: false }).limit(40),
       supabaseAdmin.from('seo_analyses').select('domain, score').eq('company_id', companyId).order('created_at', { ascending: false }).limit(3),
+      // Which dashboards the company keeps, and what they measure. A dashboard is a
+      // statement about what this business watches — useful context the agent had
+      // no access to at all.
+      supabaseAdmin.from('dashboard_configs')
+        .select('name, widgets').eq('company_id', companyId).limit(5),
       // What work is actually in flight. The agent could CREATE tasks but could not
       // SEE them, so it had no way to notice it was proposing something already on
       // the board, or to reason about what the team is currently doing.
@@ -192,7 +197,7 @@ export async function getCompanyBrain(companyId) {
       ['companies', companyRes], ['leads', leadsRes], ['messages', msgsRes],
       ['social_posts', postsRes], ['ad_campaigns', adsRes], ['workflows', wfRes],
       ['blog_posts', blogRes], ['ai_outputs', outputsRes], ['seo_analyses', seoRes],
-      ['tasks', tasksRes], ['brain_learnings', learningsRes],
+      ['dashboard_configs', dashRes], ['tasks', tasksRes], ['brain_learnings', learningsRes],
     ]) {
       if (res?.error) {
         console.error(`[companyBrain] source "${name}" failed for company ${companyId}: ${res.error.message}`);
@@ -270,6 +275,11 @@ export async function getCompanyBrain(companyId) {
       adsRes.data?.length ? `Ad campaigns: ${adsRes.data.map(a => `${trunc(a.name, 35)}[${a.platform || '?'}${a.status ? `/${a.status}` : ''}]`).join(', ')}` : null,
       blogRes.data?.length ? `Blog posts: ${blogRes.data.map(b => `"${trunc(b.title, 40)}"[${b.status}]`).join(', ')}` : null,
       seoRes.data?.length ? `SEO scores: ${seoRes.data.map(s => `${trunc(s.domain, 40)}=${s.score ?? '?'}`).join(', ')}` : null,
+      dashRes.data?.length
+        ? `Dashboards this company watches: ${dashRes.data
+          .map(d => `${trunc(d.name, 40)}${d.widgets?.length ? ` (${d.widgets.length} widget(s))` : ''}`)
+          .join(', ')}`
+        : null,
       tasksRes.data?.length
         ? `Work in flight (${tasksRes.data.length} open task(s)): ${tasksRes.data
           .map(t => `${trunc(t.title, 40)}[${t.status}${t.section && t.section !== 'general' ? `/${t.section}` : ''}]`)

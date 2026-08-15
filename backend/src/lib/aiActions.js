@@ -92,6 +92,18 @@ export const ACTION_PROTOCOL_OPS = [
   // Spelled out because the model kept refusing outright — "I have no access to
   // external tools to run a real-time SEO analysis" — when the capability was
   // simply not in this catalogue.
+  '- {"op":"create_lead","lead_name":"…","lead_company_name":"…","email":"…","phone":"…",',
+  '  "role":"…","source":"…","notes":"…","estimated_value":5000,"owner_id":"<teammate uuid>",',
+  '  "status":"new|contacted|qualified|proposal|negotiation|won|lost|disqualified",',
+  '  "funnel_stage":"prospect|awareness|consideration|mql|sql|opportunity|customer|retention|advocacy"}',
+  '- {"op":"update_lead","id":"<lead uuid>", …same fields…}',
+  '  Use these when asked to add someone to the CRM, move a lead along the funnel, assign an',
+  '  owner, or record what was learned about them.',
+  '- {"op":"create_workflow","name":"…","description":"…","type":"sales_outreach|follow_up|',
+  '  nurturing|qualification|custom","steps":[…]}',
+  '- {"op":"update_workflow","id":"<workflow uuid>","name":"…","steps":[…],',
+  '  "status":"draft|active|paused|archived"}',
+  '  New workflows are always created as DRAFTS — never claim one is running.',
   '- {"op":"run_seo_analysis","url":"https://example.com","scan_type":"page|site"}',
   '  Use this whenever the user asks for an SEO analysis, audit, review or score of a site or page.',
   '  You CAN run these: it scores the page and files it in the SEO section. Never reply that you',
@@ -519,6 +531,28 @@ export function describeAction(action) {
       return { op, title: `Save "${str(action.title, 120) || ''}" to AI Outputs`, changes: [], destructive: false };
     case 'save_seo_analysis':
       return { op, title: 'File this as an SEO analysis', changes: [], destructive: false };
+    case 'create_lead':
+      return { op, title: `Add lead "${str(action.lead_name || action.lead_company_name || action.email, 120) || ''}"`,
+        changes: [action.owner_id ? 'assigned to a teammate' : 'unassigned',
+          action.funnel_stage || null].filter(Boolean),
+        destructive: false };
+    case 'update_lead':
+      return { op, title: 'Update lead',
+        changes: Object.keys(action).filter(k => !['op', 'id'].includes(k)),
+        // Marking someone lost or disqualified ends the pursuit — worth a second look.
+        destructive: ['lost', 'disqualified'].includes(action.status) };
+    case 'create_workflow':
+      return { op, title: `Create workflow "${str(action.name || action.title, 120) || ''}"`,
+        changes: [`${(action.steps || []).length} step(s)`, 'created as a draft — not running'],
+        destructive: false };
+    case 'update_workflow':
+      return { op, title: `Update workflow${action.status ? ` → ${action.status}` : ''}`,
+        changes: [action.status === 'active'
+          ? 'ACTIVATING: enrolled leads will start receiving real messages'
+          : null,
+        Array.isArray(action.steps) ? `${action.steps.length} step(s) replaced` : null].filter(Boolean),
+        // Turning a workflow on sends real messages to real people.
+        destructive: action.status === 'active' };
     case 'run_seo_analysis':
       return { op, title: `Run an SEO analysis of ${str(action.url, 200) || '(no URL)'}`,
         changes: [action.scan_type === 'site' ? 'entire site' : 'single page', 'uses AI credits'],
@@ -943,6 +977,182 @@ async function runSeoAnalysisAction(action, ctx) {
   }
 }
 
+/* ── Leads ──────────────────────────────────────────────────────────────── */
+
+const LEAD_STATUSES = new Set(['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'disqualified']);
+const FUNNEL_STAGES = new Set(['prospect', 'awareness', 'consideration', 'mql', 'sql', 'opportunity', 'customer', 'retention', 'advocacy']);
+
+/** Fields the agent may set on a lead. Everything else is ignored. */
+const LEAD_FIELDS = ['lead_name', 'lead_company_name', 'email', 'phone', 'role',
+  'website', 'company_website', 'linkedin_url', 'company_linkedin', 'source',
+  'notes', 'estimated_value', 'is_decision_maker'];
+
+function leadPatch(action) {
+  const patch = {};
+  for (const k of LEAD_FIELDS) {
+    if (action[k] === undefined || action[k] === null) continue;
+    patch[k] = k === 'estimated_value' ? Number(action[k]) || null
+      : k === 'is_decision_maker' ? !!action[k]
+        : str(action[k], 500);
+  }
+  if (LEAD_STATUSES.has(action.status)) patch.status = action.status;
+  if (FUNNEL_STAGES.has(action.funnel_stage)) patch.funnel_stage = action.funnel_stage;
+  if (Array.isArray(action.tags)) patch.tags = action.tags.map(t => str(t, 60)).filter(Boolean).slice(0, 20);
+  return patch;
+}
+
+/**
+ * The owner must be a real member of THIS company.
+ *
+ * An id invented or guessed by the model would otherwise attach a lead to a
+ * stranger, and `owner_id` is what the whole ownership model hangs off.
+ */
+async function resolveOwner(ownerId, companyId) {
+  if (!ownerId || !UUID_RE.test(String(ownerId))) return null;
+  const { filterCompanyMembers } = await import('../middleware/auth.js');
+  const ok = await filterCompanyMembers([ownerId], companyId);
+  return ok?.length ? ownerId : null;
+}
+
+async function createLead(action, ctx) {
+  const patch = leadPatch(action);
+  if (!patch.lead_name && !patch.lead_company_name && !patch.email) {
+    return { ok: false, error: 'A lead needs at least a name, a company or an email.' };
+  }
+
+  const owner_id = await resolveOwner(action.owner_id, ctx.companyId);
+  const { data, error } = await supabaseAdmin.from('leads').insert({
+    ...patch,
+    company_id: ctx.companyId,          // always the session's company, never the model's
+    owner_id,
+    owner_assigned_at: owner_id ? new Date().toISOString() : null,
+  }).select().single();
+  if (error) return { ok: false, error: friendlyError(error) };
+
+  await logLeadHistory(data.id, ctx, 'created', 'Lead created by the Bmapz AI agent');
+  return {
+    ok: true,
+    summary: `Created lead "${patch.lead_name || patch.lead_company_name || patch.email}"`,
+    id: data.id,
+    link: `/LeadDetails?id=${data.id}`,
+  };
+}
+
+async function updateLead(action, ctx) {
+  const id = str(action.id, 60);
+  if (!UUID_RE.test(id)) return { ok: false, error: 'A real lead id is required.' };
+
+  // Company-scoped read FIRST: an id alone must never reach another tenant's lead.
+  const { data: existing, error: findErr } = await supabaseAdmin
+    .from('leads').select('id, status, funnel_stage')
+    .eq('id', id).eq('company_id', ctx.companyId).maybeSingle();
+  if (findErr) return { ok: false, error: friendlyError(findErr) };
+  if (!existing) return { ok: false, error: 'That lead does not exist in this company.' };
+
+  const patch = leadPatch(action);
+  if (action.owner_id !== undefined) {
+    patch.owner_id = await resolveOwner(action.owner_id, ctx.companyId);
+    patch.owner_assigned_at = patch.owner_id ? new Date().toISOString() : null;
+  }
+  if (!Object.keys(patch).length) return { ok: false, error: 'Nothing to update.' };
+
+  const { error } = await supabaseAdmin.from('leads')
+    .update(patch).eq('id', id).eq('company_id', ctx.companyId);
+  if (error) return { ok: false, error: friendlyError(error) };
+
+  const moved = patch.funnel_stage && patch.funnel_stage !== existing.funnel_stage;
+  await logLeadHistory(id, ctx, moved ? 'stage_changed' : 'updated',
+    moved
+      ? `Moved ${existing.funnel_stage} → ${patch.funnel_stage} by the Bmapz AI agent`
+      : `Updated by the Bmapz AI agent: ${Object.keys(patch).join(', ')}`);
+
+  return { ok: true, summary: `Updated lead (${Object.keys(patch).join(', ')})`, id, link: `/LeadDetails?id=${id}` };
+}
+
+/** A lead's timeline should show the agent's edits like anyone else's. */
+async function logLeadHistory(leadId, ctx, type, summary) {
+  try {
+    const { logLeadActivity, LEAD_ACTIVITY_TYPES } = await import('./leadActivity.js');
+    await logLeadActivity({
+      companyId: ctx.companyId,
+      leadId,
+      activityType: LEAD_ACTIVITY_TYPES[type.toUpperCase()] || LEAD_ACTIVITY_TYPES.UPDATED,
+      summary,
+      actorType: 'ai',
+      actorLabel: 'Bmapz AI',
+      actorUserId: ctx.userId || null,
+    });
+  } catch (err) {
+    console.error('[aiActions] lead history entry failed:', err.message);
+  }
+}
+
+/* ── Workflows ──────────────────────────────────────────────────────────── */
+
+const WORKFLOW_TYPES = new Set(['sales_outreach', 'follow_up', 'nurturing', 'qualification', 'custom']);
+const WORKFLOW_STATUSES = new Set(['draft', 'active', 'paused', 'archived']);
+
+async function createWorkflow(action, ctx) {
+  const name = str(action.name || action.title, 200);
+  if (!name) return { ok: false, error: 'A workflow needs a name.' };
+
+  const { data, error } = await supabaseAdmin.from('workflows').insert({
+    company_id: ctx.companyId,
+    created_by: ctx.userId,
+    name,
+    description: str(action.description, 2000),
+    type: WORKFLOW_TYPES.has(action.type) ? action.type : 'custom',
+    // ALWAYS a draft. An active workflow sends real messages to real prospects on a
+    // schedule; the agent proposes the shape, a human turns it on. This mirrors ad
+    // campaigns, where the agent must never start spending a budget.
+    status: 'draft',
+    trigger_type: 'manual',
+    steps: Array.isArray(action.steps) ? action.steps.slice(0, 30) : [],
+    is_template: false,
+  }).select().single();
+  if (error) return { ok: false, error: friendlyError(error) };
+
+  return {
+    ok: true,
+    summary: `Created workflow "${name}" as a draft — review its steps, then activate it`,
+    id: data.id,
+    link: '/Workflows',
+  };
+}
+
+async function updateWorkflow(action, ctx) {
+  const id = str(action.id, 60);
+  if (!UUID_RE.test(id)) return { ok: false, error: 'A real workflow id is required.' };
+
+  const { data: existing, error: findErr } = await supabaseAdmin
+    .from('workflows').select('id, name, status')
+    .eq('id', id).eq('company_id', ctx.companyId).maybeSingle();
+  if (findErr) return { ok: false, error: friendlyError(findErr) };
+  if (!existing) return { ok: false, error: 'That workflow does not exist in this company.' };
+
+  const patch = {};
+  if (action.name) patch.name = str(action.name, 200);
+  if (action.description !== undefined) patch.description = str(action.description, 2000);
+  if (WORKFLOW_TYPES.has(action.type)) patch.type = action.type;
+  if (Array.isArray(action.steps)) patch.steps = action.steps.slice(0, 30);
+  // Status IS settable here, including 'active' — but only because this runs after
+  // the user has approved a card that says so in plain words (see describeAction,
+  // which marks activation destructive).
+  if (WORKFLOW_STATUSES.has(action.status)) patch.status = action.status;
+  if (!Object.keys(patch).length) return { ok: false, error: 'Nothing to update.' };
+
+  const { error } = await supabaseAdmin.from('workflows')
+    .update(patch).eq('id', id).eq('company_id', ctx.companyId);
+  if (error) return { ok: false, error: friendlyError(error) };
+
+  return {
+    ok: true,
+    summary: `Updated workflow "${existing.name}"${patch.status ? ` → ${patch.status}` : ''}`,
+    id,
+    link: '/Workflows',
+  };
+}
+
 async function saveToArchive(action, ctx) {
   const title = str(action.title, 300);
   const content = str(action.content, 60000);
@@ -967,6 +1177,10 @@ const HANDLERS = {
   save_to_archive: saveToArchive,
   run_seo_analysis: runSeoAnalysisAction,
   save_seo_analysis: saveSeoAnalysisAction,
+  create_lead: createLead,
+  update_lead: updateLead,
+  create_workflow: createWorkflow,
+  update_workflow: updateWorkflow,
 };
 
 export const isKnownOp = (op) => Object.prototype.hasOwnProperty.call(HANDLERS, String(op || ''));
