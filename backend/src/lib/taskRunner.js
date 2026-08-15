@@ -183,6 +183,71 @@ export async function runTaskWithAI({ task, actorUserId = null, feedback = null 
   ].filter(Boolean).join('\n');
 
   try {
+    // SEO is the one section whose deliverable is not text. "Analyse ai.bmapz.com"
+    // asked for a scored report filed in the SEO section; the generic path returned
+    // an essay about SEO instead, and nothing appeared in SEO. When the task names
+    // a site, run the real analysis.
+    //
+    // No URL means it is a different kind of SEO task ("write a keyword strategy"),
+    // which the normal path handles correctly — so this only takes over when it can
+    // actually do the job.
+    if (section === 'seo' && !feedback) {
+      const { extractUrl, runSeoAnalysis } = await import('./seoAnalysis.js');
+      const target = extractUrl(`${task.title || ''}\n${task.description || ''}`);
+      if (target) {
+        const saved = await runSeoAnalysis({
+          companyId: task.company_id,
+          userId: task.created_by || actorUserId || null,
+          userRole: 'user',
+          url: target,
+          scanType: /\bsite\b|entire|whole/i.test(`${task.title} ${task.description || ''}`) ? 'site' : 'page',
+        });
+
+        const r = saved?.results || {};
+        const issues = Array.isArray(r.top_issues) ? r.top_issues : [];
+        const wins = Array.isArray(r.quick_wins) ? r.quick_wins : [];
+        const line = (x, a, b) => `- ${typeof x === 'string' ? x : (x?.[a] || x?.[b] || '')}`;
+
+        // A readable summary, not the raw JSON — the card shows this text, and a
+        // wall of JSON is what made the Review tab unreadable.
+        const content = [
+          `SEO analysis of ${saved.url} — score ${saved.overall_score ?? '?'}/100`,
+          r.page_title ? `Page: ${r.page_title}` : null,
+          issues.length ? `\nTop issues:\n${issues.slice(0, 5).map(i => line(i, 'issue', 'title')).join('\n')}` : null,
+          wins.length ? `\nQuick wins:\n${wins.slice(0, 5).map(w => line(w, 'action', 'title')).join('\n')}` : null,
+          `\nThe full report is in the SEO section.`,
+        ].filter(Boolean).join('\n');
+
+        const updatedSeo = await setTask(task.id, {
+          status: 'done',
+          completed_at: new Date().toISOString(),
+          completed_by_type: 'ai',
+          completed_by: null,
+          ai_result: {
+            content,
+            model: 'seo_analysis',
+            at: new Date().toISOString(),
+            seo_analysis_id: saved.id,
+            link: '/SEO',
+          },
+          ai_error: null,
+          ...(section !== task.section ? { section } : {}),
+        });
+
+        await logActivity({
+          taskId: task.id, companyId: task.company_id, type: 'ai_completed',
+          summary: `Ran an SEO analysis of ${saved.url}`,
+          details: { seo_analysis_id: saved.id, score: saved.overall_score, section },
+        });
+        await notifyOutcome(updatedSeo || task, {
+          title: 'The AI finished an SEO analysis',
+          body: `${saved.url} scored ${saved.overall_score ?? '?'}/100`,
+          icon: '🔍',
+        });
+        return updatedSeo;
+      }
+    }
+
     const result = await runAIChat({
       companyId: task.company_id,
       userId: task.created_by || actorUserId || null,

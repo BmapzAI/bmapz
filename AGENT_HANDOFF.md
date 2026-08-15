@@ -2726,3 +2726,32 @@ Verified 2026-08-14: `parseAnalysis` across 5 text shapes (raw JSON, fenced JSON
 prose+URL, prose without URL, JSON without a URL key); `friendlyError` across 6 real
 Postgres messages; the exact row a task-send produces INSERTs and round-trips
 (test row deleted); all ops known to the registry; boot, lint 0 errors, build pass.
+
+## SEO tasks now produce an analysis, not an essay (Claude, 2026-08-15)
+
+An SEO-section task assigned to the AI went through the generic task prompt, so
+"SEO of the ai.bmapz.com page" returned a markdown write-up about SEO and nothing
+appeared in the SEO section. SEO is the one section whose deliverable is a scored
+record rather than text.
+
+`runTaskWithAI` now branches BEFORE the generic runAIChat: if the section is `seo`
+and the task names a site, it runs the real analysis, files it in the SEO section,
+and sets `ai_result.content` to a readable summary (score, top issues, quick wins)
+with `seo_analysis_id` and a `/SEO` link. Raw JSON is deliberately not written to
+`ai_result` — a wall of JSON on the card is what made the Review tab unreadable.
+
+No URL found means it is a different kind of SEO task ("write a keyword strategy"),
+which the generic path already handles, so the branch only takes over when it can
+actually do the job. Revisions (`feedback`) also skip it, since re-running an
+analysis would discard what the comment asked to change.
+
+`extractUrl()` in lib/seoAnalysis.js recognises BARE domains, not just schemed URLs.
+This was the blocker: the task title said "ai.bmapz.com" with no "https://", so the
+old schemed-only regex found no URL and the task could not be recognised as being
+about a website. Filenames are excluded via a NOT_A_TLD list, so "taskRunner.js",
+"README.md" and "logo.png" are not mistaken for domains.
+
+Verified 2026-08-15: extractUrl 9/9 including the exact failing title from Derek's
+screenshot and four filename false-positives; the prose result already sitting on
+his task now yields a URL, so "send to section -> SEO" on it runs a real analysis;
+boot, lint 0 errors.

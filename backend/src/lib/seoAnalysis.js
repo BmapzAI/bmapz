@@ -88,6 +88,32 @@ function domainOf(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
 }
 
+/** Endings that look like a domain but are a filename or a library. */
+const NOT_A_TLD = new Set([
+  'js', 'jsx', 'ts', 'tsx', 'json', 'html', 'htm', 'css', 'md', 'txt', 'csv',
+  'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'pdf', 'zip', 'xml', 'yml', 'yaml',
+]);
+
+/**
+ * Find the site someone is talking about.
+ *
+ * Bare domains matter as much as full URLs: a task called "SEO of the
+ * ai.bmapz.com page" never writes the scheme, and requiring "https://" meant that
+ * task could not be recognised as being about a website at all.
+ */
+export function extractUrl(text) {
+  const raw = String(text || '');
+
+  const schemed = raw.match(/https?:\/\/[^\s"'<>)\]]+/);
+  if (schemed) return schemed[0].replace(/[.,;:]+$/, '');
+
+  const bare = raw.match(/\b((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,})\b/i);
+  if (bare && !NOT_A_TLD.has(bare[1].split('.').pop().toLowerCase())) {
+    return `https://${bare[1]}`;
+  }
+  return null;
+}
+
 /** Whatever the model returned, shaped into the columns the table actually has. */
 export function toRow({ companyId, url, scanType, analysis }) {
   const results = { ...(analysis || {}) };
@@ -158,9 +184,7 @@ export function parseAnalysis(text) {
     } catch { /* try the next shape */ }
   }
 
-  const url = analysis?.url
-    || (raw.match(/https?:\/\/[^\s"'<>)\]]+/) || [])[0]
-    || null;
+  const url = analysis?.url || extractUrl(raw);
 
   return { analysis, url };
 }
