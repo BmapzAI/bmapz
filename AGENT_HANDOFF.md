@@ -2779,3 +2779,41 @@ shows `status_changed: done → doing` performed by the USER on both — Derek m
 cards while testing. No hung run: the logs account for every seo_plan call in that
 window, and `ai_error` is null on both. Recorded here because "task stuck in doing"
 looks alarming and the activity log is the place that settles it.
+
+## Company brain: how it scales, and two fixes (Claude, 2026-08-15)
+
+ANSWERING "does it accumulate until it breaks?" — no. The brain is a FLAT,
+recomputed summary, not an accumulating transcript:
+- Every source query is bounded (`leads` 500, `messages` 200, `ai_outputs` 40,
+  `workflows` 15, posts/ads 8, blog 5, seo 3, learnings 10).
+- The assembled block is capped at `BRAIN_MAX_CHARS` (6000 chars, ~1.5k tokens) and
+  prepended to each call. Cost per call is constant regardless of company age.
+- Cached 5 minutes per company; `invalidateCompanyBrain()` clears on writes.
+- Learning is DISTILLED, not appended: `recordOutcomeLearning` folds outcomes into
+  `brain_learnings` rows every 8 outcomes, and only 10 are ever read back.
+So: no context-window cliff, no imminent crash, no degradation over time. What a
+long-lived company loses is detail, not capability — by design.
+
+TWO REAL DEFECTS FIXED.
+
+1. The cap truncated from the END (`block.slice(0, 6000)`), and the end is where
+   `--- Operating rules ---` and the distilled learned preferences live. Those rules
+   are what stop the agent producing generic output — so the MORE a company filled
+   in, the more certain it was that the instruction to use any of it got cut. Now
+   the tail is reserved and the live-performance middle gives way instead.
+   Demonstrated on an oversized block: old kept 6026 chars with operating rules
+   DROPPED; new keeps 5982 chars with them intact.
+
+2. `cache` was an unbounded Map — one ~6KB entry per company, never evicted (a
+   stale entry is recomputed but never deleted). Memory grew with the number of
+   companies ever served. Now expired entries are dropped on write and the map is
+   capped at 500 with oldest-out.
+
+DOES IT READ EVERY SETTINGS FIELD? Yes for Company, ICP, Briefing and Competitors:
+`serializeSettingsBlock` walks EVERY filled key generically (ICP and Briefing are
+each budgeted 1800 chars) rather than a hand-picked list, so new fields appear
+automatically. `api_keys` is deliberately NOT selected — company credentials must
+never reach a model prompt. The General tab (language, agent name) is not in the
+brain; it is UI preference, not company context. NOTE: when the region selector
+lands it SHOULD be added, since region changes holidays, seasonality and market
+context.

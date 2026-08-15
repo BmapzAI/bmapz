@@ -17,7 +17,38 @@
 import { supabaseAdmin } from './supabase.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Hard ceiling on the assembled block, so the brain costs a predictable amount of
+ * context on EVERY AI call no matter how much a company has filled in or produced.
+ * This is what keeps the design flat rather than accumulating.
+ */
+const BRAIN_MAX_CHARS = 6000;
+
+/**
+ * Cached blocks, bounded.
+ *
+ * This was an unbounded Map: an entry per company, ~6KB each, never evicted. It
+ * survived the TTL check (a stale entry is recomputed but never deleted), so on a
+ * long-lived process memory grew with the number of companies ever served and
+ * never came back. Expired entries are dropped on write, and the map is capped.
+ */
 const cache = new Map(); // companyId -> { at, block }
+const CACHE_MAX_ENTRIES = 500;
+
+function cacheSet(companyId, block) {
+  const now = Date.now();
+  for (const [id, v] of cache) {
+    if (now - v.at >= CACHE_TTL_MS) cache.delete(id);
+  }
+  // Still too big: drop oldest first (Map preserves insertion order).
+  while (cache.size >= CACHE_MAX_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+  cache.set(companyId, { at: now, block });
+}
 
 const trunc = (s, n) => (s && s.length > n ? s.slice(0, n - 1) + '…' : s || '');
 
@@ -212,10 +243,30 @@ export async function getCompanyBrain(companyId) {
       `=== END COMPANY BRAIN ===`,
     ].filter(Boolean);
 
+    // Budget the block WITHOUT cutting the tail off.
+    //
+    // The old `slice(0, 6000)` truncated from the end, and the end is where the
+    // operating rules and the learned preferences live — the two things that stop
+    // the agent producing generic output. So the more a company filled in, the more
+    // certain it became that the instructions telling the agent to use any of it
+    // were the first thing dropped.
+    //
+    // Identity and settings are kept whole; the live-performance middle is what
+    // gives way, because it is the part the agent can re-read from the app.
     let block = lines.join('\n');
-    if (block.length > 6000) block = block.slice(0, 6000) + '\n=== END COMPANY BRAIN ===';
+    if (block.length > BRAIN_MAX_CHARS) {
+      const tailFrom = lines.indexOf('--- Operating rules ---');
+      const tail = tailFrom >= 0 ? lines.slice(tailFrom) : [lines[lines.length - 1]];
+      const head = tailFrom >= 0 ? lines.slice(0, tailFrom) : lines;
+      const tailText = tail.join('\n');
+      const room = Math.max(0, BRAIN_MAX_CHARS - tailText.length - 40);
 
-    cache.set(companyId, { at: Date.now(), block });
+      let headText = head.join('\n');
+      if (headText.length > room) headText = `${headText.slice(0, room)}\n…(live data trimmed)`;
+      block = `${headText}\n${tailText}`;
+    }
+
+    cacheSet(companyId, block);
     return block;
   } catch (err) {
     console.error('[companyBrain] failed to build:', err.message);
