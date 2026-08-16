@@ -275,10 +275,20 @@ export async function getCompanyBrain(companyId) {
       adsRes.data?.length ? `Ad campaigns: ${adsRes.data.map(a => `${trunc(a.name, 35)}[${a.platform || '?'}${a.status ? `/${a.status}` : ''}]`).join(', ')}` : null,
       blogRes.data?.length ? `Blog posts: ${blogRes.data.map(b => `"${trunc(b.title, 40)}"[${b.status}]`).join(', ')}` : null,
       seoRes.data?.length ? `SEO scores: ${seoRes.data.map(s => `${trunc(s.domain, 40)}=${s.score ?? '?'}`).join(', ')}` : null,
+      // Named widgets, not just a count: knowing the company charts "Funnel Stage
+      // Breakdown" and "Weekly Lead Acquisition" tells the agent which numbers this
+      // business steers by, so it can read the live figures above against them and
+      // say something useful about what they show.
       dashRes.data?.length
-        ? `Dashboards this company watches: ${dashRes.data
-          .map(d => `${trunc(d.name, 40)}${d.widgets?.length ? ` (${d.widgets.length} widget(s))` : ''}`)
-          .join(', ')}`
+        ? `Dashboards this company watches: ${dashRes.data.map(d => {
+          const titles = (d.widgets || []).map(w => w?.title).filter(Boolean).slice(0, 6);
+          return `${trunc(d.name, 40)}${titles.length ? ` [${titles.map(t => trunc(t, 34)).join('; ')}]` : ''}`;
+        }).join(' | ')}`
+        : null,
+      dashRes.data?.length
+        ? 'When the live numbers above show something a tracked dashboard would reveal — a stage '
+          + 'that leaks, a channel that outperforms, a metric moving the wrong way — say so and '
+          + 'propose the change or the missing widget. Do not describe the dashboard back to them.'
         : null,
       tasksRes.data?.length
         ? `Work in flight (${tasksRes.data.length} open task(s)): ${tasksRes.data

@@ -3192,3 +3192,29 @@ no query that reads another tenant's rows back to the caller. Highest value next
   membership check in the callback (account-linking CSRF).
 - helmet's default CSP blocks oauth.js's own inline postMessage script, so the OAuth
   popups likely never signal success to the opener in production.
+
+## Dashboards: agent can build them, and read them (Claude, 2026-08-15)
+
+`create_dashboard` / `update_dashboard` added, so dashboards can now be built from
+chat or from a task like every other section.
+
+Widget values are validated against the REAL vocabulary read out of
+frontend-src/pages/Dashboards.jsx — WIDGET_TYPES (bar_chart, pie_chart, area_chart,
+stat_card) and DATA_SOURCES (leads, messages, funnel, activities, workflows,
+social_posts, custom). A type the renderer does not understand draws NOTHING, so an
+unknown value is coerced rather than stored: an empty card is worse than a refusal.
+`toWidgets` emits exactly the eight keys a stored widget has (id, title, type,
+dataSource, size, width, height, legend), and generates its own ids — the model's
+are not trusted.
+
+`update_dashboard` ADDS by default. Replacing is possible but requires an explicit
+`replace_widgets: true`, and the approval card marks it destructive and says
+"REPLACING all existing" — rebuilding a layout someone arranged by hand should be
+asked for, not inferred from "add a chart".
+
+SUGGESTIONS. The brain now lists each dashboard's WIDGET TITLES, not just a count,
+plus an instruction to speak up when the live figures show something a tracked
+dashboard would reveal — a leaking stage, an outperforming channel, a metric moving
+the wrong way — and to propose the change or the missing widget rather than
+describing the dashboard back to the user. Knowing a company charts "Funnel Stage
+Breakdown" tells the agent which numbers that business steers by.

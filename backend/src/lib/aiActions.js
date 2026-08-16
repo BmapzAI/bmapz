@@ -99,6 +99,12 @@ export const ACTION_PROTOCOL_OPS = [
   '- {"op":"update_lead","id":"<lead uuid>", …same fields…}',
   '  Use these when asked to add someone to the CRM, move a lead along the funnel, assign an',
   '  owner, or record what was learned about them.',
+  '- {"op":"create_dashboard","name":"…","widgets":[{"title":"…",',
+  '  "type":"bar_chart|pie_chart|area_chart|stat_card",',
+  '  "dataSource":"leads|messages|funnel|activities|workflows|social_posts","size":"small|medium|large"}]}',
+  '- {"op":"update_dashboard","id":"<dashboard uuid>","name":"…","widgets":[…],"replace_widgets":false}',
+  '  update_dashboard ADDS widgets by default. Only set replace_widgets true when the user',
+  '  explicitly asks to rebuild the dashboard — it discards the layout they arranged.',
   '- {"op":"create_workflow","name":"…","description":"…","type":"sales_outreach|follow_up|',
   '  nurturing|qualification|custom","steps":[…]}',
   '- {"op":"update_workflow","id":"<workflow uuid>","name":"…","steps":[…],',
@@ -541,6 +547,20 @@ export function describeAction(action) {
         changes: Object.keys(action).filter(k => !['op', 'id'].includes(k)),
         // Marking someone lost or disqualified ends the pursuit — worth a second look.
         destructive: ['lost', 'disqualified'].includes(action.status) };
+    case 'create_dashboard':
+      return { op, title: `Create dashboard "${str(action.name || action.title, 120) || ''}"`,
+        changes: (action.widgets || []).slice(0, 6).map(w => `${w?.type || 'chart'}: ${str(w?.title, 40) || 'untitled'}`),
+        destructive: false };
+    case 'update_dashboard':
+      return { op, title: 'Update dashboard',
+        changes: [
+          action.name ? `renamed to "${str(action.name, 60)}"` : null,
+          Array.isArray(action.widgets)
+            ? `${action.widgets.length} widget(s) ${action.replace_widgets === true ? 'REPLACING all existing' : 'added'}`
+            : null,
+        ].filter(Boolean),
+        // Replacing wipes a layout someone arranged by hand.
+        destructive: action.replace_widgets === true };
     case 'create_workflow':
       return { op, title: `Create workflow "${str(action.name || action.title, 120) || ''}"`,
         changes: [`${(action.steps || []).length} step(s)`, 'created as a draft — not running'],
@@ -977,6 +997,97 @@ async function runSeoAnalysisAction(action, ctx) {
   }
 }
 
+/* ── Dashboards ─────────────────────────────────────────────────────────── */
+
+// Kept in step with frontend-src/pages/Dashboards.jsx WIDGET_TYPES / DATA_SOURCES.
+// A widget the renderer does not understand renders as nothing, so an unknown
+// value is rejected rather than stored — an empty card is worse than a refusal.
+const WIDGET_TYPES = new Set(['bar_chart', 'pie_chart', 'area_chart', 'stat_card']);
+const WIDGET_SOURCES = new Set(['leads', 'messages', 'funnel', 'activities', 'workflows', 'social_posts', 'custom']);
+
+/** Coerce the model's widget list into something the dashboard can actually draw. */
+function toWidgets(list) {
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, 12).map((w, i) => {
+    const type = WIDGET_TYPES.has(w?.type) ? w.type : 'bar_chart';
+    const dataSource = WIDGET_SOURCES.has(w?.dataSource) ? w.dataSource : 'leads';
+    return {
+      // Stable ids the UI can key on; the model's own ids are not trusted.
+      id: `ai${Date.now().toString(36)}${i}`,
+      title: str(w?.title, 120) || 'Untitled widget',
+      type,
+      dataSource,
+      size: ['small', 'medium', 'large'].includes(w?.size) ? w.size : 'medium',
+      width: Math.min(4, Math.max(1, Number(w?.width) || 2)),
+      height: Math.min(4, Math.max(1, Number(w?.height) || 2)),
+      legend: { show: ['chart', 'tooltip'], position: 'bottom' },
+    };
+  });
+}
+
+async function createDashboard(action, ctx) {
+  const name = str(action.name || action.title, 120);
+  if (!name) return { ok: false, error: 'A dashboard needs a name.' };
+
+  const widgets = toWidgets(action.widgets);
+  if (!widgets.length) return { ok: false, error: 'A dashboard needs at least one widget.' };
+
+  const { data, error } = await supabaseAdmin.from('dashboard_configs').insert({
+    company_id: ctx.companyId,
+    user_id: ctx.userId || null,
+    name,
+    widgets,
+    layout: {},
+    is_default: false,
+  }).select().single();
+  if (error) return { ok: false, error: friendlyError(error) };
+
+  return {
+    ok: true,
+    summary: `Created dashboard "${name}" with ${widgets.length} widget(s)`,
+    id: data.id,
+    link: '/Dashboards',
+  };
+}
+
+async function updateDashboard(action, ctx) {
+  const id = str(action.id, 60);
+  if (!UUID_RE.test(id)) return { ok: false, error: 'A real dashboard id is required.' };
+
+  const { data: existing, error: findErr } = await supabaseAdmin
+    .from('dashboard_configs').select('id, name, widgets')
+    .eq('id', id).eq('company_id', ctx.companyId).maybeSingle();
+  if (findErr) return { ok: false, error: friendlyError(findErr) };
+  if (!existing) return { ok: false, error: 'That dashboard does not exist in this company.' };
+
+  const patch = {};
+  if (action.name) patch.name = str(action.name, 120);
+
+  if (Array.isArray(action.widgets)) {
+    const incoming = toWidgets(action.widgets);
+    if (!incoming.length) return { ok: false, error: 'That widget list has nothing the dashboard can draw.' };
+    // Default is to ADD. Replacing a dashboard someone arranged by hand is the kind
+    // of thing that should be asked for explicitly, not inferred from "add a chart".
+    patch.widgets = action.replace_widgets === true
+      ? incoming
+      : [...(existing.widgets || []), ...incoming].slice(0, 24);
+  }
+
+  if (!Object.keys(patch).length) return { ok: false, error: 'Nothing to update.' };
+
+  const { error } = await supabaseAdmin.from('dashboard_configs')
+    .update(patch).eq('id', id).eq('company_id', ctx.companyId);
+  if (error) return { ok: false, error: friendlyError(error) };
+
+  return {
+    ok: true,
+    summary: `Updated dashboard "${existing.name}"`
+      + (patch.widgets ? ` — now ${patch.widgets.length} widget(s)` : ''),
+    id,
+    link: '/Dashboards',
+  };
+}
+
 /* ── Leads ──────────────────────────────────────────────────────────────── */
 
 const LEAD_STATUSES = new Set(['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'disqualified']);
@@ -1179,6 +1290,8 @@ const HANDLERS = {
   save_seo_analysis: saveSeoAnalysisAction,
   create_lead: createLead,
   update_lead: updateLead,
+  create_dashboard: createDashboard,
+  update_dashboard: updateDashboard,
   create_workflow: createWorkflow,
   update_workflow: updateWorkflow,
 };
