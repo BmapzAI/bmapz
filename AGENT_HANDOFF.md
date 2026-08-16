@@ -3218,3 +3218,65 @@ dashboard would reveal — a leaking stage, an outperforming channel, a metric m
 the wrong way — and to propose the change or the missing widget rather than
 describing the dashboard back to the user. Knowing a company charts "Funnel Stage
 Breakdown" tells the agent which numbers that business steers by.
+
+## SECURITY AUDIT — batch 3 (Claude, 2026-08-16)
+
+PRIVILEGE. `users.js` scoped by company but never checked the TARGET's role — and
+inside the App Owner's OWN company a company_admin is company-scoped to the owner,
+so a customer-grade admin could demote or delete the App Owner. `protectedTarget()`
+now refuses owner/system_admin on both the role PATCH and the DELETE, and fails
+closed if the target cannot be read.
+
+INJECTION.
+- `leads.js` search was the one `.or()` in the codebase missing the sanitizer that
+  users.js, search.js, ai.js and tasks.js all apply. A comma starts another filter
+  term and `%`/`_` become wildcards.
+- Google Drive `q` is a query LANGUAGE and both `mime_type` and `query` went in raw.
+  A single quote closed the literal, so `x' or name contains 'a` escaped the
+  image/PDF restriction and turned the endpoint into a browser for the WHOLE
+  connected Google account. mime_type is now matched against a fixed set; quotes are
+  stripped from the search term.
+
+STORED XSS. `uploads.js` accepted any file type into a PUBLIC bucket and served it
+with the CLIENT's declared Content-Type — upload .html or an SVG with <script> and
+it is served as active content on the Supabase origin. Now an allowlist that is
+ALSO the served type (the client's string is never trusted), SVG deliberately
+excluded, with 415/413 responses instead of a 500.
+
+OAUTH.
+- `/disconnect` and `/google/refresh` were requireAuth only, so any plain member
+  could rewire or wipe company-wide integrations. Both now requireCompanyAdmin.
+- `clearOAuthTokens` discarded its update error, so /disconnect reported success
+  while the tokens stayed live.
+- State is now SINGLE-USE (`consumeOAuthState`): it was a signed bearer blob valid
+  for 15 minutes, replayable, and for Twitter/Canva the PKCE code_verifier travels
+  inside it. The signature is the primary key of an idempotency ledger.
+- THE POPUP BUG. helmet's default CSP (`script-src 'self'`) silently blocked
+  oauth.js's own inline <script>, so the popup never posted back and OAuth appeared
+  to hang in production. The payload now travels in data attributes read by a real
+  script file at /api/oauth/popup.js, which CSP allows. Same change removes the
+  reflected HTML/JS injection (values were interpolated raw, and the error branch is
+  reachable unauthenticated) and stops broadcasting to targetOrigin '*'.
+
+WEBHOOK REPLAY. Signature verification proves an event is genuine, not that it is
+new — and Stripe retries anything not answered 2xx, so a slow response re-granted a
+full month of credits. New `webhook_events` table; the primary key is the lock and
+is written BEFORE the work, so a retry cannot race a delivery still in flight. RLS
+on with no policy (service-role only).
+
+PLATFORM.
+- The global error handler returned `err.message` for everything including 500s.
+  Unexpected failures are usually database errors, and Postgres names tables,
+  columns and constraints — a crash handed out a map of the schema. 5xx is now
+  generic; 4xx keeps our own wording unless it looks like SQL.
+- `express.json`'s verify hook kept a rawBody Buffer for EVERY request platform-wide
+  though only webhooks read it. Now only on /webhook paths.
+- `leads.js` list `limit` went straight into .range() uncapped; ceilinged at 500.
+
+DEPENDENCIES. multer 1.4.5-lts (4 DoS CVEs, one crashing the shared process) -> 2.2.0.
+nodemailer -> 9.0.5 (SMTP command injection, CRLF in EHLO/HELO, wrong-domain
+delivery) — verified createTransport/sendMail still work, and emailSender.js uses
+only that basic API. `npm audit fix` also cleared body-parser, brace-expansion and
+form-data. REMAINING: one moderate `uuid` advisory, transitive only — no code in
+backend/src imports uuid, and the flaw needs v3/v5/v6 called with a `buf` argument.
+Left rather than force uuid@14 on whatever depends on it.

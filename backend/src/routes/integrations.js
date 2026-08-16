@@ -347,14 +347,35 @@ router.get('/google/drive/files', requireAuth, async (req, res) => {
       pageSize: '30',
     });
 
-    // Build query
+    // Build query.
+    //
+    // Drive's `q` is a query LANGUAGE, and both values were interpolated into it
+    // raw. A single quote closes the literal, so `mime_type` of
+    //   x' or name contains 'a
+    // escaped the image/PDF restriction entirely and turned this endpoint into a
+    // browser for the whole connected Google account — spreadsheets, contracts,
+    // anything — for any plain member.
+    //
+    // A quote is not escapable here in a way worth trusting, so a value containing
+    // one is rejected rather than mangled, and mime_type is matched against a
+    // fixed set instead of taken on faith.
+    const ALLOWED_MIME = new Set([
+      'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml', 'application/pdf',
+    ]);
+
     const qParts = ['trashed=false'];
     if (mime_type) {
+      if (!ALLOWED_MIME.has(String(mime_type))) {
+        return res.status(400).json({ error: 'Unsupported file type filter.' });
+      }
       qParts.push(`mimeType='${mime_type}'`);
     } else {
       qParts.push("(mimeType contains 'image/' or mimeType='application/pdf')");
     }
-    if (query) qParts.push(`name contains '${query}'`);
+    if (query) {
+      const term = String(query).replace(/['\\]/g, '').trim().slice(0, 120);
+      if (term) qParts.push(`name contains '${term}'`);
+    }
     params.set('q', qParts.join(' and '));
 
     if (page_token) params.set('pageToken', page_token);

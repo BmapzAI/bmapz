@@ -129,7 +129,12 @@ app.use(stripeWebhookRoutes);
 // req.body will not match).
 app.use(express.json({
   limit: '10mb',
-  verify: (req, _res, buf) => { req.rawBody = buf; },
+  // Only the routes that verify an HMAC need the raw bytes. Retaining a copy of
+  // every body platform-wide doubled the memory held per request for no reason —
+  // at the 10MB ceiling that is 10MB of avoidable garbage per concurrent upload.
+  verify: (req, _res, buf) => {
+    if (/\/webhook/i.test(req.originalUrl || req.url || '')) req.rawBody = buf;
+  },
 }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -174,10 +179,27 @@ app.use('/api/metrics', metricsRoutes);
 app.use('/api/canva', canvaRoutes);
 
 // ─── Global error handler ─────────────────────────────────────────────────────
+//
+// The full error always goes to the logs; what reaches the CLIENT depends on
+// whether we meant to say it.
+//
+// This used to return `err.message` verbatim for everything, including 500s. An
+// unexpected failure is usually a database error, and Postgres messages name
+// tables, columns and constraints — so a crash handed an attacker a free map of
+// the schema. 4xx messages are ones we wrote deliberately and stay; 5xx becomes a
+// generic sentence.
 app.use((err, _req, res, _next) => {
-  console.error('[Error]', err.message);
   const status = err.status || err.statusCode || 500;
-  res.status(status).json({ error: err.message || 'Internal server error' });
+  console.error('[Error]', status, err.message, err.stack ? `\n${err.stack}` : '');
+
+  if (status >= 500) {
+    return res.status(status).json({ error: 'Something went wrong on our side. Please try again.' });
+  }
+
+  // Even a 4xx should not carry raw SQL if one slipped through.
+  const msg = String(err.message || 'Request could not be completed.');
+  const looksLikeSql = /relation "|column "|constraint|violates|pg_|SQLSTATE/i.test(msg);
+  res.status(status).json({ error: looksLikeSql ? 'That request could not be completed.' : msg });
 });
 
 app.listen(PORT, () => {

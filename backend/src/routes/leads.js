@@ -136,7 +136,12 @@ router.delete('/lists/:id', requireAuth, async (req, res) => {
 
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const { list_id, status, stage, search, limit = 100, offset = 0 } = req.query;
+    const { list_id, status, stage, search } = req.query;
+    // Ceilinged. `limit` went straight into .range(), so `?limit=1000000` asked the
+    // database for every lead in the tenant and serialised the lot — a one-request
+    // memory and latency spike that needs no special privileges.
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
 
     // Embed the owner so the whole company can see who handles each lead. The
     // embed (and owner filter) only work once migration 010 has been applied, so
@@ -162,7 +167,16 @@ router.get('/', requireAuth, async (req, res) => {
       if (req.query.source) q = q.eq('source', req.query.source);
       if (req.query.since) q = q.gte('created_at', req.query.since);
       if (req.query.unassigned === 'true') q = q.is('owner_id', null);
-      if (search) q = q.or(`lead_name.ilike.%${search}%,email.ilike.%${search}%,lead_company_name.ilike.%${search}%`);
+      // Sanitised before interpolation. This was the ONE search route that skipped
+      // it — users.js, search.js, ai.js and tasks.js all strip these characters.
+      // A comma starts another filter term and a paren closes the group, so an
+      // unescaped search string rewrites the query's shape (the company_id .eq is
+      // a separate clause and still holds, but the result set is not what was asked
+      // for, and `%`/`_` silently turn into wildcards).
+      if (search) {
+        const s = String(search).replace(/[%_,()]/g, ' ').trim();
+        if (s) q = q.or(`lead_name.ilike.%${s}%,email.ilike.%${s}%,lead_company_name.ilike.%${s}%`);
+      }
       return q;
     };
 

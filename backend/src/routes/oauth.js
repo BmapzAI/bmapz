@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
 import { supabaseAdmin } from '../lib/supabase.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
 
 const router = Router();
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
@@ -20,6 +20,40 @@ function encodeOAuthState(payload) {
   const body = Buffer.from(JSON.stringify({ ...payload, issuedAt: Date.now() })).toString('base64url');
   const signature = crypto.createHmac('sha256', oauthStateSecret()).update(body).digest('base64url');
   return `${body}.${signature}`;
+}
+
+/**
+ * Verify a state AND spend it, so it works exactly once.
+ *
+ * The state was a stateless signed bearer blob valid for a full 15 minutes, so a
+ * captured callback URL could be replayed repeatedly within that window — and for
+ * Twitter and Canva the PKCE `code_verifier` travels INSIDE the state, which
+ * defeats the point of PKCE if the state is ever observed.
+ *
+ * The insert is the lock: the signature is the primary key, so the second use
+ * collides and is refused.
+ *
+ * NOT fixed here: the state still is not bound to the browser that began the flow,
+ * so account-linking CSRF (luring a victim into finishing an attacker's flow)
+ * remains possible. Closing that needs a nonce cookie, and this backend is
+ * Bearer-only today — flagged in AGENT_HANDOFF.md rather than half-done.
+ */
+async function consumeOAuthState(state) {
+  const payload = decodeOAuthState(state);   // verify signature + expiry first
+  const signature = String(state).split('.')[1];
+
+  const { error } = await supabaseAdmin
+    .from('webhook_events')
+    .insert({ id: `oauth:${signature}`, provider: 'oauth', event_type: payload.integrationType || 'oauth' });
+  if (error) {
+    if (/duplicate key|already exists/i.test(error.message || '')) {
+      throw new Error('That sign-in link was already used. Please connect again.');
+    }
+    // Cannot prove it is unused — refuse rather than risk a replay.
+    console.error('[oauth] state single-use check failed:', error.message);
+    throw new Error('Could not verify that sign-in. Please try again.');
+  }
+  return payload;
 }
 
 function decodeOAuthState(state) {
@@ -91,10 +125,14 @@ async function clearOAuthTokens(companyId, keysToRemove, statusKeys) {
   const updatedStatus = { ...integrationStatus };
   for (const k of statusKeys) delete updatedStatus[k];
 
-  await supabaseAdmin
+  // supabase-js resolves with {data:null,error} rather than throwing, so this
+  // discarded failure meant /disconnect answered `{success:true}` while the tokens
+  // were still live — the user believed an integration was revoked when it was not.
+  const { error } = await supabaseAdmin
     .from('companies')
     .update({ api_keys: updatedApiKeys, integration_status: updatedStatus })
     .eq('id', companyId);
+  if (error) throw new Error(`Could not disconnect: ${error.message}`);
 }
 
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
@@ -184,7 +222,7 @@ router.get('/google/callback', async (req, res) => {
       return res.send(popupHtml('error', 'Google', oauthError));
     }
 
-    const stateData = decodeOAuthState(state);
+    const stateData = await consumeOAuthState(state);
     const { companyId, integrationType } = stateData;
 
     // Get company credentials from api_keys JSONB
@@ -267,7 +305,7 @@ router.get('/meta/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Meta', oauthError));
 
-    const stateData = decodeOAuthState(state);
+    const stateData = await consumeOAuthState(state);
     const { companyId, integrationType = 'meta' } = stateData;
 
     const { apiKeys } = await getCompanyKeys(companyId);
@@ -377,7 +415,7 @@ router.get('/linkedin/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'LinkedIn', oauthError));
 
-    const { companyId, integrationType = 'linkedin' } = decodeOAuthState(state);
+    const { companyId, integrationType = 'linkedin' } = await consumeOAuthState(state);
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientId = apiKeys.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
@@ -446,7 +484,7 @@ router.get('/twitter/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Twitter/X', oauthError));
 
-    const { companyId, codeVerifier, integrationType = 'twitter' } = decodeOAuthState(state);
+    const { companyId, codeVerifier, integrationType = 'twitter' } = await consumeOAuthState(state);
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientId = apiKeys.twitter_client_id || process.env.TWITTER_CLIENT_ID;
@@ -514,7 +552,7 @@ router.get('/tiktok/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'TikTok', oauthError));
 
-    const { companyId, integrationType = 'tiktok' } = decodeOAuthState(state);
+    const { companyId, integrationType = 'tiktok' } = await consumeOAuthState(state);
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientKey = apiKeys.tiktok_client_key || process.env.TIKTOK_CLIENT_KEY;
@@ -543,7 +581,7 @@ router.get('/tiktok/callback', async (req, res) => {
 
 // ─── Token refresh ────────────────────────────────────────────────────────────
 
-router.post('/google/refresh', requireAuth, async (req, res) => {
+router.post('/google/refresh', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
     const { apiKeys } = await getCompanyKeys(req.companyId);
 
@@ -595,7 +633,9 @@ router.post('/google/refresh', requireAuth, async (req, res) => {
 
 // ─── Disconnect integration ───────────────────────────────────────────────────
 
-router.post('/disconnect', requireAuth, async (req, res) => {
+// Company-wide credentials: same bar as the Settings route that manages them.
+// A plain member could previously rewire or wipe every integration the company had.
+router.post('/disconnect', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
     const { provider } = req.body;
 
@@ -670,7 +710,7 @@ router.get('/canva/callback', async (req, res) => {
   try {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Canva', oauthError));
-    const { companyId, codeVerifier, integrationType = 'canva' } = decodeOAuthState(state);
+    const { companyId, codeVerifier, integrationType = 'canva' } = await consumeOAuthState(state);
     const { apiKeys } = await getCompanyKeys(companyId);
     const clientId = apiKeys.canva_client_id || process.env.CANVA_CLIENT_ID;
     const clientSecret = apiKeys.canva_client_secret || process.env.CANVA_CLIENT_SECRET;
@@ -722,31 +762,75 @@ export async function refreshCanvaToken(companyId) {
   return tokens.access_token;
 }
 
+/**
+ * The popup that closes an OAuth flow.
+ *
+ * Four defects lived in these few lines:
+ *
+ *  1. `provider`, `integrationType` and the error text were interpolated straight
+ *     into HTML and into inline JS. The error branch is reachable UNAUTHENTICATED
+ *     with an attacker-chosen query string, so it was a reflected injection.
+ *  2. postMessage targeted '*', broadcasting to whatever opened the window.
+ *  3. helmet's default CSP (`script-src 'self'`) BLOCKS an inline <script>, so this
+ *     script never ran in production — the popup never told the opener anything and
+ *     simply sat there. The reported "OAuth popups don't signal success" bug is
+ *     this. The payload now travels in a data attribute read by an external module
+ *     that CSP permits, and the window closes on a timer either way.
+ *  4. The error text came from the provider verbatim and could carry token
+ *     fragments; it is now a fixed sentence.
+ */
 function popupHtml(status, provider, errorMsg = null, integrationType = null) {
-  if (status === 'success') {
-    return `<!DOCTYPE html>
-<html>
-<head><title>Connected</title></head>
-<body>
-<script>
-  window.opener && window.opener.postMessage({ type: 'oauth_success', provider: '${provider}', integrationType: '${integrationType || provider}' }, '*');
-  window.close();
-</script>
-<p>Connected! This window will close automatically.</p>
-</body>
-</html>`;
-  }
+  const esc = (s) => String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  // Only ever a known provider key — never free text from the query string.
+  const safeProvider = /^[a-z0-9_]{1,40}$/i.test(String(provider || '')) ? String(provider) : 'unknown';
+  const safeType = /^[a-z0-9_]{1,40}$/i.test(String(integrationType || '')) ? String(integrationType) : safeProvider;
+  const ok = status === 'success';
+
+  // The opener's exact origin, so the message is not broadcast.
+  const target = process.env.APP_URL || process.env.FRONTEND_URL || '';
+
   return `<!DOCTYPE html>
 <html>
-<head><title>Error</title></head>
-<body>
-<script>
-  window.opener && window.opener.postMessage({ type: 'oauth_error', provider: '${provider}', error: ${JSON.stringify(errorMsg)} }, '*');
-  window.close();
-</script>
-<p>Error: ${errorMsg}. Please close this window and try again.</p>
+<head><meta charset="utf-8"><title>${ok ? 'Connected' : 'Connection failed'}</title></head>
+<body
+  data-status="${ok ? 'success' : 'error'}"
+  data-provider="${esc(safeProvider)}"
+  data-integration="${esc(safeType)}"
+  data-target="${esc(target)}"
+>
+<p>${ok
+    ? 'Connected. This window will close automatically.'
+    : 'That connection could not be completed. Please close this window and try again.'}</p>
+<script src="/api/oauth/popup.js"></script>
 </body>
 </html>`;
 }
+
+/**
+ * Served as a real script file so helmet's `script-src 'self'` allows it — an
+ * inline block here is silently dropped by the CSP, which is why the popups never
+ * signalled anything.
+ */
+router.get('/popup.js', (_req, res) => {
+  res.type('application/javascript').send(`(function () {
+  var b = document.body;
+  var msg = {
+    type: b.dataset.status === 'success' ? 'oauth_success' : 'oauth_error',
+    provider: b.dataset.provider,
+    integrationType: b.dataset.integration
+  };
+  try {
+    if (window.opener) {
+      // Named origin when we know it; '*' only as a last resort, and the payload
+      // carries no secret either way.
+      window.opener.postMessage(msg, b.dataset.target || '*');
+    }
+  } catch (e) { /* opener gone or cross-origin — closing is still correct */ }
+  setTimeout(function () { window.close(); }, 300);
+})();`);
+});
 
 export default router;

@@ -33,6 +33,29 @@ router.post('/api/stripe/webhook', async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // Signature verification proves the event is GENUINE. It says nothing about
+  // whether we have already acted on it — and Stripe retries anything we do not
+  // answer 2xx to, so a slow response or a transient error re-delivered
+  // checkout.session.completed and re-granted a full month of plan credits,
+  // duplicating the ledger rows with it.
+  //
+  // The insert IS the lock: the primary key rejects a duplicate, and that rejection
+  // means "already handled". Recorded BEFORE the work, so a retry cannot race the
+  // first delivery still in flight.
+  const { error: seenErr } = await supabaseAdmin
+    .from('webhook_events')
+    .insert({ id: event.id, provider: 'stripe', event_type: event.type });
+  if (seenErr) {
+    if (/duplicate key|already exists/i.test(seenErr.message || '')) {
+      console.log(`[stripe webhook] ${event.id} (${event.type}) already processed — skipping`);
+      return res.json({ received: true, duplicate: true });
+    }
+    // Anything else and we cannot prove this is a first delivery. Fail so Stripe
+    // retries, rather than risk granting twice.
+    console.error('[stripe webhook] idempotency check failed:', seenErr.message);
+    return res.status(503).json({ error: 'temporarily unable to process' });
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {

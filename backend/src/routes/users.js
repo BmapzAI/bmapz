@@ -376,10 +376,35 @@ router.post('/invite', requireAuth, requireCompanyAdmin, async (req, res) => {
   }
 });
 
+/**
+ * Internal roles are not touchable from company-scoped routes.
+ *
+ * These endpoints scoped by company but never looked at the TARGET's role — and
+ * inside the App Owner's OWN company, a company_admin is company-scoped to the
+ * owner. So a customer-grade admin could demote or delete the App Owner and take
+ * the platform with them. admin.js has this guard; users.js did not.
+ *
+ * Returns an {status, body} to send when the target is protected, else null.
+ */
+async function protectedTarget(targetId, companyId) {
+  const { data: target, error } = await supabaseAdmin
+    .from('users').select('id, role')
+    .eq('id', targetId).eq('company_id', companyId).maybeSingle();
+  // Fail closed: if we cannot read the target we do not act on it.
+  if (error) return { status: 503, body: { error: 'Could not verify that user. Nothing was changed.' } };
+  if (!target) return { status: 404, body: { error: 'User not found in this company.' } };
+  if (['owner', 'system_admin'].includes(target.role)) {
+    return { status: 403, body: { error: 'Internal Bmapz roles can only be changed from the Admin Panel.' } };
+  }
+  return null;
+}
+
 // PATCH /api/users/:id/role — update a user's role
 router.patch('/:id/role', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
     const { role } = req.body;
+    const blocked = await protectedTarget(req.params.id, req.companyId);
+    if (blocked) return res.status(blocked.status).json(blocked.body);
     // Company admins can only assign CUSTOMER roles. 'owner' / 'system_admin'
     // are Bmapz-internal and grantable only from the platform Admin Panel
     // (admin routes), never through company-scoped endpoints.
@@ -438,6 +463,8 @@ router.delete('/:id', requireAuth, requireCompanyAdmin, async (req, res) => {
     if (req.params.id === req.dbUser.id) {
       return res.status(400).json({ error: 'Cannot remove yourself' });
     }
+    const blocked = await protectedTarget(req.params.id, req.companyId);
+    if (blocked) return res.status(blocked.status).json(blocked.body);
 
     const { error } = await supabaseAdmin
       .from('users')
