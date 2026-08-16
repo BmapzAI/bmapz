@@ -57,8 +57,22 @@ export async function loadDbUser(userId) {
 
   const activeCompanyId = user.active_company_id || user.company_id;
   if (activeCompanyId) {
+    // An EXPLICIT column list, never select('*').
+    //
+    // This used to attach the whole companies row — `api_keys` included — to
+    // req.dbUser on every authenticated request, and GET /api/users/me returns
+    // req.dbUser verbatim. Any member, including a guest from another tenant, could
+    // read the company's provider credentials: exactly the leak lib/companyView.js
+    // was written to prevent, reached through a route nobody had hardened.
+    //
+    // Nothing in the codebase reads user.companies, so the blob existed only to be
+    // leaked. Identity fields are kept in case a caller starts needing them; if a
+    // secret is ever needed, read it deliberately at the point of use.
     const { data: company } = await supabaseAdmin
-      .from('companies').select('*').eq('id', activeCompanyId).single();
+      .from('companies')
+      .select('id, name, industry, website')
+      .eq('id', activeCompanyId)
+      .single();
     user.companies = company || null;
   } else {
     user.companies = null;

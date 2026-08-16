@@ -65,4 +65,75 @@ export function flattenCompany(row, { includeSecrets = false } = {}) {
   return { ...rest, ...safe, ...(settings || {}) };
 }
 
+/**
+ * A URL the server is allowed to fetch on a user's behalf.
+ *
+ * Anything the server fetches from a user-supplied address is an SSRF sink: the
+ * request comes from inside the network, so it reaches cloud metadata
+ * (169.254.169.254), localhost services and private ranges that no outside client
+ * could touch. The rule is an allowlist, not a blocklist — DNS rebinding and
+ * decimal/IPv6-mapped encodings defeat blocklists.
+ *
+ * Allowed: https only, and only the project's own Supabase storage host plus any
+ * host named in FETCH_ALLOWED_HOSTS.
+ */
+export function validatedFetchUrl(value) {
+  let url;
+  try {
+    url = new URL(String(value));
+  } catch {
+    const e = new Error('That is not a valid URL.');
+    e.code = 'INVALID_URL';
+    throw e;
+  }
+
+  const storageHost = process.env.SUPABASE_URL ? new URL(process.env.SUPABASE_URL).hostname : null;
+  const configured = String(process.env.FETCH_ALLOWED_HOSTS || '')
+    .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
+  const allowed = new Set([storageHost, ...configured].filter(Boolean));
+
+  if (url.protocol !== 'https:' || !allowed.has(url.hostname.toLowerCase())) {
+    const e = new Error('That image must be hosted in Bmapz storage.');
+    e.code = 'INVALID_URL';
+    throw e;
+  }
+  return url;
+}
+
+/**
+ * Strip anything secret-shaped from an arbitrary object before it goes on the wire.
+ *
+ * `flattenCompany` protects the company-shaped responses. This is the belt-and-
+ * braces version for objects assembled elsewhere — a user row with a nested
+ * company, for instance — where a future field could otherwise ride out
+ * unnoticed. Recurses, and replaces a secret with a presence flag rather than
+ * dropping it silently, so the UI can still tell "connected" from "not".
+ */
+export function scrubSecrets(value, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 4) return value;
+  if (Array.isArray(value)) return value.map(v => scrubSecrets(v, depth + 1));
+
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    // Whole credential bags, not just individual keys.
+    if (k === 'api_keys') {
+      const keys = v && typeof v === 'object' ? v : {};
+      for (const [ik, iv] of Object.entries(keys)) {
+        // Same rule as flattenCompany: secrets become presence flags, ordinary
+        // config (chosen provider, model names, personal_agent_name) is kept —
+        // dropping it would silently break whatever reads it.
+        if (SECRET_KEY_RE.test(ik)) out[`has_${ik}`] = !!(iv && String(iv).trim());
+        else out[ik] = iv;
+      }
+      continue;
+    }
+    if (SECRET_KEY_RE.test(k)) {
+      out[`has_${k}`] = !!(v && String(v).trim());
+      continue;
+    }
+    out[k] = (v && typeof v === 'object') ? scrubSecrets(v, depth + 1) : v;
+  }
+  return out;
+}
+
 export default flattenCompany;

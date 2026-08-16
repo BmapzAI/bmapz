@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireCompanyAdmin, requireAdmin } from '../middleware/auth.js';
+import { scrubSecrets } from '../lib/companyView.js';
 
 const router = Router();
 
@@ -217,8 +218,13 @@ router.patch('/me/sales-status', requireAuth, async (req, res) => {
 });
 
 // GET /api/users/me — current user profile
+//
+// Scrubbed on the way out as well as at the source. Returning req.dbUser verbatim
+// is what turned an over-broad select in the auth middleware into a credential
+// leak, so this route no longer trusts that the object it was handed is safe: any
+// future field matching SECRET_KEY_RE is stripped here regardless of how it arrived.
 router.get('/me', requireAuth, (req, res) => {
-  res.json(req.dbUser);
+  res.json(scrubSecrets(req.dbUser));
 });
 
 // PATCH /api/users/me — update own profile

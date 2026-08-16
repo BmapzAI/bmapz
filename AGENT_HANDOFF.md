@@ -3080,3 +3080,72 @@ will start receiving real messages".
 Verified: all four ops resolve through `isKnownOp`, each renders a correct approval
 card with the right destructive flag, both appear in the catalogue the model reads,
 and the dashboards query returns real rows.
+
+## SECURITY AUDIT — first remediation batch (Claude, 2026-08-15)
+
+Seven-dimension adversarial audit (oauth, ai, authz, injection, secrets, abuse,
+platform). 59 findings survived; oauth and ai were fully verified, the other five
+verifiers hit a session limit and are being re-run. Severity: 1 critical, 12 high,
+24 medium, 22 low. This batch fixes the critical and six highs.
+
+CRITICAL — company credentials readable by any member.
+`middleware/auth.js` did `.from('companies').select('*')` and attached the whole row
+— `api_keys` included — to `req.dbUser` on EVERY authenticated request, and
+`GET /api/users/me` returned `req.dbUser` verbatim. Any member, including a guest
+from another tenant who had switched in, could read the company's OpenAI, Anthropic,
+Meta, Google and other provider credentials. This is precisely the leak
+lib/companyView.js exists to prevent, reached through a third route nobody had
+hardened. NOTHING in the codebase read `user.companies`, so the blob existed only to
+be leaked. Fixed at the source (explicit column list) AND at the exit (new
+`scrubSecrets`, so a future field cannot ride out unnoticed).
+
+HIGH — live Google token handed to any member. `POST /api/oauth/google/refresh`
+returned `{ access_token }`, usable directly against Google's APIs outside this
+app's permission model. No caller anywhere reads it. Now stores and returns only
+`{ ok, expires_at }`; the provider error text (which can carry token fragments) is
+no longer echoed either.
+
+HIGH — the 14-day trial never expired. `trial_ends_at` was written at signup and
+read NOWHERE, while `isOnTrial` skips the credit gate entirely — so a trial was
+unlimited free AI on platform keys, permanently, for anyone who never upgraded.
+`status === 'inactive'` hit the same bypass, so a CANCELLED subscription also got
+free AI. Now honours the expiry.
+
+HIGH — unlimited free AI once a balance ran low. `deductCredits` throws
+CREDITS_EXHAUSTED *before* writing, the throw was swallowed, and the pre-flight only
+blocks at remaining < 1. An account holding fewer credits than one call costs could
+generate forever. The debt is now recorded (balance driven to zero) so the next call
+is refused; the current request still succeeds, since the provider was already paid.
+
+HIGH — SSRF on POST /api/ai/edit-image. `fetch(image_url)` with no validation let
+any authenticated user reach cloud metadata (169.254.169.254), localhost services
+and private ranges through the server. Now uses a shared `validatedFetchUrl`
+(https + host allowlist + `redirect: 'error'`), mirroring the check canva.js already
+had. Verified blocked: metadata IP, localhost, arbitrary host, file://.
+
+HIGH — rate limiter was one bucket for the whole platform. No `trust proxy` behind
+Railway's edge meant `req.ip` was the proxy's address for every caller, so one
+client could 429 every tenant and no attacker was ever isolated. (The earlier
+"200 was too low, raise to 1000" comment was this bug misread as a tight limit.)
+Now `trust proxy = 1` (one hop; `true` would let clients spoof X-Forwarded-For),
+keyed per authenticated user, plus a 20/min limiter on /api/ai and /api/brand-scans
+— the endpoints that cost real money per request.
+NOTE: express-rate-limit is 7.5.1, which does NOT export `ipKeyGenerator` (v8 only);
+the key falls back to `req.ip`, which is the v7 default and correct here.
+
+STILL OPEN from this audit — biggest first:
+- Image/audio/diagnose endpoints (`/generate-image`, `/edit-image`, `/transcribe`,
+  `/tts`, `/diagnose`) call providers directly and deduct NOTHING. ~US$0.75 of
+  provider spend per hd/n=4 image request, on a free trial account.
+- BYOK role gate exists only inside `runAIChat`; getOpenAIClient / getAnthropicClient
+  / generateWithStability / webSearch.resolveKeys read `api_keys` with no role check,
+  so any member can spend the company key.
+- `leads.js:165` `.or()` is the one search route missing the sanitizer.
+- Google Drive `q` built from `req.query` — lets a plain member enumerate the whole
+  connected Drive.
+- `uploads.js` allows any file type into a PUBLIC bucket (stored XSS / malware host).
+- `users.js` lacks the target-role guard `admin.js` has: a company_admin can demote
+  or delete the App Owner.
+- `is_global` is client-writable on message_templates.
+- helmet's default CSP blocks oauth.js's own inline postMessage script, so the OAuth
+  popups likely never signal success to the opener in production.

@@ -75,16 +75,49 @@ app.use(cors({
 }));
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
+//
+// Railway terminates TLS at an edge proxy, so without this every request arrives
+// carrying the PROXY's address. req.ip was therefore identical for the entire
+// platform and the limiter degenerated into a single shared bucket: one abusive
+// client could 429 every tenant, while a real attacker was never isolated. The
+// earlier "200 was too low, raise it to 1000" note was this bug being mistaken for
+// a limit that needed loosening.
+//
+// `1` (not `true`) trusts exactly one hop — Railway's proxy. Trusting everything
+// would let a client spoof X-Forwarded-For and mint a fresh bucket per request.
+app.set('trust proxy', 1);
+
+/**
+ * Per-user when we know who is calling, per-IP otherwise.
+ *
+ * `req.ip` is the v7 default and is only trustworthy because of the `trust proxy`
+ * setting above — before it, this was the proxy's address for every caller.
+ */
+const rateKey = (req) => req.dbUser?.id || req.user?.id || req.ip;
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  // 200 was low enough that ONE active user browsing the SPA (dashboards,
-  // kanban, chat polling…) could hit the ceiling mid-session. This is an
-  // abuse backstop, not a usage quota — AI spend is governed by credits.
+  // An abuse backstop, not a usage quota — AI spend is governed by credits.
   max: 1000,
+  keyGenerator: rateKey,
   standardHeaders: true,
   legacyHeaders: false,
 });
 app.use('/api', limiter);
+
+// The expensive surface gets its own, much tighter budget. These endpoints call
+// image/audio/model providers and cost real money per request, so the generic
+// backstop is far too loose to be meaningful for them.
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: rateKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many AI requests — slow down for a moment.' },
+});
+app.use('/api/ai', aiLimiter);
+app.use('/api/brand-scans', aiLimiter);
 
 // ─── Body parsing ─────────────────────────────────────────────────────────────
 // Stripe webhooks need raw body — mount BEFORE json middleware

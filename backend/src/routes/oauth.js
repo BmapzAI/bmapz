@@ -572,9 +572,24 @@ router.post('/google/refresh', requireAuth, async (req, res) => {
       .update({ api_keys: updatedKeys })
       .eq('id', req.companyId);
 
-    res.json({ access_token: tokens.access_token });
+    // The refreshed token is STORED, never returned.
+    //
+    // This used to respond with `{ access_token }`, handing a live Google OAuth
+    // token for the company's connected account to any authenticated member — the
+    // lowest-privileged user, or a guest from another tenant who had switched in.
+    // That token is usable directly against Google's APIs, entirely outside this
+    // app's permission model, and it bypassed the whole companyView redaction layer.
+    //
+    // No caller in the frontend or backend ever read the token from this response,
+    // so returning it bought nothing. Server-side code reads it from api_keys.
+    res.json({
+      ok: true,
+      expires_at: updatedKeys.google_token_expires_at,
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[oauth/google/refresh]', err.message);
+    // Provider errors can carry token fragments and client identifiers.
+    res.status(500).json({ error: 'Could not refresh the Google connection.' });
   }
 });
 

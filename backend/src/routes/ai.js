@@ -5,6 +5,7 @@ import {
   extractActions, applyActions, describeActions, isKnownOp,
   proposeActions, looksActionable, buildSectionAction, ACTION_PROTOCOL, friendlyError,
 } from '../lib/aiActions.js';
+import { validatedFetchUrl } from '../lib/companyView.js';
 import { webSearch, formatForPrompt } from '../lib/webSearch.js';
 import {
   computeCreditCost,
@@ -233,6 +234,9 @@ async function getCompanyPlan(companyId) {
     scanTokensRemaining,
     cycleStartedAt: sub?.cycle_started_at || null,
     cycleEndsAt: sub?.cycle_ends_at || null,
+    // Written at signup but never read anywhere, which is why the "14-day trial"
+    // was unlimited and permanent. Surfaced so the credit gate can honour it.
+    trialEndsAt: sub?.trial_ends_at || null,
     billingCycle: sub?.billing_cycle || 'monthly',
     annualStartAt: sub?.annual_start_at || null,
   };
@@ -707,14 +711,21 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
   if (!skipExecutionDirective && !CONVERSATIONAL_ACTIONS.has(action) && !response_format) {
     system = system ? `${system}\n\n${EXECUTION_DIRECTIVE}` : EXECUTION_DIRECTIVE;
   }
-  const { planId, creditsTotal, creditsUsed, status: planStatus, scanTokensRemaining, subscriptionId } = planInfo;
+  const { planId, creditsTotal, creditsUsed, status: planStatus, scanTokensRemaining, subscriptionId, trialEndsAt } = planInfo;
   const remainingCredits = Math.max(0, creditsTotal - creditsUsed);
 
   // Trial users get FULL ACCESS during the 14-day trial — usage is tracked
   // (so they see what they consume), but never blocks. This matches the
   // marketing promise: "14-day trial with full access, no credit card".
   // Credit gate is only enforced on paid plans (starter/growth/scale/enterprise).
-  const isOnTrial = planId === 'trial' || planStatus === 'trialing' || planStatus === 'inactive';
+  //
+  // WHILE the trial lasts. `trial_ends_at` was written at signup and then read
+  // nowhere, so this bypass never expired: the "14-day trial" was in fact
+  // unlimited free AI forever, on platform keys, for any account that simply never
+  // upgraded. An expired trial now falls through to the normal credit gate.
+  const trialExpired = !!trialEndsAt && new Date(trialEndsAt) <= new Date();
+  const isOnTrial = !trialExpired
+    && (planId === 'trial' || planStatus === 'trialing' || planStatus === 'inactive');
 
   // BYOK is only allowed for owner + system_admin. Everyone else uses platform keys.
   const allowBYOK = canUseBYOK(userRole);
@@ -877,8 +888,25 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
             remainingAfter = deduction.remaining;
           }
         } catch (deductErr) {
-          // Log but don't fail the request — user already got the response
+          // The generation already happened and the provider has already been paid,
+          // so failing the request here would punish the user for our bookkeeping.
+          // But swallowing it outright was an unlimited-free-AI bug: deductCredits
+          // throws CREDITS_EXHAUSTED *before* writing anything, and the pre-flight
+          // only blocks at remaining < 1 — so an account holding fewer credits than
+          // one call costs could keep generating forever, paying nothing.
+          //
+          // The debt is recorded instead: the balance is driven to zero so the
+          // NEXT request is refused by the pre-flight gate.
           console.error('[ai] credit deduction failed:', deductErr.message);
+          if (deductErr.code === 'CREDITS_EXHAUSTED' && subscriptionId) {
+            const { error: zeroErr } = await supabaseAdmin
+              .from('subscriptions')
+              .update({ ai_credits_used: creditsTotal })
+              .eq('id', subscriptionId);
+            if (zeroErr) console.error('[ai] could not zero the balance:', zeroErr.message);
+            else console.warn(`[ai] company=${companyId} overdrew its balance; credits zeroed, next call will be refused`);
+            remainingAfter = 0;
+          }
         }
       }
 
@@ -1390,7 +1418,13 @@ router.post('/edit-image', requireAuth, async (req, res) => {
       const b64 = image_url.split(',')[1] || '';
       buffer = Buffer.from(b64, 'base64');
     } else {
-      const r = await fetch(image_url);
+      // SSRF guard. This fetched ANY url the caller supplied, so an authenticated
+      // user could point it at http://169.254.169.254/ (cloud metadata),
+      // http://localhost:… (internal services) or a private 10./192.168. address
+      // and use the server as a proxy into the private network. canva.js already
+      // does exactly this check; this endpoint simply never got it.
+      const safeUrl = validatedFetchUrl(image_url);
+      const r = await fetch(safeUrl, { redirect: 'error' }); // no redirect out of the allowlist
       if (!r.ok) throw new Error(`Could not load source image (${r.status})`);
       buffer = Buffer.from(await r.arrayBuffer());
     }
