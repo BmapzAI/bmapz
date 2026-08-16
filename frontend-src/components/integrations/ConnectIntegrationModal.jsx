@@ -352,9 +352,18 @@ export default function ConnectIntegrationModal({ integration, company, user, is
       }
     };
     try {
-      const { authUrl } = await api.get(`${oauthPath}-url`, {
+      // Ask for a URL on OUR OWN origin rather than the provider's.
+      //
+      // The popup used to open the provider directly, which meant the browser never
+      // visited the API top-level before the callback — so the anti-CSRF nonce
+      // cookie could only ever be written as a third-party cookie, and was dropped.
+      // Opening our initiate route first (carrying a short-lived launch ticket, since
+      // a popup cannot send an Authorization header) makes that cookie first-party,
+      // and the callback then requires it to match the signed state.
+      const provider = oauthPath.split('/')[3];   // /api/oauth/<provider>/initiate
+      const { authUrl } = await api.get('/api/oauth/launch-url', {
+        provider,
         type: integration.type,
-        origin: window.location.origin,
       });
 
       const popup = window.open(

@@ -25,7 +25,8 @@ export default function CanvaPicker({ open, onClose, onSelect }) {
 
   const connectCanva = async () => {
     try {
-      const { authUrl } = await api.get('/api/oauth/canva/initiate-url', { type: 'canva', origin: window.location.origin });
+      // Our own origin first, so the anti-CSRF nonce cookie is first-party.
+      const { authUrl } = await api.get('/api/oauth/launch-url', { provider: 'canva', type: 'canva' });
       const popup = window.open(authUrl, 'canva_oauth', 'width=620,height=760,left=200,top=80');
       const onMsg = (e) => {
         if (e.data?.type === 'oauth_success') { window.removeEventListener('message', onMsg); popup?.close(); toast.success('Canva connected!'); }

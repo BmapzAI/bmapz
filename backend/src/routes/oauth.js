@@ -16,11 +16,114 @@ function oauthStateSecret() {
   return secret;
 }
 
-function encodeOAuthState(payload) {
-  const body = Buffer.from(JSON.stringify({ ...payload, issuedAt: Date.now() })).toString('base64url');
+const OAUTH_NONCE_COOKIE = 'bmapz_oauth_nonce';
+const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('base64url');
+
+/** Cookies without a parser dependency — this backend is otherwise Bearer-only. */
+function readCookie(req, name) {
+  const raw = req.headers?.cookie;
+  if (!raw) return null;
+  for (const part of raw.split(';')) {
+    const i = part.indexOf('=');
+    if (i < 0) continue;
+    if (part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return null;
+}
+
+/**
+ * Bind this flow to THIS browser.
+ *
+ * A signed state alone proves the link was minted by us — not that the person
+ * finishing the flow is the person who started it. An attacker could mint a state
+ * for their OWN company, lure a victim through Google's consent screen, and have
+ * the victim's Gmail tokens written into the attacker's tenant. That is
+ * account-linking CSRF, and no amount of signing fixes it.
+ *
+ * So a random nonce is set as a cookie in the initiating browser and only its HASH
+ * travels inside the state. The callback requires the two to agree, which the
+ * victim's browser cannot satisfy for an attacker's state.
+ *
+ * SameSite=Lax survives the top-level GET redirect back from the provider while
+ * still refusing cross-site POSTs. httpOnly keeps it away from scripts.
+ */
+function issueOAuthNonce(res) {
+  const nonce = crypto.randomBytes(32).toString('base64url');
+  res.cookie?.(OAUTH_NONCE_COOKIE, nonce, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV !== 'development',
+    sameSite: 'lax',
+    maxAge: OAUTH_STATE_MAX_AGE_MS,
+    path: '/api/oauth',
+  });
+  return sha256(nonce);
+}
+
+function encodeOAuthState(payload, res) {
+  const nonceHash = res ? issueOAuthNonce(res) : null;
+  const body = Buffer.from(JSON.stringify({
+    ...payload, issuedAt: Date.now(), ...(nonceHash ? { nonceHash } : {}),
+  })).toString('base64url');
   const signature = crypto.createHmac('sha256', oauthStateSecret()).update(body).digest('base64url');
   return `${body}.${signature}`;
 }
+
+/**
+ * A short-lived ticket that lets an UNAUTHENTICATED popup navigation start a flow.
+ *
+ * The popup cannot send an Authorization header, which is why the old flow fetched
+ * the provider URL over XHR and opened the provider directly — and that is exactly
+ * why no cookie could ever be set: the browser never visited our origin top-level
+ * before the callback, so any cookie write was third-party and dropped.
+ *
+ * The popup now opens OUR initiate route carrying this ticket. That navigation is
+ * first-party, so the nonce cookie sticks, and we redirect on to the provider.
+ */
+function mintLaunchTicket({ userId, companyId }) {
+  const body = Buffer.from(JSON.stringify({ userId, companyId, purpose: 'launch', issuedAt: Date.now() })).toString('base64url');
+  return `${body}.${crypto.createHmac('sha256', oauthStateSecret()).update(body).digest('base64url')}`;
+}
+
+/**
+ * Accept EITHER a normal Bearer session or a launch ticket.
+ *
+ * Tickets are valid for two minutes — long enough to open a window, too short to
+ * be worth capturing — and only ever stand in for the user who minted them.
+ */
+function allowLaunchTicket(req, res, next) {
+  const t = req.query?.t;
+  if (!t) return requireAuth(req, res, next);
+  try {
+    const [body, sig] = String(t).split('.');
+    if (!body || !sig) throw new Error('malformed');
+    const expected = crypto.createHmac('sha256', oauthStateSecret()).update(body).digest();
+    const supplied = Buffer.from(sig, 'base64url');
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+      throw new Error('bad signature');
+    }
+    const p = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (p.purpose !== 'launch' || Date.now() - p.issuedAt > 2 * 60 * 1000) throw new Error('expired');
+
+    req.dbUser = { id: p.userId };
+    req.companyId = p.companyId;
+    return next();
+  } catch (err) {
+    console.error('[oauth] launch ticket rejected:', err.message);
+    return res.status(401).send(popupHtml('error', 'oauth'));
+  }
+}
+
+// GET /api/oauth/launch-url?provider=google&type=gmail
+// Authenticated XHR: hands the frontend a URL on OUR origin to open the popup at.
+router.get('/launch-url', requireAuth, (req, res) => {
+  const provider = String(req.query.provider || '').replace(/[^a-z_]/gi, '');
+  const type = String(req.query.type || '').replace(/[^a-z_]/gi, '');
+  if (!provider) return res.status(400).json({ error: 'provider is required' });
+
+  const ticket = mintLaunchTicket({ userId: req.dbUser.id, companyId: req.companyId });
+  const params = new URLSearchParams({ t: ticket, ...(type ? { type } : {}) });
+  res.json({ authUrl: `${API_URL}/api/oauth/${provider}/initiate?${params}` });
+});
 
 /**
  * Verify a state AND spend it, so it works exactly once.
@@ -33,14 +136,26 @@ function encodeOAuthState(payload) {
  * The insert is the lock: the signature is the primary key, so the second use
  * collides and is refused.
  *
- * NOT fixed here: the state still is not bound to the browser that began the flow,
- * so account-linking CSRF (luring a victim into finishing an attacker's flow)
- * remains possible. Closing that needs a nonce cookie, and this backend is
- * Bearer-only today — flagged in AGENT_HANDOFF.md rather than half-done.
+ * Together with the nonce-cookie check below, a callback must be BOTH unused and
+ * completed in the browser that started it.
  */
-async function consumeOAuthState(state) {
+async function consumeOAuthState(state, req) {
   const payload = decodeOAuthState(state);   // verify signature + expiry first
   const signature = String(state).split('.')[1];
+
+  // The browser that STARTED this flow must be the one finishing it. Without this,
+  // a signed state is a bearer token: mint one for your own company, lure someone
+  // through the provider's consent screen, and their tokens land in your tenant.
+  //
+  // Only enforced when the state carries a nonce, so a flow started before this
+  // shipped still completes rather than stranding a user mid-connect. Once those
+  // have expired (15 minutes), every state carries one.
+  if (payload.nonceHash) {
+    const cookie = readCookie(req, OAUTH_NONCE_COOKIE);
+    if (!cookie || sha256(cookie) !== payload.nonceHash) {
+      throw new Error('That connection did not start in this browser. Please try connecting again.');
+    }
+  }
 
   const { error } = await supabaseAdmin
     .from('webhook_events')
@@ -178,7 +293,7 @@ const GOOGLE_SCOPES_MAP = {
 
 // GET /api/oauth/google/initiate?type=gmail&origin=...
 // GET /api/oauth/google/initiate-url?type=gmail&origin=...
-router.get(['/google/initiate', '/google/initiate-url'], requireAuth, async (req, res) => {
+router.get(['/google/initiate', '/google/initiate-url'], allowLaunchTicket, async (req, res) => {
   try {
     const { type = 'gmail', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
@@ -192,7 +307,7 @@ router.get(['/google/initiate', '/google/initiate-url'], requireAuth, async (req
       companyId: req.companyId,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    });
+    }, res);
 
     const redirectUri = `${API_URL}/api/oauth/google/callback`;
     const params = new URLSearchParams({
@@ -222,7 +337,7 @@ router.get('/google/callback', async (req, res) => {
       return res.send(popupHtml('error', 'Google', oauthError));
     }
 
-    const stateData = await consumeOAuthState(state);
+    const stateData = await consumeOAuthState(state, req);
     const { companyId, integrationType } = stateData;
 
     // Get company credentials from api_keys JSONB
@@ -267,7 +382,7 @@ router.get('/google/callback', async (req, res) => {
 
 // ─── Meta (Facebook/Instagram) OAuth ─────────────────────────────────────────
 
-router.get(['/meta/initiate', '/meta/initiate-url'], requireAuth, async (req, res) => {
+router.get(['/meta/initiate', '/meta/initiate-url'], allowLaunchTicket, async (req, res) => {
   try {
     const { type = 'meta', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
@@ -280,7 +395,7 @@ router.get(['/meta/initiate', '/meta/initiate-url'], requireAuth, async (req, re
       companyId: req.companyId,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    });
+    }, res);
 
     const scopes = 'email,pages_show_list,pages_read_engagement,pages_manage_posts,pages_messaging,instagram_basic,instagram_content_publish,instagram_manage_messages,ads_management,ads_read,business_management';
     const redirectUri = `${API_URL}/api/oauth/meta/callback`;
@@ -305,7 +420,7 @@ router.get('/meta/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Meta', oauthError));
 
-    const stateData = await consumeOAuthState(state);
+    const stateData = await consumeOAuthState(state, req);
     const { companyId, integrationType = 'meta' } = stateData;
 
     const { apiKeys } = await getCompanyKeys(companyId);
@@ -377,7 +492,7 @@ router.get('/meta/callback', async (req, res) => {
 
 // ─── LinkedIn OAuth ───────────────────────────────────────────────────────────
 
-router.get(['/linkedin/initiate', '/linkedin/initiate-url'], requireAuth, async (req, res) => {
+router.get(['/linkedin/initiate', '/linkedin/initiate-url'], allowLaunchTicket, async (req, res) => {
   try {
     const { type = 'linkedin', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
@@ -389,7 +504,7 @@ router.get(['/linkedin/initiate', '/linkedin/initiate-url'], requireAuth, async 
       companyId: req.companyId,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    });
+    }, res);
     const redirectUri = `${API_URL}/api/oauth/linkedin/callback`;
     const linkedinScopes = type === 'linkedin_ads'
       ? 'openid profile email r_ads r_ads_reporting'
@@ -415,7 +530,7 @@ router.get('/linkedin/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'LinkedIn', oauthError));
 
-    const { companyId, integrationType = 'linkedin' } = await consumeOAuthState(state);
+    const { companyId, integrationType = 'linkedin' } = await consumeOAuthState(state, req);
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientId = apiKeys.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
@@ -444,7 +559,7 @@ router.get('/linkedin/callback', async (req, res) => {
 
 // ─── Twitter/X OAuth ──────────────────────────────────────────────────────────
 
-router.get(['/twitter/initiate', '/twitter/initiate-url'], requireAuth, async (req, res) => {
+router.get(['/twitter/initiate', '/twitter/initiate-url'], allowLaunchTicket, async (req, res) => {
   try {
     const { type = 'twitter', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
@@ -458,7 +573,7 @@ router.get(['/twitter/initiate', '/twitter/initiate-url'], requireAuth, async (r
       codeVerifier,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    });
+    }, res);
 
     const redirectUri = `${API_URL}/api/oauth/twitter/callback`;
     const params = new URLSearchParams({
@@ -484,7 +599,7 @@ router.get('/twitter/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Twitter/X', oauthError));
 
-    const { companyId, codeVerifier, integrationType = 'twitter' } = await consumeOAuthState(state);
+    const { companyId, codeVerifier, integrationType = 'twitter' } = await consumeOAuthState(state, req);
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientId = apiKeys.twitter_client_id || process.env.TWITTER_CLIENT_ID;
@@ -517,7 +632,7 @@ router.get('/twitter/callback', async (req, res) => {
 
 // ─── TikTok OAuth ─────────────────────────────────────────────────────────────
 
-router.get(['/tiktok/initiate', '/tiktok/initiate-url'], requireAuth, async (req, res) => {
+router.get(['/tiktok/initiate', '/tiktok/initiate-url'], allowLaunchTicket, async (req, res) => {
   try {
     const { type = 'tiktok', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
@@ -529,7 +644,7 @@ router.get(['/tiktok/initiate', '/tiktok/initiate-url'], requireAuth, async (req
       companyId: req.companyId,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    });
+    }, res);
     const redirectUri = `${API_URL}/api/oauth/tiktok/callback`;
     const params = new URLSearchParams({
       client_key: clientKey,
@@ -552,7 +667,7 @@ router.get('/tiktok/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'TikTok', oauthError));
 
-    const { companyId, integrationType = 'tiktok' } = await consumeOAuthState(state);
+    const { companyId, integrationType = 'tiktok' } = await consumeOAuthState(state, req);
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientKey = apiKeys.tiktok_client_key || process.env.TIKTOK_CLIENT_KEY;
@@ -676,7 +791,7 @@ router.post('/disconnect', requireAuth, requireCompanyAdmin, async (req, res) =>
 // Canva app must be `${API_URL}/api/oauth/canva/callback`.
 const CANVA_SCOPES = 'design:content:read design:content:write asset:read asset:write profile:read';
 
-router.get(['/canva/initiate', '/canva/initiate-url'], requireAuth, async (req, res) => {
+router.get(['/canva/initiate', '/canva/initiate-url'], allowLaunchTicket, async (req, res) => {
   try {
     const { type = 'canva', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
@@ -687,7 +802,7 @@ router.get(['/canva/initiate', '/canva/initiate-url'], requireAuth, async (req, 
     const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
     const state = encodeOAuthState({
       companyId: req.companyId, codeVerifier, integrationType: type, origin: origin || FRONTEND_URL,
-    });
+    }, res);
 
     const params = new URLSearchParams({
       response_type: 'code',
@@ -710,7 +825,7 @@ router.get('/canva/callback', async (req, res) => {
   try {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Canva', oauthError));
-    const { companyId, codeVerifier, integrationType = 'canva' } = await consumeOAuthState(state);
+    const { companyId, codeVerifier, integrationType = 'canva' } = await consumeOAuthState(state, req);
     const { apiKeys } = await getCompanyKeys(companyId);
     const clientId = apiKeys.canva_client_id || process.env.CANVA_CLIENT_ID;
     const clientSecret = apiKeys.canva_client_secret || process.env.CANVA_CLIENT_SECRET;

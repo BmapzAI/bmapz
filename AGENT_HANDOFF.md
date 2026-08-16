@@ -3280,3 +3280,51 @@ only that basic API. `npm audit fix` also cleared body-parser, brace-expansion a
 form-data. REMAINING: one moderate `uuid` advisory, transitive only — no code in
 backend/src imports uuid, and the flaw needs v3/v5/v6 called with a `buf` argument.
 Left rather than force uuid@14 on whatever depends on it.
+
+## OUTAGE + OAuth CSRF binding (Claude, 2026-08-16)
+
+OUTAGE, 02:07–05:58 UTC. Backend crash-looped: `createClient` threw
+"Node.js 18 detected without native WebSocket support" at import, before any route
+mounted, so every request 502'd.
+
+ROOT CAUSE: no package-lock was ever committed, so Railway's `npm install` resolved
+the newest release matching each range on EVERY build. @supabase/realtime-js began
+requiring a native WebSocket; the runtime drifted underneath the app and the next
+deploy inherited a break it did not cause.
+
+The first hotfix (pin Node 20) was WRONG and cost a second failed deploy — native
+WebSocket lands in Node 22, so realtime-js threw the same error one version later.
+The real fix is passing `ws` to realtime-js explicitly (`realtime: { transport: ws }`
+in lib/supabase.js); installing the package alone does nothing, exactly as its error
+message says. createClient always builds a RealtimeClient even though this backend
+never opens a channel.
+
+PERMANENT: backend/package-lock.json is now COMMITTED — deploys were never
+reproducible before. Node 20 pinned in nixpacks.toml, and the ws transport means
+this survives a runtime change anyway.
+Reproduce the failure locally with `delete globalThis.WebSocket` before importing
+lib/supabase.js — that is how the second fix was verified rather than assumed.
+
+OAUTH ACCOUNT-LINKING CSRF — now closed. A signed state proved WE minted it, not
+that the person finishing the flow started it: an attacker could mint a state for
+their own company, lure a victim through the provider's consent screen, and have the
+victim's Gmail tokens written into the attacker's tenant.
+
+A random nonce is set as an httpOnly / SameSite=Lax cookie in the initiating
+browser; only its HASH travels inside the signed state; the callback requires the
+two to agree. Lax survives the top-level GET redirect back from the provider.
+
+The reason this could not be done before: the popup opened the PROVIDER directly, so
+the browser never visited our origin top-level and any cookie write was third-party
+(dropped). The popup now opens OUR initiate route first, carrying a 2-minute launch
+ticket — a popup navigation cannot send an Authorization header, which is why
+`/initiate` needed `allowLaunchTicket` rather than plain requireAuth. Frontend now
+calls GET /api/oauth/launch-url (three call sites migrated; no initiate-url remains).
+
+States without a nonce are still accepted so flows begun before this shipped are not
+stranded; those expire after 15 minutes, after which every state carries one.
+
+Verified: 6/6 on the binding logic — an attacker's state is rejected in a victim's
+browser both with no cookie and with a different nonce, tampered states are rejected,
+legacy states still pass, and the cookie parses alongside others. Boot with
+WebSocket removed, lint 0 errors, build passes.

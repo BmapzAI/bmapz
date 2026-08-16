@@ -291,9 +291,10 @@ export default function ApiKeysTab({ company, user, onSave }) {
       }
     };
     try {
-      const { authUrl } = await api.get('/api/oauth/meta/initiate-url', {
+      // Our own origin first, so the anti-CSRF nonce cookie is first-party.
+      const { authUrl } = await api.get('/api/oauth/launch-url', {
+        provider: 'meta',
         type: integrationType,
-        origin: window.location.origin,
       });
 
       popup = window.open(authUrl, 'oauth_popup', 'width=620,height=720,left=200,top=80');
