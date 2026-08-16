@@ -1,3 +1,18 @@
+# Node 20, pinned deliberately.
+#
+# No version was pinned here, so Railway defaulted to Node 18 — and because no
+# lockfile is committed, `npm install` resolves the newest release matching each
+# range on every deploy. @supabase/realtime-js has since started requiring a native
+# WebSocket, which Node 18 does not have, so the process began crashing at import
+# time with "Node.js 18 detected without native WebSocket support" on a deploy that
+# changed nothing about Supabase. supabase-js already warns that Node 18 is
+# deprecated and asks for 20+.
+#
+# Pinning the major here means the runtime no longer drifts with whatever Railway
+# defaults to.
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
 [phases.install]
 cmds = ["npm install --prefix backend"]
 

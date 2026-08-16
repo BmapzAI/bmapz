@@ -10,7 +10,7 @@
     "build": "echo 'No build step needed for Node.js ESM'"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.37.0",
@@ -27,7 +27,8 @@
     "openai": "^4.52.0",
     "resend": "^3.4.0",
     "stripe": "^16.2.0",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"
