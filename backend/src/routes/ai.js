@@ -322,6 +322,61 @@ function archiveGeneration({ companyId, userId, userEmail, action, title, conten
 }
 
 /**
+ * Flat credit prices for the endpoints that do not report token usage.
+ *
+ * Images and audio call the provider directly, so there is no prompt/completion
+ * count to price from — a fixed charge is the honest approximation. Roughly
+ * anchored to provider list prices at ~1 credit per US$0.001.
+ */
+const FLAT_CREDIT_COST = {
+  generate_image: 40,   // gpt-image-1 / dall-e-3 standard ≈ $0.04
+  edit_image: 40,
+  transcribe: 6,        // whisper ≈ $0.006/min
+  tts: 15,
+  diagnose: 2,
+};
+
+/**
+ * Charge for a non-token endpoint, and refuse when the company cannot pay.
+ *
+ * /generate-image, /edit-image, /transcribe, /tts and /diagnose called the provider
+ * with NO plan check, NO credit deduction and NO scan token — a request for
+ * `quality:"hd", n:4` was roughly US$0.75 of provider spend, available to any free
+ * self-serve account, repeatedly. This is the gate they never had.
+ *
+ * Returns null when allowed; an {status, body} to send when refused.
+ */
+async function chargeFlat({ companyId, userId, userEmail, action, quantity = 1 }) {
+  const credits = (FLAT_CREDIT_COST[action] || 1) * Math.max(1, Number(quantity) || 1);
+  const plan = await getCompanyPlan(companyId);
+
+  // Trials still generate freely, but only while the trial is actually live —
+  // the same expiry the chat path now honours.
+  const trialLive = plan.trialEndsAt ? new Date(plan.trialEndsAt) > new Date() : true;
+  const onTrial = trialLive && (plan.planId === 'trial' || plan.status === 'trialing' || plan.status === 'inactive');
+
+  const remaining = Math.max(0, plan.creditsTotal - plan.creditsUsed);
+  if (!onTrial && remaining < credits) {
+    return {
+      status: 402,
+      body: {
+        error: `Not enough AI credits: ${remaining} left, ${credits} needed.`,
+        code: 'CREDITS_EXHAUSTED',
+      },
+    };
+  }
+
+  try {
+    await deductCredits({ companyId, userId, userEmail, credits, feature: action, model: action, tokens: 0 });
+  } catch (err) {
+    // On trial the deduction is bookkeeping only, so a failure must not block.
+    if (!onTrial) return { status: 402, body: { error: err.message, code: err.code || 'CREDITS_EXHAUSTED' } };
+    console.error(`[ai] trial usage log failed for ${action}:`, err.message);
+  }
+  return null;
+}
+
+/**
  * Deduct credits from the active subscription and log the transaction.
  * Returns { remaining } or throws if insufficient credits.
  */
@@ -397,10 +452,24 @@ function cleanKey(rawKey) {
  * Helper: get OpenAI client. If keyOverride passed, use it. Otherwise resolve
  * from company settings, falling back to platform env var.
  */
-async function getOpenAIClient(companyId, keyOverride) {
+/**
+ * @param {string} companyId
+ * @param {string} [keyOverride]  a key already resolved by a BYOK-aware caller
+ * @param {string} [userRole]     REQUIRED to reach the company's own key
+ *
+ * The BYOK role gate lived only inside runAIChat, so every direct caller here
+ * (/generate-image, /edit-image, /transcribe, /tts, /diagnose) spent the COMPANY's
+ * key for any authenticated user — including a guest from another tenant. BYOK is
+ * owner/system_admin only; anyone else falls through to the platform key.
+ *
+ * The role must be passed explicitly. Omitting it means "not eligible", so a new
+ * caller that forgets defaults to the safe path instead of silently spending the
+ * customer's credentials.
+ */
+async function getOpenAIClient(companyId, keyOverride, userRole) {
   let apiKey = cleanKey(keyOverride);
   if (!apiKey) {
-    const settings = await getCompanyAISettings(companyId);
+    const settings = canUseBYOK(userRole) ? await getCompanyAISettings(companyId) : {};
     apiKey = cleanKey(settings.openai_api_key) || cleanKey(process.env.OPENAI_API_KEY);
   }
   if (!apiKey) {
@@ -418,10 +487,12 @@ async function getOpenAIClient(companyId, keyOverride) {
 /**
  * Helper: get Anthropic client with optional key override.
  */
-async function getAnthropicClient(companyId, keyOverride) {
+// Same BYOK rule as getOpenAIClient: the company key is only reachable with an
+// explicitly passed owner/system_admin role.
+async function getAnthropicClient(companyId, keyOverride, userRole) {
   let apiKey = cleanKey(keyOverride);
   if (!apiKey) {
-    const settings = await getCompanyAISettings(companyId);
+    const settings = canUseBYOK(userRole) ? await getCompanyAISettings(companyId) : {};
     apiKey = cleanKey(settings.anthropic_api_key) || cleanKey(process.env.ANTHROPIC_API_KEY);
   }
   if (!apiKey) {
@@ -1270,7 +1341,13 @@ router.post('/transcribe', requireAuth, async (req, res) => {
     const { audio_base64, filename = 'audio.webm', language } = req.body;
     if (!audio_base64) return res.status(400).json({ error: 'audio_base64 is required' });
 
-    const client = await getOpenAIClient(req.companyId);
+    const refusal = await chargeFlat({
+      companyId: req.companyId, userId: req.dbUser?.id, userEmail: req.dbUser?.email,
+      action: 'transcribe',
+    });
+    if (refusal) return res.status(refusal.status).json(refusal.body);
+
+    const client = await getOpenAIClient(req.companyId, null, req.dbUser?.role);
     const { toFile } = await import('openai');
     const buffer = Buffer.from(audio_base64, 'base64');
     const file = await toFile(buffer, filename, { type: 'audio/webm' });
@@ -1337,6 +1414,16 @@ router.post('/generate-image', requireAuth, async (req, res) => {
   const { prompt, size = '1024x1024', quality = 'standard', n = 1 } = req.body;
   try {
     if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+
+    // Priced per image, and hd costs about double — n=4 at hd was ~US$0.75 a call
+    // with nothing stopping a free account repeating it.
+    const refusal = await chargeFlat({
+      companyId: req.companyId, userId: req.dbUser?.id, userEmail: req.dbUser?.email,
+      action: 'generate_image',
+      quantity: Math.min(4, Math.max(1, Number(n) || 1)) * (quality === 'hd' ? 2 : 1),
+    });
+    if (refusal) return res.status(refusal.status).json(refusal.body);
+
     const settings = await getCompanyAISettings(req.companyId);
 
     const provider = settings.ai_image_provider || 'openai';
@@ -1353,7 +1440,7 @@ router.post('/generate-image', requireAuth, async (req, res) => {
     const preferred = OPENAI_IMAGE_MODELS.includes(settings.ai_image_model) ? settings.ai_image_model : null;
     const attempts = [...new Set([preferred, ...OPENAI_IMAGE_MODELS].filter(Boolean))];
 
-    const client = await getOpenAIClient(req.companyId);
+    const client = await getOpenAIClient(req.companyId, null, req.dbUser?.role);
     const errors = [];
     for (const model of attempts) {
       try {
@@ -1412,6 +1499,12 @@ router.post('/edit-image', requireAuth, async (req, res) => {
     if (!image_url) return res.status(400).json({ error: 'image_url is required' });
     if (!userPrompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
 
+    const refusal = await chargeFlat({
+      companyId: req.companyId, userId: req.dbUser?.id, userEmail: req.dbUser?.email,
+      action: 'edit_image',
+    });
+    if (refusal) return res.status(refusal.status).json(refusal.body);
+
     // Load the source image (storage URL or data URL)
     let buffer;
     if (image_url.startsWith('data:')) {
@@ -1432,7 +1525,7 @@ router.post('/edit-image', requireAuth, async (req, res) => {
 
     const prompt = userPrompt;
 
-    const client = await getOpenAIClient(req.companyId);
+    const client = await getOpenAIClient(req.companyId, null, req.dbUser?.role);
     const { toFile } = await import('openai');
     const file = await toFile(buffer, 'source.png', { type: 'image/png' });
 
@@ -1477,7 +1570,14 @@ router.post('/edit-image', requireAuth, async (req, res) => {
 router.post('/tts', requireAuth, async (req, res) => {
   try {
     const { text, voice = 'alloy', model = 'tts-1' } = req.body;
-    const client = await getOpenAIClient(req.companyId);
+
+    const refusal = await chargeFlat({
+      companyId: req.companyId, userId: req.dbUser?.id, userEmail: req.dbUser?.email,
+      action: 'tts',
+    });
+    if (refusal) return res.status(refusal.status).json(refusal.body);
+
+    const client = await getOpenAIClient(req.companyId, null, req.dbUser?.role);
     const mp3 = await client.audio.speech.create({ model, voice, input: text });
     const buffer = Buffer.from(await mp3.arrayBuffer());
     res.set('Content-Type', 'audio/mpeg');

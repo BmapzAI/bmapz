@@ -3149,3 +3149,46 @@ STILL OPEN from this audit — biggest first:
 - `is_global` is client-writable on message_templates.
 - helmet's default CSP blocks oauth.js's own inline postMessage script, so the OAuth
   popups likely never signal success to the opener in production.
+
+## SECURITY AUDIT — batch 2, and the audit is now complete (Claude, 2026-08-15)
+
+The five verifiers that had died on a session limit were re-run. Final tally:
+50 confirmed, 11 refuted, 0 critical, 6 high, 15 medium, 29 low.
+
+The re-run verifiers read the CURRENT code, so they independently refuted the
+critical `users.js` credential leak and the `edit-image` SSRF — both fixed in batch
+1. The four highs still listed (oauth refresh, trial expiry, swallowed deduction,
+rate limiter) come from the CACHED oauth/ai verifiers, which ran before those fixes.
+
+BATCH 2 closes the last distinct high, which was two defects on the same endpoints.
+
+1. BYOK ROLE GATE WAS ONLY IN runAIChat. `getOpenAIClient` / `getAnthropicClient`
+   read the company's key with no role check, so `/generate-image`, `/edit-image`,
+   `/transcribe`, `/tts` and `/diagnose` spent the CUSTOMER's credentials for any
+   authenticated user, including a guest from another tenant. Both helpers now take
+   an explicit `userRole` and only reach the company key when `canUseBYOK` passes.
+   The role must be passed explicitly — omitting it means "not eligible" — so a new
+   caller that forgets defaults to the platform key rather than silently spending a
+   customer's credentials.
+
+2. THOSE ENDPOINTS WERE COMPLETELY UNMETERED. No plan check, no credits, no scan
+   token: `quality:"hd", n:4` was ~US$0.75 of provider spend per request, repeatable
+   by any free self-serve account. `chargeFlat()` prices them (images/audio report
+   no token counts, so a flat charge is the honest approximation, ~1 credit per
+   US$0.001), refuses with 402 when the balance cannot cover it, and doubles the
+   image price for hd while counting n. Trials still generate freely, but only while
+   the trial is genuinely live — the same expiry the chat path now honours.
+
+REMAINING (15 medium, 29 low) — none is a tenant-data leak; the authz auditor found
+no query that reads another tenant's rows back to the caller. Highest value next:
+- `leads.js:165` — the one search route missing the `.or()` sanitizer.
+- Google Drive `q` built from `req.query` — a plain member can enumerate the whole
+  connected Drive.
+- `uploads.js` — any file type into a PUBLIC bucket (stored XSS / malware hosting).
+- `users.js` — missing the target-role guard `admin.js` has, so a company_admin can
+  demote or delete the App Owner.
+- `is_global` client-writable on message_templates.
+- OAuth state is a stateless bearer blob: no browser binding, no single-use, no
+  membership check in the callback (account-linking CSRF).
+- helmet's default CSP blocks oauth.js's own inline postMessage script, so the OAuth
+  popups likely never signal success to the opener in production.
