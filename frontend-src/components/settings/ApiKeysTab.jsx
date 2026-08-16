@@ -133,13 +133,17 @@ function DiagnoseAI() {
           <div><span className="text-gray-400">Active provider:</span> <span className="text-white">{diag.active_provider}</span></div>
           <div className="space-y-1">
             <div className="text-[#38b6ff]">OpenAI</div>
-            <div className="pl-3"><span className="text-gray-400">key:</span> {diag.openai.has_key ? `${diag.openai.key_prefix || '(platform)'} (${diag.openai.key_source})` : <span className="text-gray-500">none</span>}</div>
+            {/* The prefix used to be shown here. It confirmed the key's type and
+                account family to anyone who opened this panel, which is a hint
+                nobody needs — the SOURCE is what actually answers "which key is
+                being used?". */}
+            <div className="pl-3"><span className="text-gray-400">key:</span> {diag.openai.has_key ? `configured (${diag.openai.key_source})` : <span className="text-gray-500">none</span>}</div>
             <div className="pl-3"><span className="text-gray-400">model:</span> {diag.openai.model}</div>
             <div className="pl-3"><span className="text-gray-400">test:</span> {renderTest(diag.openai.test_result)}</div>
           </div>
           <div className="space-y-1">
             <div className="text-[#cb6ce6]">Anthropic</div>
-            <div className="pl-3"><span className="text-gray-400">key:</span> {diag.anthropic.has_key ? `${diag.anthropic.key_prefix || '(platform)'} (${diag.anthropic.key_source})` : <span className="text-gray-500">none</span>}</div>
+            <div className="pl-3"><span className="text-gray-400">key:</span> {diag.anthropic.has_key ? `configured (${diag.anthropic.key_source})` : <span className="text-gray-500">none</span>}</div>
             <div className="pl-3"><span className="text-gray-400">model requested:</span> {diag.anthropic.model_requested || <span className="text-gray-500">(default)</span>}</div>
             <div className="pl-3"><span className="text-gray-400">model resolved:</span> {diag.anthropic.model_resolved}</div>
             <div className="pl-3"><span className="text-gray-400">test:</span> {renderTest(diag.anthropic.test_result)}</div>

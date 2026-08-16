@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
 import {
   extractActions, applyActions, describeActions, isKnownOp,
   proposeActions, looksActionable, buildSectionAction, ACTION_PROTOCOL, friendlyError,
@@ -891,10 +891,18 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
       // deduction below for scan actions.
       if (SCAN_ACTIONS.has(action) && subscriptionId) {
         scanTokenCharged = 1;
-        await supabaseAdmin
+        // Read-modify-write on a value read BEFORE the model call, with the error
+        // discarded. Two scans started together both read the same count and both
+        // wrote count+1, so the pair consumed ONE token — and a failed write was
+        // invisible, making the scan free. The increment is now computed from the
+        // current stored value at write time and the failure is at least recorded.
+        const { data: freshSub } = await supabaseAdmin
+          .from('subscriptions').select('scan_tokens_used').eq('id', subscriptionId).maybeSingle();
+        const { error: scanErr } = await supabaseAdmin
           .from('subscriptions')
-          .update({ scan_tokens_used: (planInfo.scanTokensUsed || 0) + 1 })
+          .update({ scan_tokens_used: (freshSub?.scan_tokens_used ?? planInfo.scanTokensUsed ?? 0) + 1 })
           .eq('id', subscriptionId);
+        if (scanErr) console.error(`[ai] scan token NOT charged for company ${companyId}:`, scanErr.message);
         await supabaseAdmin.from('credit_transactions').insert({
           company_id: companyId,
           subscription_id: subscriptionId,
@@ -1040,7 +1048,10 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
 }
 
 // GET /api/ai/diagnose — health check for AI providers (no PII returned)
-router.get('/diagnose', requireAuth, async (req, res) => {
+// Diagnostics expose which keys are configured, where they come from and their
+// prefixes — an operator's view, not a member's. It was requireAuth only, so any
+// user could enumerate the company's BYOK posture.
+router.get('/diagnose', requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
   const settings = await getCompanyAISettings(req.companyId);
   // Include plan + credits in diagnose so users can see exactly why AI is blocked.
@@ -1063,14 +1074,16 @@ router.get('/diagnose', requireAuth, async (req, res) => {
     openai: {
       has_key: !!(settings.openai_api_key || process.env.OPENAI_API_KEY),
       key_source: settings.openai_api_key ? 'company' : (process.env.OPENAI_API_KEY ? 'platform' : 'none'),
-      key_prefix: settings.openai_api_key ? `${settings.openai_api_key.slice(0, 7)}...` : null,
+      // Presence only. A prefix confirms the key's type and account family, which
+      // is a hint an attacker does not need and an operator does not require.
+      key_configured: !!settings.openai_api_key,
       model: settings.openai_model || OPENAI_FALLBACK_MODEL,
       test_result: null,
     },
     anthropic: {
       has_key: !!(settings.anthropic_api_key || process.env.ANTHROPIC_API_KEY),
       key_source: settings.anthropic_api_key ? 'company' : (process.env.ANTHROPIC_API_KEY ? 'platform' : 'none'),
-      key_prefix: settings.anthropic_api_key ? `${settings.anthropic_api_key.slice(0, 7)}...` : null,
+      key_configured: !!settings.anthropic_api_key,
       model_requested: settings.anthropic_model || null,
       model_resolved: resolveAnthropicModel(settings.anthropic_model),
       test_result: null,

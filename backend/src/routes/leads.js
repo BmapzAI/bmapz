@@ -490,6 +490,16 @@ router.post('/:id/activities', requireAuth, async (req, res) => {
   try {
     const summary = String(req.body?.summary || '').trim();
     if (!summary) return res.status(400).json({ error: 'summary is required' });
+
+    // The lead id came straight from the URL and was written as a foreign key with
+    // no check, so a caller could stamp timeline rows against another tenant's lead
+    // ids. Nothing leaks back, but forged history is still forged history.
+    const { data: lead, error: findErr } = await supabaseAdmin
+      .from('leads').select('id')
+      .eq('id', req.params.id).eq('company_id', req.companyId).maybeSingle();
+    if (findErr) return res.status(503).json({ error: 'Could not verify that lead.' });
+    if (!lead) return res.status(404).json({ error: 'Lead not found in this company.' });
+
     const entry = await logLeadActivity({
       companyId: req.companyId,
       leadId: req.params.id,

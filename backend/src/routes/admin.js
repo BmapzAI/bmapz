@@ -11,14 +11,28 @@ router.use(requireAuth, requireAdmin);
 // GET /api/admin/companies — list all companies
 router.get('/companies', async (req, res) => {
   try {
-    const { limit = 50, offset = 0, search } = req.query;
+    const { search } = req.query;
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+
+    // An EXPLICIT column list, never select('*').
+    //
+    // This listed every tenant on the platform WITH their api_keys — every
+    // customer's OpenAI, Anthropic, Meta and Google credentials in one response.
+    // Being owner-only is not a reason to ship them: nothing on this screen renders
+    // a key, so it was pure blast radius if the response were ever logged, cached
+    // or shoulder-read.
     let query = supabaseAdmin
       .from('companies')
-      .select('*, subscriptions(plan, status, ai_credits_total, ai_credits_used)', { count: 'exact' })
+      .select(
+        'id, name, industry, website, created_at, integration_status,'
+        + ' subscriptions(plan, status, ai_credits_total, ai_credits_used)',
+        { count: 'exact' },
+      )
       .order('created_at', { ascending: false })
-      .range(Number(offset), Number(offset) + Number(limit) - 1);
+      .range(offset, offset + limit - 1);
 
-    if (search) query = query.ilike('name', `%${search}%`);
+    if (search) query = query.ilike('name', `%${String(search).replace(/[%_]/g, ' ')}%`);
     const { data, error, count } = await query;
     if (error) throw error;
     res.json({ data, total: count });
@@ -682,16 +696,21 @@ router.patch('/data-deletion-requests/:id', async (req, res) => {
 // Returns: totals + per-company + per-user + per-model
 router.get('/usage-stats', async (req, res) => {
   try {
-    const { days = 30 } = req.query;
-    const since = new Date(Date.now() - Number(days) * 86400_000).toISOString();
+    // Both bounded. `days` was caller-controlled with no ceiling and the query had
+    // no limit, so ?days=100000 pulled every usage transaction the platform has
+    // ever recorded into memory to aggregate in JS.
+    const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+    const since = new Date(Date.now() - days * 86400_000).toISOString();
 
     // All usage transactions in window
-    const { data: txs } = await supabaseAdmin
+    const { data: txs, error: txErr } = await supabaseAdmin
       .from('credit_transactions')
-      .select('*')
+      .select('company_id, user_id, feature, model, credits_delta, created_at, metadata')
       .eq('type', 'usage')
       .gte('created_at', since)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(10000);
+    if (txErr) console.error('[admin/usage-stats] transaction read failed:', txErr.message);
 
     const transactions = txs || [];
 

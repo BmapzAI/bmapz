@@ -3328,3 +3328,48 @@ Verified: 6/6 on the binding logic — an attacker's state is rejected in a vict
 browser both with no cookie and with a different nonce, tampered states are rejected,
 legacy states still pass, and the cookie parses alongside others. Boot with
 WebSocket removed, lint 0 errors, build passes.
+
+## SECURITY AUDIT — batch 4, remaining findings cleared (Claude, 2026-08-16)
+
+DATA EXPOSURE.
+- `admin.js` listed EVERY tenant with `select('*')`, so one response carried every
+  customer's api_keys — OpenAI, Anthropic, Meta, Google. Owner-only is not a reason
+  to ship them; nothing on that screen renders a key (verified in AdminPanel.jsx and
+  CompanyAdminPanel.jsx before removing). Now an explicit column list.
+- `GET /api/ai/diagnose` was requireAuth only and returned 7-character key prefixes.
+  A prefix confirms a key's type and account family. Now requireCompanyAdmin, and it
+  reports `key_configured` + `key_source` instead. ApiKeysTab.jsx updated to match —
+  leaving it would have mislabelled company keys as "(platform)".
+
+FORGED FOREIGN KEYS. `POST /api/leads/:id/activities` (id from the URL) and
+`POST /api/messaging/activities` (lead_id from the body) both wrote timeline rows
+against unverified lead ids, so a caller could stamp history onto another tenant's
+lead. Nothing read back, but forged history is still forged. Both now resolve the
+lead company-scoped first.
+
+MASS ASSIGNMENT. `dashboardConfigs` POST spread `req.body` while its own PATCH
+whitelisted — the two halves of one resource disagreed, and insert accepted id /
+user_id / created_at. Now whitelisted, with user_id taken from the session.
+
+UNBOUNDED INPUT.
+- `POST /api/sdr/test` forwarded the caller's entire conversation to the model. Now
+  capped at the last 40 turns and 4k characters each; the SDR's own 40-turn cap does
+  not apply on this route.
+- `/api/data-deletion` is unauthenticated BY LAW (a deletion request cannot require
+  an account), so its free text is bounded rather than trusted, and `status` is no
+  longer accepted from the body — a requester could file their own request as
+  already completed. It also gets a dedicated 10/hour limiter: with no account to
+  attribute abuse to, the IP bucket is its only backstop.
+- `admin.js` usage-stats took a caller-controlled `days` with no ceiling and no
+  row limit, so `?days=100000` pulled every transaction the platform has ever
+  recorded into memory. Capped at 365 days / 10k rows, explicit columns.
+
+SCAN TOKEN RACE. The decrement read the count BEFORE the model call, wrote
+count+1, and discarded the error — two concurrent scans consumed one token, and a
+failed write made the scan free and silent. Now computed from the stored value at
+write time, with the failure logged.
+
+REMAINING, deliberately: the `uuid` advisory (transitive, no direct import, needs
+v3/v5/v6 with a `buf` argument) and prompt-injection via web-search content reaching
+the system prompt — bounded because the resulting operations are whitelisted,
+company-scoped and user-approved before anything is written.

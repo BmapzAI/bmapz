@@ -39,11 +39,20 @@ router.get('/:id', requireAuth, async (req, res) => {
   }
 });
 
+/** The only fields a client may set. Anything else is server-owned. */
+const WRITABLE_DASHBOARD = ['name', 'widgets', 'layout', 'is_default'];
+const pickDashboard = (body) => Object.fromEntries(
+  Object.entries(body || {}).filter(([k]) => WRITABLE_DASHBOARD.includes(k)),
+);
+
 router.post('/', requireAuth, async (req, res) => {
   try {
+    // Whitelisted, matching what the PATCH below already guards. The spread let a
+    // caller set id, user_id or created_at on insert — the PATCH refused exactly
+    // those, so the two halves of the same resource disagreed.
     const { data, error } = await supabaseAdmin
       .from('dashboard_configs')
-      .insert({ ...req.body, company_id: req.companyId })
+      .insert({ ...pickDashboard(req.body), company_id: req.companyId, user_id: req.dbUser?.id || null })
       .select()
       .single();
     if (error) throw error;

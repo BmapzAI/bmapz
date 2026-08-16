@@ -121,8 +121,16 @@ router.post('/test', requireAuth, async (req, res) => {
     const { data: facts } = await supabaseAdmin.from('companies')
       .select('name, industry, services_description, value_propositions, icp, briefing, website, personal_agent_name')
       .eq('id', req.companyId).single();
-    const history = Array.isArray(req.body.messages) ? req.body.messages : [];
-    if (req.body.text) history.push({ role: 'client', content: req.body.text });
+    // Bounded before it reaches the model. The whole array went through unchecked,
+    // so one request could carry an arbitrarily long conversation and bill an
+    // arbitrarily large prompt — the SDR's own 40-turn cap does not apply here.
+    const history = (Array.isArray(req.body.messages) ? req.body.messages : [])
+      .slice(-40)
+      .map(m => ({
+        role: m?.role === 'agent' ? 'agent' : 'client',
+        content: String(m?.content ?? '').slice(0, 4000),
+      }));
+    if (req.body.text) history.push({ role: 'client', content: String(req.body.text).slice(0, 4000) });
     const decision = await sdrRespond({ companyId: req.companyId, agent, facts: facts || {}, conversationMessages: history });
     res.json(decision);
   } catch (err) {

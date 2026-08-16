@@ -119,6 +119,18 @@ const aiLimiter = rateLimit({
 app.use('/api/ai', aiLimiter);
 app.use('/api/brand-scans', aiLimiter);
 
+// Unauthenticated write endpoints get their own tight budget: there is no account
+// to attribute abuse to, so the IP bucket is the only backstop they have.
+const publicWriteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyGenerator: rateKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.' },
+});
+app.use('/api/data-deletion', publicWriteLimiter);
+
 // ─── Body parsing ─────────────────────────────────────────────────────────────
 // Stripe webhooks need raw body — mount BEFORE json middleware
 app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));

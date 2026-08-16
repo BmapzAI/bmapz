@@ -98,9 +98,21 @@ router.get('/activities', requireAuth, async (req, res) => {
 
 router.post('/activities', requireAuth, async (req, res) => {
   try {
+    const fields = pickFields(req.body, ACTIVITY_FIELDS);
+
+    // lead_id arrived from the request body and was written as a foreign key with
+    // no ownership check — a caller could attach activity to another tenant's lead.
+    if (fields.lead_id) {
+      const { data: lead, error: findErr } = await supabaseAdmin
+        .from('leads').select('id')
+        .eq('id', fields.lead_id).eq('company_id', req.companyId).maybeSingle();
+      if (findErr) return res.status(503).json({ error: 'Could not verify that lead.' });
+      if (!lead) return res.status(404).json({ error: 'Lead not found in this company.' });
+    }
+
     const { data, error } = await supabaseAdmin
       .from('activities')
-      .insert({ ...pickFields(req.body, ACTIVITY_FIELDS), company_id: req.companyId })
+      .insert({ ...fields, company_id: req.companyId })
       .select()
       .single();
     if (error) throw error;
