@@ -152,7 +152,19 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: true }));
 
 // ─── Health check ─────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
+//
+// `commit` answers the question that has repeatedly cost time here: is the code I
+// just pushed actually the code that is running? Without it the only way to tell a
+// new build from an old one is the Railway dashboard, and every endpoint-based
+// check is ambiguous — an auth-gated route returns 401 whether or not the handler
+// behind it was updated. The repo is public, so the SHA discloses nothing.
+const BUILD_SHA = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || null;
+
+app.get('/health', (_req, res) => res.json({
+  status: 'ok',
+  ts: new Date().toISOString(),
+  commit: BUILD_SHA ? BUILD_SHA.slice(0, 7) : 'unknown',
+}));
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
