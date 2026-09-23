@@ -110,7 +110,8 @@ router.get('/status', requireAuth, async (req, res) => {
       tiktok_ads: !!(k.tiktok_access_token && k.tiktok_advertiser_id),
       canva: !!(k.canva_access_token),
       // Messaging
-      whatsapp: !!(k.whatsapp_api_token && k.whatsapp_phone_id),
+      whatsapp: !!((k.whatsapp_api_token || k.whatsapp_access_token || envHas('WHATSAPP_ACCESS_TOKEN'))
+        && (k.whatsapp_phone_id || envHas('WHATSAPP_PHONE_NUMBER_ID'))),
       // Email
       email_smtp: !!(k.smtp_host && k.smtp_user),
       email_resend: !!(k.resend_api_key) || envHas('RESEND_API_KEY'),
@@ -260,16 +261,29 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         return res.json({ success: false, message: 'WordPress credentials invalid or REST API not accessible' });
       }
 
+      // Resolved in the SAME order the sending code uses (sdrEngine, workflowEngine,
+      // email.js). Testing a different chain would pass while real sends fail — or
+      // worse, pass while sends silently go out from the platform's number instead
+      // of the company's, which is exactly what the mismatched key name caused.
       case 'whatsapp': {
-        const { whatsapp_api_token, whatsapp_phone_id } = k;
-        if (!whatsapp_api_token || !whatsapp_phone_id) {
-          return res.json({ success: false, message: 'WhatsApp API token and Phone Number ID required' });
+        const token = clean(k.whatsapp_api_token || k.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN);
+        const phoneId = clean(k.whatsapp_phone_id || process.env.WHATSAPP_PHONE_NUMBER_ID);
+        if (!token || !phoneId) {
+          return res.json({ success: false, message: 'WhatsApp needs an access token and a Phone Number ID.' });
         }
-        const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${whatsapp_phone_id}`, {
-          headers: { Authorization: `Bearer ${whatsapp_api_token}` },
+        const usingPlatform = !k.whatsapp_api_token && !k.whatsapp_access_token;
+        const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}?fields=display_phone_number,verified_name`, {
+          headers: { Authorization: `Bearer ${token}` },
         });
-        if (r.ok) return res.json({ success: true, message: 'WhatsApp Business connected' });
-        return res.json({ success: false, message: 'WhatsApp credentials invalid' });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && !d.error) {
+          const who = d.display_phone_number ? ` (${d.display_phone_number})` : '';
+          return res.json({
+            success: true,
+            message: `WhatsApp Business connected${who}${usingPlatform ? ' — using the platform number, not one of yours' : ''}`,
+          });
+        }
+        return res.json({ success: false, message: d.error?.message || 'WhatsApp credentials invalid' });
       }
 
       // This used to return success for "credentials present" without ever calling

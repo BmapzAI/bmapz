@@ -3757,3 +3757,33 @@ site needs a glance at its catch block, because some deliberately return a 4xx-i
 message through a 500, and a few throw errors they constructed themselves whose text
 IS meant for the user. Mechanical replacement would silently flatten those into
 "Something went wrong" and degrade real error reporting.
+
+## WHATSAPP: PER-COMPANY NUMBER WAS SILENTLY IGNORED (Claude, 2026-09-23)
+
+MULTI-TENANT BUG, fixed. Worth understanding because the shape of it will recur.
+
+Two different key names were in use for the same thing:
+  - The UI and companies.js allowlist save `whatsapp_api_token`.
+  - The code that actually SENDS read `whatsapp_access_token`.
+`whatsapp_access_token` is not in the companies.js allowlist and appears nowhere in
+the frontend, so it could never be set. Every send therefore evaluated
+`keys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN` with the left side
+permanently undefined and used the PLATFORM number.
+
+Effect: a company configures its own WhatsApp number, the Integrations page says
+connected, the test passed — and its SDR sequences, workflow steps and inbox replies
+all went out from Bmapz's number instead of its own. Silently, with no error anywhere.
+
+Fixed at all four send sites (sdrEngine x2, workflowEngine x1, email.js x1) to
+`whatsapp_api_token || whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN`.
+The legacy name is kept in the chain in case any row has it.
+
+The test and the status detector now resolve through the SAME chain, and the test
+says out loud when it is falling back to the platform number. A test that resolves
+credentials differently from the code it is testing can pass while the product is
+broken — that is what happened here.
+
+LOOK FOR THIS ELSEWHERE: the pattern to audit is any `keys.X || process.env.Y` where
+X is not in the companies.js ALLOWED api_keys list. That left operand is dead, and
+the failure is invisible because the env fallback keeps the feature working — just
+for the wrong tenant.

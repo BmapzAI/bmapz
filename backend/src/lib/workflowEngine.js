@@ -164,7 +164,7 @@ async function executeSend(node, run, lead, companyKeys) {
       await sendCompanyEmail(companyKeys, { to: lead.email, subject, html: body.replace(/\n/g, '<br>'), text: body });
       status = 'sent';
     } else if (channel === 'whatsapp') {
-      const token = companyKeys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
+      const token = companyKeys.whatsapp_api_token || companyKeys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
       const phoneId = companyKeys.whatsapp_phone_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
       if (token && phoneId && lead?.phone) {
         const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}/messages`, {

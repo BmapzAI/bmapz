@@ -434,7 +434,7 @@ async function sendSdrReply({ companyId, channel, contactHandle, leadId, reply, 
     } else if (channel === 'whatsapp') {
       const { data: c } = await supabaseAdmin.from('companies').select('api_keys').eq('id', companyId).single();
       const keys = c?.api_keys || {};
-      const token = keys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
+      const token = keys.whatsapp_api_token || keys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
       const phoneId = keys.whatsapp_phone_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
       if (!token || !phoneId || !contactHandle) throw new Error('WhatsApp is not configured or the contact has no phone number');
       const response = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}/messages`, {
@@ -550,7 +550,7 @@ export async function notifyHandover({ companyId, agent, who, leadId, note, chan
       for (const em of emails) await sendCompanyEmail(keys, { to: em, subject: title, html: `${body}<br><br>Open Bmapz to follow up.`, text: body }).catch(() => {});
     }
     if (ch.whatsapp && to) {
-      const token = keys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
+      const token = keys.whatsapp_api_token || keys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
       const phoneId = keys.whatsapp_phone_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
       const phones = to.split(',').map(s => s.replace(/\D/g, '')).filter(p => p.length >= 8);
       if (token && phoneId) {

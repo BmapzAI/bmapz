@@ -48,7 +48,7 @@ router.post('/send', requireAuth, async (req, res) => {
           html: reply_content.replace(/\n/g, '<br>'), text: reply_content,
         });
       } else if (channel === 'whatsapp') {
-        const token = keys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
+        const token = keys.whatsapp_api_token || keys.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
         const phoneId = keys.whatsapp_phone_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
         const phone = (recipient || original.metadata?.from_phone || '').replace(/\D/g, '');
         if (!token || !phoneId || !phone) return res.status(400).json({ error: 'WhatsApp is not configured or the recipient phone is missing' });
