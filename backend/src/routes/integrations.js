@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { safeFetch } from '../lib/safeFetch.js';
+import { sendServerError } from '../lib/httpError.js';
 
 const router = Router();
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
@@ -127,7 +128,7 @@ router.get('/status', requireAuth, async (req, res) => {
       instagram_business_account_id: k.instagram_business_account_id,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, '[integrations]');
   }
 });
 
@@ -616,7 +617,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         return res.json({ success: false, message: `No test defined for integration type: ${type}` });
     }
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    sendServerError(res, err, '[integrations]', 'success');
   }
 });
 
@@ -688,7 +689,7 @@ router.get('/google/drive/files', requireAuth, async (req, res) => {
 
     res.json(d);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, '[integrations]');
   }
 });
 
@@ -736,7 +737,7 @@ router.get('/google/analytics', requireAuth, async (req, res) => {
     if (d.error) throw new Error(d.error.message);
     res.json(d);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, '[integrations]');
   }
 });
 
@@ -761,7 +762,7 @@ router.post('/apollo/enrich', requireAuth, async (req, res) => {
     const d = await r.json();
     res.json(d);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, '[integrations]');
   }
 });
 
@@ -783,7 +784,7 @@ router.post('/hunter/find-email', requireAuth, async (req, res) => {
     const d = await r.json();
     res.json(d);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, '[integrations]');
   }
 });
 

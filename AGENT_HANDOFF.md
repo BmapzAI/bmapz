@@ -3716,3 +3716,44 @@ with a fixed sentence; leave that warning alone.
 
 VERIFIED: node --check passes; eslint 0 errors project-wide; backend boots
 (`✅ Bmapz API running`, schedulers + model registry start).
+
+## SCHEMA LEAK VIA ROUTE-LEVEL 500s — partially fixed, 192 sites REMAIN (Claude, 2026-09-23)
+
+OPEN ITEM. This is the highest-value thing left in the backend and it is deliberately
+NOT finished — see "why not all of it" below.
+
+index.js's global error handler was fixed earlier to stop returning err.message on a
+5xx, with this reasoning recorded at the time: an unexpected failure is usually a
+database error, Postgres names tables, columns and constraints in its messages, so a
+crash handed an attacker a free map of the schema.
+
+That handler only runs for errors passed to next(). Routes that CATCH THEIR OWN errors
+and call res.status(500).json({ error: err.message }) answer the request themselves and
+never reach it, so the scrubbing does not apply to them. There are 193 such sites.
+Six were in integrations.js and are fixed; 192 remain (the 193rd count is the regex
+inside httpError.js itself).
+
+Reproduce the exposure: make any authenticated route hit a bad column or a violated
+constraint and read the JSON body — it names the table and column.
+
+THE FIX IS BUILT AND READY: backend/src/lib/httpError.js
+  import { sendServerError } from '../lib/httpError.js';
+  } catch (err) { sendServerError(res, err, '[routeName]'); }
+For the { success, message } shape used by test-style endpoints, pass 'success' as the
+fourth argument. safeMessage() mirrors the global handler exactly: deliberate 4xx
+messages we wrote are preserved, everything else becomes a generic sentence, and a 4xx
+that happens to carry SQL is still scrubbed. Unit-tested 6/6 including that last case.
+
+Remaining, by file (highest first): admin 26, adsManager 21, tasks 15, users 12,
+leads 12, messaging 10, companies 10, workflows 7, social 7, oauth 7, ai 7, ads 6,
+seo 5, notifications 5, billing 5, sdr 4, funnels 4, designTemplates 4,
+dashboardConfigs 4, brandScans 4, blog 4, automations 4, auth 4, addons 2, help 1,
+dataDeletion 1, canva 1.
+
+WHY NOT ALL OF IT IN ONE PASS: a blind sed across 20+ files I had not read is exactly
+the mistake already recorded in this handoff — a sed in this codebase replaced the
+inner decodeOAuthState call and created infinite recursion in consumeOAuthState. Each
+site needs a glance at its catch block, because some deliberately return a 4xx-ish
+message through a 500, and a few throw errors they constructed themselves whose text
+IS meant for the user. Mechanical replacement would silently flatten those into
+"Something went wrong" and degrade real error reporting.
