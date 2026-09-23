@@ -3607,3 +3607,40 @@ title "Bmapz AI App Build", brief capped at 24,027 chars, and zero tool noise.
 ALSO SET: API_URL and APP_URL in Railway. API_URL was missing and fell back to
 http://localhost:3001, which built every OAuth redirect_uri and the popup launch
 URL — so every OAuth connect was broken in production for all six providers.
+
+PRODUCTION VERIFICATION (2026-09-23, after deploy d9d4cb9):
+  Railway deploy d9d4cb9                       SUCCESS
+  GET/POST/DELETE /api/ai-imports              401 (mounted + auth-gated)
+  GET /api/does-not-exist                      404 (so the 401s are real routes,
+                                               not a catch-all swallowing everything)
+  /health 200, ai.bmapz.com 200
+  Frontend: live chunk Settings-N4pndxvx.js (83,479 B) contains the import UI and
+  matches a local build of HEAD. NOTE FOR NEXT AGENT: the app is code-split, so
+  grepping only assets/index-*.js proves NOTHING about whether a page shipped —
+  read the page's own chunk. I briefly concluded the frontend had not deployed on
+  exactly that mistake.
+  APP_URL confirmed LIVE (not the fallback) by the unauthenticated callback error
+  branch, which renders data-target="https://ai.bmapz.com". API_URL cannot be
+  observed from outside: its only consumer is oauth.js and every route reaching it
+  requires a session. It is set in Railway and was set in the same operation as
+  APP_URL, but treat its live value as UNVERIFIED until a real OAuth connect runs.
+
+  Schema confirmed live: all 15 columns; RLS enabled with a single deny-all policy
+  (using false / with check false — service role only); unique index on
+  (company_id, file_hash); brain_learnings.source_import_id FK confdeltype='c'
+  (CASCADE), so an undo is exact.
+
+ADDED AFTER THAT CHECK: CHECK constraints on `source` and `status`, which did not
+exist. The backend is the only writer, so this is defence in depth, not a live
+gap — but those two columns are what the UI branches on, and an unexpected value
+would render as a silent blank row rather than an error anyone would notice.
+Probed on the live DB: bad source rejected, bad status rejected, a valid row
+inserted and deleted, 0 rows left behind.
+
+STILL OPEN — the integrations phase is BLOCKED on credentials, not on code:
+No human has completed a real OAuth connect end-to-end since the launch-ticket /
+nonce rewrite, and no provider credentials are set in Railway (GOOGLE_CLIENT_ID,
+GOOGLE_ADS_DEVELOPER_TOKEN — long Google approval lead time — META_*, LINKEDIN_*,
+TIKTOK_*, TWITTER_*, CANVA_*, WHATSAPP_*, STRIPE_*, RESEND_API_KEY,
+PERPLEXITY_API_KEY). Until one provider connects once, nothing in the integrations
+phase should be reported as working.
