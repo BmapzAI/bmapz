@@ -3825,3 +3825,31 @@ customer's compliance problem rather than ours. Note this is NOT the AI-provider
 BYOK rule (owner/system_admin only, because those bypass billing) — an OAuth client
 ID does not bypass billing. Still, it is a widening of writable secrets, so it needs
 an explicit yes.
+
+## INTEGRATION CARDS THAT COULD NEVER LIGHT UP (Claude, 2026-09-23)
+
+Cross-checked every `statusKey` the Integrations page asks for against the keys
+GET /api/integrations/status actually reports. 32 of 60 were never reported, so
+those cards were permanently stuck on "not connected".
+
+Rerun the check after touching either side:
+  extract `statusKey: '<x>'` from frontend-src/pages/Integrations.jsx,
+  extract the keys of `detected` in routes/integrations.js, diff them.
+
+FIXED — 19 of them:
+  tiktok_social — the important one. TikTok has a working OAuth flow, a stored
+    token and a test, but the page asks for `tiktok_social` while the backend only
+    reported `tiktok`. A successful connect could never show as connected.
+  mailchimp, klaviyo, activecampaign, brevo, convertkit, mailerlite, lemlist,
+  intercom, segment, mixpanel, jasper, loom, demio, webflow, shopify, hotjar,
+  zoom, chilipiper — all have storable credentials in the companies.js allowlist,
+    so a user could save a key, watch it persist, and still be told "not
+    connected" with nothing they could do about it. Each now requires what the API
+    genuinely needs (shopify needs store URL + admin token, zoom needs all three
+    S2S fields, and so on), not merely the presence of one field.
+
+LEFT ALONE — 13: pinterest, snapchat, slack, twilio, hubspot, dalle, typeform,
+calendly, notion, figma, adobe, crello, trello. These have NO storable credentials
+anywhere in the allowlist, so they are unimplemented placeholders rather than
+broken wiring. Reporting them would be a lie in the other direction. If one is
+implemented later, add its keys to the allowlist AND to `detected` together.

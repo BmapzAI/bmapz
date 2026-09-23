@@ -107,6 +107,9 @@ router.get('/status', requireAuth, async (req, res) => {
       linkedin_ads: !!((k.linkedin_ads_access_token || k.linkedin_access_token) && k.linkedin_ads_account_id),
       twitter: !!(k.twitter_access_token),
       tiktok: !!(k.tiktok_access_token),
+      // The Integrations page asks for `tiktok_social`, not `tiktok`, so the card
+      // could never light up however successful the OAuth connect was.
+      tiktok_social: !!(k.tiktok_access_token),
       tiktok_ads: !!(k.tiktok_access_token && k.tiktok_advertiser_id),
       canva: !!(k.canva_access_token),
       // Messaging
@@ -130,6 +133,30 @@ router.get('/status', requireAuth, async (req, res) => {
       // Scheduling
       google_calendar: !!(k.google_access_token),
       cal_com: !!(k.cal_com_api_key),
+      chilipiper: !!(k.chilipiper_api_key && k.chilipiper_tenant),
+
+      // These all have storable credentials in the companies.js allowlist and a
+      // card on the Integrations page, but were never reported here — so a user
+      // could save the key, see it persist, and still be told "not connected"
+      // with nothing to do about it. Each requires what the API actually needs to
+      // work, not merely a key being present.
+      mailchimp: !!(k.mailchimp_api_key),
+      klaviyo: !!(k.klaviyo_api_key),
+      activecampaign: !!(k.activecampaign_api_url && k.activecampaign_api_key),
+      brevo: !!(k.brevo_api_key),
+      convertkit: !!(k.convertkit_api_key),
+      mailerlite: !!(k.mailerlite_api_key),
+      lemlist: !!(k.lemlist_api_key),
+      intercom: !!(k.intercom_access_token),
+      segment: !!(k.segment_write_key),
+      mixpanel: !!(k.mixpanel_project_token),
+      jasper: !!(k.jasper_api_key),
+      loom: !!(k.loom_api_key),
+      demio: !!(k.demio_api_key),
+      webflow: !!(k.webflow_api_token),
+      shopify: !!(k.shopify_store_url && k.shopify_admin_token),
+      hotjar: !!(k.hotjar_site_id && k.hotjar_api_token),
+      zoom: !!(k.zoom_account_id && k.zoom_client_id && k.zoom_client_secret),
       // Stripe CONNECT — a per-company connected account for receiving payouts.
       // Distinct from the `stripe` key above, which is the PLATFORM billing key
       // that charges Bmapz's own subscribers. Both were previously called
