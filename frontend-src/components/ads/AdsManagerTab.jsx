@@ -8,11 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   Plus, ChevronRight, ChevronDown, Rocket, Trash2, Pencil, Layers, Target, BookOpen,
-  Megaphone, Loader2, Sparkles, CircleDot, AlertCircle, Copy,
+  Megaphone, Loader2, Sparkles, CircleDot, AlertCircle, Copy, Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdsManager } from '@/api/entities';
 import { getPlatform, levelLabel, TARGETING_FIELDS, validateLevel } from '@shared/adPlatforms';
+import AdsBulkEditBar from '@/components/ads/AdsBulkEditBar';
 import AdsPublishDialog from './AdsPublishDialog';
 
 const STATE_STYLE = {
@@ -54,6 +55,15 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
   const [showGenerate, setShowGenerate] = useState(false);
   const [copyFor, setCopyFor] = useState(null);      // { ad, group, campaign }
   const [strategyFor, setStrategyFor] = useState(null); // campaign
+  // Bulk selection. One level at a time: mixing campaigns and ads in one
+  // selection would make "set budget" ambiguous, and Ads Editor does the same.
+  const [sel, setSel] = useState({ level: null, ids: [] });
+  const isSelected = (level, id) => sel.level === level && sel.ids.includes(id);
+  const toggleSelect = (level, id) => setSel(prev => {
+    if (prev.level !== level) return { level, ids: [id] };
+    return { level, ids: prev.ids.includes(id) ? prev.ids.filter(x => x !== id) : [...prev.ids, id] };
+  });
+  const clearSel = () => setSel({ level: null, ids: [] });
 
   const { data: platforms = [] } = useQuery({ queryKey: ['adPlatforms'], queryFn: () => AdsManager.platforms() });
   // Strategies available to build a campaign from (the level above the campaign).
@@ -69,6 +79,18 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
   });
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['adCampaignTree'] });
+
+  /** Selection checkbox. Stops propagation so ticking never expands the row. */
+  const SelectBox = ({ level, id }) => (
+    <button
+      onClick={(e) => { e.stopPropagation(); toggleSelect(level, id); }}
+      title="Select for bulk edit"
+      className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${
+        isSelected(level, id) ? 'bg-[#38b6ff] border-[#38b6ff]' : 'border-white/25 hover:border-white/50'}`}
+    >
+      {isSelected(level, id) && <Check size={11} className="text-white" />}
+    </button>
+  );
   const fail = (verb) => (e) => toast.error(`Could not ${verb}: ${e.message}`);
 
   const saveCampaign = useMutation({
@@ -188,6 +210,7 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
                     className="text-gray-400 hover:text-white flex-shrink-0">
                     {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>
+                  <SelectBox level="campaign" id={c.id} />
                   <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: spec?.color || '#888' }} />
                   <div className="min-w-0 flex-1">
                     <p className="text-white text-sm font-medium truncate">{c.name}</p>
@@ -225,6 +248,7 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
                     {(c.ad_groups || []).map(g => (
                       <div key={g.id} className="rounded-xl bg-white/5 border border-white/10">
                         <div className="flex items-center gap-2 p-2.5">
+                          <SelectBox level="ad_group" id={g.id} />
                           <Target size={13} className="text-[#cb6ce6] flex-shrink-0" />
                           <div className="min-w-0 flex-1">
                             <p className="text-white text-xs font-medium truncate">{g.name}</p>
@@ -253,6 +277,7 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
                           <div className="border-t border-white/5 px-2.5 py-2 space-y-1">
                             {g.ads.map(a => (
                               <div key={a.id} className="flex items-center gap-2 py-1">
+                                <SelectBox level="ad" id={a.id} />
                                 <Megaphone size={11} className="text-gray-500 flex-shrink-0" />
                                 <div className="min-w-0 flex-1">
                                   <p className="text-gray-200 text-[11px] truncate">{a.name}</p>
@@ -299,6 +324,15 @@ export default function AdsManagerTab({ scope = 'campaign' }) {
           })}
         </div>
       )}
+
+      {/* Bulk bar: appears only with a selection, and sticks to the bottom so it
+          stays reachable while scrolling a long tree. */}
+      <AdsBulkEditBar
+        level={sel.level}
+        selectedIds={sel.ids}
+        onClear={clearSel}
+        onDone={() => { refresh(); clearSel(); }}
+      />
 
       {editor && (
         <EntityEditor

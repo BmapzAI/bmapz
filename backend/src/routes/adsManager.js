@@ -21,6 +21,7 @@ import { pickNextOwner } from '../lib/leadAssignment.js';
 import { FUNNEL_STAGES } from '../lib/sdrEngine.js';
 import { logLeadActivity, LEAD_ACTIVITY_TYPES } from '../lib/leadActivity.js';
 import { createNotification } from '../lib/notify.js';
+import { runBulkEdit, LEVELS } from '../lib/adsBulkEdit.js';
 
 const router = Router();
 
@@ -251,6 +252,87 @@ router.delete('/campaigns/:id', requireAuth, async (req, res) => {
     if (error) throw error;
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/* ───────────────────── Bulk edit (Ads-Editor style) ───────────────────── */
+
+/**
+ * POST /api/ads-manager/bulk
+ * { level: 'campaign'|'ad_group'|'ad', ids: [...], edits: [{ field, op, ... }] }
+ *
+ * One endpoint for all three levels, because the rules that matter — company
+ * scoping, platform validity, marking published rows out of sync — are identical
+ * and should not be reimplemented three times.
+ *
+ * Always 200 with a per-row breakdown rather than all-or-nothing: in a 200-row
+ * edit, "184 updated, 16 skipped because Google has no ad-group budget" is the
+ * useful answer, and a blanket failure would throw away the 184.
+ */
+router.post('/bulk', requireAuth, async (req, res) => {
+  try {
+    const { level, ids, edits } = req.body || {};
+    const result = await runBulkEdit({ companyId: req.companyId, level, ids, edits });
+    res.json(result);
+  } catch (err) {
+    console.error('[adsManager/bulk]', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/ads-manager/bulk/delete
+ * { level, ids }
+ *
+ * Deletion is a separate endpoint from editing on purpose — it is the one bulk
+ * action that cannot be undone, so it should never be reachable by mistyping a
+ * field name in an edit payload.
+ */
+router.post('/bulk/delete', requireAuth, async (req, res) => {
+  try {
+    const { level, ids } = req.body || {};
+    const cfg = LEVELS[level];
+    if (!cfg) return res.status(400).json({ error: 'Unknown level.' });
+
+    const uniqueIds = [...new Set((ids || []).filter(Boolean))].slice(0, 500);
+    if (!uniqueIds.length) return res.status(400).json({ error: 'Nothing selected.' });
+
+    // Company-scoped read first: ids from another tenant are reported as not found
+    // and never reach the delete.
+    const { data: rows, error: findErr } = await supabaseAdmin
+      .from(cfg.table).select('id, publish_state')
+      .in('id', uniqueIds).eq('company_id', req.companyId);
+    if (findErr) throw findErr;
+
+    const mine = (rows || []).map(r => r.id);
+    if (!mine.length) return res.json({ deleted: 0, skipped: uniqueIds.length, results: [] });
+
+    // A row that is live on the platform is NOT deleted here. Removing it locally
+    // would orphan a running ad that keeps spending money with nothing in Bmapz
+    // pointing at it — pause and unpublish it first.
+    const published = new Set((rows || []).filter(r => r.publish_state === 'published').map(r => r.id));
+    const deletable = mine.filter(id => !published.has(id));
+
+    let deleted = 0;
+    if (deletable.length) {
+      const { error: delErr } = await supabaseAdmin
+        .from(cfg.table).delete().in('id', deletable).eq('company_id', req.companyId);
+      if (delErr) throw delErr;
+      deleted = deletable.length;
+    }
+
+    res.json({
+      deleted,
+      skipped: uniqueIds.length - deleted,
+      results: [
+        ...deletable.map(id => ({ id, ok: true })),
+        ...[...published].map(id => ({ id, ok: false, reason: 'Still live on the platform — pause and unpublish it first.' })),
+        ...uniqueIds.filter(id => !mine.includes(id)).map(id => ({ id, ok: false, reason: 'Not found in this company.' })),
+      ],
+    });
+  } catch (err) {
+    console.error('[adsManager/bulk/delete]', err.message);
+    res.status(500).json({ error: 'Those items could not be deleted.' });
+  }
 });
 
 /* ───────────────────────── Ad groups ───────────────────────── */

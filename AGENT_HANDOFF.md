@@ -3464,3 +3464,45 @@ with `globalThis.WebSocket` deleted.
 ALSO CORRECTED: `/health` exists and returns 200; `healthcheckPath` in railway.json
 is right. An earlier note in this session claimed the health endpoint 404'd — that
 was a bad probe of `/api/health`, not a real defect.
+
+## ADS BULK EDITING — Ads-Editor style, all platforms (Claude, 2026-09-23)
+
+`lib/adsBulkEdit.js` + `POST /api/ads-manager/bulk` and `/bulk/delete`, with
+`components/ads/AdsBulkEditBar.jsx` and checkboxes on every row of the Ads Manager
+tree.
+
+THREE OPERATIONS, chosen because they are the ones a per-row form cannot do:
+- `set`     — "pause all of these"
+- `adjust`  — "raise these budgets 10%" (percent or flat amount). THE Ads Editor move.
+- `replace` — find & replace across headlines, copy, URLs.
+
+PLATFORM-AWARE, and this is load-bearing rather than decorative: of the five
+platforms, GOOGLE is the only one without an ad-group budget (`budgetLevels` is
+`campaign` only; Meta, TikTok, LinkedIn and Twitter all allow both). Applying an
+ad-group budget to a Google row would store a number the publisher must ignore, so
+the row is REPORTED as skipped with the reason — "Google sets budget on the
+campaign, not the Ad Group" — rather than silently dropped.
+
+SAFETY:
+- Every row is read company-scoped FIRST; an id from another tenant is absent from
+  the result and reported as not found, never written.
+- Re-parenting (moving ads between ad groups) validates the destination belongs to
+  the company.
+- A row already `published` is flipped to `out_of_sync`, matching what the
+  single-ad copy editor does — a local edit no longer matches the platform.
+- Bulk DELETE is a separate endpoint so it cannot be reached by mistyping a field,
+  and it REFUSES rows that are live on the platform: deleting locally would orphan a
+  running ad that keeps spending with nothing in Bmapz pointing at it.
+- Selection is one level at a time, as in Ads Editor — mixing campaigns and ads
+  would make "set budget" ambiguous.
+- Capped at 500 rows; always 200 with a per-row breakdown rather than
+  all-or-nothing, so 184 successes are not thrown away by 16 skips.
+
+BUG CAUGHT BY THE TESTS: `Number(null)` is 0, so a row with NO budget was being
+"adjusted" from zero and written as 0 — "raise budgets by 10%" would have silently
+zeroed empty budgets. Null/'' now skip; a genuine 0 still adjusts.
+
+Verified 16/16 on the decision logic: percent and flat adjustment, rounding to
+cents, never going negative, null/empty skipped, invalid status refused, find &
+replace including a case-insensitive match and a regex-injection attempt
+(`(now)` treated literally), and the Google/Meta/LinkedIn platform rules.

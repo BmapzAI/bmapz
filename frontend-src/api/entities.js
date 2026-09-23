@@ -137,6 +137,11 @@ export const AdsManager = {
   savedList: () => api.get('/api/ads-manager/saved').then(r => r?.data ?? r ?? []),
   saveWork: (data) => api.post('/api/ads-manager/saved', data),
   deleteSaved: (id) => api.delete(`/api/ads-manager/saved/${id}`),
+  // Bulk editing across any level, Ads-Editor style. One call carries the whole
+  // selection and every edit, and comes back with a per-row outcome.
+  bulkEdit: ({ level, ids, edits }) => api.post('/api/ads-manager/bulk', { level, ids, edits }),
+  bulkDelete: ({ level, ids }) => api.post('/api/ads-manager/bulk/delete', { level, ids }),
+
   updateCampaign: (id, data) => api.patch(`/api/ads-manager/campaigns/${id}`, data),
   deleteCampaign: (id) => api.delete(`/api/ads-manager/campaigns/${id}`),
 
