@@ -5,12 +5,12 @@ import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import reactRefreshPlugin from 'eslint-plugin-react-refresh';
 
 export default [
-  // Ignore node_modules, dist, backend, and TypeScript files (no TS parser installed)
+  // Ignore node_modules, dist, and TypeScript files (no TS parser installed)
   {
     ignores: [
       'node_modules/**',
       'dist/**',
-      'backend/**',
+      'backend/node_modules/**',
       '*.config.js',
       'vite.config.*',
       'frontend-src/**/*.ts',  // TypeScript requires @typescript-eslint/parser
@@ -65,6 +65,36 @@ export default [
       // and `eslint --quiet` (which shows errors only) hid it — so both the lint
       // and the build passed while the page was broken for every user.
       'no-undef': 'error',
+      'no-console': 'off',
+    },
+  },
+
+  // Backend: Express ESM on Node, not the browser.
+  //
+  // This was ignored entirely, so the whole API was unlinted. That is the same
+  // hole the frontend `no-undef` comment above describes, only wider: an
+  // undefined identifier in a route handler is a 500 for whoever hits it, and
+  // nothing in `node --check`, the build, or the tests would surface it first.
+  // Scoped to correctness rules rather than style, so turning it on reports real
+  // latent crashes instead of drowning them in formatting noise.
+  {
+    files: ['backend/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.es2022,
+        fetch: 'readonly',           // native since Node 18; not in the `node` set
+        FormData: 'readonly',
+        Blob: 'readonly',
+      },
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+      },
+    },
+    rules: {
+      'no-undef': 'error',
+      'no-unused-vars': ['warn', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
       'no-console': 'off',
     },
   },

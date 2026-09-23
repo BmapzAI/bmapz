@@ -3644,3 +3644,75 @@ GOOGLE_ADS_DEVELOPER_TOKEN — long Google approval lead time — META_*, LINKED
 TIKTOK_*, TWITTER_*, CANVA_*, WHATSAPP_*, STRIPE_*, RESEND_API_KEY,
 PERPLEXITY_API_KEY). Until one provider connects once, nothing in the integrations
 phase should be reported as working.
+
+## INTEGRATION TEST HARNESS — made real before the integrations phase (Claude, 2026-09-23)
+
+The integrations phase is about to be run by hand against real provider consoles,
+so `POST /api/integrations/test/:type` had to actually be able to verify each one.
+It could not.
+
+WHAT WAS BROKEN:
+1. Only 16 types had a `case`. Everything else — perplexity, resend, stripe, canva,
+   twitter, linkedin (social), tiktok (social), meta/facebook/instagram,
+   google_analytics, google_search_console, google_drive, youtube,
+   google_calendar, google_meet — fell to `default:` and answered "No test defined".
+   Half the integrations being set up could not be verified at all.
+2. The `gmail` test returned success:true for "credentials present" WITHOUT EVER
+   CALLING GOOGLE. An expired or revoked token reported as connected — the exact
+   failure a test exists to catch.
+3. `GET /status` detected platform-level keys (openai, anthropic, stability,
+   apollo, hunter, resend) ONLY from per-company api_keys, while the test endpoint
+   fell back to process.env. With a key set in Railway and none on the company,
+   the page said "not connected" while the test on the same service said "fully
+   working". Perplexity and Stripe were missing from detection entirely.
+4. `detected` had TWO `stripe` keys. The second (`k.stripe_connected`, which is
+   Stripe CONNECT — a per-company payout account) silently overwrote the first, so
+   the PLATFORM billing key never surfaced. Now `stripe` = platform billing key,
+   `stripe_connect` = the connected account. Nothing in the frontend read either,
+   so renaming was safe — checked before changing it.
+
+NOW: 33 types tested, every one by a real API call. Tests fall back to process.env
+for PLATFORM services only (Bmapz pays, all companies share unless they BYOK);
+per-tenant OAuth tokens deliberately have no env fallback, since they are minted by
+a person completing a consent flow.
+
+Deliberate design notes for whoever extends this:
+- Perplexity is tested with model `sonar`, the SAME model lib/webSearch.js uses.
+  Testing a different model would prove something the product never does. A
+  rejected model and a rejected key are reported differently — they look identical
+  by status code and need opposite fixes.
+- Resend checks the FROM DOMAIN is verified, not just that the key is valid. A
+  valid key with an unverified domain fails at send time, silently.
+- Stripe fails the test if charges are not enabled or STRIPE_WEBHOOK_SECRET is
+  missing, because billing does not work end to end without both.
+- X/Twitter: a passing read test does NOT prove posting works; write needs a paid
+  tier. A 403 says so explicitly rather than reporting a generic failure.
+- googleErr() disambiguates the three Google failures that look alike: API not
+  enabled in the Cloud project (one checkbox, the most common first-connect
+  blocker), token expired/revoked (reconnect), and missing scope (reconnect and
+  accept all permissions).
+- Still no test for ~40 aspirational integrations (slack, notion, shopify, hubspot
+  and friends). They are not part of this phase and are not in the blocked env-var
+  list; `default:` gives an honest "No test defined" rather than a false pass.
+
+## BACKEND IS NOW LINTED (Claude, 2026-09-23)
+
+eslint.config.js ignored `backend/**` outright, so the entire API was unlinted —
+while the frontend block carries a comment explaining that `no-undef` is an ERROR
+because an undefined identifier is a guaranteed runtime crash. That reasoning
+applies at least as strongly server-side, where it is a 500 for whoever hits the
+route and neither `node --check`, the build, nor the tests would catch it.
+
+Added a backend block with node globals (plus fetch/FormData/Blob, which are native
+on Node 22 but absent from the `globals.node` set). Scoped to correctness rules,
+not style, so it surfaces real crashes instead of formatting noise.
+
+It earned itself immediately: it caught a duplicate `stripe` key in the same edit
+that introduced it (item 4 above), which was a silent overwrite no test would have
+found. Project-wide result: 0 errors, 24 warnings (all unused `err` bindings in
+catch blocks, pre-existing and harmless). `oauth.js` popupHtml's unused `errorMsg`
+is INTENTIONAL — provider error text could carry token fragments, so it is replaced
+with a fixed sentence; leave that warning alone.
+
+VERIFIED: node --check passes; eslint 0 errors project-wide; backend boots
+(`✅ Bmapz API running`, schedulers + model registry start).

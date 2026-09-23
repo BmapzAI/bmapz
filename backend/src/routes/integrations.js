@@ -7,6 +7,38 @@ const router = Router();
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
 const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202606';
 
+/**
+ * Keys pasted from a dashboard routinely carry a trailing newline or a stray
+ * space, which providers reject as an invalid key — indistinguishable from a
+ * genuinely wrong key unless it is trimmed first.
+ */
+const clean = (v) => (typeof v === 'string' ? v.trim() : v ? String(v).trim() : '');
+
+/**
+ * Turn a Google API failure into something the person setting it up can act on.
+ *
+ * "403 Forbidden" is useless to them. The overwhelmingly common cause on a first
+ * connect is that the API was never enabled in the Cloud project — the OAuth
+ * consent succeeds, a token is issued, and then every call 403s. That reads as a
+ * broken integration when it is one checkbox. Second most common is a token that
+ * expired or was revoked, which needs a reconnect, not a console visit.
+ */
+function googleErr(body, response, label) {
+  const msg = body?.error?.message || body?.error_description || `HTTP ${response.status}`;
+  if (/has not been used in project|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(msg)) {
+    return `${label}: the API is not enabled in your Google Cloud project. `
+      + 'Enable it under APIs & Services > Library, wait a minute, then test again. '
+      + `(Google said: ${msg})`;
+  }
+  if (response.status === 401 || /invalid_grant|Invalid Credentials|UNAUTHENTICATED/i.test(msg)) {
+    return `${label}: the Google token is expired or revoked. Disconnect and reconnect Google. (${msg})`;
+  }
+  if (response.status === 403 && /insufficient|scope|PERMISSION_DENIED/i.test(msg)) {
+    return `${label}: the token is missing the required scope. Reconnect Google and accept all requested permissions. (${msg})`;
+  }
+  return `${label}: ${msg}`;
+}
+
 // GET /api/integrations/status — full integration status for the company
 router.get('/status', requireAuth, async (req, res) => {
   try {
@@ -19,12 +51,24 @@ router.get('/status', requireAuth, async (req, res) => {
     const k = companyRow?.api_keys || {};
     const status = companyRow?.integration_status || {};
 
-    // Auto-detect connections from stored keys/tokens (all booleans)
+    // Auto-detect connections from stored keys/tokens (all booleans).
+    //
+    // PLATFORM-LEVEL services fall back to process.env, because Bmapz pays for
+    // them and every company uses the platform key unless it brings its own. This
+    // used to check only the per-company key, so with a key set in Railway and
+    // none on the company the page said "not connected" while POST /test/:type
+    // on the very same service said "fully working". Per-tenant OAuth tokens
+    // below have NO env fallback on purpose — they are minted by a real person
+    // completing a consent flow and cannot be platform-wide.
+    const envHas = (name) => !!String(process.env[name] || '').trim();
     const detected = {
       // AI providers
-      openai: !!(k.openai_api_key),
-      anthropic: !!(k.anthropic_api_key),
-      stability: !!(k.stability_api_key),
+      openai: !!(k.openai_api_key) || envHas('OPENAI_API_KEY'),
+      anthropic: !!(k.anthropic_api_key) || envHas('ANTHROPIC_API_KEY'),
+      stability: !!(k.stability_api_key) || envHas('STABILITY_API_KEY'),
+      perplexity: !!(k.perplexity_api_key) || envHas('PERPLEXITY_API_KEY'),
+      // Billing
+      stripe: !!(k.stripe_secret_key) || envHas('STRIPE_SECRET_KEY'),
       // Google
       gmail: !!(k.google_access_token),
       google_analytics: !!(k.google_access_token && k.google_analytics_property_id),
@@ -48,10 +92,10 @@ router.get('/status', requireAuth, async (req, res) => {
       whatsapp: !!(k.whatsapp_api_token && k.whatsapp_phone_id),
       // Email
       email_smtp: !!(k.smtp_host && k.smtp_user),
-      email_resend: !!(k.resend_api_key),
+      email_resend: !!(k.resend_api_key) || envHas('RESEND_API_KEY'),
       // Prospecting
-      apollo: !!(k.apollo_api_key),
-      hunter: !!(k.hunter_api_key),
+      apollo: !!(k.apollo_api_key) || envHas('APOLLO_API_KEY'),
+      hunter: !!(k.hunter_api_key) || envHas('HUNTER_API_KEY'),
       lusha: !!(k.lusha_api_key),
       clay: !!(k.clay_api_key),
       // Publishing
@@ -64,8 +108,12 @@ router.get('/status', requireAuth, async (req, res) => {
       // Scheduling
       google_calendar: !!(k.google_access_token),
       cal_com: !!(k.cal_com_api_key),
-      // Other
-      stripe: !!(k.stripe_connected),
+      // Stripe CONNECT — a per-company connected account for receiving payouts.
+      // Distinct from the `stripe` key above, which is the PLATFORM billing key
+      // that charges Bmapz's own subscribers. Both were previously called
+      // `stripe`, so the second silently overwrote the first and the platform
+      // key never showed up at all.
+      stripe_connect: !!(k.stripe_connected && k.stripe_account_id),
     };
 
     // Credentials are the ground truth. A stale saved status must not claim an
@@ -203,13 +251,28 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         return res.json({ success: false, message: 'WhatsApp credentials invalid' });
       }
 
+      // This used to return success for "credentials present" without ever calling
+      // Google, so an expired or revoked token reported as connected — the exact
+      // failure a test exists to catch. It now makes a real call.
       case 'gmail': {
         const hasOAuth = !!(k.google_access_token);
         const hasManual = !!(k.gmail_client_id && k.gmail_refresh_token);
         if (!hasOAuth && !hasManual) {
           return res.json({ success: false, message: 'Gmail not configured. Use OAuth or add Client ID + Refresh Token.' });
         }
-        return res.json({ success: true, message: 'Gmail credentials present' });
+        const token = await getGoogleAccessToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: 'Gmail has no usable access token. Reconnect Google.' });
+        const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.emailAddress) {
+          return res.json({ success: true, message: `Gmail connected (${d.emailAddress})` });
+        }
+        return res.json({
+          success: false,
+          message: googleErr(d, r, 'Gmail'),
+        });
       }
 
       case 'meta_ads': {
@@ -317,6 +380,236 @@ router.post('/test/:type', requireAuth, async (req, res) => {
           body: JSON.stringify({ test: true, source: 'bmapz', timestamp: new Date().toISOString() }),
         });
         return res.json({ success: r.ok, message: r.ok ? 'Custom webhook responded successfully' : `Custom endpoint returned ${r.status}` });
+      }
+
+      // ─── Platform-level API keys ────────────────────────────────────────────
+      //
+      // These fall back to process.env because they are platform services rather
+      // than per-tenant connections: Bmapz pays for them and every company uses
+      // the same key unless it brings its own.
+
+      case 'perplexity': {
+        const apiKey = clean(k.perplexity_api_key || process.env.PERPLEXITY_API_KEY);
+        if (!apiKey) return res.json({ success: false, message: 'Perplexity API key not set' });
+        // Deliberately the SAME model lib/webSearch.js uses. Testing a different
+        // model would prove something the product never does.
+        const r = await fetch('https://api.perplexity.ai/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'sonar', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
+        });
+        if (r.ok) return res.json({ success: true, message: 'Perplexity connected (web search will work)' });
+        const d = await r.json().catch(() => ({}));
+        const msg = d.error?.message || d.detail || `HTTP ${r.status}`;
+        // A rejected model name and a rejected key look identical if you only
+        // report the status code, and they need opposite fixes.
+        if (r.status === 400 && /model/i.test(String(msg))) {
+          return res.json({ success: false, message: `Perplexity key is valid but the model "sonar" was rejected: ${msg}. The model name in lib/webSearch.js needs updating.` });
+        }
+        if (r.status === 401) return res.json({ success: false, message: `Perplexity key rejected: ${msg}` });
+        return res.json({ success: false, message: `Perplexity call failed: ${msg}` });
+      }
+
+      case 'resend':
+      case 'email_resend': {
+        const apiKey = clean(k.resend_api_key || process.env.RESEND_API_KEY);
+        if (!apiKey) return res.json({ success: false, message: 'Resend API key not set' });
+        const r = await fetch('https://api.resend.com/domains', { headers: { Authorization: `Bearer ${apiKey}` } });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return res.json({ success: false, message: `Resend key rejected (${r.status}): ${d.message || 'invalid key'}` });
+
+        // A valid key is not the same as being able to send. Resend only delivers
+        // from a VERIFIED domain, so check the From address can actually be used —
+        // otherwise every email silently 403s at send time.
+        const from = clean(k.resend_from_email || process.env.RESEND_FROM_EMAIL);
+        const domains = Array.isArray(d.data) ? d.data : [];
+        const verified = domains.filter((x) => x?.status === 'verified').map((x) => x.name);
+        if (!from) {
+          return res.json({ success: true, message: `Resend key valid. Verified domains: ${verified.join(', ') || 'none yet'}. RESEND_FROM_EMAIL is not set, so sending will fail.` });
+        }
+        const fromDomain = String(from).split('@').pop().toLowerCase();
+        if (verified.some((nm) => String(nm).toLowerCase() === fromDomain)) {
+          return res.json({ success: true, message: `Resend fully working — ${from} sends from verified domain ${fromDomain}` });
+        }
+        return res.json({
+          success: false,
+          message: `Resend key is valid but "${fromDomain}" is not a verified domain, so mail from ${from} will be refused. `
+            + `Verify it at resend.com/domains (add the DKIM/SPF DNS records). Currently verified: ${verified.join(', ') || 'none'}.`,
+        });
+      }
+
+      case 'stripe': {
+        const apiKey = clean(k.stripe_secret_key || process.env.STRIPE_SECRET_KEY);
+        if (!apiKey) return res.json({ success: false, message: 'Stripe secret key not set' });
+        const r = await fetch('https://api.stripe.com/v1/account', { headers: { Authorization: `Bearer ${apiKey}` } });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return res.json({ success: false, message: `Stripe key rejected (${r.status}): ${d.error?.message || 'invalid key'}` });
+        const mode = /^sk_live_/.test(apiKey) ? 'LIVE' : /^sk_test_/.test(apiKey) ? 'TEST' : 'unknown';
+        const webhookSet = !!clean(k.stripe_webhook_secret || process.env.STRIPE_WEBHOOK_SECRET);
+        const bits = [`Stripe connected in ${mode} mode`, d.id ? `account ${d.id}` : null,
+          d.charges_enabled === false ? 'charges NOT enabled yet' : null,
+          webhookSet ? null : 'STRIPE_WEBHOOK_SECRET is missing, so subscription events will be ignored'].filter(Boolean);
+        // Charges disabled or no webhook secret means billing does not actually
+        // work end to end, so this is not a pass.
+        const ok = d.charges_enabled !== false && webhookSet;
+        return res.json({ success: ok, message: bits.join(' — ') });
+      }
+
+      // ─── OAuth-connected accounts ───────────────────────────────────────────
+      //
+      // No process.env fallback: these are per-company tokens minted by a real
+      // person completing a consent flow.
+
+      case 'meta':
+      case 'facebook':
+      case 'instagram': {
+        const token = k.meta_access_token;
+        if (!token) return res.json({ success: false, message: 'Meta is not connected. Run the Meta connect flow first.' });
+        const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/me?fields=id,name&access_token=${encodeURIComponent(token)}`);
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) {
+          return res.json({ success: false, message: d.error?.message || 'Meta token is invalid or expired. Please reconnect.' });
+        }
+        if (type === 'facebook' && !k.facebook_page_id) {
+          return res.json({ success: false, message: `Meta token is valid (${d.name || d.id}) but no Facebook Page has been selected yet.` });
+        }
+        if (type === 'instagram' && !k.instagram_business_account_id) {
+          return res.json({ success: false, message: `Meta token is valid (${d.name || d.id}) but no Instagram business account is linked yet.` });
+        }
+        return res.json({ success: true, message: `Meta connected${d.name ? `: ${d.name}` : ''}` });
+      }
+
+      case 'linkedin':
+      case 'linkedin_social': {
+        const token = k.linkedin_access_token;
+        if (!token) return res.json({ success: false, message: 'LinkedIn is not connected. Run the LinkedIn connect flow first.' });
+        const r = await fetch('https://api.linkedin.com/v2/userinfo', { headers: { Authorization: `Bearer ${token}` } });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && (d.sub || d.email)) {
+          return res.json({ success: true, message: `LinkedIn connected${d.name ? `: ${d.name}` : ''}` });
+        }
+        return res.json({ success: false, message: d.message || 'LinkedIn token is invalid or expired. Please reconnect.' });
+      }
+
+      case 'twitter': {
+        const token = k.twitter_access_token;
+        if (!token) return res.json({ success: false, message: 'X/Twitter is not connected. Run the X connect flow first.' });
+        const r = await fetch('https://api.twitter.com/2/users/me', { headers: { Authorization: `Bearer ${token}` } });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.data?.id) {
+          return res.json({ success: true, message: `X/Twitter connected (@${d.data.username || d.data.id})` });
+        }
+        // Read works on far cheaper tiers than write, so a passing read test does
+        // not prove posting will work. Say so rather than implying a full pass.
+        const msg = d.detail || d.title || `HTTP ${r.status}`;
+        if (r.status === 403) {
+          return res.json({ success: false, message: `X token is valid but the API access tier forbids this call: ${msg}. Posting needs a paid tier.` });
+        }
+        return res.json({ success: false, message: `X/Twitter token invalid or expired: ${msg}` });
+      }
+
+      case 'tiktok':
+      case 'tiktok_social': {
+        const token = k.tiktok_access_token;
+        if (!token) return res.json({ success: false, message: 'TikTok is not connected. Run the TikTok connect flow first.' });
+        const r = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.data?.user) {
+          return res.json({ success: true, message: `TikTok connected${d.data.user.display_name ? `: ${d.data.user.display_name}` : ''}` });
+        }
+        return res.json({ success: false, message: d.error?.message || 'TikTok token is invalid or expired. Please reconnect.' });
+      }
+
+      case 'canva': {
+        const token = k.canva_access_token;
+        if (!token) return res.json({ success: false, message: 'Canva is not connected. Run the Canva connect flow first.' });
+        const r = await fetch('https://api.canva.com/rest/v1/users/me', { headers: { Authorization: `Bearer ${token}` } });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && (d.team_user || d.user)) {
+          return res.json({ success: true, message: 'Canva connected' });
+        }
+        return res.json({ success: false, message: d.message || 'Canva token is invalid or expired. Please reconnect.' });
+      }
+
+      // ─── Google properties ──────────────────────────────────────────────────
+      //
+      // All share one OAuth token; they differ only in which API must be enabled
+      // in the Cloud project and which scope was granted, which is exactly what
+      // googleErr() disambiguates.
+
+      case 'google_analytics': {
+        const token = await getGoogleAccessToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: 'Google is not connected. Run the Google connect flow first.' });
+        const r = await fetch('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=1', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return res.json({ success: false, message: googleErr(d, r, 'Google Analytics') });
+        if (!k.google_analytics_property_id) {
+          return res.json({ success: false, message: 'Google Analytics is reachable but no GA4 property has been selected yet.' });
+        }
+        return res.json({ success: true, message: 'Google Analytics connected' });
+      }
+
+      case 'google_search_console': {
+        const token = await getGoogleAccessToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: 'Google is not connected. Run the Google connect flow first.' });
+        const r = await fetch('https://www.googleapis.com/webmasters/v3/sites', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return res.json({ success: false, message: googleErr(d, r, 'Search Console') });
+        const sites = (d.siteEntry || []).map((s) => s.siteUrl);
+        if (!sites.length) {
+          return res.json({ success: false, message: 'Search Console is reachable but this Google account verifies no sites.' });
+        }
+        return res.json({ success: true, message: `Search Console connected (${sites.length} site(s))` });
+      }
+
+      case 'google_drive': {
+        const token = k.google_drive_token || await getGoogleAccessToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: 'Google is not connected. Run the Google connect flow first.' });
+        const r = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.user) return res.json({ success: true, message: `Google Drive connected (${d.user.emailAddress || 'ok'})` });
+        return res.json({ success: false, message: googleErr(d, r, 'Google Drive') });
+      }
+
+      // Google Meet has no API of its own here — it is created as a conference on
+      // a Calendar event, so the calendar scope is the thing to prove.
+      case 'google_calendar':
+      case 'google_meet': {
+        const token = await getGoogleAccessToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: 'Google is not connected. Run the Google connect flow first.' });
+        const r = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) {
+          return res.json({
+            success: true,
+            message: type === 'google_meet' ? 'Google Meet ready (Calendar access confirmed)' : 'Google Calendar connected',
+          });
+        }
+        return res.json({ success: false, message: googleErr(d, r, type === 'google_meet' ? 'Google Meet' : 'Google Calendar') });
+      }
+
+      case 'youtube': {
+        const token = await getGoogleAccessToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: 'Google is not connected. Run the Google connect flow first.' });
+        const r = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return res.json({ success: false, message: googleErr(d, r, 'YouTube') });
+        if (!d.items?.length) {
+          return res.json({ success: false, message: 'YouTube is reachable but this Google account has no channel.' });
+        }
+        return res.json({ success: true, message: 'YouTube connected' });
       }
 
       default:
