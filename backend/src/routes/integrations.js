@@ -16,6 +16,26 @@ const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202606';
 const clean = (v) => (typeof v === 'string' ? v.trim() : v ? String(v).trim() : '');
 
 /**
+ * Get a usable Google token, or the reason there isn't one.
+ *
+ * getGoogleAccessToken THROWS when a refresh is rejected, which inside a route's
+ * try/catch becomes a 500 and — now that 500s are scrubbed — a generic "something
+ * went wrong". For a TEST endpoint that is the worst possible answer: an expired
+ * or revoked refresh token is the single most likely thing being tested, and the
+ * fix (reconnect Google) is specific. The text here comes from Google's OAuth
+ * response, not from our database, so it is safe to show.
+ */
+async function googleToken(companyId, k) {
+  try {
+    const token = await getGoogleAccessToken(companyId, k);
+    if (!token) return { error: 'Google is not connected. Run the Google connect flow first.' };
+    return { token };
+  } catch (err) {
+    return { error: `Google refused to refresh the token (${err.message}). Disconnect and reconnect Google.` };
+  }
+}
+
+/**
  * Turn a Google API failure into something the person setting it up can act on.
  *
  * "403 Forbidden" is useless to them. The overwhelmingly common cause on a first
@@ -261,8 +281,8 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         if (!hasOAuth && !hasManual) {
           return res.json({ success: false, message: 'Gmail not configured. Use OAuth or add Client ID + Refresh Token.' });
         }
-        const token = await getGoogleAccessToken(req.companyId, k);
-        if (!token) return res.json({ success: false, message: 'Gmail has no usable access token. Reconnect Google.' });
+        const { token, error: tokenErr } = await googleToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: tokenErr });
         const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -289,10 +309,13 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       case 'google_ads': {
         const developerToken = k.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
         const customerId = String(k.google_ads_customer_id || '').replace(/-/g, '');
-        const token = await getGoogleAccessToken(req.companyId, k);
-        if (!developerToken || !customerId || !token) {
-          return res.json({ success: false, message: 'Google Ads requires Developer Token, Customer ID, and a connected OAuth token' });
-        }
+        // Named individually: "requires Developer Token, Customer ID, and a
+        // connected OAuth token" left the person guessing which of the three was
+        // missing, and they are obtained in three completely different places.
+        if (!developerToken) return res.json({ success: false, message: 'Google Ads is missing the Developer Token. Get it from your Google Ads account under Tools > API Center.' });
+        if (!customerId) return res.json({ success: false, message: 'Google Ads is missing the Customer ID (the 10-digit number at the top right of the Google Ads UI).' });
+        const { token, error: tokenErr } = await googleToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: tokenErr });
         const r = await fetch(`https://googleads.googleapis.com/v24/customers/${customerId}/googleAds:searchStream`, {
           method: 'POST',
           headers: {
@@ -541,8 +564,8 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       // googleErr() disambiguates.
 
       case 'google_analytics': {
-        const token = await getGoogleAccessToken(req.companyId, k);
-        if (!token) return res.json({ success: false, message: 'Google is not connected. Run the Google connect flow first.' });
+        const { token, error: tokenErr } = await googleToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: tokenErr });
         const r = await fetch('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=1', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -555,8 +578,8 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       }
 
       case 'google_search_console': {
-        const token = await getGoogleAccessToken(req.companyId, k);
-        if (!token) return res.json({ success: false, message: 'Google is not connected. Run the Google connect flow first.' });
+        const { token, error: tokenErr } = await googleToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: tokenErr });
         const r = await fetch('https://www.googleapis.com/webmasters/v3/sites', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -570,8 +593,10 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       }
 
       case 'google_drive': {
-        const token = k.google_drive_token || await getGoogleAccessToken(req.companyId, k);
-        if (!token) return res.json({ success: false, message: 'Google is not connected. Run the Google connect flow first.' });
+        const dedicated = k.google_drive_token;
+        const g = dedicated ? { token: dedicated } : await googleToken(req.companyId, k);
+        const token = g.token;
+        if (!token) return res.json({ success: false, message: g.error });
         const r = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -584,8 +609,8 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       // a Calendar event, so the calendar scope is the thing to prove.
       case 'google_calendar':
       case 'google_meet': {
-        const token = await getGoogleAccessToken(req.companyId, k);
-        if (!token) return res.json({ success: false, message: 'Google is not connected. Run the Google connect flow first.' });
+        const { token, error: tokenErr } = await googleToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: tokenErr });
         const r = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -600,8 +625,8 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       }
 
       case 'youtube': {
-        const token = await getGoogleAccessToken(req.companyId, k);
-        if (!token) return res.json({ success: false, message: 'Google is not connected. Run the Google connect flow first.' });
+        const { token, error: tokenErr } = await googleToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: tokenErr });
         const r = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true', {
           headers: { Authorization: `Bearer ${token}` },
         });
