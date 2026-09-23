@@ -3431,3 +3431,36 @@ REMAINING, deliberately, with reasons:
   before anything is written.
 - Supabase leaked-password protection: a dashboard toggle (Auth → Policies) that is
   not exposed through the MCP. Derek must enable it.
+
+## BUILD CONFIG — corrected (Claude, 2026-09-23)
+
+Railway builds this service with RAILPACK, not Nixpacks, and the service root is
+`backend/`. Two consequences, both of which had been misleading:
+
+1. The root `nixpacks.toml` was NEVER read. Proof from the build log: it declares
+   `npm install --prefix backend`, but the build ran a plain `npm install` and then
+   `bmapz-backend@1.0.0 build`/`start` — i.e. backend/package.json's own scripts, at
+   the backend root. Railpack's own phase names appear in the log
+   (`[railpack] merge $packages:apt:runtime, $packages:mise, …`). Deleted.
+
+   CORRECTION to the outage write-up above: the Node 18 -> 20 move came from
+   `engines.node` in backend/package.json, NOT from the nixpacks pin I added during
+   the incident. That pin was inert the whole time.
+
+2. `backend/railway.json` declared `"builder": "NIXPACKS"`, which Railway ignores.
+   The key is removed rather than changed — Railway's default IS Railpack, so
+   declaring nothing is both correct and version-proof.
+
+NODE IS NOW PINNED PROPERLY: `backend/.node-version` = 22, which Railpack and
+Nixpacks both honour, at the actual service root. `engines.node: >=20.0.0` stays as
+a floor so local development on 20 still works.
+
+Node 22 has native WebSocket, so the `realtime: { transport: ws }` option in
+lib/supabase.js is no longer strictly required — it is KEPT deliberately as the
+belt-and-braces that ends this class of outage regardless of what the builder
+chooses next. Verified both ways: boots with native WebSocket present, and boots
+with `globalThis.WebSocket` deleted.
+
+ALSO CORRECTED: `/health` exists and returns 200; `healthcheckPath` in railway.json
+is right. An earlier note in this session claimed the health endpoint 404'd — that
+was a bad probe of `/api/health`, not a real defect.
