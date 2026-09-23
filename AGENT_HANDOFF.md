@@ -3787,3 +3787,41 @@ LOOK FOR THIS ELSEWHERE: the pattern to audit is any `keys.X || process.env.Y` w
 X is not in the companies.js ALLOWED api_keys list. That left operand is dead, and
 the failure is invisible because the env fallback keeps the feature working — just
 for the wrong tenant.
+
+## DEAD COMPANY-KEY OPERANDS — swept (Claude, 2026-09-23)
+
+After the WhatsApp bug, swept the whole backend for the same shape: a read of
+`<keys>.<name> || process.env.<VAR>` where <name> is NOT in the ALLOWED api_keys
+list in routes/companies.js. Such a left operand can never be set, so it is dead
+and the env fallback silently wins — which is invisible precisely because the
+feature keeps working, just not per tenant.
+
+Sweep method (rerun it after adding any per-company key): parse the quoted names
+out of the companies.js allowlist, then flag every `k.|keys.|companyKeys.|apiKeys.`
+read on a line that also mentions process.env whose name is not in that set.
+
+RESULTS — 3 distinct keys, all now resolved:
+  whatsapp_access_token  — was the real bug, see the WhatsApp section above. Now
+                           kept only as a legacy fallback behind the correct name.
+  stripe_secret_key      — REMOVED, along with stripe_webhook_secret. Stripe is
+  stripe_webhook_secret    deliberately platform-only: billing.js reads process.env
+                           and nothing else, and a company-settable Stripe key would
+                           let a tenant point Bmapz's own subscription billing at an
+                           account it controls. The dead operand implied a BYOK path
+                           that must not exist.
+  canva_client_id        — LEFT AS IS, comment corrected in oauth.js. These reads
+  canva_client_secret      are dead, so Canva is platform-app-only in practice,
+                           while meta_app_id / linkedin_client_id / twitter_client_id
+                           / tiktok_client_key are all settable per company. That is
+                           an inconsistency rather than a deliberate restriction.
+
+DEREK'S CALL, NOT MINE: making per-company Canva apps work is a two-string change —
+add 'canva_client_id', 'canva_client_secret' to the ALLOWED list in companies.js.
+I did not do it because it widens what a company_admin can write. Pros: consistent
+with the four other providers, and a customer with its own Canva app is not forced
+through the platform app's rate limits and branding. Cons: two more secrets writable
+by a non-owner role, and Canva's own app-review terms may make a per-tenant app the
+customer's compliance problem rather than ours. Note this is NOT the AI-provider
+BYOK rule (owner/system_admin only, because those bypass billing) — an OAuth client
+ID does not bypass billing. Still, it is a widening of writable secrets, so it needs
+an explicit yes.

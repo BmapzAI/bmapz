@@ -806,8 +806,17 @@ router.post('/disconnect', requireAuth, requireCompanyAdmin, async (req, res) =>
 
 // ─── Canva OAuth (Canva Connect API, OAuth 2.0 + PKCE S256) ───────────────────
 // Requires a Canva developer app: set CANVA_CLIENT_ID + CANVA_CLIENT_SECRET in
-// Railway (or per-company api_keys.canva_client_id/secret). Redirect URI in the
-// Canva app must be `${API_URL}/api/oauth/canva/callback`.
+// Railway. Redirect URI in the Canva app must be
+// `${API_URL}/api/oauth/canva/callback`.
+//
+// NOTE: the reads below also check api_keys.canva_client_id/secret, but those are
+// NOT in the ALLOWED list in routes/companies.js, so they can never actually be
+// set and the left operand is always undefined — Canva is platform-app-only in
+// practice. Every other provider here (meta_app_id, linkedin_client_id,
+// twitter_client_id, tiktok_client_key) IS settable per company, so this is an
+// inconsistency, not a deliberate restriction. Left as-is rather than widening
+// what a company admin can write, which is a security decision for Derek: adding
+// the two names to that allowlist is all it would take.
 const CANVA_SCOPES = 'design:content:read design:content:write asset:read asset:write profile:read';
 
 router.get(['/canva/initiate', '/canva/initiate-url'], allowLaunchTicket, async (req, res) => {

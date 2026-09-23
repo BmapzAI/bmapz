@@ -89,7 +89,7 @@ router.get('/status', requireAuth, async (req, res) => {
       stability: !!(k.stability_api_key) || envHas('STABILITY_API_KEY'),
       perplexity: !!(k.perplexity_api_key) || envHas('PERPLEXITY_API_KEY'),
       // Billing
-      stripe: !!(k.stripe_secret_key) || envHas('STRIPE_SECRET_KEY'),
+      stripe: envHas('STRIPE_SECRET_KEY'),
       // Google
       gmail: !!(k.google_access_token),
       google_analytics: !!(k.google_access_token && k.google_analytics_property_id),
@@ -476,14 +476,18 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         });
       }
 
+      // PLATFORM ONLY, deliberately. billing.js reads process.env.STRIPE_SECRET_KEY
+      // and nothing else, and a company-settable Stripe key would mean a tenant
+      // could point Bmapz's own subscription billing at an account it controls.
+      // So this reads the platform key and no per-company override exists.
       case 'stripe': {
-        const apiKey = clean(k.stripe_secret_key || process.env.STRIPE_SECRET_KEY);
+        const apiKey = clean(process.env.STRIPE_SECRET_KEY);
         if (!apiKey) return res.json({ success: false, message: 'Stripe secret key not set' });
         const r = await fetch('https://api.stripe.com/v1/account', { headers: { Authorization: `Bearer ${apiKey}` } });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) return res.json({ success: false, message: `Stripe key rejected (${r.status}): ${d.error?.message || 'invalid key'}` });
         const mode = /^sk_live_/.test(apiKey) ? 'LIVE' : /^sk_test_/.test(apiKey) ? 'TEST' : 'unknown';
-        const webhookSet = !!clean(k.stripe_webhook_secret || process.env.STRIPE_WEBHOOK_SECRET);
+        const webhookSet = !!clean(process.env.STRIPE_WEBHOOK_SECRET);
         const bits = [`Stripe connected in ${mode} mode`, d.id ? `account ${d.id}` : null,
           d.charges_enabled === false ? 'charges NOT enabled yet' : null,
           webhookSet ? null : 'STRIPE_WEBHOOK_SECRET is missing, so subscription events will be ignored'].filter(Boolean);
