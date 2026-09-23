@@ -3506,3 +3506,45 @@ Verified 16/16 on the decision logic: percent and flat adjustment, rounding to
 cents, never going negative, null/empty skipped, invalid status refused, find &
 replace including a case-insensitive match and a regex-injection attempt
 (`(now)` treated literally), and the Google/Meta/LinkedIn platform rules.
+
+## DECISION: leaked password protection — accepted, not fixed (Derek + Claude, 2026-09-23)
+
+STATUS: open Supabase advisor warning, DELIBERATELY not actioned. Do not re-raise
+this as a new finding in a future audit; it is a known, accepted gap.
+
+WHY IT CANNOT BE TURNED ON: the Supabase org (BMAPZ, id ncnmuevoublspbfbzaqp) is on
+the FREE plan, and the Supabase docs state plainly: "Leaked password protection is
+available on the Pro Plan and above." The toggle is not hidden somewhere in the
+dashboard — it is not rendered at all for this plan. Derek went looking for it and
+correctly could not find it.
+
+TWO CORRECTIONS TO EARLIER NOTES IN THIS FILE, so nobody repeats them:
+- The path is NOT "Authentication > Policies". That screen is for RLS table
+  policies. Password settings live under Authentication > Sign In / Providers >
+  Email, i.e. /dashboard/project/<ref>/auth/providers?provider=Email
+- It is not reachable through the Supabase MCP either. The MCP exposes database and
+  project tools; `password_hibp_enabled` is Auth SERVICE config, set via the
+  Management API (PATCH /v1/projects/{ref}/config/auth), which no available tool
+  wraps.
+
+RESIDUAL RISK, judged acceptable: the advisor rates it WARN, not ERROR. It only
+affects password sign-ups, and the surrounding auth posture is strong — 44/44 tables
+with RLS enabled and a policy, anon denied SELECT on every table, and all four
+SECURITY DEFINER functions non-executable by anon/authenticated with search_path
+pinned.
+
+WHEN TO REVISIT: if the org moves to Pro for any other reason (backups, larger
+compute), enable it in the same visit. It is one toggle on the Email provider
+screen.
+
+COMPENSATING CONTROL: password STRENGTH settings are available on Free and are the
+free half of the same protection. Recommended, from the Supabase docs' own strength
+table (8-character passwords):
+  digits only                                 ~2^27 guesses
+  digits + letters                            ~2^41
+  digits + lower + uppercase                  ~2^48
+  digits + lower + uppercase + symbols        ~2^52
+So: minimum length 12 (docs: "anything less than 8 characters is not recommended"),
+required characters set to lower + upper + digits + symbols. Derek sets these at
+Authentication > Sign In / Providers > Email; they are not settable from here for
+the same Management-API reason above.
