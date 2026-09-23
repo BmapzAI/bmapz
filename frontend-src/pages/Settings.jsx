@@ -12,13 +12,14 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from 'react-router-dom';
-import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, Plus, X, FileText, ArrowRight, Zap, ScanLine, KeyRound, Sparkles, Users, Swords, MapPin } from 'lucide-react';
+import { Settings as SettingsIcon, Building2, Target, CreditCard, Globe, Save, Plus, X, FileText, ArrowRight, Zap, ScanLine, KeyRound, Sparkles, Users, Swords, MapPin, Brain } from 'lucide-react';
 import CompetitorsTab from '@/components/settings/CompetitorsTab';
 // KeyRound used in TabsTrigger
 import { toast } from 'sonner';
 import ApiKeysTab from '@/components/settings/ApiKeysTab';
 import UsageTab from '@/components/settings/UsageTab';
 import SalesTeamTab from '@/components/settings/SalesTeamTab';
+import AIImportTab from '@/components/settings/AIImportTab';
 import { Company } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
 import { REGIONS, DEFAULT_REGION_CODE } from '@shared/regions';
@@ -142,6 +143,7 @@ export default function Settings() {
           <TabsTrigger value="competitors" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Swords size={14} className="mr-1.5" />{isPt ? 'Concorrentes' : 'Competitors'}</TabsTrigger>
           <TabsTrigger value="api-keys" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><KeyRound size={14} className="mr-1.5" />{t('apiKeysTab')}</TabsTrigger>
           <TabsTrigger value="ai-settings" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Sparkles size={14} className="mr-1.5" />{t('aiSettingsTab')}</TabsTrigger>
+          <TabsTrigger value="ai-import" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Brain size={14} className="mr-1.5" />{isPt ? 'Importar IA' : 'Import AI'}</TabsTrigger>
           <TabsTrigger value="sales-team" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Users size={14} className="mr-1.5" />{isPt ? 'Time de Vendas' : 'Sales Team'}</TabsTrigger>
           <TabsTrigger value="usage" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Zap size={14} className="mr-1.5" />{t('usageTab')}</TabsTrigger>
           <TabsTrigger value="subscription" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><CreditCard size={14} className="mr-1.5" />{t('subscriptionTab')}</TabsTrigger>
@@ -542,6 +544,10 @@ export default function Settings() {
         </TabsContent>
 
         {/* Subscription */}
+        <TabsContent value="ai-import" className="space-y-6">
+          <AIImportTab />
+        </TabsContent>
+
         <TabsContent value="subscription" className="space-y-6">
           <div className="rounded-2xl bg-white/5 border border-white/10 p-6 space-y-6">
             <div>

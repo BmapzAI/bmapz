@@ -20,8 +20,12 @@ async function getAuthToken() {
  */
 export async function apiFetch(path, options = {}) {
   const token = await getAuthToken();
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = {
-    'Content-Type': 'application/json',
+    // FormData must NOT carry an explicit Content-Type: the browser sets it so
+    // the multipart boundary is included. Forcing JSON here made every upload
+    // arrive as an unparseable body.
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
@@ -63,7 +67,11 @@ export const api = {
       : path;
     return apiFetch(url, { method: 'GET' });
   },
-  post: (path, body) => apiFetch(path, { method: 'POST', body: JSON.stringify(body) }),
+  // A FormData body is passed straight through; anything else is JSON.
+  post: (path, body) => apiFetch(path, {
+    method: 'POST',
+    body: (typeof FormData !== 'undefined' && body instanceof FormData) ? body : JSON.stringify(body),
+  }),
   patch: (path, body) => apiFetch(path, { method: 'PATCH', body: JSON.stringify(body) }),
   put: (path, body) => apiFetch(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (path) => apiFetch(path, { method: 'DELETE' }),

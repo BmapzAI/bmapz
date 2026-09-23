@@ -3548,3 +3548,62 @@ So: minimum length 12 (docs: "anything less than 8 characters is not recommended
 required characters set to lower + upper + digits + symbols. Derek sets these at
 Authentication > Sign In / Providers > Email; they are not settable from here for
 the same Management-API reason above.
+
+## AI HISTORY IMPORT — Claude + ChatGPT, one-way (Claude, 2026-09-23)
+
+`lib/aiHistoryImport.js`, `routes/aiImports.js`, `components/settings/AIImportTab.jsx`,
+table `ai_context_imports`. Settings > Import AI.
+
+ONE-WAY BY DESIGN. There is no export route and there should never be one: the
+product promise is that AI context scattered across other assistants ends up
+CENTRALISED in Bmapz, running on Bmapz's own provider keys and through the Company
+Brain. Nothing is sent back out.
+
+WHAT IS POSSIBLE, AND WHAT IS NOT — do not re-litigate this:
+Neither Anthropic nor OpenAI exposes an API to read a user's past conversations,
+and both desktop apps store data in Electron IndexedDB/LevelDB (binary,
+undocumented). Verified on this machine: C:/Users/derek/AppData/Roaming/Claude
+contains only Cache/IndexedDB/GPUCache — nothing parseable. So this is an IMPORT of
+files the user already has, NOT a live sync. Four formats:
+  claude_code    — ~/.claude/projects/<dir>/*.jsonl (Claude Code / Cowork)
+  claude_export  — conversations.json from claude.ai Export data
+  chatgpt_export — conversations.json from ChatGPT Export data
+  markdown       — notes / memory files
+Format is detected from SHAPE, not filename: both vendors name the file
+conversations.json, but ChatGPT stores a `mapping` node TREE keyed by id while
+Claude stores a flat chat_messages array.
+
+THE KEY ARCHITECTURAL DECISION: conversations are NOT stored and NOT pasted into
+the brain. The Company Brain runs on a fixed ~6000-char budget — a real session
+file on this machine is 19,323 records — so imports are DISTILLED into
+brain_learnings, the same store the approval-outcome loop already feeds. Pasting
+history in would push the operating rules out of the block, which is exactly the
+truncation bug fixed earlier in this file.
+
+Extraction drops what is volume and keeps what is intent: sidechains (subagent
+chatter), tool_use/tool_result blocks (file dumps, diffs, command output),
+transcript-only UI records. Compaction summaries are kept and ranked FIRST — they
+are pre-distilled and worth more per character than raw turns. The brief is capped
+at 24k chars and trimmed from the FRONT, because a thread's conclusions are at the
+end.
+
+SAFETY: company-admin only — an import writes durable facts into the shared brain
+that then shape every generation for everyone, so it is a company-level act, not a
+personal preference. Deduped on sha256 (re-uploading the same export is a 409, not
+a doubled brain). Every lesson carries source_import_id with ON DELETE CASCADE, so
+deleting an import removes exactly what it taught and nothing else.
+
+FIXED IN PASSING: `api.post` JSON.stringify'd everything, so a FormData body would
+have been destroyed and every upload arrived unparseable. apiClient now passes
+FormData through and omits Content-Type so the browser can set the multipart
+boundary. This also means future uploads no longer need the raw-fetch workaround
+in api/integrations.js.
+
+VERIFIED: 11/11 — ChatGPT mapping tree parsed with system/tool authors dropped and
+turns ordered by create_time; Claude flat export parsed; markdown detected; and the
+REAL 19,323-record session on this machine parsed to 2,368 genuine messages with
+title "Bmapz AI App Build", brief capped at 24,027 chars, and zero tool noise.
+
+ALSO SET: API_URL and APP_URL in Railway. API_URL was missing and fell back to
+http://localhost:3001, which built every OAuth redirect_uri and the popup launch
+URL — so every OAuth connect was broken in production for all six providers.
