@@ -3373,3 +3373,61 @@ REMAINING, deliberately: the `uuid` advisory (transitive, no direct import, need
 v3/v5/v6 with a `buf` argument) and prompt-injection via web-search content reaching
 the system prompt — bounded because the resulting operations are whitelisted,
 company-scoped and user-approved before anything is written.
+
+## SECURITY AUDIT — batch 5, all gaps closed (Claude, 2026-09-23)
+
+SSRF ON CUSTOMER-SUPPLIED URLS. n8n/Zapier/Make webhooks, the "custom API" endpoint
+and the WordPress site URL were all fetched raw. These are legitimately arbitrary
+external addresses, so the storage allowlist could not apply — they needed a
+public-internet guard instead. New `lib/safeFetch.js`:
+- https only, no credentials in the URL.
+- Checks the RESOLVED address, not the hostname: a blocklist of names is defeated by
+  pointing a public DNS record at 127.0.0.1, so every address the host resolves to
+  is inspected.
+- Blocks RFC1918, loopback, link-local (169.254.169.254 = cloud metadata = instance
+  credentials), CGNAT and the IPv6 equivalents.
+- `redirect: 'error'` — a public URL that 302s to metadata would otherwise walk
+  straight past the address check.
+- 15s timeout.
+CAUGHT DURING TESTING: the first version missed `[::ffff:127.0.0.1]`, because Node
+normalises it to the HEX form `::ffff:7f00:1` and only the dotted form was unwrapped.
+Both spellings are handled now. 14/14 cases pass.
+
+OAUTH SIGNING KEY. `oauthStateSecret()` fell back to SUPABASE_SERVICE_ROLE_KEY — the
+most privileged secret in the system — so any flaw leaking a signing key leaked full
+database access with it, and rotating one silently broke the other. When
+OAUTH_STATE_SECRET is unset, a dedicated key is now DERIVED from the service key via
+HMAC, so deploys keep working but the value in use is not the service key itself.
+ACTION FOR DEREK: set OAUTH_STATE_SECRET explicitly in Railway; a warning is logged
+until you do. (Setting it invalidates in-flight OAuth states — connect flows started
+in the previous 15 minutes will need retrying. Nothing else is affected.)
+
+TEAM CHAT N+1. `GET /api/team-chat/conversations` ran TWO round-trips per thread over
+an unbounded list. Members now come back in ONE query for all threads; unread counts
+still need one query each (PostgREST cannot group counts) but run concurrently
+instead of in series; the list is capped at 200.
+
+PAID WEB SEARCH WAS FREE. The web-search pre-pass in POST /api/ai/chat calls
+Perplexity or a web-search model BEFORE runAIChat is entered, so it sat outside the
+credit gate entirely. Now priced through `chargeFlat` (web_search: 5 credits).
+Refusal is deliberately soft — the answer proceeds without live web context rather
+than failing the whole message over an enrichment step.
+
+METADATA COULD SHADOW REAL COLUMNS. `flattenAIOutput` spread client-writable
+metadata OVER the row, so a forged `id` or `company_id` was echoed back and the UI
+would act on it. Order reversed (real columns win) AND reserved keys are stripped on
+write — title/content/status still come through, since those are not columns.
+
+BULK TASK FAN-OUT. POST /api/tasks/bulk accepts 100 rows and fired a model run for
+every AI-assigned one in the same tick — 100 concurrent provider calls from one
+request. Now chained sequentially in the background.
+
+REMAINING, deliberately, with reasons:
+- `uuid` moderate advisory: transitive only, nothing in backend/src imports it, and
+  the flaw needs v3/v5/v6 called with a `buf` argument. Forcing uuid@14 onto the
+  dependent risks more than it fixes.
+- Prompt injection via web-search content reaching the system prompt: bounded,
+  because every resulting operation is whitelisted, company-scoped and user-approved
+  before anything is written.
+- Supabase leaked-password protection: a dashboard toggle (Auth → Policies) that is
+  not exposed through the MCP. Derek must enable it.

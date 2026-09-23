@@ -10,10 +10,29 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const API_URL = process.env.API_URL || 'http://localhost:3001';
 const OAUTH_STATE_MAX_AGE_MS = 15 * 60 * 1000;
 
+/**
+ * The key that signs OAuth state and launch tickets.
+ *
+ * It fell back to SUPABASE_SERVICE_ROLE_KEY, which is the most privileged secret
+ * the system has. Reusing it here widened that key's exposure for no benefit: any
+ * flaw that leaked a signing key would have leaked full database access with it,
+ * and rotating one would silently break the other.
+ *
+ * A dedicated OAUTH_STATE_SECRET is derived from the service key when it is not
+ * configured, so nothing breaks on a deploy that has not set it yet — but the
+ * derived value is NOT the service key itself, so it cannot be replayed against
+ * Supabase. Set OAUTH_STATE_SECRET explicitly in production.
+ */
+let derivedStateSecret = null;
 function oauthStateSecret() {
-  const secret = process.env.OAUTH_STATE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!secret) throw new Error('OAUTH_STATE_SECRET is not configured');
-  return secret;
+  if (process.env.OAUTH_STATE_SECRET) return process.env.OAUTH_STATE_SECRET;
+  if (derivedStateSecret) return derivedStateSecret;
+
+  const base = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base) throw new Error('OAUTH_STATE_SECRET is not configured');
+  console.warn('[oauth] OAUTH_STATE_SECRET is not set — deriving one. Set it explicitly in production.');
+  derivedStateSecret = crypto.createHmac('sha256', base).update('bmapz:oauth-state:v1').digest('base64url');
+  return derivedStateSecret;
 }
 
 const OAUTH_NONCE_COOKIE = 'bmapz_oauth_nonce';

@@ -59,25 +59,46 @@ router.get('/conversations', requireAuth, async (req, res) => {
     if (error) throw error;
     if (!mine?.length) return res.json([]);
 
-    const ids = mine.map(m => m.conversation_id);
+    // Bounded, and fetched in a fixed number of queries.
+    //
+    // This ran TWO round-trips per thread — membersOf plus an unread count — over
+    // an unbounded list, so a team with hundreds of threads turned one page load
+    // into hundreds of sequential queries. Members now come back in one query for
+    // every thread, and the unread counts run concurrently rather than in series.
+    const ids = mine.map(m => m.conversation_id).slice(0, 200);
     const { data: convs } = await supabaseAdmin
       .from('internal_conversations').select('*')
-      .in('id', ids).order('last_message_at', { ascending: false });
+      .in('id', ids).order('last_message_at', { ascending: false }).limit(200);
 
-    const out = [];
-    for (const c of convs || []) {
-      const members = await membersOf(c.id);
+    // One query for every thread's members, grouped in memory.
+    const { data: allMembers } = await supabaseAdmin
+      .from('internal_conversation_members')
+      .select('conversation_id, user_id, last_read_at, muted, user:user_id (id, full_name, email, profile_picture)')
+      .in('conversation_id', (convs || []).map(c => c.id));
+    const membersByConv = new Map();
+    for (const m of allMembers || []) {
+      if (!membersByConv.has(m.conversation_id)) membersByConv.set(m.conversation_id, []);
+      membersByConv.get(m.conversation_id).push(m);
+    }
+
+    // Counts still need one query each (PostgREST cannot group counts), but they
+    // no longer block one another.
+    const unreadByConv = new Map(await Promise.all((convs || []).map(async (c) => {
       const readAt = mine.find(m => m.conversation_id === c.id)?.last_read_at;
-      // Unread = messages from OTHERS since I last opened the thread.
-      let unread = 0;
       try {
         let q = supabaseAdmin.from('internal_messages')
           .select('id', { count: 'exact', head: true })
           .eq('conversation_id', c.id).neq('sender_id', me);
         if (readAt) q = q.gt('created_at', readAt);
         const { count } = await q;
-        unread = count || 0;
-      } catch { unread = 0; }
+        return [c.id, count || 0];
+      } catch { return [c.id, 0]; }
+    })));
+
+    const out = [];
+    for (const c of convs || []) {
+      const members = membersByConv.get(c.id) || [];
+      const unread = unreadByConv.get(c.id) || 0;
 
       out.push({
         ...c,

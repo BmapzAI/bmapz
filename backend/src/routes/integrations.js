@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { safeFetch } from '../lib/safeFetch.js';
 
 const router = Router();
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
@@ -183,7 +184,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
           return res.json({ success: false, message: 'WordPress URL, username, and app password required' });
         }
         const credentials = Buffer.from(`${wordpress_user}:${wordpress_app_password}`).toString('base64');
-        const r = await fetch(`${wordpress_url.replace(/\/$/, '')}/wp-json/wp/v2/users/me`, {
+        const r = await safeFetch(`${wordpress_url.replace(/\/$/, '')}/wp-json/wp/v2/users/me`, {
           headers: { Authorization: `Basic ${credentials}` },
         });
         if (r.ok) return res.json({ success: true, message: 'WordPress connected' });
@@ -275,7 +276,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       case 'zapier': {
         const webhookUrl = k.zapier_webhook_url;
         if (!webhookUrl) return res.json({ success: false, message: 'Zapier webhook URL not set' });
-        const r = await fetch(webhookUrl, {
+        const r = await safeFetch(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ test: true, source: 'bmapz', timestamp: new Date().toISOString() }),
@@ -286,7 +287,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       case 'make': {
         const webhookUrl = k.make_webhook_url;
         if (!webhookUrl) return res.json({ success: false, message: 'Make webhook URL not set' });
-        const r = await fetch(webhookUrl, {
+        const r = await safeFetch(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ test: true, source: 'bmapz', timestamp: new Date().toISOString() }),
@@ -297,7 +298,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       case 'n8n': {
         const webhookUrl = k.n8n_webhook_url;
         if (!webhookUrl) return res.json({ success: false, message: 'n8n webhook URL not set' });
-        const r = await fetch(webhookUrl, {
+        const r = await safeFetch(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ test: true, source: 'bmapz', timestamp: new Date().toISOString() }),
@@ -310,7 +311,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         if (!custom_api_url) return res.json({ success: false, message: 'Custom API URL not set' });
         const headers = { 'Content-Type': 'application/json' };
         if (custom_api_key) headers['Authorization'] = `Bearer ${custom_api_key}`;
-        const r = await fetch(custom_api_url, {
+        const r = await safeFetch(custom_api_url, {
           method: 'POST',
           headers,
           body: JSON.stringify({ test: true, source: 'bmapz', timestamp: new Date().toISOString() }),

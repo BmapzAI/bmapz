@@ -518,10 +518,25 @@ router.post('/bulk', requireAuth, async (req, res) => {
       else created.push(result.data);
     }
 
-    // Kick off everything the AI owns, after the response is prepared.
-    for (const t of created.filter(t => t.assignee_type === 'ai')) {
-      runTaskWithAI({ task: t, actorUserId: req.dbUser.id }).catch(e =>
-        console.error('[tasks] AI run failed:', e.message));
+    // Kick off everything the AI owns, after the response is prepared —
+    // but SEQUENTIALLY, not all at once.
+    //
+    // A bulk import accepts up to 100 rows, and this fired a model run for every
+    // AI-assigned one in the same tick: 100 concurrent provider calls from a single
+    // request, enough to exhaust the provider rate limit for the whole platform and
+    // to spend a large amount of credit before anyone could react. Running them in
+    // a chain keeps the same work happening in the background at a sane rate.
+    const aiTasks = created.filter(t => t.assignee_type === 'ai');
+    if (aiTasks.length) {
+      (async () => {
+        for (const t of aiTasks) {
+          try {
+            await runTaskWithAI({ task: t, actorUserId: req.dbUser.id });
+          } catch (e) {
+            console.error('[tasks] AI run failed:', e.message);
+          }
+        }
+      })();
     }
 
     res.json({

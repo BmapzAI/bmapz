@@ -334,6 +334,7 @@ const FLAT_CREDIT_COST = {
   transcribe: 6,        // whisper ≈ $0.006/min
   tts: 15,
   diagnose: 2,
+  web_search: 5,        // Perplexity / web-search model call ≈ $0.005
 };
 
 /**
@@ -1190,11 +1191,26 @@ router.post('/chat', requireAuth, async (req, res) => {
         : '';
 
     if (!response_format && needsWebSearch(searchText)) {
-      try {
-        const found = await webSearch({ companyId: req.companyId, query: searchText });
-        if (found) webContext = formatForPrompt(found);
-      } catch (e) {
-        console.error('[ai/chat] web search failed, continuing without it:', e.message);
+      // Charged BEFORE it runs. This pre-pass calls Perplexity (or a web-search
+      // model) and happens before runAIChat is ever entered, so its cost fell
+      // outside the credit gate entirely — a paid provider call nobody was billed
+      // for. Refusal is soft: the answer proceeds without live web context rather
+      // than failing the whole message over an enrichment step.
+      const refusal = await chargeFlat({
+        companyId: req.companyId,
+        userId: req.dbUser?.id,
+        userEmail: req.dbUser?.email,
+        action: 'web_search',
+      });
+      if (refusal) {
+        console.log(`[ai/chat] skipping web search for company ${req.companyId}: insufficient credits`);
+      } else {
+        try {
+          const found = await webSearch({ companyId: req.companyId, query: searchText });
+          if (found) webContext = formatForPrompt(found);
+        } catch (e) {
+          console.error('[ai/chat] web search failed, continuing without it:', e.message);
+        }
       }
     }
 
@@ -1610,8 +1626,15 @@ function flattenAIOutput(row) {
   if (!row) return null;
   const { metadata, ...rest } = row;
   return {
-    ...rest,
+    // metadata FIRST, real columns second.
+    //
+    // metadata is client-writable (POST /outputs funnels every unrecognised field
+    // into it), and spreading it last let a caller overwrite genuine columns in the
+    // response — a forged `id` or `company_id` would be echoed back and the UI
+    // would act on it. Reversing the order means the database row always wins,
+    // while title / content / status, which are not columns, still come through.
     ...(metadata || {}),
+    ...rest,
     metadata: metadata || {},
     // Map schema columns to frontend-expected aliases
     status: (metadata || {}).status || (row.approved ? 'approved' : row.applied ? 'applied' : 'pending'),
@@ -1626,6 +1649,11 @@ router.post('/outputs', requireAuth, async (req, res) => {
     const { type, prompt, output: outputText, model, tokens_used, ...extra } = req.body;
     const mergedMetadata = { ...((req.body.metadata) || {}), ...extra };
     delete mergedMetadata.metadata; // avoid double-nesting
+    // Real column names are stripped so stored metadata can never shadow the row
+    // it belongs to — belt and braces with the flatten order above.
+    for (const reserved of ['id', 'company_id', 'created_at', 'updated_at', 'type', 'model', 'tokens_used']) {
+      delete mergedMetadata[reserved];
+    }
 
     const { data, error } = await supabaseAdmin
       .from('ai_outputs')
