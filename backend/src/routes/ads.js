@@ -205,7 +205,13 @@ router.get('/campaigns', requireAuth, async (req, res) => {
               method: 'POST',
               headers: {
                 Authorization: `Bearer ${googleAccessToken}`,
-                'developer-token': company.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '',
+                // Developer tokens were sunset 2026-09-09 and are "optional and
+                // ignored by the API servers"; Google has said it will start
+                // REJECTING them in a future major version. Sent only when a
+                // legacy token is still on file, rather than as an empty header.
+                ...(company.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN
+                  ? { 'developer-token': company.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN }
+                  : {}),
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({

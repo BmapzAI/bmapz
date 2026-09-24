@@ -256,14 +256,27 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         return res.json({ success: false, message: 'Stability AI key invalid' });
       }
 
+      // Apollo's health endpoint answers HTTP 200 even with NO key and with a
+      // garbage key — verified live, both return {"healthy":true,"is_logged_in":false}.
+      // `healthy` describes APOLLO, not your credentials. The old check was
+      // `if (r.ok)`, so this test reported "connected" for an account with no key
+      // configured at all. `is_logged_in` is the field that actually reflects the key.
       case 'apollo': {
-        const apiKey = k.apollo_api_key || process.env.APOLLO_API_KEY;
+        const apiKey = clean(k.apollo_api_key || process.env.APOLLO_API_KEY);
         if (!apiKey) return res.json({ success: false, message: 'Apollo API key not set' });
         const r = await fetch('https://api.apollo.io/api/v1/auth/health', {
           headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
         });
-        if (r.ok) return res.json({ success: true, message: 'Apollo.io connected' });
-        return res.json({ success: false, message: 'Apollo key invalid or not authorized' });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.is_logged_in === true) return res.json({ success: true, message: 'Apollo.io connected' });
+        if (r.ok && d.is_logged_in === false) {
+          return res.json({
+            success: false,
+            message: 'Apollo rejected the key. Check it is correct, and that it was created as a master key '
+              + '(a scoped key only works on the endpoints selected when it was made). The key goes in an x-api-key header, not Bearer.',
+          });
+        }
+        return res.json({ success: false, message: `Apollo key invalid or not authorized (HTTP ${r.status})` });
       }
 
       case 'hunter': {
@@ -353,7 +366,10 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         // Named individually: "requires Developer Token, Customer ID, and a
         // connected OAuth token" left the person guessing which of the three was
         // missing, and they are obtained in three completely different places.
-        if (!developerToken) return res.json({ success: false, message: 'Google Ads is missing the Developer Token. Get it from your Google Ads account under Tools > API Center.' });
+        // NOT required any more — Google sunset developer tokens on 2026-09-09 and
+        // the header is "optional and ignored by the API servers". Access now comes
+        // from the Cloud project's Google Ads API access level. Requiring it here
+        // would fail every new setup for a credential that cannot be obtained.
         if (!customerId) return res.json({ success: false, message: 'Google Ads is missing the Customer ID (the 10-digit number at the top right of the Google Ads UI).' });
         const { token, error: tokenErr } = await googleToken(req.companyId, k);
         if (!token) return res.json({ success: false, message: tokenErr });
@@ -361,14 +377,29 @@ router.post('/test/:type', requireAuth, async (req, res) => {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
-            'developer-token': developerToken,
+            // Only when a legacy token is still on file. An absent value would be
+            // serialised as the literal string "undefined" in the header.
+            ...(developerToken ? { 'developer-token': developerToken } : {}),
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ query: 'SELECT customer.id FROM customer LIMIT 1' }),
         });
-        const d = await r.json();
+        const d = await r.json().catch(() => ({}));
         if (r.ok && !d.error) return res.json({ success: true, message: 'Google Ads live API connection confirmed' });
-        return res.json({ success: false, message: d.error?.message || 'Google Ads API rejected the connection. Reconnect OAuth if the token expired.' });
+        const gmsg = d.error?.message || `HTTP ${r.status}`;
+        // The defining failure since developer tokens went away: a brand-new Cloud
+        // project gets Test access automatically, which reaches Google Ads TEST
+        // accounts only. Pointing it at a real advertiser fails here, and the raw
+        // message does not say what to do about it.
+        if (/CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION|ACTION_NOT_PERMITTED/i.test(JSON.stringify(d))) {
+          return res.json({
+            success: false,
+            message: 'Your Google Cloud project only has Test access to the Google Ads API, which reaches test accounts '
+              + 'only. Apply for Explorer access from the Google Ads API page in Cloud Console to use a real advertiser account. '
+              + `(Google said: ${gmsg})`,
+          });
+        }
+        return res.json({ success: false, message: `Google Ads rejected the connection: ${gmsg}` });
       }
 
       case 'linkedin_ads': {
@@ -468,8 +499,16 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         const msg = d.error?.message || d.detail || `HTTP ${r.status}`;
         // A rejected model name and a rejected key look identical if you only
         // report the status code, and they need opposite fixes.
-        if (r.status === 400 && /model/i.test(String(msg))) {
-          return res.json({ success: false, message: `Perplexity key is valid but the model "sonar" was rejected: ${msg}. The model name in lib/webSearch.js needs updating.` });
+        // Perplexity sunsets the Sonar Chat Completions surface on 2026-09-27.
+        // After that this reads as a model/endpoint error, not a credential one,
+        // and the fix is a migration to the Agent API — not a new key. Saying so
+        // here is what stops an hour being spent re-issuing a perfectly good key.
+        if ((r.status === 400 || r.status === 404) && /model|not found|deprecat/i.test(String(msg))) {
+          return res.json({
+            success: false,
+            message: `Perplexity key looks valid but the "sonar" model or endpoint was rejected: ${msg}. `
+              + 'Sonar Chat Completions was sunset on 2026-09-27 — lib/webSearch.js and this test both need moving to the Agent API (POST /v1/responses).',
+          });
         }
         if (r.status === 401) return res.json({ success: false, message: `Perplexity key rejected: ${msg}` });
         return res.json({ success: false, message: `Perplexity call failed: ${msg}` });

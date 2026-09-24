@@ -3853,3 +3853,78 @@ calendly, notion, figma, adobe, crello, trello. These have NO storable credentia
 anywhere in the allowlist, so they are unimplemented placeholders rather than
 broken wiring. Reporting them would be a lie in the other direction. If one is
 implemented later, add its keys to the allowlist AND to `detected` together.
+
+## TWO EXTERNAL DEADLINES THAT CHANGED UNDER US (Claude, 2026-09-23)
+
+Both confirmed against the vendors' own documentation, not from memory.
+
+### 1. Google Ads developer tokens NO LONGER EXIST — and were blocking publishing
+
+developers.google.com/google-ads/api/docs/get-started/dev-token states:
+  "Developer tokens were sunset on September 9, 2026."
+  "You can continue sending developer tokens in your API call headers, but this is
+   optional and ignored by the API servers."
+  "We will start rejecting developer tokens in API calls in a future major version."
+
+Signup moved into Google Cloud Console and access is now a property of the CLOUD
+PROJECT, not a token:
+  Test     — granted automatically when you enable the Google Ads API. TEST ACCOUNTS ONLY.
+  Explorer — self-serve application, production accounts, 2,880 ops/day.
+  Basic    — requires brand verification, 15,000 ops/day.
+  Standard — manual audit, roughly 10 business days.
+
+THIS WAS A LIVE BUG. lib/adPublisher.js threw
+  "Google Ads needs an approved developer token before ads can be created"
+whenever no token was present, which made Google Ads publishing permanently
+unreachable for any new setup while telling the user to go and obtain a thing that
+no longer exists. Fixed: the token is optional everywhere now, sent only when a
+legacy one is on file, and omitted rather than sent as "" or "undefined"
+(routes/ads.js sent an empty header; routes/integrations.js would have sent the
+literal string "undefined").
+
+EXPECT THIS ERROR INSTEAD, and it is not a bug:
+  CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION (v25+) / ACTION_NOT_PERMITTED (older)
+means the Cloud project only has Test access and was pointed at a real advertiser.
+The google_ads test now detects it by name and says to apply for Explorer.
+
+ALSO CORRECTS THE PLAN: the previous advice in this project was "start the Google
+Ads developer token application first, it is the long pole." There is no
+application and no long pole. Google can be connected and tested the same day.
+
+### 2. Perplexity Sonar sunsets 2026-09-27 — FOUR DAYS after this was written
+
+docs.perplexity.ai: "Sonar Chat Completions is now Agent API. Sonar will be
+supported until September 27, 2026."
+
+lib/webSearch.js calls POST https://api.perplexity.ai/chat/completions with
+model 'sonar' — exactly the surface being retired. After the date, `sonar` survives
+only on the Agent API (POST /v1/responses, perplexity-agent models) and `sonar-pro`
+/ `sonar-reasoning-pro` have no replacement id at all.
+
+DELIBERATELY NOT MIGRATED. There is no PERPLEXITY_API_KEY in Railway, so a rewrite
+of the primary web-search provider could not have been executed even once, and an
+untested rewrite is worse than a dated warning. Both call sites carry the deadline
+in a comment, and the integration test now reports a post-sunset failure as
+"migrate to the Agent API", not as a bad key — which is what stops an hour being
+spent re-issuing a perfectly good credential.
+
+DO THIS THE MOMENT A PERPLEXITY KEY EXISTS: migrate lib/webSearch.js and the
+`perplexity` case in routes/integrations.js TOGETHER, so the test keeps proving the
+path the product actually takes. Blast radius if it lapses first: web search falls
+through to the next provider in the chain rather than failing outright.
+
+### 3. Apollo's key test was passing with NO KEY AT ALL
+
+Verified live, twice, from this machine:
+  GET https://api.apollo.io/api/v1/auth/health  with no key   -> HTTP 200 {"healthy":true,"is_logged_in":false}
+  ...the same request with a garbage key                      -> HTTP 200 {"healthy":true,"is_logged_in":false}
+
+`healthy` describes APOLLO's service, not your credentials. The test was
+`if (r.ok) return success`, so it reported "Apollo.io connected" for a company with
+no Apollo key configured. Now checks `is_logged_in === true`, and on false explains
+the two real causes: a wrong key, or a scoped (non-master) key, plus the reminder
+that the key goes in an `x-api-key` header and not as a Bearer token.
+
+SAME CLASS AS THE GMAIL BUG fixed earlier today. When adding any integration test,
+the question is not "did the call succeed" but "could this have succeeded without
+valid credentials". If yes, it is not a test.

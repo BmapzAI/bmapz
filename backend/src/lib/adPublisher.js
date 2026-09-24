@@ -38,10 +38,20 @@ export function resolveCredentials(platform, apiKeys = {}) {
     case 'google': {
       const token = k.google_access_token;
       const customer = k.google_ads_customer_id;
-      const devToken = k.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+      // Developer tokens were SUNSET by Google on 2026-09-09 and can no longer be
+      // obtained: "You can continue sending developer tokens in your API call
+      // headers, but this is optional and ignored by the API servers." Access is
+      // now governed by the Cloud project's Google Ads API access level (Test →
+      // Explorer → Basic → Standard), not by a token.
+      //
+      // This used to throw "Google Ads needs an approved developer token before
+      // ads can be created", which made Google Ads publishing permanently
+      // unreachable for any new setup and told the user to go and get something
+      // that no longer exists. Now optional: passed through when a legacy token is
+      // still on file, omitted otherwise.
+      const devToken = k.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN || null;
       if (!token) throw new PublishError('Google is not connected. Connect it in Integrations first.', 'NOT_CONNECTED');
       if (!customer) throw new PublishError('No Google Ads customer id set. Add it in Integrations.', 'NOT_CONNECTED');
-      if (!devToken) throw new PublishError('Google Ads needs an approved developer token before ads can be created.', 'NOT_CONNECTED');
       return { token, customer: String(customer).replace(/-/g, ''), devToken, loginCustomer: k.google_ads_login_customer_id };
     }
     case 'tiktok': {

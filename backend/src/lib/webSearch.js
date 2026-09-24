@@ -76,6 +76,24 @@ async function fetchJson(url, options, timeoutMs = 20000) {
 
 /* ── Providers ──────────────────────────────────────────────────────────── */
 
+/**
+ * ⚠ DEADLINE: 2026-09-27. This calls the Sonar Chat Completions surface, which
+ * Perplexity is sunsetting on that date — confirmed from their own docs:
+ * "Sonar Chat Completions is now Agent API. Sonar will be supported until
+ * September 27, 2026."
+ *
+ * After it: `sonar` survives only on the Agent API (POST /v1/responses with the
+ * perplexity-agent models), and `sonar-pro` / `sonar-reasoning-pro` have no
+ * replacement id at all. Both this path and the `perplexity` case in
+ * routes/integrations.js must move together, so the test keeps proving the path
+ * the product actually takes.
+ *
+ * NOT migrated here on purpose: there is no PERPLEXITY_API_KEY in Railway yet, so
+ * a rewrite could not have been executed even once, and shipping an untested
+ * rewrite of the primary web-search provider is worse than shipping a dated
+ * warning. Blast radius if it lapses: web search falls through to the next
+ * provider in the chain below rather than failing outright.
+ */
 async function viaPerplexity(query, key) {
   const body = await fetchJson('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
