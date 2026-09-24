@@ -43,6 +43,8 @@ be checked*, not as facts.
 | `d0e653b` | **WhatsApp multi-tenant bug** — per-company number was silently ignored |
 | `4711bcd` | Swept for company keys that can never be set; removed dead Stripe operands |
 | `6f17d76` | `/health` now reports the running commit SHA |
+| `7baaaa6` | 19 integration cards that could never show "connected", incl. `tiktok_social` |
+| `8bfad3b` | **Google Ads developer token sunset** (was blocking publishing entirely); Apollo test passing with no key; Perplexity sunset warnings |
 
 ## Priority 1 — finish the schema-leak fix (192 sites)
 
@@ -108,6 +110,32 @@ Verify it, then check the fix is complete:
 `companies.js`. That left operand is dead and the failure is invisible, because the env
 fallback keeps the feature working — just for the wrong tenant.
 
+## Priority 3.5 — the two external deadlines, and a false-positive test class
+
+**Perplexity sunsets Sonar chat completions on 2026-09-27.** `lib/webSearch.js` calls
+exactly that surface (`model: 'sonar'` at `/chat/completions`), as does the `perplexity`
+case in `integrations.js`. Claude confirmed the date from Perplexity's own docs and
+deliberately did **not** migrate, because no `PERPLEXITY_API_KEY` exists in Railway so a
+rewrite of the primary web-search provider could not be executed even once. Both call
+sites carry the deadline in a comment. **If a key now exists, migrate both together** to
+the Agent API (`POST /v1/responses`) and test them in the same sitting. If it has already
+lapsed, confirm the fallback actually degrades to the next provider rather than throwing.
+
+**Google Ads developer tokens were sunset 2026-09-09** and the header is "optional and
+ignored by the API servers", with rejection promised in a future version. This had been
+a live bug: `adPublisher.js` threw *"Google Ads needs an approved developer token"*
+whenever one was absent, making Google Ads publishing unreachable for any new setup.
+Verify the fix is complete — the token should be optional everywhere and never sent as
+`""` or the string `"undefined"` — and check whether the header should now be removed
+entirely.
+
+**A test that can pass without valid credentials is not a test.** Two were found:
+`gmail` returned success for "credentials present" without calling Google, and `apollo`
+used `if (r.ok)` against an endpoint that returns **HTTP 200 with no key at all**
+(verified live: `{"healthy":true,"is_logged_in":false}`). **Audit the other 31 test cases
+for the same class.** The question is not "did the call succeed" but "could this have
+succeeded without valid credentials".
+
 ## Priority 4 — things Claude deliberately did NOT do
 
 - **`canva_client_id` / `canva_client_secret` are dead reads.** Every other provider
@@ -121,6 +149,12 @@ fallback keeps the feature working — just for the wrong tenant.
 - **`uuid` transitive advisory** — knowingly accepted, documented.
 - **Supabase leaked-password protection** is Pro-only and the org is on Free. Accepted
   and documented; password-strength settings are the compensating control and are set.
+- **The OAuth callback host cannot ever be brand-verified.** `up.railway.app` is on the
+  Public Suffix List, so Google accepts it as a redirect URI but verification needs
+  DNS-level ownership Derek does not have. Moving the API to a domain he owns
+  (e.g. `api.bmapz.com`) is a prerequisite for leaving Google's "Testing" status —
+  and Testing issues refresh tokens that **expire after 7 days**. Flagged in
+  `PROMPT_INTEGRATIONS_PHASE.md`; it is an infrastructure decision, not a code fix.
 
 ## Priority 5 — lint debt now that the backend is linted
 
