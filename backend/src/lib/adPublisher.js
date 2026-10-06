@@ -277,10 +277,13 @@ const tiktok = {
   async setStatus(level, externalId, status, cred) {
     const path = level === 'campaign' ? 'campaign/status/update/' : 'adgroup/status/update/';
     const idField = level === 'campaign' ? 'campaign_ids' : 'adgroup_ids';
-    await callJson(`https://business-api.tiktok.com/open_api/v1.3/${path}`, {
+    const out = await callJson(`https://business-api.tiktok.com/open_api/v1.3/${path}`, {
       method: 'POST', headers: tiktok.headers(cred),
       body: JSON.stringify({ advertiser_id: cred.advertiser, [idField]: [externalId], operation_status: status === 'active' ? 'ENABLE' : 'DISABLE' }),
     }, 'TikTok status update');
+    // TikTok reports failure as HTTP 200 with a non-zero code, and callJson only throws on !res.ok,
+    // so a failed pause/resume used to read as success and local state drifted from the live campaign.
+    if (out.code && out.code !== 0) throw new PublishError(out.message || 'TikTok rejected the status change');
     return externalId;
   },
 };

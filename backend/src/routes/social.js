@@ -164,7 +164,11 @@ router.post('/posts/:id/publish', requireAuth, async (req, res) => {
         } else if (platform === 'twitter') {
           results.twitter = await publishToTwitter(company, content, post.media_urls);
         } else if (platform === 'tiktok') {
-          results.tiktok = { status: 'pending', note: 'TikTok video upload requires file upload flow' };
+          // This used to set { status: 'pending' } with no error, and allSuccess (every result lacks an
+          // error) then marked the post PUBLISHED with a published_at although nothing was sent to TikTok.
+          // TikTok publishing is not implemented (it needs the Content Posting upload flow and an audited
+          // app), so say so rather than reporting a post that does not exist.
+          results.tiktok = { error: 'TikTok publishing is not available yet. Post to TikTok manually or remove TikTok from this post.' };
         }
       } catch (pErr) {
         results[platform] = { error: pErr.message };

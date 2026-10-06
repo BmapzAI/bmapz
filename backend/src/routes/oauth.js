@@ -777,11 +777,17 @@ router.get('/tiktok/callback', async (req, res) => {
       body: new URLSearchParams({ client_key: clientKey, client_secret: clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
     });
     const tokens = await tokenResp.json();
-    if (tokens.error) return res.send(popupHtml('error', 'TikTok', tokens.error_description));
+    // TikTok can report a failure in the BODY with HTTP 200 ({"error":"invalid_grant",...}).
+    if (tokens.error || !tokens.access_token) return res.send(popupHtml('error', 'TikTok', tokens.error_description));
 
+    // Access tokens last 24 HOURS and the refresh token used to be discarded, so every TikTok
+    // connection died a day after it was made (lib/tiktokApi.js getTikTokAccessToken renews it).
     const newKeys = {
       tiktok_access_token: tokens.access_token,
       tiktok_token_expires_at: new Date(Date.now() + (tokens.expires_in || 86400) * 1000).toISOString(),
+      ...(tokens.refresh_token ? { tiktok_refresh_token: tokens.refresh_token } : {}),
+      ...(tokens.refresh_expires_in ? { tiktok_refresh_expires_at: new Date(Date.now() + tokens.refresh_expires_in * 1000).toISOString() } : {}),
+      ...(tokens.open_id ? { tiktok_open_id: tokens.open_id } : {}),
     };
 
     await saveOAuthTokens(companyId, newKeys, integrationType);
@@ -870,7 +876,7 @@ router.post('/disconnect', requireAuth, requireCompanyAdmin, async (req, res) =>
       linkedin_social: ['linkedin_access_token', 'linkedin_token_expires_at', 'linkedin_scopes'],
       linkedin_ads: ['linkedin_ads_access_token', 'linkedin_ads_account_id', 'linkedin_ads_connected'],
       twitter: ['twitter_access_token', 'twitter_refresh_token', 'twitter_token_expires_at', 'twitter_access_secret'],
-      tiktok: ['tiktok_access_token', 'tiktok_token_expires_at'],
+      tiktok: ['tiktok_access_token', 'tiktok_token_expires_at', 'tiktok_refresh_token', 'tiktok_refresh_expires_at', 'tiktok_open_id'],
     };
 
     // Fallback: for google* prefixed providers, clear google tokens
@@ -902,7 +908,11 @@ router.post('/disconnect', requireAuth, requireCompanyAdmin, async (req, res) =>
 // were dead anyway — those names were never in the ALLOWED list in routes/companies.js
 // — so removing them changes no behaviour, only stops the code implying a path that
 // does not exist.
-const CANVA_SCOPES = 'design:content:read design:content:write asset:read asset:write profile:read';
+// design:meta:read added 2026-10-06: GET /v1/designs (the design picker, canva.js) requires it, so
+// without it the picker fails with a missing-scope 403 for every connected company. Scopes are fixed
+// at authorisation time, so the same scope must ALSO be ticked in the Canva developer portal and any
+// existing connection must be reconnected.
+const CANVA_SCOPES = 'design:content:read design:content:write design:meta:read asset:read asset:write profile:read';
 
 router.get(['/canva/initiate', '/canva/initiate-url'], allowLaunchTicket, async (req, res) => {
   try {
@@ -969,7 +979,20 @@ router.get('/canva/callback', async (req, res) => {
 });
 
 // Refresh an expired Canva access token (Canva access tokens are short-lived).
-export async function refreshCanvaToken(companyId) {
+// Canva refresh tokens are single use and each refresh returns a new one. The UI fires /designs and
+// /export together; both used to read the same refresh token and refresh in parallel, so the second
+// got invalid_grant (swallowed upstream) and the connection could end up stuck on a dead token.
+// Concurrent callers for one company now share a single in-flight refresh.
+const canvaRefreshInFlight = new Map();
+export function refreshCanvaToken(companyId) {
+  const pending = canvaRefreshInFlight.get(companyId);
+  if (pending) return pending;
+  const p = doRefreshCanvaToken(companyId).finally(() => canvaRefreshInFlight.delete(companyId));
+  canvaRefreshInFlight.set(companyId, p);
+  return p;
+}
+
+async function doRefreshCanvaToken(companyId) {
   const { apiKeys } = await getCompanyKeys(companyId);
   if (!apiKeys.canva_refresh_token) throw new Error('Canva not connected');
   const clientId = process.env.CANVA_CLIENT_ID;

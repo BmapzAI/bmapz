@@ -6,6 +6,7 @@ import { sendServerError } from '../lib/httpError.js';
 import { askPerplexity } from '../lib/perplexity.js';
 import { getGoogleAccessToken } from '../lib/googleToken.js';
 import { getXAccessToken, X_API_BASE } from '../lib/xApi.js';
+import { getTikTokAccessToken } from '../lib/tiktokApi.js';
 import { GOOGLE_ADS_API_VERSION, googleAdsHeaders, googleAdsApiError, googleAdsErrorMessage } from '../lib/googleAds.js';
 
 const router = Router();
@@ -455,13 +456,21 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         const token = k.tiktok_access_token;
         const advertiserId = k.tiktok_advertiser_id;
         if (!token || !advertiserId) return res.json({ success: false, message: 'TikTok Ads requires OAuth and an Advertiser ID' });
-        const r = await fetch('https://business-api.tiktok.com/open_api/v1.3/campaign/get/', {
-          method: 'POST',
-          headers: { 'Access-Token': token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ advertiser_id: String(advertiserId), page_size: 1, page: 1 }),
-        });
-        const d = await r.json();
+        // campaign/get is documented as a GET with query parameters (this POSTed a JSON body).
+        const qs = new URLSearchParams({ advertiser_id: String(advertiserId), page: '1', page_size: '1' });
+        const r = await fetch(`https://business-api.tiktok.com/open_api/v1.3/campaign/get/?${qs}`, { headers: { 'Access-Token': token } });
+        const d = await r.json().catch(() => ({}));
+        // Failure arrives as HTTP 200 with a non-zero code (40104 no token, 40105 invalid token), so
+        // r.ok alone would be a false positive - success is code === 0.
         if (r.ok && d.code === 0) return res.json({ success: true, message: 'TikTok Ads live API connection confirmed' });
+        if (Number(d.code) >= 40100 && Number(d.code) <= 40105) {
+          return res.json({
+            success: false,
+            message: 'TikTok Ads rejected the credential. The token stored here comes from TikTok LOGIN (open.tiktokapis.com) and cannot '
+              + 'access advertising: the TikTok Business API is a separate program with its own app and its own connect flow, which '
+              + 'is not built yet. See AGENT_HANDOFF.md. (TikTok said: ' + (d.message || d.code) + ')',
+          });
+        }
         return res.json({ success: false, message: d.message || 'TikTok Ads API rejected the connection. Check app permissions.' });
       }
 
@@ -662,7 +671,16 @@ router.post('/test/:type', requireAuth, async (req, res) => {
 
       case 'tiktok':
       case 'tiktok_social': {
-        const token = k.tiktok_access_token;
+        if (!k.tiktok_access_token && !k.tiktok_refresh_token) {
+          return res.json({ success: false, message: 'TikTok is not connected. Run the TikTok connect flow first.' });
+        }
+        // TikTok access tokens last 24 hours: refresh first, or this reports "expired" a day after a good connect.
+        let token;
+        try {
+          token = await getTikTokAccessToken(req.companyId, k);
+        } catch (e) {
+          return res.json({ success: false, message: `TikTok refused to refresh the token (${e.message}). Disconnect and reconnect TikTok.` });
+        }
         if (!token) return res.json({ success: false, message: 'TikTok is not connected. Run the TikTok connect flow first.' });
         const r = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name', {
           headers: { Authorization: `Bearer ${token}` },
