@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sanitizeUpdate } from '../lib/safeUpdate.js';
 import { runSeoAnalysis, toRow, normalizeUrl } from '../lib/seoAnalysis.js';
+import { getGoogleAccessToken } from '../lib/googleToken.js';
 
 const router = Router();
 
@@ -115,6 +116,13 @@ router.get('/search-console', requireAuth, async (req, res) => {
       return res.json({ error: 'Google Search Console not connected' });
     }
 
+    let gscToken;
+    try {
+      gscToken = await getGoogleAccessToken(req.companyId, company);
+    } catch {
+      return res.json({ error: 'Google needs to be reconnected.' });
+    }
+
     const endDate = new Date().toISOString().split('T')[0];
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
@@ -122,7 +130,7 @@ router.get('/search-console', requireAuth, async (req, res) => {
       `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(company.google_search_console_url)}/searchAnalytics/query`,
       {
         method: 'POST',
-        headers: { Authorization: `Bearer ${company.google_access_token}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${gscToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           startDate, endDate,
           dimensions: ['query'],

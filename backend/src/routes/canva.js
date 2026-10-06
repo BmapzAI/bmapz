@@ -87,7 +87,7 @@ router.get('/status', requireAuth, async (req, res) => {
   try {
     const { data } = await supabaseAdmin.from('companies').select('api_keys, integration_status').eq('id', req.companyId).single();
     const connected = !!(data?.api_keys?.canva_access_token) && data?.integration_status?.canva !== false;
-    const configured = !!(data?.api_keys?.canva_client_id || process.env.CANVA_CLIENT_ID);
+    const configured = !!process.env.CANVA_CLIENT_ID;
     res.json({ connected, configured });
   } catch (err) {
     res.status(500).json({ error: err.message });

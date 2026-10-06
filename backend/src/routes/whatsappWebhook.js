@@ -26,7 +26,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { runAIChat } from './ai.js';
 
 const router = Router();
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || '';
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';

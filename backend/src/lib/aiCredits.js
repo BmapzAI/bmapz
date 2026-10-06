@@ -114,11 +114,63 @@ export function canRunScanAction(action, planId, scanTokensRemaining) {
   return (PLAN_SCAN_TOKENS[planId] || 0) > 0;
 }
 
+// ─── Live model availability ────────────────────────────────────────────────────
+//
+// The ids hard-coded in this file (and a few elsewhere) are a snapshot: Anthropic
+// retires models on a published schedule, and a retired id does not degrade — the
+// call is rejected. Worse, the "known-good fallback" the retry path falls back to
+// was itself a retired model, so a request would fail twice and then silently move
+// to the OTHER provider, changing cost and behaviour with nothing in the UI to say so.
+//
+// lib/modelRegistry.js already pulls each provider's live catalog every 12h; this is
+// the missing link that lets the resolvers below USE it. It only changes an answer in
+// the one case that would otherwise have been a rejected call: the chosen id is not in
+// that provider's live catalog. If the catalog is not loaded yet, or a provider has no
+// key (so no catalog), behaviour is exactly what it was before.
+const LIVE_CATALOG = { anthropic: [], openai: [] };
+
+/** Called by modelRegistry after a provider's catalog was fetched SUCCESSFULLY. */
+export function setLiveCatalog(provider, models) {
+  if (!LIVE_CATALOG[provider]) return;
+  // An empty list is a failed/blank fetch, not "the provider has no models": keep
+  // the last good catalog rather than treating every model as retired.
+  if (Array.isArray(models) && models.length) LIVE_CATALOG[provider] = models;
+}
+
+const providerOfModel = (id) => (String(id || '').toLowerCase().startsWith('claude') ? 'anthropic' : 'openai');
+
+/**
+ * Return `preferred` if the provider still serves it; otherwise the live model of the
+ * SAME tier whose credit multiplier is closest (so a stand-in for a retired Sonnet is
+ * another Sonnet-class model, not a nano). Catalog order is the provider's own
+ * newest-first order, which breaks ties toward the newest.
+ */
+export function liveModelFor(preferred, providerHint) {
+  if (!preferred) return preferred;
+  const provider = providerHint || providerOfModel(preferred);
+  const live = LIVE_CATALOG[provider] || [];
+  if (!live.length) return preferred;                       // no catalog → unchanged
+  if (live.some((m) => m.id === preferred)) return preferred; // still served → unchanged
+
+  const tier = inferModelTier(preferred);
+  const sameTier = live.filter((m) => (m.tier || inferModelTier(m.id)) === tier);
+  const pool = sameTier.length ? sameTier : live;
+  const want = inferModelMultiplier(preferred);
+  return pool
+    .map((m) => ({ id: m.id, d: Math.abs((m.credit_multiplier ?? inferModelMultiplier(m.id)) - want) }))
+    .sort((a, b) => a.d - b.d)[0].id;                        // stable sort keeps newest-first on ties
+}
+
 // Default model per provider when user hasn't chosen
 export const DEFAULT_MODEL_PER_PROVIDER = {
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-20241022',
 };
+
+/** The default model for a provider, corrected against the live catalog. */
+export function defaultModelFor(provider) {
+  return liveModelFor(DEFAULT_MODEL_PER_PROVIDER[provider], provider);
+}
 
 // 1 credit ≈ this many tokens of baseline gpt-4o-mini
 /**
@@ -202,18 +254,18 @@ export function isModelAllowedForPlan(model, planId) {
  */
 export function resolveModelForPlan(requestedModel, planId, provider) {
   if (requestedModel && isModelAllowedForPlan(requestedModel, planId)) {
-    return requestedModel;
+    // A saved preference can name a model that has since been retired.
+    return liveModelFor(requestedModel);
   }
   // Downgrade: pick the cheapest allowed model for the given provider
   const allowedTiers = PLAN_MODEL_ACCESS[planId] || PLAN_MODEL_ACCESS.starter;
   if (provider === 'anthropic') {
-    if (allowedTiers.includes('smartest')) return 'claude-3-5-sonnet-20241022';
-    if (allowedTiers.includes('smarter')) return 'claude-3-5-sonnet-20241022';
-    return 'claude-3-5-haiku-20241022';
+    if (allowedTiers.includes('smartest')) return liveModelFor('claude-3-5-sonnet-20241022', 'anthropic');
+    if (allowedTiers.includes('smarter')) return liveModelFor('claude-3-5-sonnet-20241022', 'anthropic');
+    return liveModelFor('claude-3-5-haiku-20241022', 'anthropic');
   }
   // OpenAI
-  if (allowedTiers.includes('smartest') || allowedTiers.includes('smarter')) return 'gpt-4o-mini';
-  return 'gpt-4o-mini';
+  return liveModelFor('gpt-4o-mini', 'openai');
 }
 
 /**
@@ -222,12 +274,12 @@ export function resolveModelForPlan(requestedModel, planId, provider) {
  */
 export function resolveActionModel(action, requestedModel, planId, provider) {
   if (action && FORCE_CHEAP_MODEL_ACTIONS.has(action)) {
-    return provider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gpt-4o-mini';
+    return provider === 'anthropic' ? liveModelFor('claude-3-5-haiku-20241022', 'anthropic') : liveModelFor('gpt-4o-mini', 'openai');
   }
   // Latency-sensitive actions: route to the fast tier so interactive surfaces
   // (SDR replies, ad copy variants, help chat) respond in seconds.
   if (action && FAST_MODEL_ACTIONS.has(action)) {
-    return provider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gpt-4o-mini';
+    return provider === 'anthropic' ? liveModelFor('claude-3-5-haiku-20241022', 'anthropic') : liveModelFor('gpt-4o-mini', 'openai');
   }
   return resolveModelForPlan(requestedModel, planId, provider);
 }

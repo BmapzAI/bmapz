@@ -6,7 +6,7 @@ import { handleInboundEvent } from '../lib/workflowEngine.js';
 const router = Router();
 
 const SYNC_CHANNELS = ['gmail', 'instagram', 'whatsapp', 'linkedin'];
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 const TEMPLATE_FIELDS = ['name', 'channel', 'subject', 'content', 'html_content', 'variables', 'category', 'is_global'];
 const ACTIVITY_FIELDS = ['lead_id', 'user_email', 'type', 'title', 'description', 'metadata'];
 const MESSAGE_FIELDS = ['lead_id', 'direction', 'channel', 'subject', 'content', 'html_content', 'status',
@@ -278,6 +278,17 @@ async function syncGmail(companyId, company, limit) {
       status: 'not_configured',
       imported: 0,
       message: 'Gmail is not connected. Connect Google/Gmail with read permission first.',
+    };
+  }
+
+  // Reading the inbox needs gmail.readonly, a RESTRICTED Google scope that is off by default
+  // (GOOGLE_RESTRICTED_SCOPES in routes/oauth.js). Say so instead of failing with a bare 403.
+  const grantedScopes = String(company.google_scopes || '');
+  if (grantedScopes && !grantedScopes.includes('gmail.readonly') && !grantedScopes.includes('mail.google.com')) {
+    return {
+      status: 'not_configured',
+      imported: 0,
+      message: 'Inbox sync needs Gmail read access, which Google treats as a restricted permission (paid annual security assessment). Sending email works; inbox sync is not enabled yet.',
     };
   }
 

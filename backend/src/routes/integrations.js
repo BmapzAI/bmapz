@@ -3,9 +3,12 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { safeFetch } from '../lib/safeFetch.js';
 import { sendServerError } from '../lib/httpError.js';
+import { askPerplexity } from '../lib/perplexity.js';
+import { getGoogleAccessToken } from '../lib/googleToken.js';
+import { GOOGLE_ADS_API_VERSION, googleAdsHeaders, googleAdsApiError, googleAdsErrorMessage } from '../lib/googleAds.js';
 
 const router = Router();
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202606';
 
 /**
@@ -82,6 +85,12 @@ router.get('/status', requireAuth, async (req, res) => {
     // below have NO env fallback on purpose — they are minted by a real person
     // completing a consent flow and cannot be platform-wide.
     const envHas = (name) => !!String(process.env[name] || '').trim();
+    // One Google token serves every Google service, so "has a token" does not mean a given
+    // service is usable: the person can untick permissions in the consent dialog, and the
+    // restricted ones (Gmail read, Drive) are off by default. google_scopes records what
+    // Google actually granted. Legacy rows without it fall back to token presence.
+    const gScopes = String(k.google_scopes || '');
+    const gHas = (frag) => !!k.google_access_token && (!gScopes || gScopes.includes(frag));
     const detected = {
       // AI providers
       openai: !!(k.openai_api_key) || envHas('OPENAI_API_KEY'),
@@ -91,12 +100,12 @@ router.get('/status', requireAuth, async (req, res) => {
       // Billing
       stripe: envHas('STRIPE_SECRET_KEY'),
       // Google
-      gmail: !!(k.google_access_token),
-      google_analytics: !!(k.google_access_token && k.google_analytics_property_id),
-      google_search_console: !!(k.google_access_token && k.google_search_console_url),
-      google_ads: !!(k.google_access_token && k.google_ads_customer_id),
-      google_drive: !!(k.google_drive_token),
-      youtube: !!(k.google_access_token),
+      gmail: gHas('gmail'),
+      google_analytics: gHas('analytics') && !!k.google_analytics_property_id,
+      google_search_console: gHas('webmasters') && !!k.google_search_console_url,
+      google_ads: gHas('adwords') && !!k.google_ads_customer_id,
+      google_drive: gHas('auth/drive'),
+      youtube: gHas('youtube'),
       // Meta
       meta: !!(k.meta_access_token),
       meta_ads: !!(k.meta_access_token && (k.meta_ads_account_id || k.meta_ad_account_id)),
@@ -131,7 +140,7 @@ router.get('/status', requireAuth, async (req, res) => {
       n8n: !!(k.n8n_webhook_url),
       custom: !!(k.custom_api_url),
       // Scheduling
-      google_calendar: !!(k.google_access_token),
+      google_calendar: gHas('calendar'),
       cal_com: !!(k.cal_com_api_key),
       chilipiper: !!(k.chilipiper_api_key && k.chilipiper_tenant),
 
@@ -204,10 +213,16 @@ router.post('/test/:type', requireAuth, async (req, res) => {
           return res.json({ success: false, message: `OpenAI key rejected (${modelsResp.status}): ${d.error?.message || 'invalid key'}` });
         }
         // STEP 2: Verify key can actually make completions (catches insufficient_quota / billing missing).
+        // The model is chosen from THIS account's live model list instead of being
+        // hard-coded: a retired id would make this report failure for a valid key.
+        const listed = await modelsResp.json().catch(() => ({}));
+        const ids = new Set((listed.data || []).map((m) => m.id));
+        const testModel = ['gpt-5-nano', 'gpt-5-mini', 'gpt-4.1-nano', 'gpt-4.1-mini', 'gpt-4o-mini'].find((m) => ids.has(m));
+        if (!testModel) return res.json({ success: true, message: 'OpenAI key is valid (could not pick a cheap chat model from the account list, so billing was not exercised)' });
         const completionResp = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
+          body: JSON.stringify({ model: testModel, messages: [{ role: 'user', content: 'ping' }], max_completion_tokens: 16 }),
         });
         if (completionResp.ok) return res.json({ success: true, message: 'OpenAI fully working (key + billing)' });
         const compErr = await completionResp.json().catch(() => ({}));
@@ -232,10 +247,17 @@ router.post('/test/:type', requireAuth, async (req, res) => {
           return res.json({ success: false, message: `Anthropic key rejected (${modelsResp.status}): ${d.error?.message || 'invalid key'}` });
         }
         // STEP 2: Verify key can actually make completions (catches credit balance issues).
+        // Model comes from the account's own live list (cheapest family first). The
+        // old hard-coded claude-3-5-sonnet-20241022 has been retired, which made this
+        // report 'completion failed' for a perfectly valid, funded key.
+        const listed = await modelsResp.json().catch(() => ({}));
+        const mids = (listed.data || []).map((m) => m.id).filter(Boolean);
+        const testModel = mids.find((m) => /haiku/i.test(m)) || mids[0];
+        if (!testModel) return res.json({ success: true, message: 'Anthropic key is valid (the account lists no models, so credits were not exercised)' });
         const completionResp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-3-5-sonnet-20241022', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
+          body: JSON.stringify({ model: testModel, messages: [{ role: 'user', content: 'ping' }], max_tokens: 16 }),
         });
         if (completionResp.ok) return res.json({ success: true, message: 'Anthropic fully working (key + credits)' });
         const compErr = await completionResp.json().catch(() => ({}));
@@ -330,10 +352,10 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       // Google, so an expired or revoked token reported as connected — the exact
       // failure a test exists to catch. It now makes a real call.
       case 'gmail': {
-        const hasOAuth = !!(k.google_access_token);
-        const hasManual = !!(k.gmail_client_id && k.gmail_refresh_token);
-        if (!hasOAuth && !hasManual) {
-          return res.json({ success: false, message: 'Gmail not configured. Use OAuth or add Client ID + Refresh Token.' });
+        // OAuth only. A manual client-id + refresh-token pair used to be accepted here, but
+        // the shared token refresher never read those keys, so that path could only fail.
+        if (!k.google_access_token && !k.google_refresh_token) {
+          return res.json({ success: false, message: 'Gmail is not connected. Use Connect to sign in with Google.' });
         }
         const { token, error: tokenErr } = await googleToken(req.companyId, k);
         if (!token) return res.json({ success: false, message: tokenErr });
@@ -342,7 +364,14 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         });
         const d = await r.json().catch(() => ({}));
         if (r.ok && d.emailAddress) {
-          return res.json({ success: true, message: `Gmail connected (${d.emailAddress})` });
+          // Connected is not the same as able to do the job. Sending is the Gmail feature that
+          // ships by default, and the person can untick it in the consent dialog.
+          const granted = String(k.google_scopes || '');
+          if (granted && !granted.includes('gmail.send')) {
+            return res.json({ success: false, message: `Gmail is connected (${d.emailAddress}) but the permission to SEND email was not granted. Disconnect and reconnect, and leave every box ticked.` });
+          }
+          const canRead = !granted || granted.includes('gmail.readonly');
+          return res.json({ success: true, message: `Gmail connected (${d.emailAddress})${canRead ? '' : ' - sending works; inbox sync needs a restricted Google permission that is not enabled yet'}` });
         }
         return res.json({
           success: false,
@@ -354,14 +383,21 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         const token = k.meta_access_token;
         const accountId = k.meta_ads_account_id || k.meta_ad_account_id;
         if (!token || !accountId) return res.json({ success: false, message: 'Meta Ads requires OAuth and an Ad Account ID' });
-        const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}?fields=id,name&access_token=${token}`);
-        const d = await r.json();
+        // Ads Manager shows the id as act_123..., and publishing normalises that prefix; this test did
+        // not, so it called act_act_123 and failed for an account that publishing would have used fine.
+        const acct = String(accountId).startsWith('act_') ? String(accountId) : `act_${accountId}`;
+        const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${acct}?fields=id,name,account_status`, {
+          headers: { Authorization: `Bearer ${token}` },   // header, not ?access_token= (URLs get logged)
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && !d.error && d.account_status !== undefined && d.account_status !== 1) {
+          return res.json({ success: false, message: `Meta ad account ${d.name || acct} is reachable but not ACTIVE (status ${d.account_status}). Ads cannot run on it until that is resolved in Ads Manager.` });
+        }
         if (r.ok && !d.error) return res.json({ success: true, message: `Meta Ads connected${d.name ? `: ${d.name}` : ''}` });
         return res.json({ success: false, message: d.error?.message || 'Meta token or ad account is invalid. Please reconnect.' });
       }
 
       case 'google_ads': {
-        const developerToken = k.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
         const customerId = String(k.google_ads_customer_id || '').replace(/-/g, '');
         // Named individually: "requires Developer Token, Customer ID, and a
         // connected OAuth token" left the person guessing which of the three was
@@ -373,20 +409,16 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         if (!customerId) return res.json({ success: false, message: 'Google Ads is missing the Customer ID (the 10-digit number at the top right of the Google Ads UI).' });
         const { token, error: tokenErr } = await googleToken(req.companyId, k);
         if (!token) return res.json({ success: false, message: tokenErr });
-        const r = await fetch(`https://googleads.googleapis.com/v24/customers/${customerId}/googleAds:searchStream`, {
+        const r = await fetch(`https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${customerId}/googleAds:searchStream`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            // Only when a legacy token is still on file. An absent value would be
-            // serialised as the literal string "undefined" in the header.
-            ...(developerToken ? { 'developer-token': developerToken } : {}),
-            'Content-Type': 'application/json',
-          },
+          headers: googleAdsHeaders({ token, keys: k }),
           body: JSON.stringify({ query: 'SELECT customer.id FROM customer LIMIT 1' }),
         });
         const d = await r.json().catch(() => ({}));
-        if (r.ok && !d.error) return res.json({ success: true, message: 'Google Ads live API connection confirmed' });
-        const gmsg = d.error?.message || `HTTP ${r.status}`;
+        if (r.ok && !googleAdsApiError(d)) return res.json({ success: true, message: 'Google Ads live API connection confirmed' });
+        // searchStream failures are an ARRAY, so d.error was undefined and this said "HTTP 403"
+        // instead of the real reason (USER_PERMISSION_DENIED, CUSTOMER_NOT_FOUND, ...).
+        const gmsg = googleAdsErrorMessage(d, r.status);
         // The defining failure since developer tokens went away: a brand-new Cloud
         // project gets Test access automatically, which reaches Google Ads TEST
         // accounts only. Pointing it at a real advertiser fails here, and the raw
@@ -487,31 +519,23 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       case 'perplexity': {
         const apiKey = clean(k.perplexity_api_key || process.env.PERPLEXITY_API_KEY);
         if (!apiKey) return res.json({ success: false, message: 'Perplexity API key not set' });
-        // Deliberately the SAME model lib/webSearch.js uses. Testing a different
-        // model would prove something the product never does.
-        const r = await fetch('https://api.perplexity.ai/chat/completions', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'sonar', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
-        });
-        if (r.ok) return res.json({ success: true, message: 'Perplexity connected (web search will work)' });
-        const d = await r.json().catch(() => ({}));
-        const msg = d.error?.message || d.detail || `HTTP ${r.status}`;
-        // A rejected model name and a rejected key look identical if you only
-        // report the status code, and they need opposite fixes.
-        // Perplexity sunsets the Sonar Chat Completions surface on 2026-09-27.
-        // After that this reads as a model/endpoint error, not a credential one,
-        // and the fix is a migration to the Agent API — not a new key. Saying so
-        // here is what stops an hour being spent re-issuing a perfectly good key.
-        if ((r.status === 400 || r.status === 404) && /model|not found|deprecat/i.test(String(msg))) {
-          return res.json({
-            success: false,
-            message: `Perplexity key looks valid but the "sonar" model or endpoint was rejected: ${msg}. `
-              + 'Sonar Chat Completions was sunset on 2026-09-27 — lib/webSearch.js and this test both need moving to the Agent API (POST /v1/responses).',
-          });
+        // Calls askPerplexity() — the SAME function lib/webSearch.js uses — so this
+        // proves the path search actually takes, and `surface` reports which API
+        // answered (the Agent API, or the retired Sonar path as a fallback). That is
+        // direct evidence on the one question the docs contradict each other on.
+        try {
+          const out = await askPerplexity({ key: apiKey, query: 'Reply with the single word: ok', maxTokens: 32, timeoutMs: 20000 });
+          const via = out.surface === 'agent' ? 'the Agent API' : 'the legacy Sonar endpoint (retired 2026-09-27 — still answering, but plan to rely on the Agent API)';
+          return res.json({ success: true, message: `Perplexity connected via ${via} (web search will work)` });
+        } catch (e) {
+          const msg = String(e.message || '');
+          if (e.status === 401) return res.json({ success: false, message: `Perplexity key rejected: ${msg}` });
+          if (e.status === 402 || e.status === 429 || /credit|balance|quota/i.test(msg)) {
+            // The key exists and authenticates; the account has nothing to spend.
+            return res.json({ success: false, message: `Perplexity key is valid but the account has no usable credit (prepaid credits must be bought first): ${msg}` });
+          }
+          return res.json({ success: false, message: `Perplexity call failed: ${msg}` });
         }
-        if (r.status === 401) return res.json({ success: false, message: `Perplexity key rejected: ${msg}` });
-        return res.json({ success: false, message: `Perplexity call failed: ${msg}` });
       }
 
       case 'resend':
@@ -677,10 +701,12 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       }
 
       case 'google_drive': {
-        const dedicated = k.google_drive_token;
-        const g = dedicated ? { token: dedicated } : await googleToken(req.companyId, k);
-        const token = g.token;
-        if (!token) return res.json({ success: false, message: g.error });
+        const granted = String(k.google_scopes || '');
+        if (granted && !granted.includes('auth/drive')) {
+          return res.json({ success: false, message: 'Google Drive access was not granted. Drive browsing needs a restricted Google permission that is not enabled in this release.' });
+        }
+        const { token, error: tokenErr } = await googleToken(req.companyId, k);
+        if (!token) return res.json({ success: false, message: tokenErr });
         const r = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -742,7 +768,12 @@ router.get('/google/drive/files', requireAuth, async (req, res) => {
       .single();
     const company = companyRow?.api_keys || {};
 
-    const token = company.google_drive_token || company.google_access_token;
+    let token = null;
+    try {
+      token = await getGoogleAccessToken(req.companyId, company);
+    } catch {
+      return res.status(401).json({ error: 'Google needs to be reconnected.' });
+    }
     if (!token) return res.status(401).json({ error: 'Google Drive not connected' });
 
     const params = new URLSearchParams({
@@ -819,21 +850,29 @@ router.get('/google/analytics', requireAuth, async (req, res) => {
 
     const endDate = 'today';
     const startDate = `${days}daysAgo`;
+    let gaToken;
+    try {
+      gaToken = await getGoogleAccessToken(req.companyId, company);
+    } catch {
+      return res.json({ error: 'Google needs to be reconnected.' });
+    }
 
     const r = await fetch(
       `https://analyticsdata.googleapis.com/v1beta/properties/${company.google_analytics_property_id}:runReport`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${company.google_access_token}`,
+          Authorization: `Bearer ${gaToken}`,
         'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           dateRanges: [{ startDate, endDate }],
           metrics: [
+            // GA4 Data API metric names. 'users' and 'pageviews' (Universal Analytics names)
+            // do not exist: every request failed with an invalid-metric error. Same order as before.
             { name: 'sessions' },
-            { name: 'users' },
-            { name: 'pageviews' },
+            { name: 'totalUsers' },
+            { name: 'screenPageViews' },
             { name: 'bounceRate' },
             { name: 'averageSessionDuration' },
           ],
@@ -898,35 +937,3 @@ router.post('/hunter/find-email', requireAuth, async (req, res) => {
 });
 
 export default router;
-
-async function getGoogleAccessToken(companyId, keys) {
-  const expiresAt = keys.google_token_expires_at ? new Date(keys.google_token_expires_at).getTime() : 0;
-  if (keys.google_access_token && expiresAt > Date.now() + 60000) return keys.google_access_token;
-
-  const refreshToken = keys.google_ads_refresh_token || keys.google_refresh_token;
-  const clientId = keys.google_ads_client_id || keys.google_client_id || process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = keys.google_ads_client_secret || keys.google_client_secret || process.env.GOOGLE_CLIENT_SECRET;
-  if (!refreshToken || !clientId || !clientSecret) return keys.google_access_token || null;
-
-  const response = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
-  });
-  const tokens = await response.json();
-  if (!response.ok || tokens.error || !tokens.access_token) {
-    throw new Error(tokens.error_description || tokens.error || 'Google OAuth refresh failed');
-  }
-  const updatedKeys = {
-    ...keys,
-    google_access_token: tokens.access_token,
-    google_token_expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
-  };
-  await supabaseAdmin.from('companies').update({ api_keys: updatedKeys }).eq('id', companyId);
-  return tokens.access_token;
-}

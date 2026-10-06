@@ -4,7 +4,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
 
 const router = Router();
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const API_URL = process.env.API_URL || 'http://localhost:3001';
@@ -138,6 +138,12 @@ router.get('/launch-url', requireAuth, (req, res) => {
   const provider = String(req.query.provider || '').replace(/[^a-z_]/gi, '');
   const type = String(req.query.type || '').replace(/[^a-z_]/gi, '');
   if (!provider) return res.status(400).json({ error: 'provider is required' });
+  if (provider === 'google' && GOOGLE_RESTRICTED_ONLY_TYPES.has(type) && !restrictedGoogleScopesEnabled()) {
+    return res.status(400).json({
+      error: 'Google Drive browsing needs a restricted Google permission, which Google only grants after a paid annual '
+        + 'security assessment. It is not enabled yet. Gmail sending, Calendar, Analytics, Search Console and YouTube are unaffected.',
+    });
+  }
 
   const ticket = mintLaunchTicket({ userId: req.dbUser.id, companyId: req.companyId });
   const params = new URLSearchParams({ t: ticket, ...(type ? { type } : {}) });
@@ -294,7 +300,9 @@ const GOOGLE_SCOPES_MAP = {
   ],
   youtube: [
     'https://www.googleapis.com/auth/youtube.readonly',
-    'https://www.googleapis.com/auth/youtube.upload',
+    // youtube.upload removed (2026-10-06): nothing in the code uploads to YouTube, and
+    // Google forces uploads from an unaudited API project to PRIVATE until the project
+    // passes a compliance audit - a scope with a hidden gate and no caller.
     'https://www.googleapis.com/auth/userinfo.email',
   ],
   google_drive: [
@@ -304,11 +312,44 @@ const GOOGLE_SCOPES_MAP = {
   gmail: [
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.send',
-    'https://www.googleapis.com/auth/gmail.compose',
+    // gmail.compose removed (2026-10-06): RESTRICTED, and the code only ever calls
+    // messages.send (lib/emailSender.js) plus messages.list/get (routes/messaging.js).
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
   ],
 };
+
+/**
+ * RESTRICTED Google scopes - the ones that trigger the annual third-party security
+ * assessment (CASA). Classified from Google's own Gmail and Drive scope tables,
+ * fetched 2026-10-06: gmail.readonly/modify/compose/metadata/insert and full mail
+ * access are restricted while gmail.send is only SENSITIVE; drive, drive.readonly and
+ * drive.metadata are restricted while drive.file is not.
+ *
+ * WHY THESE ARE OFF BY DEFAULT. Verification with only sensitive scopes takes roughly
+ * 2-4 weeks and costs nothing; with a restricted scope it is 5-10 weeks plus an annual
+ * assessment (third-party quotes about $540-$3,000 a year, Google publishes no price).
+ * Worse, an UNVERIFIED production app is capped at 100 new users for the whole life of
+ * the project, a cap Google says cannot be reset - so launching with restricted scopes
+ * before the assessment is paid for can burn that allowance with nothing to show.
+ * What is lost while off: Gmail INBOX SYNC (sending still works) and Drive browsing.
+ * Switch on with GOOGLE_ENABLE_RESTRICTED_SCOPES=true once the assessment is budgeted.
+ */
+const GOOGLE_RESTRICTED_SCOPES = new Set([
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.metadata',
+]);
+const restrictedGoogleScopesEnabled = () => process.env.GOOGLE_ENABLE_RESTRICTED_SCOPES === 'true';
+
+/** Types whose ONLY purpose needs a restricted scope - refuse them rather than connect an empty grant. */
+const GOOGLE_RESTRICTED_ONLY_TYPES = new Set(['google_drive']);
+
+function googleScopesFor(type) {
+  const wanted = GOOGLE_SCOPES_MAP[type] || GOOGLE_SCOPES_MAP.gmail;
+  return restrictedGoogleScopesEnabled() ? wanted : wanted.filter((s) => !GOOGLE_RESTRICTED_SCOPES.has(s));
+}
 
 // GET /api/oauth/google/initiate?type=gmail&origin=...
 // GET /api/oauth/google/initiate-url?type=gmail&origin=...
@@ -320,7 +361,7 @@ router.get(['/google/initiate', '/google/initiate-url'], allowLaunchTicket, asyn
     const clientId = apiKeys.google_client_id || process.env.GOOGLE_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'Google Client ID not configured' });
 
-    const scopes = GOOGLE_SCOPES_MAP[type] || GOOGLE_SCOPES_MAP.gmail;
+    const scopes = googleScopesFor(type);
     const state = encodeOAuthState({
       userId: req.dbUser.id,
       companyId: req.companyId,
@@ -336,6 +377,11 @@ router.get(['/google/initiate', '/google/initiate-url'], allowLaunchTicket, asyn
       scope: scopes.join(' '),
       access_type: 'offline',
       prompt: 'consent',
+      // Every Google service shares ONE stored token. Without this, connecting Calendar
+      // after Gmail replaces the token with one that covers only Calendar's scopes and
+      // silently breaks Gmail. This asks Google to return the UNION of everything the
+      // person has already granted this client.
+      include_granted_scopes: 'true',
       state,
     });
 
@@ -377,19 +423,26 @@ router.get('/google/callback', async (req, res) => {
     if (tokens.error) return res.send(popupHtml('error', 'Google', tokens.error_description || tokens.error));
 
     // Get user email from Google
-    const userInfoResp = await fetch(`https://www.googleapis.com/oauth2/v2/userinfo?access_token=${tokens.access_token}`);
-    const userInfo = await userInfoResp.json();
+    // Bearer header, not ?access_token=: Google logs query strings. A failure here must
+    // not abort the connect (the token is already good), so it only costs the email.
+    const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const userInfo = userInfoResp.ok ? await userInfoResp.json().catch(() => ({})) : {};
 
     // Build new tokens to store in api_keys JSONB
+    // ONE token model for every Google type. Drive used to store only the access token
+    // as google_drive_token - no refresh token, no expiry - so it stopped working about
+    // an hour after connecting and nothing could renew it.
     const newKeys = {};
-    if (integrationType === 'google_drive') {
-      newKeys.google_drive_token = tokens.access_token;
-    } else {
-      newKeys.google_access_token = tokens.access_token;
-      if (tokens.refresh_token) newKeys.google_refresh_token = tokens.refresh_token;
-      newKeys.google_token_expires_at = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-      if (userInfo.email) newKeys.google_connected_email = userInfo.email;
-    }
+    newKeys.google_access_token = tokens.access_token;
+    if (tokens.refresh_token) newKeys.google_refresh_token = tokens.refresh_token;
+    newKeys.google_token_expires_at = new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString();
+    if (userInfo.email) newKeys.google_connected_email = userInfo.email;
+    // The scopes Google ACTUALLY granted (the union, with include_granted_scopes). The
+    // person can untick boxes in the consent dialog, so a token's mere existence does not
+    // mean a service is usable; this is what lets the app tell.
+    if (tokens.scope) newKeys.google_scopes = String(tokens.scope);
 
     await saveOAuthTokens(companyId, newKeys, integrationType);
     res.send(popupHtml('success', 'Google', null, integrationType));
@@ -416,7 +469,7 @@ router.get(['/meta/initiate', '/meta/initiate-url'], allowLaunchTicket, async (r
       origin: origin || FRONTEND_URL,
     }, res);
 
-    const scopes = 'email,pages_show_list,pages_read_engagement,pages_manage_posts,pages_messaging,instagram_basic,instagram_content_publish,instagram_manage_messages,ads_management,ads_read,business_management';
+    const scopes = 'email,pages_show_list,pages_read_engagement,pages_manage_posts,pages_messaging,read_insights,instagram_basic,instagram_content_publish,instagram_manage_messages,instagram_manage_insights,ads_management,ads_read,business_management';
     const redirectUri = `${API_URL}/api/oauth/meta/callback`;
     const params = new URLSearchParams({
       client_id: appId,
@@ -773,14 +826,18 @@ router.post('/disconnect', requireAuth, requireCompanyAdmin, async (req, res) =>
   try {
     const { provider } = req.body;
 
+    // Google is ONE connection shared by Gmail, Calendar, Drive, Analytics, Search
+    // Console, YouTube and Ads: disconnecting any of them clears the shared token.
+    const GOOGLE_TOKEN_KEYS = ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email', 'google_scopes', 'google_drive_token'];
+
     // Define which api_keys fields to clear for each provider
     const TOKEN_KEYS_BY_PROVIDER = {
-      gmail: ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email'],
-      google_ads: ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email'],
-      google_analytics: ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email'],
-      google_search_console: ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email'],
-      google_drive: ['google_drive_token'],
-      google_calendar: ['google_access_token', 'google_refresh_token', 'google_token_expires_at', 'google_connected_email'],
+      gmail: GOOGLE_TOKEN_KEYS,
+      google_ads: GOOGLE_TOKEN_KEYS,
+      google_analytics: GOOGLE_TOKEN_KEYS,
+      google_search_console: GOOGLE_TOKEN_KEYS,
+      google_drive: GOOGLE_TOKEN_KEYS,
+      google_calendar: GOOGLE_TOKEN_KEYS,
       meta: ['meta_access_token', 'meta_token_expires_at', 'facebook_page_id', 'facebook_page_access_token', 'instagram_business_account_id'],
       facebook: ['meta_access_token', 'meta_token_expires_at', 'facebook_page_id', 'facebook_page_access_token'],
       instagram: ['instagram_business_account_id'],
@@ -809,21 +866,22 @@ router.post('/disconnect', requireAuth, requireCompanyAdmin, async (req, res) =>
 // Railway. Redirect URI in the Canva app must be
 // `${API_URL}/api/oauth/canva/callback`.
 //
-// NOTE: the reads below also check api_keys.canva_client_id/secret, but those are
-// NOT in the ALLOWED list in routes/companies.js, so they can never actually be
-// set and the left operand is always undefined — Canva is platform-app-only in
-// practice. Every other provider here (meta_app_id, linkedin_client_id,
-// twitter_client_id, tiktok_client_key) IS settable per company, so this is an
-// inconsistency, not a deliberate restriction. Left as-is rather than widening
-// what a company admin can write, which is a security decision for Derek: adding
-// the two names to that allowlist is all it would take.
+// DECISION (2026-10-06, Derek delegated it): Canva is PLATFORM-APP-ONLY. There is no
+// per-company Canva client id/secret, and none is accepted: a company_admin must not
+// be able to write OAuth client secrets, and Canva Connect is built around one
+// registered integration that every customer authorises against. (Meta, LinkedIn, X
+// and TikTok still accept per-company app credentials; revisiting those is a separate
+// decision recorded in AGENT_HANDOFF.md.) The per-company reads that used to sit here
+// were dead anyway — those names were never in the ALLOWED list in routes/companies.js
+// — so removing them changes no behaviour, only stops the code implying a path that
+// does not exist.
 const CANVA_SCOPES = 'design:content:read design:content:write asset:read asset:write profile:read';
 
 router.get(['/canva/initiate', '/canva/initiate-url'], allowLaunchTicket, async (req, res) => {
   try {
     const { type = 'canva', origin } = req.query;
     const { apiKeys } = await getCompanyKeys(req.companyId);
-    const clientId = apiKeys.canva_client_id || process.env.CANVA_CLIENT_ID;
+    const clientId = process.env.CANVA_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'Canva Client ID not configured', code: 'NOT_CONFIGURED' });
 
     const codeVerifier = crypto.randomBytes(48).toString('base64url');
@@ -855,8 +913,8 @@ router.get('/canva/callback', async (req, res) => {
     if (oauthError) return res.send(popupHtml('error', 'Canva', oauthError));
     const { companyId, codeVerifier, integrationType = 'canva' } = await consumeOAuthState(state, req);
     const { apiKeys } = await getCompanyKeys(companyId);
-    const clientId = apiKeys.canva_client_id || process.env.CANVA_CLIENT_ID;
-    const clientSecret = apiKeys.canva_client_secret || process.env.CANVA_CLIENT_SECRET;
+    const clientId = process.env.CANVA_CLIENT_ID;
+    const clientSecret = process.env.CANVA_CLIENT_SECRET;
 
     const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
     const r = await fetch('https://api.canva.com/rest/v1/oauth/token', {
@@ -887,8 +945,8 @@ router.get('/canva/callback', async (req, res) => {
 export async function refreshCanvaToken(companyId) {
   const { apiKeys } = await getCompanyKeys(companyId);
   if (!apiKeys.canva_refresh_token) throw new Error('Canva not connected');
-  const clientId = apiKeys.canva_client_id || process.env.CANVA_CLIENT_ID;
-  const clientSecret = apiKeys.canva_client_secret || process.env.CANVA_CLIENT_SECRET;
+  const clientId = process.env.CANVA_CLIENT_ID;
+  const clientSecret = process.env.CANVA_CLIENT_SECRET;
   const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   const r = await fetch('https://api.canva.com/rest/v1/oauth/token', {
     method: 'POST',
@@ -960,19 +1018,43 @@ function popupHtml(status, provider, errorMsg = null, integrationType = null) {
 router.get('/popup.js', (_req, res) => {
   res.type('application/javascript').send(`(function () {
   var b = document.body;
+  var ok = b.dataset.status === 'success';
   var msg = {
-    type: b.dataset.status === 'success' ? 'oauth_success' : 'oauth_error',
+    type: ok ? 'oauth_success' : 'oauth_error',
     provider: b.dataset.provider,
     integrationType: b.dataset.integration
   };
+  var delivered = false;
   try {
     if (window.opener) {
       // Named origin when we know it; '*' only as a last resort, and the payload
       // carries no secret either way.
       window.opener.postMessage(msg, b.dataset.target || '*');
+      delivered = true;
     }
-  } catch (e) { /* opener gone or cross-origin — closing is still correct */ }
-  setTimeout(function () { window.close(); }, 300);
+  } catch (e) { /* opener gone or cross-origin */ }
+
+  if (delivered) { setTimeout(function () { window.close(); }, 300); return; }
+
+  // NO OPENER. Verified 2026-10-06: this page is served with COOP same-origin (helmet
+  // default) while the app that opens it sends none, which per the spec puts the popup
+  // in a new browsing-context group and nulls window.opener. An in-app browser or a
+  // phone's system-browser tab has no opener either. There is nobody to message, and
+  // window.close() is refused for a window script did not open, so the user would be
+  // stranded on a page promising it will close. Send them back into the app instead:
+  // it reads the outcome from the query string and CONFIRMS it with the server, and on
+  // a phone this https URL is claimed by the installed app (universal / app link) or
+  // simply opens the web app. The security header is deliberately left as it is.
+  var t = b.dataset.target;
+  if (t) {
+    var who = b.dataset.integration || b.dataset.provider || '';
+    // (The regex below needs a DOUBLE backslash in the server source because this sits
+    // inside a template literal: a single one collapses and the emitted regex becomes
+    // two slashes, which is a comment and broke the whole script.)
+    location.replace(t.replace(/\\/+$/, '') + '/Integrations?oauth=' + (ok ? 'success' : 'error') + '&provider=' + encodeURIComponent(who));
+  } else {
+    setTimeout(function () { window.close(); }, 300);
+  }
 })();`);
 });
 

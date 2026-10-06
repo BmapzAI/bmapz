@@ -378,14 +378,49 @@ export default function ConnectIntegrationModal({ integration, company, user, is
         return;
       }
 
+      // The server, not the popup window, is the source of truth for "did it connect".
+      //
+      // A popup that LOOKS closed is not evidence the user cancelled. The callback page
+      // is cross-origin to this app and carries COOP same-origin (verified in
+      // production 2026-10-06), which severs the opener: the window reads closed and no
+      // postMessage can arrive — even though the token exchange finished and the
+      // connection was saved. Treating that as "cancelled" would report FAILURE for
+      // every successful connect. In-app browsers on a phone have no opener at all.
+      // So when the window goes away without a message, ask the server, patiently
+      // (a severed popup can also be one the user is still using).
+      const finishSuccess = () => {
+        handledByMessage = true;
+        clearInterval(pollTimer);
+        window.removeEventListener('message', onMessage);
+        setConnecting(false);
+        queryClient.invalidateQueries({ queryKey: ['companies'] });
+        setStep(3);
+        onSuccess?.();
+      };
+      const verifyWithServer = async () => {
+        const key = integration.statusKey || integration.type;
+        const deadline = Date.now() + 45000;
+        while (Date.now() < deadline) {
+          if (handledByMessage) return;                 // the message arrived after all
+          try {
+            const res = await api.get('/api/integrations/status');
+            if (res?.status?.[key] === true) { finishSuccess(); return; }
+          } catch { /* transient — keep trying until the deadline */ }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+        if (!handledByMessage) {
+          window.removeEventListener('message', onMessage);
+          setConnecting(false);
+          toast.error(t('connectionNotCompletedMsg'));
+        }
+      };
+
+      let verifying = false;
       pollTimer = setInterval(() => {
         if (!popup || popup.closed) {
           clearInterval(pollTimer);
-          window.removeEventListener('message', onMessage);
-          if (!handledByMessage) {
-            setConnecting(false);
-            toast.error(t('connectionNotCompletedMsg'));
-          }
+          if (handledByMessage) { window.removeEventListener('message', onMessage); return; }
+          if (!verifying) { verifying = true; verifyWithServer(); }
         }
       }, 800);
 

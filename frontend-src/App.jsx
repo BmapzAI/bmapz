@@ -89,6 +89,12 @@ const PublicRoutes = () => (
       <Route path="/PrivacyPolicy" element={<PrivacyPolicy />} />
       <Route path="/DataDeletion" element={<DataDeletion />} />
       <Route path="/TermsOfService" element={<TermsOfService />} />
+      {/* Lowercase aliases: reviewers at Google/Meta/TikTok try the obvious URL first, and the SPA fallback would otherwise answer 200 with the LOGIN page, which reads as a missing privacy policy. */}
+      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/terms-of-service" element={<TermsOfService />} />
+      <Route path="/terms" element={<TermsOfService />} />
+      <Route path="/data-deletion" element={<DataDeletion />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Suspense>
@@ -128,6 +134,11 @@ const AuthenticatedRoutes = ({ currentUser }) => (
     <Route path="/Documentation" element={<LayoutWrapper currentPageName="Documentation"><Documentation /></LayoutWrapper>} />
     <Route path="/VideoTutorials" element={<LayoutWrapper currentPageName="VideoTutorials"><VideoTutorials /></LayoutWrapper>} />
     <Route path="/TermsOfService" element={<TermsOfService />} />
+    <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+    <Route path="/privacy" element={<PrivacyPolicy />} />
+    <Route path="/terms-of-service" element={<TermsOfService />} />
+    <Route path="/terms" element={<TermsOfService />} />
+    <Route path="/data-deletion" element={<DataDeletion />} />
       <Route path="/Pricing" element={<Pricing />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="*" element={<PageNotFound />} />

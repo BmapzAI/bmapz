@@ -21,6 +21,8 @@
  * everywhere else in the app.
  */
 import { supabaseAdmin } from './supabase.js';
+import { askPerplexity } from './perplexity.js';
+import { liveModelFor } from './aiCredits.js';
 
 const clean = (k) => (typeof k === 'string' && k.trim() ? k.trim() : null);
 
@@ -77,44 +79,23 @@ async function fetchJson(url, options, timeoutMs = 20000) {
 /* ── Providers ──────────────────────────────────────────────────────────── */
 
 /**
- * ⚠ DEADLINE: 2026-09-27. This calls the Sonar Chat Completions surface, which
- * Perplexity is sunsetting on that date — confirmed from their own docs:
- * "Sonar Chat Completions is now Agent API. Sonar will be supported until
- * September 27, 2026."
+ * Perplexity, via the Agent API (Sonar Chat Completions was retired 2026-09-27).
+ * All of the request/response handling, the reasoning, and the unit tests live in
+ * lib/perplexity.js; this is only the adapter to this module's result shape. The
+ * `perplexity` case in routes/integrations.js calls the SAME function, so the
+ * connection test proves the path search actually takes.
  *
- * After it: `sonar` survives only on the Agent API (POST /v1/responses with the
- * perplexity-agent models), and `sonar-pro` / `sonar-reasoning-pro` have no
- * replacement id at all. Both this path and the `perplexity` case in
- * routes/integrations.js must move together, so the test keeps proving the path
- * the product actually takes.
- *
- * NOT migrated here on purpose: there is no PERPLEXITY_API_KEY in Railway yet, so
- * a rewrite could not have been executed even once, and shipping an untested
- * rewrite of the primary web-search provider is worse than shipping a dated
- * warning. Blast radius if it lapses: web search falls through to the next
- * provider in the chain below rather than failing outright.
+ * Dormant until a key exists: resolveKeys() yields none, so it is never attempted,
+ * and any failure falls through to the next provider in the chain.
  */
 async function viaPerplexity(query, key) {
-  const body = await fetchJson('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'sonar',
-      messages: [
-        { role: 'system', content: 'Answer factually and concisely from current sources. If sources disagree or are thin, say so.' },
-        { role: 'user', content: query },
-      ],
-      max_tokens: 700,
-      temperature: 0.2,
-    }),
+  const { answer, citations } = await askPerplexity({
+    key,
+    query,
+    system: 'Answer factually and concisely from current sources. If sources disagree or are thin, say so.',
+    maxTokens: 700,
   });
-
-  const answer = body?.choices?.[0]?.message?.content;
-  if (!answer) throw new Error('no answer in response');
-  // Perplexity has returned citations under different keys across versions;
-  // accept either rather than losing them.
-  const citations = body?.citations || body?.search_results?.map(r => r?.url) || [];
-  return { answer, citations: citations.filter(Boolean).slice(0, 8), provider: 'perplexity' };
+  return { answer, citations, provider: 'perplexity' };
 }
 
 async function viaOpenAI(query, key) {
@@ -122,7 +103,9 @@ async function viaOpenAI(query, key) {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'gpt-4.1',
+      // Followed against the live catalog so a retired id degrades to its successor
+      // instead of silently dropping web search to the next provider.
+      model: liveModelFor('gpt-4.1', 'openai'),
       tools: [{ type: 'web_search' }],
       input: query,
     }),
@@ -150,7 +133,7 @@ async function viaAnthropic(query, key) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
+      model: liveModelFor('claude-sonnet-4-5', 'anthropic'),
       max_tokens: 900,
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
       messages: [{ role: 'user', content: query }],

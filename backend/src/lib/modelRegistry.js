@@ -10,7 +10,7 @@
  * - Cached in-process for 12 hours (providers rarely change intra-day).
  * - Falls back to the static known list if a provider call fails.
  */
-import { inferModelTier, inferModelMultiplier, MODEL_TIER } from './aiCredits.js';
+import { inferModelTier, inferModelMultiplier, MODEL_TIER, setLiveCatalog } from './aiCredits.js';
 
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 let cacheAt = 0;
@@ -94,6 +94,12 @@ export async function getLiveModels({ force = false } = {}) {
     (tierOrder[a.tier] - tierOrder[b.tier]) ||
     a.credit_multiplier - b.credit_multiplier
   );
+
+  // Feed the resolvers in aiCredits.js — but ONLY with catalogs that were genuinely
+  // fetched. When both providers failed we fell back to the static list above, and
+  // presenting that as "live" would tell the resolvers the retired ids are fine.
+  if (anthropicRes.status === 'fulfilled') setLiveCatalog('anthropic', classified.filter((m) => m.provider === 'anthropic'));
+  if (openaiRes.status === 'fulfilled') setLiveCatalog('openai', classified.filter((m) => m.provider === 'openai'));
 
   cached = classified;
   cacheAt = Date.now();

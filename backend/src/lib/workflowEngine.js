@@ -22,7 +22,7 @@ import { createNotification } from './notify.js';
 import { startSdrConversation, notifyHandover, handleInboundForSdr, FUNNEL_STAGES } from './sdrEngine.js';
 import { logLeadActivity, LEAD_ACTIVITY_TYPES } from './leadActivity.js';
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 const TICK_MS = 60 * 1000;
 const MAX_STEPS_PER_TICK = 12; // guard against loops within one run per tick
 const MAX_TOTAL_STEPS = 250; // fail malformed cyclic graphs instead of running forever

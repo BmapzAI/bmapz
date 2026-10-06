@@ -45,7 +45,7 @@ const API_KEY_FIELDS = new Set([
   'apollo_api_key', 'hunter_api_key', 'lusha_api_key', 'clay_api_key',
   'cal_com_api_key', 'chilipiper_api_key', 'chilipiper_tenant',
   'google_developer_token', 'google_ads_developer_token', 'google_ads_client_id', 'google_ads_client_secret',
-  'google_ads_refresh_token', 'google_ads_customer_id', 'google_ads_connected',
+  'google_ads_refresh_token', 'google_ads_customer_id', 'google_ads_login_customer_id', 'google_ads_connected',
   'meta_ad_account_id', 'meta_page_id', 'meta_ads_account_id', 'meta_ads_connected',
   'instagram_account_id',
   'linkedin_ads_access_token', 'linkedin_ads_account_id', 'linkedin_ads_connected',

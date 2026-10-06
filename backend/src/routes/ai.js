@@ -16,6 +16,8 @@ import {
   PLAN_SCAN_TOKENS,
   PLAN_MONTHLY_CREDITS,
   DEFAULT_MODEL_PER_PROVIDER,
+  defaultModelFor,
+  liveModelFor,
   MODEL_TIER,
   PLAN_MODEL_ACCESS,
 } from '../lib/aiCredits.js';
@@ -543,20 +545,23 @@ function categorizeProviderError(err, providerLabel) {
 // Strategy: pass the user's requested model AS-IS to Anthropic. If they reject
 // it as invalid (e.g. typo or deprecated), auto-retry with a known-good fallback
 // that has been stable for a long time.
-const ANTHROPIC_FALLBACK_MODEL = 'claude-3-5-sonnet-20241022';
+// Last-resort retry targets. These were literal ids ("stable for a long time"), and the
+// Anthropic one has since been RETIRED, so the retry itself failed. They now resolve
+// against the live catalog (lib/aiCredits.js liveModelFor), so they follow the provider.
+const anthropicFallback = () => liveModelFor('claude-3-5-sonnet-20241022', 'anthropic');
 function resolveAnthropicModel(requested) {
-  if (!requested) return ANTHROPIC_FALLBACK_MODEL;
-  return requested;
+  if (!requested) return anthropicFallback();
+  return liveModelFor(requested, 'anthropic');
 }
 
-const OPENAI_FALLBACK_MODEL = 'gpt-4o-mini';
+const openaiFallback = () => liveModelFor('gpt-4o-mini', 'openai');
 
 // ─── Provider calls ──────────────────────────────────────────────────────────
 
 async function callOpenAI({ companyId, settings, messages, model, temperature, max_tokens, response_format, system, keyOverride }) {
   const client = await getOpenAIClient(companyId, keyOverride);
   const requestedModel = model && !model.startsWith('claude') ? model : null;
-  const openaiModel = requestedModel || settings.openai_model || OPENAI_FALLBACK_MODEL;
+  const openaiModel = requestedModel || settings.openai_model || openaiFallback();
   const msgs = [];
   if (system) msgs.push({ role: 'system', content: system });
   msgs.push(...(messages || []));
@@ -577,15 +582,15 @@ async function callOpenAI({ companyId, settings, messages, model, temperature, m
   } catch (err) {
     // Retry once with safe fallback model if invalid model
     const cat = categorizeProviderError(err, 'OpenAI');
-    if (cat.kind === 'INVALID_MODEL' && openaiModel !== OPENAI_FALLBACK_MODEL) {
-      console.warn(`[ai] OpenAI model ${openaiModel} invalid; retrying with ${OPENAI_FALLBACK_MODEL}`);
-      const retryParams = { ...params, model: OPENAI_FALLBACK_MODEL };
+    if (cat.kind === 'INVALID_MODEL' && openaiModel !== openaiFallback()) {
+      console.warn(`[ai] OpenAI model ${openaiModel} invalid; retrying with ${openaiFallback()}`);
+      const retryParams = { ...params, model: openaiFallback() };
       const completion = await client.chat.completions.create(retryParams);
       return {
         content: completion.choices[0].message.content,
         usage: completion.usage,
         provider_used: 'openai',
-        model_used: OPENAI_FALLBACK_MODEL,
+        model_used: openaiFallback(),
         key_source: keyOverride ? 'override' : (settings.openai_api_key ? 'company' : 'platform'),
       };
     }
@@ -657,9 +662,9 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
   } catch (err) {
     const cat = categorizeProviderError(err, 'Anthropic');
     // Retry with known-good fallback model if invalid model
-    if (cat.kind === 'INVALID_MODEL' && anthropicModel !== ANTHROPIC_FALLBACK_MODEL) {
-      console.warn(`[ai] Anthropic model ${anthropicModel} invalid; retrying with ${ANTHROPIC_FALLBACK_MODEL}`);
-      const response = await client.messages.create({ ...params, model: ANTHROPIC_FALLBACK_MODEL });
+    if (cat.kind === 'INVALID_MODEL' && anthropicModel !== anthropicFallback()) {
+      console.warn(`[ai] Anthropic model ${anthropicModel} invalid; retrying with ${anthropicFallback()}`);
+      const response = await client.messages.create({ ...params, model: anthropicFallback() });
       return {
         content: response.content[0]?.text || '',
         usage: {
@@ -668,7 +673,7 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
           total_tokens: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
         },
         provider_used: 'anthropic',
-        model_used: ANTHROPIC_FALLBACK_MODEL,
+        model_used: anthropicFallback(),
       };
     }
     err._category = cat;
@@ -844,7 +849,7 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
   // Resolve which model to actually use given plan tier + action type
   const requestedModel = model
     || (provider === 'anthropic' ? settings.anthropic_model : settings.openai_model)
-    || DEFAULT_MODEL_PER_PROVIDER[provider];
+    || defaultModelFor(provider);
   const resolvedModel = resolveActionModel(action, requestedModel, planId, provider);
 
   // Build attempt list: each entry is { provider, key, source }
@@ -870,8 +875,8 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
       const fn = attempt.provider === 'openai' ? callOpenAI : callAnthropic;
       // For Anthropic, swap in resolvedModel if it's an OpenAI model (cross-provider fallback)
       const modelForAttempt = attempt.provider === 'anthropic'
-        ? (resolvedModel.startsWith('claude') ? resolvedModel : DEFAULT_MODEL_PER_PROVIDER.anthropic)
-        : (resolvedModel.startsWith('claude') ? DEFAULT_MODEL_PER_PROVIDER.openai : resolvedModel);
+        ? (resolvedModel.startsWith('claude') ? resolvedModel : defaultModelFor('anthropic'))
+        : (resolvedModel.startsWith('claude') ? defaultModelFor('openai') : resolvedModel);
 
       const result = await fn({
         companyId, settings, messages,
@@ -1078,7 +1083,7 @@ router.get('/diagnose', requireAuth, requireCompanyAdmin, async (req, res) => {
       // Presence only. A prefix confirms the key's type and account family, which
       // is a hint an attacker does not need and an operator does not require.
       key_configured: !!settings.openai_api_key,
-      model: settings.openai_model || OPENAI_FALLBACK_MODEL,
+      model: settings.openai_model || openaiFallback(),
       test_result: null,
     },
     anthropic: {

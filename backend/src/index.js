@@ -160,10 +160,24 @@ app.use(express.urlencoded({ extended: true }));
 // behind it was updated. The repo is public, so the SHA discloses nothing.
 const BUILD_SHA = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || null;
 
+/**
+ * The host OAuth redirect URIs are built from (HOST ONLY — no path, no secret).
+ *
+ * API_URL is read by exactly one module (oauth.js) and every route that reaches it
+ * needs a session, so its live value was unobservable from outside: it could be set
+ * in Railway and still be wrong in the running process, and nothing could say so
+ * without a real OAuth connect. This makes it a one-request check. It discloses
+ * nothing an attacker does not already see in the first redirect of any OAuth flow.
+ */
+const oauthHost = (() => {
+  try { return new URL(process.env.API_URL || '').host || 'unset'; } catch { return 'unset'; }
+})();
+
 app.get('/health', (_req, res) => res.json({
   status: 'ok',
   ts: new Date().toISOString(),
   commit: BUILD_SHA ? BUILD_SHA.slice(0, 7) : 'unknown',
+  oauth_host: oauthHost,
 }));
 
 // ─── Routes ──────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { sendCompanyEmail } from '../lib/emailSender.js';
 
 const router = Router();
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 
 // When a human replies to a lead from the Inbox, any active SDR conversation for
 // that lead is handed to the human — the SDR stops auto-replying. The human

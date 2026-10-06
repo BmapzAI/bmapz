@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { GOOGLE_ADS_API_VERSION, googleAdsHeaders, googleAdsApiError, googleAdsErrorMessage } from '../lib/googleAds.js';
 
 const router = Router();
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202606';
 const AD_RECORD_FIELDS = ['type', 'platform', 'title', 'status', 'external_id', 'ad_account_id',
   'campaign_id', 'ad_set_id', 'budget', 'budget_type', 'objective', 'audience', 'creative',
@@ -200,28 +201,21 @@ router.get('/campaigns', requireAuth, async (req, res) => {
       if (googleAccessToken && company.google_ads_customer_id) {
         try {
           const r = await fetch(
-            `https://googleads.googleapis.com/v24/customers/${company.google_ads_customer_id.replace(/-/g, '')}/googleAds:searchStream`,
+            `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${company.google_ads_customer_id.replace(/-/g, '')}/googleAds:searchStream`,
             {
               method: 'POST',
-              headers: {
-                Authorization: `Bearer ${googleAccessToken}`,
-                // Developer tokens were sunset 2026-09-09 and are "optional and
-                // ignored by the API servers"; Google has said it will start
-                // REJECTING them in a future major version. Sent only when a
-                // legacy token is still on file, rather than as an empty header.
-                ...(company.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN
-                  ? { 'developer-token': company.google_ads_developer_token || process.env.GOOGLE_ADS_DEVELOPER_TOKEN }
-                  : {}),
-                'Content-Type': 'application/json',
-              },
+              // Version, developer-token policy and login-customer-id (manager accounts) are
+              // decided once, in lib/googleAds.js.
+              headers: googleAdsHeaders({ token: googleAccessToken, keys: company }),
               body: JSON.stringify({
                 query: `SELECT campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date DURING LAST_30_DAYS`,
               }),
             }
           );
           const d = await r.json();
-          if (!r.ok || d.error) {
-            throw new Error(d.error?.message || 'Google Ads API returned an error.');
+          if (!r.ok || googleAdsApiError(d)) {
+            // searchStream reports failures as an ARRAY, so d.error was undefined here.
+            throw new Error(googleAdsErrorMessage(d, r.status));
           }
           response.campaigns = mapGoogleAdsCampaigns(d);
         } catch (e) {

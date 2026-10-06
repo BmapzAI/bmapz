@@ -14,7 +14,7 @@
 import { supabaseAdmin } from './supabase.js';
 import { getPlatform } from './adPlatforms.js';
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202606';
 
 class PublishError extends Error {
@@ -298,7 +298,7 @@ const ADAPTERS = {
   meta,
   linkedin,
   tiktok,
-  google: notYet('Google Ads', 'campaign creation needs an approved developer token and the Google Ads mutate API. Everything is built and validated here — connect an approved account to enable it.'),
+  google: notYet('Google Ads', 'campaign creation is not enabled in this release. Your campaigns can still be read and reported.'),
   twitter: notYet('X Ads', 'the X Ads API requires an approved advertiser application. Everything is built and validated here — connect an approved account to enable it.'),
 };
 

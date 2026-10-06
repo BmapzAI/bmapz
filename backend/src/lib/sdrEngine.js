@@ -18,7 +18,7 @@ import { sendCompanyEmail } from './emailSender.js';
 import { createNotification } from './notify.js';
 import { logLeadActivity, LEAD_ACTIVITY_TYPES } from './leadActivity.js';
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 export const FUNNEL_STAGES = ['prospect', 'awareness', 'consideration', 'mql', 'sql', 'opportunity', 'customer', 'retention', 'advocacy'];
 export const ALL_OUTCOMES = ['offer_product', 'handover', 'qualified', 'not_qualified', 'support'];
 

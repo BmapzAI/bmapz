@@ -3,7 +3,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 const SOCIAL_POST_FIELDS = ['title', 'content', 'platform_contents', 'platforms', 'content_type',
   'status', 'scheduled_for', 'published_at', 'external_post_id', 'platform_post_ids', 'hashtags',
   'media_urls', 'performance', 'ai_generated', 'ai_optimized'];
@@ -306,12 +306,17 @@ router.get('/analytics', requireAuth, async (req, res) => {
     if (!platform || platform === 'facebook') {
       if (company.facebook_page_access_token && company.facebook_page_id) {
         try {
-          const metrics = 'page_impressions,page_engaged_users,page_post_engagements,page_fans';
+          // page_impressions*, page_engaged_users and page_fans were DEPRECATED on 2025-11-15 for
+          // ALL versions. One invalid metric fails the whole request, and this code then stored
+          // d.data (undefined) as [], so the dashboard silently showed empty Facebook analytics.
+          // UNVERIFIED against a live Page token - none exists yet. Re-check on first connect.
+          const metrics = 'page_media_view,page_follows,page_post_engagements';
           const r = await fetch(
             `https://graph.facebook.com/${META_GRAPH_VERSION}/${company.facebook_page_id}/insights?metric=${metrics}&period=day&limit=30&access_token=${company.facebook_page_access_token}`
           );
           const d = await r.json();
-          analytics.facebook = d.data || [];
+          // Surface Meta's error instead of dressing it up as "no data".
+          analytics.facebook = d.error ? { error: d.error.message } : (d.data || []);
         } catch (e) {
           analytics.facebook = { error: e.message };
         }
@@ -321,12 +326,18 @@ router.get('/analytics', requireAuth, async (req, res) => {
     if (!platform || platform === 'instagram') {
       if (company.meta_access_token && company.instagram_business_account_id) {
         try {
-          const metrics = 'impressions,reach,profile_views,follower_count';
-          const r = await fetch(
-            `https://graph.facebook.com/${META_GRAPH_VERSION}/${company.instagram_business_account_id}/insights?metric=${metrics}&period=day&limit=30&access_token=${company.meta_access_token}`
-          );
-          const d = await r.json();
-          analytics.instagram = d.data || [];
+          // `impressions` was deprecated for ALL versions on 2025-04-21, and profile_views /
+          // follower_count are not time-series metrics, so the old single call always errored.
+          // reach is the time series; the rest are fetched as totals. UNVERIFIED against a live
+          // Instagram token - none exists yet. Needs instagram_manage_insights (now requested).
+          const igBase = `https://graph.facebook.com/${META_GRAPH_VERSION}/${company.instagram_business_account_id}/insights`;
+          const igTok = `access_token=${company.meta_access_token}`;
+          const [series, totals] = await Promise.all([
+            fetch(`${igBase}?metric=reach&period=day&limit=30&${igTok}`).then((x) => x.json()),
+            fetch(`${igBase}?metric=views,accounts_engaged,total_interactions&metric_type=total_value&period=day&${igTok}`).then((x) => x.json()),
+          ]);
+          const igErr = series.error || totals.error;
+          analytics.instagram = igErr ? { error: igErr.message } : [...(series.data || []), ...(totals.data || [])];
         } catch (e) {
           analytics.instagram = { error: e.message };
         }
