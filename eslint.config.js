@@ -78,7 +78,7 @@ export default [
   // Scoped to correctness rules rather than style, so turning it on reports real
   // latent crashes instead of drowning them in formatting noise.
   {
-    files: ['backend/**/*.js'],
+    files: ['backend/**/*.{js,mjs}'],
     languageOptions: {
       globals: {
         ...globals.node,

@@ -3928,3 +3928,191 @@ that the key goes in an `x-api-key` header and not as a Bearer token.
 SAME CLASS AS THE GMAIL BUG fixed earlier today. When adding any integration test,
 the question is not "did the call succeed" but "could this have succeeded without
 valid credentials". If yes, it is not a test.
+
+
+## 2026-10-06 — RE-VERIFICATION OF THE INTEGRATIONS PLAN, AND THE FIXES IT FORCED (Claude Sonnet 5.5)
+
+Derek asked for three things: update everything, because deadlines had passed and pins might be
+stale; take the two decisions that were his, on a best-recommendation basis, because his time is
+limited; and finish the audit that the session limit had cut short. This section is the record.
+
+### State on arrival (verified, not assumed)
+- 13 days since the last session. NOBODY pushed in that time: `origin/main` was still `3d9fb3d`, so
+  the Codex audit prompt had not been used. AGENT_LIVE_BOARD.md was last touched 2026-05-27 and
+  showed no active claims, so there was nothing to collide with.
+- Production healthy. Railway variables unchanged: still NO provider credentials of any kind.
+- `bmapz.com` DNS is NOT on Cloudflare. Nameservers are `ns1/ns2.dns-parking.com` (the registrar's
+  DNS, registrar Realtime Register B.V.), and email on the apex is Hostinger (MX `mx1/mx2.hostinger.com`,
+  SPF `v=spf1 include:_spf.mail.hostinger.com ~all`). `ai.bmapz.com` is only a CNAME to `bmapz.pages.dev`.
+  So every DNS change is made in the registrar panel, by Derek; no tool available here reaches it.
+
+### Decisions taken on Derek's behalf (all reversible, none destructive)
+1. **API on `api.bmapz.com`.** Why: `up.railway.app` is on the Public Suffix List, so Google accepts it as a
+   redirect URI but its owner can never verify it, and Google brand verification (needed to leave "Testing",
+   which issues 7-day refresh tokens) requires DNS ownership of the redirect domain. DONE on the Railway
+   side: custom domain attached, id `acdcd51f-fd04-45d4-9645-a8851edb2993`, existing Railway domain untouched.
+   NOT DONE (needs Derek, two records in the registrar panel):
+   `CNAME  api  ->  gdufkcmn.up.railway.app`
+   `TXT    _railway-verify.api  ->  railway-verify=7eee6d7b453ec0705065bc06a86aed5368853c248845bff17b015b9e559d9021`
+   After `domain-status` shows verified + certificate issued: set Railway `API_URL=https://api.bmapz.com`
+   (do NOT set it earlier: every OAuth redirect_uri is built from it) and confirm with
+   `GET /health` -> `oauth_host` (new field; it was previously impossible to observe `API_URL` from outside).
+   Register BOTH `https://api.bmapz.com/...` and the Railway URL as redirect URIs where a console allows several,
+   but REMOVE the Railway URI from the production Google client before "Verify branding" (Railway's domain can
+   never be a verified authorised domain). The frontend keeps calling the Railway host; only OAuth needs the new one.
+2. **Canva is platform-app-only.** A company_admin must not be able to write OAuth client secrets, and Canva Connect
+   is built around one registered integration. The dead per-company reads were removed. Meta/LinkedIn/X/TikTok
+   still accept per-company app credentials; revisiting that is a separate decision.
+3. **Google restricted scopes are OFF by default** (new decision, not one Derek delegated; reversible by one
+   variable). Gmail read, full Drive are RESTRICTED: annual paid third-party security assessment (CASA; Google
+   publishes no price, third parties quote ~$540-$3,000/yr), 5-10 weeks. Sensitive-only scopes verify free in ~2-4
+   weeks. An unverified production app is capped at 100 NEW users for the life of the project and Google says
+   the cap cannot be reset, so launching with restricted scopes first can burn it. Cost of the default: Gmail
+   INBOX SYNC and Drive browsing are unavailable (Gmail SEND, Calendar, Analytics, Search Console, YouTube, Ads work).
+   Reverse with `GOOGLE_ENABLE_RESTRICTED_SCOPES=true` once the assessment is budgeted.
+
+### What was wrong, and the commit that fixed it
+Commits on top of `3d9fb3d`: `9745dcc`, `c85596d`, `5cd10e3` (plus the docs commit that carries this section).
+
+**The OAuth return path (would have failed the very first real connect).**
+The callback page is served with `Cross-Origin-Opener-Policy: same-origin` (helmet default; verified on the live
+response) while the app that opens it sends none. Per the spec (MDN) that puts the popup in a new browsing-context
+group: `window.opener` is null and the opener sees `popup.closed === true`. The modal treated "closed with no
+message" as "cancelled", so EVERY successful connect would have shown as failed and the success screen could
+never appear. In-app browsers on a phone have no opener at all. Fix: the modal now asks the server
+(`GET /api/integrations/status`) for up to 45s before deciding; `popup.js` redirects to
+`<app>/Integrations?oauth=success|error&provider=<type>` when there is no opener, and the Integrations page
+confirms with the server before it says "connected". A first attempt to relax COOP on the OAuth router was BLOCKED
+by the auto-mode security classifier and was deliberately NOT retried; the design above does not need it. If
+Derek ever wants the opener link back it is a one-line router middleware (`unsafe-none` on /api/oauth) and is his
+call. The `\\/` in the emitted regex inside the template literal matters: a single `\/` collapses to `//`, a
+comment, and silently kills the whole script. It was caught by testing the EMITTED script, not by reading it.
+
+**Google.** One stored token serves every Google service but authorisation did not set `include_granted_scopes`,
+so connecting Calendar after Gmail replaced the token with a Calendar-only one and silently broke Gmail. Drive
+stored only an access token (no refresh token, no expiry): dead after ~1h. The SEO Search Console report and
+the GA4 report read the token without refreshing: dead after ~1h. GA4 asked for metrics `users`/`pageviews`,
+which do not exist (`totalUsers`/`screenPageViews`). Google Ads `searchStream` errors are a JSON ARRAY, so the real
+reason was lost behind "HTTP 403". No `login-customer-id` anywhere, so manager (MCC) accounts could never connect.
+`gmail.compose` (restricted, unused) and `youtube.upload` (unused; forces private uploads until a compliance audit)
+dropped. The `gmail` test's manual client-id/refresh-token path could never refresh. Detection is now scope-aware
+(`google_scopes` records what Google actually granted). New: `lib/googleToken.js` (one refresher; remaining copies
+are in `routes/messaging.js` and `routes/ads.js getGoogleAdsAccessToken`, to consolidate), `lib/googleAds.js`
+(`GOOGLE_ADS_API_VERSION`, default `v25`; developer token NOT sent unless `GOOGLE_ADS_SEND_DEV_TOKEN=true`).
+
+**Meta.** The Marketing API sunset v24.0 on 2026-10-06 and ten files pinned it: default now `v25.0` (Graph v24
+stays supported to 2028-02-18, so this was about ads). Page insights requested `page_impressions`, `page_engaged_users`,
+`page_fans` (removed 2025-11-15) and IG insights `impressions` (removed 2025-04-21): the whole request fails and the
+code stored `d.data` (undefined) as `[]`, so dashboards showed empty analytics with no error; now current metrics and
+the error is surfaced. UNVERIFIED against a live token: re-check on first connect. `read_insights` and
+`instagram_manage_insights` were needed by existing features but never requested; they are now, and become part of
+App Review. The `meta_ads` test mishandled the `act_` prefix Ads Manager shows.
+
+**X.** `publishToTwitter` detected failure with `if (d.errors)`, but X reports failures as problem+json with NO
+`errors` key (probed live): a failed post was recorded as PUBLISHED. Now success is HTTP 201 with an id. Access
+tokens last ~2h and the refresh token was thrown away: the integration died two hours after connecting while still
+showing connected. Refresh tokens ROTATE, so the new one is stored (`lib/xApi.js`, tested against X's documented
+behaviour, and PKCE against the RFC 7636 vector). PKCE was `plain` (challenge == secret verifier) and is S256 now.
+Hosts moved to `x.com` / `api.x.com` (the old ones still answer identically; no sunset published). X is PAY-PER-USE
+since 2026-02-06: $0.015 per post, $0.20 per post with a link, billed to Bmapz's prepaid credits for EVERY customer
+post. That is a business decision (who pays, spend limit), not a code detail.
+
+**LinkedIn.** The posting and ads flows write the SAME stored token and LinkedIn invalidates an earlier token when a
+different scope set is granted, so connecting either killed the other with both cards green. Authorisation now
+requests the UNION of what the company already has plus what is being connected, never asks for ads scopes the app
+may not be approved for, and records the granted scopes so the test can tell "connected" from "cannot post".
+Ads defaults to read-only `r_ads r_ads_reporting`; `LINKEDIN_ADS_WRITE=true` opts in to `rw_ads`. Version header
+`202606` is fine (active to 2027-06-15; latest `202609`). If the Railway env var `LINKEDIN_API_VERSION` was ever set
+to `202510` it breaks on 2026-10-15; `202511` on 2026-11-16.
+
+**TikTok.** Access tokens last 24h; the refresh token was discarded and no refresh code existed anywhere, so every
+connection would have died a day later ("worked in Sandbox yesterday, broken today"). Fixed (`lib/tiktokApi.js`).
+A TikTok post was marked PUBLISHED when nothing was sent (placeholder result had no `error`; "published" meant "no
+result has an error"). A failed TikTok ad pause/resume read as success (HTTP 200 + non-zero `code`). TikTok ADS
+CANNOT WORK with the stored token at all: it is a Login Kit token and the TikTok Business API is a separate program
+with its own app and its own connect flow, which is not built. The test now says so.
+
+**Canva.** The design picker needs `design:meta:read` and it was never requested (now is; also tick it in the Canva
+developer portal; existing connections must reconnect). Refresh tokens are single use and the UI fires two calls at
+once: concurrent refreshes per company now share one call (proved with three simultaneous callers -> one request).
+
+**Models.** `ANTHROPIC_FALLBACK_MODEL` ("known-good, stable for a long time") was itself a retired model, and the
+plan-downgrade, forced-cheap and default paths hard-coded retired ids, so a request failed twice then silently moved to
+the OTHER provider. All choices now pass through `liveModelFor()` (lib/aiCredits.js), fed by the live catalog that
+`lib/modelRegistry.js` already refreshed every 12h; it changes an answer only when the chosen id is absent from the live
+list, and does nothing when no catalog is loaded. The OpenAI and Anthropic connection tests pick a model from the
+account's own list. Production logs contain essentially no AI traffic, so this was a latent defect, not an observed outage.
+
+**Perplexity.** Sonar Chat Completions was retired 2026-09-27 (the date has PASSED). `lib/perplexity.js` implements the
+Agent API (`POST /v1/agent`, `{preset:'fast', input, max_output_tokens}`; answer in `output_text`/`output[]`, sources in
+the `search_results` item) with the legacy path as a fallback, and the `perplexity` connection test calls the SAME
+function and reports which surface answered. Written to the documented spec and unit-tested against mocks (10/10,
+including the trap that a FAILED run returns HTTP 200 with `status:"failed"`). NOT LIVE-VERIFIED: still no key. Perplexity's
+own pages contradict each other on whether legacy requests still work; the first key settles it.
+
+**Smaller.** Lowercase compliance URLs (`/privacy`, `/terms`, `/data-deletion` and the hyphenated forms) now work: the
+SPA fallback used to answer 200 with the LOGIN page, which reads as a missing privacy policy. The real pages are
+`/PrivacyPolicy`, `/TermsOfService`, `/DataDeletion` (case-sensitive). `/health` now reports `oauth_host`.
+
+### CORRECTIONS to things said earlier (read these; they change decisions)
+- "19 integration cards could never light up" (7baaaa6) was OVERSTATED. The Integrations page reads the STORED
+  `company.integration_status` that the OAuth callbacks write; only `AdsRealDataPanel` calls `GET /api/integrations/status`.
+  The /status corrections are right and harmless but did not fix what was claimed. Wiring the page to /status so platform
+  keys set in Railway show on the cards is an open follow-up (note: /status "detected" means a credential EXISTS, not
+  that it is verified; the Test button is the evidence).
+- Earlier advice "start the Google Ads developer-token application first, it is the long pole" is wrong (tokens were
+  sunset 2026-09-09). Google Ads Explorer is NOT a production path (blocks account creation, billing and more; 2,880
+  ops/day): treat Basic (brand verification, ~10 business days) as the real minimum for production use.
+- Meta was described as "instant, no approval". It is not: first connect needs a Business-type app, TWO business
+  portfolios, 2-4h of prerequisite console work; customer-facing access is 4-8 weeks.
+- Apollo/Gmail "success" tests (previous session) were false positives; same class re-checked across all tests this time.
+
+### Privacy policy gap (blocks Google verification; needs a careful human edit)
+`frontend-src/pages/PrivacyPolicy.jsx` says nothing about Google user data and has no Limited Use disclosure, which Google
+requires for the Gmail/Drive/YouTube scopes. NOT written yet on purpose: policy text makes legal representations and must
+match what the code does. FACTS established from the code, to base it on: Gmail content is imported into the `messages`
+table and shown in the Inbox; the Company Brain reads only `channel`/`direction` counts of messages, not their content;
+no AI path was found that sends imported Gmail content to a model (search again before claiming it); OAuth tokens live in
+`companies.api_keys` (JSONB, plaintext at the application layer). The required sentence per Google: "Bmapz AI's use and
+transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data
+Policy, including the Limited Use requirements." Have counsel review before submitting.
+
+### DNS day — everything Derek must do in the registrar panel, in one sitting
+Known now: the two Railway records above. Values that only exist once he starts the step: the Google Search Console
+DOMAIN-property TXT record (apex `@`), and the Resend records for a sending SUBDOMAIN (use `send.bmapz.com`, not the apex:
+the apex already has an SPF record and only one SPF record per name is allowed; Hostinger mail would break). Do not touch
+the existing `MX`, SPF or `_dmarc` records.
+
+### Mobile apps (Android + iOS) are planned to run in parallel with this phase
+Derek said the approach is in the project chat "Web app mobile deployment/development". It was NOT visible from this session
+(`list_sessions` returned nothing; added to the project after the session began), and nothing about mobile exists in the repo.
+THE FIRST ACTION OF THE NEXT SESSION is to read that chat and record the decision here. Until then, mobile effects that hold
+for ANY web-wrapping approach: (1) a native shell has no `window.opener`: the OAuth return path above is already built for it;
+(2) Google blocks OAuth in embedded WebViews (`disallowed_useragent`), so connect must open the SYSTEM browser
+(ASWebAuthenticationSession / Custom Tabs) and return via a universal/app link on `ai.bmapz.com`; (3) the redirect URIs stay
+https on the API host: no Android/iOS OAuth clients are needed unless native Google Sign-In is added; (4) Apple/Google store
+rules affect BILLING (digital subscriptions sold in-app), LOGIN (Sign in with Apple when third-party login is offered) and
+ACCOUNT DELETION; (5) `capacitor://localhost` or `https://localhost` origins would need CORS allowance ONLY if the shell
+bundles the site instead of loading `https://ai.bmapz.com`: do not widen CORS until that is known. Research on 1, 2, 4 is in
+the mobile section of INTEGRATIONS_RUNBOOK.md when present.
+
+### Left deliberately undone (each with the reason)
+- LinkedIn ads body (adPublisher.js): missing `runSchedule`, `locale`, `targetingCriteria`, `offsiteDeliveryEnabled`, and the
+  `x-restli-id` response header is discarded (create calls return undefined). Not live until the Advertising API is approved
+  (weeks); fix then, against a real account.
+- LinkedIn feed (`GET /v2/ugcPosts`) needs `r_member_social`, a restricted scope; fails silently. LinkedIn posting still uses
+  legacy `/v2/ugcPosts`; migrate to `/rest/posts`. Neither is a launch blocker.
+- WhatsApp: inbound webhooks may carry a BSUID (`from_user_id`) with the phone number omitted; the reply path assumes
+  `message.from` is a number. Proactive sends to cold leads must be TEMPLATE messages outside the 24h window. When no company
+  number is configured the test passes via the PLATFORM number (every tenant would message from Bmapz's number): decide whether
+  that fallback should exist at all.
+- X PKCE verifier still travels inside the signed (readable) `state`; S256 fixes the challenge but the verifier is exposed to
+  anyone who sees the URL. Store it server-side keyed by the state nonce.
+- `GET /api/integrations/status` is not used by the Integrations page (see corrections).
+- 192 route-level `catch` blocks still return `err.message` on 500 (see the earlier section; helper `lib/httpError.js`).
+
+### How to verify anything in this section
+`curl https://bmapz-production.up.railway.app/health` -> `{commit, oauth_host}`. The behaviour tests that pinned all of the above are in the repo: `node backend/tests/run.mjs` (7 files, 102 checks, no credentials or database needed; a fake PostgREST stands in where a route reads the company row). Lint: `npx eslint . --quiet`
+(0 errors; the backend is linted since 2026-09-23 and that is what catches a missing import after a multi-file edit).
+Edit tip for this tree: files are CRLF; a multi-line anchor written with LF silently fails to match, and a template literal
+inside a script that is itself inside a template literal needs doubled backslashes.

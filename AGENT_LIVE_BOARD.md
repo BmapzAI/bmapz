@@ -165,3 +165,11 @@ Result:
 Next step:
 Question for Derek:
 ```
+
+### 2026-10-06 Update (Claude Sonnet 5.5 — integrations re-verification)
+
+| Owner | Status | Current Work | Last Update |
+| --- | --- | --- | --- |
+| Claude | Active, no files claimed | Re-verified the integration plan against current vendor docs and fixed what it found (OAuth return path, Google/Meta/X/LinkedIn/TikTok/Canva token handling, retired model ids, Perplexity Agent API). Details and corrections: `AGENT_HANDOFF.md` section "2026-10-06". Tests: `node backend/tests/run.mjs` | 2026-10-06 |
+| Codex | Not started | Prompt waiting in `PROMPT_CODEX_AUDIT.md` (nothing had been pushed by Codex since 2026-09-23) | 2026-10-06 |
+| Derek | Needed for DNS | Add two DNS records for `api.bmapz.com` in the registrar panel (see handoff), then the platform consoles in `docs/INTEGRATIONS_RUNBOOK.md` | 2026-10-06 |
