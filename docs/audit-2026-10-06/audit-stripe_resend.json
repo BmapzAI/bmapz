@@ -1,0 +1,281 @@
+{
+ "group": "stripe-resend",
+ "findings": [
+  {
+   "severity": "broken_now",
+   "area": "Resend send: error detection",
+   "what": "sendViaResend only throws when the body has an `error` key. Resend does not use that shape: errors are `{statusCode,name,message}` with a 4xx/5xx HTTP status. Probe today: POST https://api.resend.com/emails with a garbage key returned HTTP 401 `{\"message\":\"API key is invalid\",\"name\":\"validation_error\",\"statusCode\":401}` and no `error` key (checked in node: has error key = false). So every failed send (bad key, unverified domain 403, 422 validation, 429 rate limit, 5xx) is returned as if it succeeded. /api/email/send then answers {success:true}, workflowEngine.js:164 and sdrEngine.js:433 record mail as sent, and sdrEngine.js:550 swallows errors with .catch(()=>{}). Emails can silently never leave the system.",
+   "file": "backend/src/lib/emailSender.js",
+   "line": 93,
+   "evidence_url": "https://resend.com/docs/api-reference/emails/send-email",
+   "evidence_quote": "Success response: { \"id\": \"49a3999c-0ce1-4ea6-ab68-afcd6dc2e794\" }  (errors per https://resend.com/docs/api-reference/errors carry an HTTP status plus name/message, e.g. 401 missing_api_key, 403 validation_error, 429 rate_limit_exceeded)",
+   "recommended_fix": "Replace lines 92-94 with:\n  const d = await r.json().catch(() => ({}));\n  if (!r.ok || !d.id) { const e = new Error(d.message || `Resend failed (${r.status})`); e.status = r.status; e.code = d.name; throw e; }\n  return d;\nThis makes /api/email/send return a 500 with Resend's real message instead of a false {success:true}."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Resend sender domain",
+   "what": "The hard-coded fallback sender is `noreply@bmapzai.com`. DNS probe today against 8.8.8.8: `nslookup -type=NS bmapzai.com` -> Non-existent domain, and resend._domainkey.bmapzai.com is also non-existent. A domain that does not exist can never be verified in Resend, so any send using this fallback is refused (403). Combined with the error-handling bug above, this fails silently. Also backend/.env.example:29 documents `EMAIL_FROM=noreply@bmapzai.com`, but nothing in backend/src reads EMAIL_FROM (grep returned no hits); the code reads RESEND_FROM_EMAIL (emailSender.js:22, integrations.js:552), so an operator who follows .env.example leaves the real variable unset.",
+   "file": "backend/src/lib/emailSender.js",
+   "line": 87,
+   "evidence_url": "https://resend.com/docs/api-reference/errors",
+   "evidence_quote": "403 `validation_error` - Various domain and testing restrictions (fetched summary of the errors page; sending from an unverified domain is refused)",
+   "recommended_fix": "1) Set RESEND_FROM_EMAIL in Railway to an address on a domain actually verified in Resend (e.g. `Bmapz <noreply@YOUR-REAL-DOMAIN>`). 2) Change line 87 to `from: from || fromEmail` and add `if (!from && !fromEmail) throw Object.assign(new Error('RESEND_FROM_EMAIL is not set'), {code:'NO_FROM_ADDRESS'});` before the fetch. 3) In backend/.env.example replace `EMAIL_FROM=noreply@bmapzai.com` with `RESEND_FROM_EMAIL=Bmapz <noreply@your-verified-domain>`."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Stripe webhook: lost events",
+   "what": "The idempotency row is inserted BEFORE the work (lines 45-47). Two paths then answer in a way that makes Stripe's retry useless: (a) line 116-119 returns 503 after the row exists, so Stripe's retry hits the duplicate-key branch (lines 49-52) and is acknowledged as 'already processed' -- the plan grant is never applied; (b) the catch at lines 214-216 only logs and falls through to `res.json({received:true})`, so any thrown error is acknowledged with 200 and never retried (the add-on grant failure is also swallowed at 93-95). Result: a paying customer can be charged and receive nothing, with no retry. Supabase calls at lines 133-180 also never check `.error`, so failed writes are invisible.",
+   "file": "backend/src/routes/stripeWebhook.js",
+   "line": 45,
+   "evidence_url": "https://docs.stripe.com/webhooks",
+   "evidence_quote": "\"A Stripe tenta entregar eventos ao seu destino por até três dias com um atraso exponencial no modo de produção.\" and \"registre os IDs de evento que você processou e não processe eventos já registrados.\" (records IDs of events already PROCESSED, not before processing)",
+   "recommended_fix": "Add a helper `const unlock = () => supabaseAdmin.from('webhook_events').delete().eq('id', event.id);`. At line 117 call `await unlock();` before `return res.status(503)`. Change the catch at 214 to: `console.error(...); await unlock(); return res.status(500).json({ error: 'handler failed' });`. Check `.error` on every supabaseAdmin write in the handler and `throw` it so the catch fires. Alternative: insert the webhook_events row only after the switch finishes, with the unique key still guarding concurrent duplicates."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Stripe webhook: subscription status vs DB constraint",
+   "what": "customer.subscription.updated writes Stripe's raw `sub.status` into subscriptions.status (lines 186-192). The table has `CHECK (status IN ('trialing','active','past_due','canceled','paused'))` (supabase/migrations/001_initial_schema.sql:80; grep found no later migration changing it). Stripe also emits `unpaid`, `incomplete` and `incomplete_expired`. Those updates violate the constraint; supabase-js returns the error instead of throwing and the code never checks it, so the row silently keeps its old status. A subscription Stripe has moved to `unpaid` therefore stays `active`/`past_due` in Bmapz and access is never revoked.",
+   "file": "backend/src/routes/stripeWebhook.js",
+   "line": 189,
+   "evidence_url": "https://docs.stripe.com/billing/subscriptions/webhooks",
+   "evidence_quote": "\"Quando uma assinatura mudar para `canceled` ou `unpaid`, revogue o acesso ao seu produto.\" (statuses listed: trialing, active, incomplete, incomplete_expired, past_due, canceled, unpaid, paused)",
+   "recommended_fix": "New migration: `ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS subscriptions_status_check; ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_status_check CHECK (status IN ('trialing','active','past_due','canceled','paused','unpaid','incomplete','incomplete_expired'));` Then confirm the access/credit gate treats `unpaid` and `incomplete_expired` as no access. In the handler: `const { error } = await supabaseAdmin...; if (error) throw error;`."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Stripe price env vars",
+   "what": "resolvePriceId reads STRIPE_PRICE_ID_<PLAN>_MONTHLY / _ANNUAL / STRIPE_PRICE_ID_<PLAN> for the real plans (starter, growth, scale, enterprise; plan CHECK in 001_initial_schema.sql:78 and PLAN_MONTHLY_CREDITS in aiCredits.js:97-103). backend/.env.example:34-36 documents STARTER, PRO, ENTERPRISE only. `PRO` is not a plan, and GROWTH and SCALE are missing. An operator who follows the example gets HTTP 400 'price_id is required' (billing.js:56) when a customer picks Growth or Scale.",
+   "file": "backend/.env.example",
+   "line": 35,
+   "evidence_url": "https://docs.stripe.com/checkout/fulfillment.md?payment-ui=stripe-hosted",
+   "evidence_quote": "curl example: `-d \"line_items[0][price]={{PRICE_ID}}\"` -- a Price ID is required for every Checkout line item",
+   "recommended_fix": "Replace the three STRIPE_PRICE_ID_* lines with:\nSTRIPE_PRICE_ID_STARTER_MONTHLY=price_...\nSTRIPE_PRICE_ID_STARTER_ANNUAL=price_...\nSTRIPE_PRICE_ID_GROWTH_MONTHLY=price_...\nSTRIPE_PRICE_ID_GROWTH_ANNUAL=price_...\nSTRIPE_PRICE_ID_SCALE_MONTHLY=price_...\nSTRIPE_PRICE_ID_SCALE_ANNUAL=price_...\nSTRIPE_PRICE_ID_ENTERPRISE_MONTHLY=price_...\nSTRIPE_PRICE_ID_ENTERPRISE_ANNUAL=price_...\nand set the matching variables in Railway. Make the Stripe test case in integrations.js verify them (see the Stripe test finding)."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Resend send: replyTo dropped",
+   "what": "sendCompanyEmail accepts replyTo and forwards it to Gmail and SMTP, but both Resend branches (emailSender.js:19 and 22) omit it, and sendViaResend (82-91) has no reply-to field. Replies to mail sent through Resend go to the From address instead of the requested one. Resend's parameter is `reply_to`, not `replyTo`.",
+   "file": "backend/src/lib/emailSender.js",
+   "line": 82,
+   "evidence_url": "https://resend.com/docs/api-reference/emails/send-email",
+   "evidence_quote": "`reply_to` (accepts string or string array)  (as returned by the fetch of the send-email page)",
+   "recommended_fix": "Change the signature to `sendViaResend(apiKey, fromEmail, { to, subject, html, text, from, replyTo })`, add `reply_to: replyTo || undefined,` to the JSON body, and pass `replyTo` in both calls at lines 19 and 22."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "Stripe webhook: delayed-payment methods",
+   "what": "checkout.session.completed grants plan credits and add-ons without checking `session.payment_status` (lines 61-181), and there is no handler for checkout.session.async_payment_succeeded or async_payment_failed. The Checkout session created at paymentProviders.js:87 passes no payment_method_types, so whatever the Dashboard enables applies. If any delayed-notification method is enabled for BRL customers (the code stores amount_brl), a session can complete with payment_status 'unpaid' and credits are granted before the money arrives. Which methods are enabled in the Dashboard is not verifiable from code.",
+   "file": "backend/src/routes/stripeWebhook.js",
+   "line": 61,
+   "evidence_url": "https://docs.stripe.com/checkout/fulfillment.md?payment-ui=stripe-hosted",
+   "evidence_quote": "\"Delayed payment methods generate a checkout.session.async_payment_succeeded event when the payment succeeds later\" (PT original: \"Formas de pagamento postergadas geram um evento checkout.session.async_payment_succeeded quando o pagamento é bem-sucedido posteriormente.\"); sample code: `if checkout_session.payment_status != 'unpaid'`",
+   "recommended_fix": "Right after `const session = event.data.object;` add `if (session.payment_status === 'unpaid') break;` and add `case 'checkout.session.async_payment_succeeded':` as a fallthrough label next to `case 'checkout.session.completed':` so the same grant runs once the payment lands. Add `case 'checkout.session.async_payment_failed':` to log/notify. Then in Dashboard > Webhooks add both async events to the endpoint. Simplest alternative: restrict Dashboard payment methods to instant ones (cards) until this is done."
+  },
+  {
+   "severity": "outdated",
+   "area": "Stripe API version pin (no env override)",
+   "what": "`apiVersion: '2024-06-20'` is hard-coded in two places with no environment override: billing.js:23 and stripeWebhook.js:29. Stripe's current version is 2026-09-30.endive, so the pin is about two years and several major releases behind. I found no published sunset or end-of-life for 2024-06-20 (search of docs.stripe.com returned none), so nothing breaks on a date, but the pin cannot be changed without a deploy and the two copies can drift. Note: the pin only controls responses to outgoing API calls. Webhook payload shape is decided by the webhook endpoint's own API version (see the unverified finding).",
+   "file": "backend/src/routes/billing.js",
+   "line": 23,
+   "evidence_url": "https://docs.stripe.com/api/versioning",
+   "evidence_quote": "\"The current version is 2026-09-30.endive.\" and \"Webhook events use the API version that's set during your webhook's endpoint creation. Otherwise, they use your Stripe account's default API version\"",
+   "recommended_fix": "Create backend/src/lib/stripeClient.js: `export const STRIPE_API_VERSION = process.env.STRIPE_API_VERSION || '2024-06-20'; export const makeStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: STRIPE_API_VERSION });` and use it in billing.js:21-24 and stripeWebhook.js:28-29. Do NOT bump to 2026-09-30.endive before go-live: stripe-node 16.x types and behaviour are tied to 2024-06-20. Plan the upgrade (SDK ^23 + new version string + new webhook endpoint per https://docs.stripe.com/upgrades) as a post-launch task."
+  },
+  {
+   "severity": "outdated",
+   "area": "Stripe SDK major version",
+   "what": "package.json has `\"stripe\": \"^16.2.0\"` (installed 16.12.0). Latest on npm today is 23.0.0 (dist-tags.latest). Stripe's policy says only the newest major gets fixes.",
+   "file": "backend/package.json",
+   "line": 29,
+   "evidence_url": "https://docs.stripe.com/sdks/versioning",
+   "evidence_quote": "\"Older major versions of the package continue to be available for use, but won't receive any additional updates.\"",
+   "recommended_fix": "Keep 16.12.0 for launch (pin it: `\"stripe\": \"16.12.0\"` to prevent surprise minor updates). Schedule the upgrade to ^23 together with the apiVersion change and re-test checkout, portal and webhook against Stripe test mode."
+  },
+  {
+   "severity": "unverified",
+   "area": "Stripe webhook endpoint API version",
+   "what": "constructEvent verifies the signature but does not care which API version rendered the payload. The handler reads session.customer/subscription/payment_intent/amount_total/metadata, sub.status/customer and invoice.customer, which I expect to be stable across recent versions but did not verify per version. The endpoint's own API version (Dashboard > Workbench > Webhooks) was not checked; I cannot see the Dashboard. If the account default is newer than 2024-06-20 the payload shape can differ from what the pinned SDK assumes.",
+   "file": "backend/src/routes/stripeWebhook.js",
+   "line": 29,
+   "evidence_url": "https://docs.stripe.com/api/versioning",
+   "evidence_quote": "\"Webhook events use the API version that's set during your webhook's endpoint creation.\"",
+   "recommended_fix": "In the Stripe Dashboard open the webhook endpoint and read its API version. If it is not 2024-06-20, create a new endpoint with `api_version=2024-06-20` (or the version chosen after the SDK upgrade), subscribe it to: checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, customer.subscription.updated, customer.subscription.deleted, invoice.paid, invoice.payment_failed, and replace STRIPE_WEBHOOK_SECRET in Railway."
+  },
+  {
+   "severity": "outdated",
+   "area": "Stripe webhook: renewals and plan changes",
+   "what": "The handler never processes invoice.paid and customer.subscription.updated only syncs `status` (lines 184-194). A plan change made in the Customer Portal (billing.js:96) never updates plan, credits or contacts_limit, so the customer pays for one plan and keeps another. Renewals are tracked by a fixed 30-day cycle (line 125) instead of Stripe's billing period, which drifts from the real invoice date.",
+   "file": "backend/src/routes/stripeWebhook.js",
+   "line": 184,
+   "evidence_url": "https://docs.stripe.com/billing/subscriptions/webhooks",
+   "evidence_quote": "\"`invoice.paid` Enviado quando a fatura é paga. Você pode provisionar acesso ao produto quando recebe este evento e `status` é `active`.\"",
+   "recommended_fix": "In customer.subscription.updated, read `const priceId = sub.items?.data?.[0]?.price?.id;`, map it back to a plan with the same env vars used by resolvePriceId, and update plan/contacts_limit/ai_credits_total when it changed. Add `case 'invoice.paid':` that clears past_due back to active and (if desired) anchors cycle_ends_at to `invoice.period_end`. If plan changes are not allowed, disable plan switching in the Portal configuration instead."
+  },
+  {
+   "severity": "outdated",
+   "area": "Resend test case: false negative for sending-only keys",
+   "what": "The test calls GET /domains (integrations.js:545) and treats any non-2xx as 'key rejected' (547). Resend API keys can be `sending_access`, which can only send. The domains list requires full access, so a perfectly good sending-only key is reported as rejected. Also, GET /domains returns 20 items by default (max 100) with `has_more`; a team with more than 20 domains can be told that a verified From domain is not verified (lines 560-565).",
+   "file": "backend/src/routes/integrations.js",
+   "line": 545,
+   "evidence_url": "https://resend.com/docs/api-reference/domains/list-domains",
+   "evidence_quote": "\"Full access required. A sending-access API key cannot call this endpoint.\" (fetch summary of the page); create-api-key page: `sending_access`: \"Can only send emails.\"; limit default 20, max 100",
+   "recommended_fix": "Change line 545 to `fetch('https://api.resend.com/domains?limit=100', ...)`. Before line 547 add: `if (!r.ok && d.name === 'restricted_api_key') return res.json({ success: true, message: 'Resend sending-only key accepted. Domain status cannot be checked with this key type; send a test email to confirm.' });` (restricted keys return error name `restricted_api_key` per https://resend.com/docs/api-reference/errors). Not probed with a real key (none exist)."
+  },
+  {
+   "severity": "outdated",
+   "area": "Stripe test case: can pass while billing cannot work",
+   "what": "The test cannot pass without a valid secret key (probed, see test_cases). But it returns success:true for a valid key plus ANY non-empty STRIPE_WEBHOOK_SECRET (lines 580, 586) and never checks the price IDs. So it can report green while checkout still returns 400 'price_id is required' or the webhook rejects every event. It also does not detect a live key paired with a test-mode webhook secret.",
+   "file": "backend/src/routes/integrations.js",
+   "line": 586,
+   "evidence_url": "https://docs.stripe.com/webhooks",
+   "evidence_quote": "Stripe documents the endpoint signing secret as a value starting with `whsec_` (\"um segredo de assinatura iniciado por `whsec_`\")",
+   "recommended_fix": "After line 580 add: `const whsec = clean(process.env.STRIPE_WEBHOOK_SECRET); const webhookSet = /^whsec_/.test(whsec);` and `const missingPrices = ['STARTER','GROWTH','SCALE'].filter(p => !(process.env[`STRIPE_PRICE_ID_${p}_MONTHLY`] || process.env[`STRIPE_PRICE_ID_${p}`]));` then include `missingPrices.length ? `missing price IDs: ${missingPrices.join(', ')}` : null` in `bits` and set `const ok = d.charges_enabled !== false && webhookSet && missingPrices.length === 0;`. Optional stronger check: GET https://api.stripe.com/v1/prices/<id> for each price ID."
+  },
+  {
+   "severity": "unverified",
+   "area": "Stripe test case: /v1/account documentation",
+   "what": "GET https://api.stripe.com/v1/account behaves correctly: no key -> 401, garbage key -> 401 `Invalid API Key provided: sk_test_******e123`, and an unknown path (/v1/accountzzz) returns 404, so the route exists. But the current API reference page I could fetch (docs.stripe.com/api/accounts/retrieve) documents only `GET /v1/accounts/{id}`, and docs.stripe.com/api/account/retrieve returned 404. I could not confirm in today's docs that the id-less form is still documented, so it may be legacy. Restricted keys (rk_) without account-read permission would also get a 403 and be reported as rejected.",
+   "file": "backend/src/routes/integrations.js",
+   "line": 576,
+   "evidence_url": "https://docs.stripe.com/api/accounts/retrieve",
+   "evidence_quote": "\"Retrieves the details of an account.\"  curl https://api.stripe.com/v1/accounts/{{ACCOUNT_ID}}",
+   "recommended_fix": "Low urgency. Keep the call for launch (works today). Add a `Stripe-Version: <STRIPE_API_VERSION>` header at line 576 so the test matches the pinned SDK. If Stripe ever removes the id-less route, switch to GET https://api.stripe.com/v1/balance (proves the key works; then drop the charges_enabled check or read it from /v1/accounts/<id>)."
+  },
+  {
+   "severity": "outdated",
+   "area": "Resend: no idempotency or rate-limit handling",
+   "what": "POST /emails has no Idempotency-Key header (emailSender.js:83-85), so workflow/SDR retries can double-send. Resend allows 10 requests/second per team; with the error bug a 429 is invisible, and loops such as sdrEngine.js:550 send sequentially with errors swallowed.",
+   "file": "backend/src/lib/emailSender.js",
+   "line": 84,
+   "evidence_url": "https://resend.com/docs/api-reference/rate-limit",
+   "evidence_quote": "\"The default maximum rate limit is 10 requests per second per team.\"  Idempotency-Key: unique per request, expires after 24 hours, max 256 characters (send-email page)",
+   "recommended_fix": "Add an optional `idempotencyKey` argument and header `...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {})`. After the fix to the error check, on `r.status === 429` wait for the `retry-after` header seconds and retry once. Use e.g. `workflow-${runId}-${stepId}` as key in workflowEngine.js:164."
+  },
+  {
+   "severity": "outdated",
+   "area": "Stripe client construction when key is missing",
+   "what": "getStripe() always returns a client (billing.js:21-24, called at 62), so the PROVIDER_NOT_CONFIGURED guard at paymentProviders.js:81 is unreachable. With STRIPE_SECRET_KEY unset I confirmed in node that `new Stripe(undefined, ...)` does not throw in 16.12.0; the failure shows up later as a raw Stripe auth error returned to the browser as a 500.",
+   "file": "backend/src/routes/billing.js",
+   "line": 21,
+   "evidence_url": "https://docs.stripe.com/webhooks",
+   "evidence_quote": "n/a (local behaviour verified with node: constructor with undefined key does not throw)",
+   "recommended_fix": "`async function getStripe() { if (!process.env.STRIPE_SECRET_KEY) return null; const Stripe = (await import('stripe')).default; return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: STRIPE_API_VERSION }); }` The portal route at line 95 must then check `if (!stripe) return res.status(503).json({ error: 'Stripe is not configured' })`."
+  },
+  {
+   "severity": "outdated",
+   "area": "Checkout redirect and webhook latency",
+   "what": "success_url (billing.js:70) has no {CHECKOUT_SESSION_ID} placeholder, so the landing page cannot fulfil on its own if the webhook is delayed. And the webhook does all its Supabase writes before answering (lines 59-218), while Checkout waits for the webhook response before redirecting.",
+   "file": "backend/src/routes/billing.js",
+   "line": 70,
+   "evidence_url": "https://docs.stripe.com/checkout/fulfillment.md?payment-ui=stripe-hosted",
+   "evidence_quote": "\"Checkout waits up to 10 seconds for your server to respond to the webhook event delivery before redirecting your customer.\"",
+   "recommended_fix": "Change the default success URL to `${process.env.FRONTEND_URL}/billing?success=true&session_id={CHECKOUT_SESSION_ID}`. Keep webhook DB work fast (single round trips), or acknowledge first and process in the background once lost-event handling (the webhook finding above) is fixed."
+  },
+  {
+   "severity": "unverified",
+   "area": "Stripe billing portal call",
+   "what": "`stripe.billingPortal.sessions.create({ customer, return_url })` matches my knowledge of the API, but I did not fetch the portal documentation today. Known prerequisite (not re-verified): a portal configuration must be saved in the Dashboard for live mode, otherwise the call errors and the route returns a 500 with the Stripe message.",
+   "file": "backend/src/routes/billing.js",
+   "line": 96,
+   "recommended_fix": "Before go-live open Dashboard > Settings > Billing > Customer portal in LIVE mode, save the configuration (cancel, update payment method, and plan switching only if the webhook supports it), then test POST /api/billing/portal once with a real subscription."
+  },
+  {
+   "severity": "unverified",
+   "area": "Gmail send and Meta Graph version",
+   "what": "Outside the Stripe/Resend scope and not audited today: Gmail users.messages.send call (emailSender.js:57; error parsing via `d.error` matches Google's error shape but I did not fetch docs) and Meta Graph version v25.0 in email.js:7 (has env override META_GRAPH_VERSION).",
+   "file": "backend/src/lib/emailSender.js",
+   "line": 57,
+   "recommended_fix": "Cover in a separate Google/Meta audit pass."
+  },
+  {
+   "severity": "ok",
+   "area": "Stripe webhook raw body and signature verification",
+   "what": "express.raw is mounted on /api/stripe/webhook (index.js:137) before express.json (index.js:143), and the handler passes req.body (a Buffer) with the Stripe-Signature header to constructEvent (stripeWebhook.js:30). Failure returns 400. Duplicate delivery is guarded by event id. All consistent with Stripe's current guidance.",
+   "file": "backend/src/routes/stripeWebhook.js",
+   "line": 30,
+   "evidence_url": "https://docs.stripe.com/webhooks",
+   "evidence_quote": "\"A Stripe exige o corpo bruto da solicitação para realizar a verificação de assinatura.\"",
+   "recommended_fix": "None. Note: `Stripe.webhooks.constructEvent` also exists as a static function (verified in node), so the per-request `new Stripe(...)` at line 29 is unnecessary."
+  },
+  {
+   "severity": "ok",
+   "area": "Resend send request shape",
+   "what": "Endpoint, method, host, auth and body match the current Resend docs: POST https://api.resend.com/emails, `Authorization: Bearer <key>`, JSON with from, to (array, max 50), subject, html/text. Success is `{id}`. Only the response handling is wrong (see the first finding).",
+   "file": "backend/src/lib/emailSender.js",
+   "line": 83,
+   "evidence_url": "https://resend.com/docs/api-reference/emails/send-email",
+   "evidence_quote": "\"Endpoint: POST to https://api.resend.com/emails ... Authorization: Bearer re_xxxxxxxxx ... to: Recipient email (max 50 addresses as array or string)\" (as returned by the fetch)",
+   "recommended_fix": "None for the request itself."
+  },
+  {
+   "severity": "ok",
+   "area": "Stripe Checkout Session creation",
+   "what": "Core parameters used in paymentProviders.js:87-97 (mode, line_items[price,quantity], success_url, cancel_url, metadata) match the current Checkout docs, and hosted_page is the default ui_mode so success_url is required and present. customer_email, subscription_data.metadata and the subscription-mode combination were not individually re-verified today.",
+   "file": "backend/src/lib/paymentProviders.js",
+   "line": 87,
+   "evidence_url": "https://docs.stripe.com/checkout/fulfillment.md?payment-ui=stripe-hosted",
+   "evidence_quote": "\"For Checkout Sessions with the default ui_mode of hosted_page, set the success_url.\"",
+   "recommended_fix": "None."
+  },
+  {
+   "severity": "outdated",
+   "area": "Unused resend npm dependency",
+   "what": "package.json lists `\"resend\": \"^3.4.0\"` but no file imports it (grep for from 'resend', require and import('resend') found nothing); all Resend traffic uses fetch. Latest npm is 6.32.1. A dead dependency only adds install weight and audit noise.",
+   "file": "backend/package.json",
+   "line": 28,
+   "evidence_url": "https://www.npmjs.com/package/resend",
+   "evidence_quote": "npm view resend version -> 6.32.1",
+   "recommended_fix": "Remove `\"resend\": \"^3.4.0\"` from backend/package.json dependencies (and refresh package-lock.json)."
+  }
+ ],
+ "pinned_versions": [
+  {
+   "name": "Stripe API version (billing.js:23, stripeWebhook.js:29)",
+   "in_code": "2024-06-20",
+   "status": "unknown",
+   "current": "2026-09-30.endive"
+  },
+  {
+   "name": "stripe npm SDK",
+   "in_code": "^16.2.0 (installed 16.12.0)",
+   "status": "deprecated",
+   "current": "23.0.0"
+  },
+  {
+   "name": "resend npm SDK (unused)",
+   "in_code": "^3.4.0",
+   "status": "unknown",
+   "current": "6.32.1"
+  },
+  {
+   "name": "Resend REST API version",
+   "in_code": "none (no version header sent)",
+   "status": "unknown"
+  },
+  {
+   "name": "Meta Graph API (email.js:7, env META_GRAPH_VERSION)",
+   "in_code": "v25.0",
+   "status": "unknown"
+  }
+ ],
+ "test_cases": [
+  {
+   "type": "stripe",
+   "calls": "GET https://api.stripe.com/v1/account with Authorization: Bearer <STRIPE_SECRET_KEY>",
+   "verdict": "sound",
+   "notes": "Probed today. No key -> HTTP 401 (code returns 'Stripe secret key not set' before any call). Garbage key sk_test_garbage123 -> HTTP 401 {\"error\":{\"message\":\"Invalid API Key provided: sk_test_******e123\",\"type\":\"invalid_request_error\"}}; code checks `!r.ok` so it fails correctly. Cannot report success without a valid key. Caveats: passes with a valid key and any non-empty STRIPE_WEBHOOK_SECRET and never checks price IDs (see finding); docs page for the id-less /v1/account form not confirmed."
+  },
+  {
+   "type": "resend",
+   "calls": "GET https://api.resend.com/domains with Authorization: Bearer <key>",
+   "verdict": "sound",
+   "notes": "Probed today. No key -> 401 {\"statusCode\":401,\"message\":\"Missing API Key\",\"name\":\"missing_api_key\"}. Garbage key re_garbage123 -> 400 {\"statusCode\":400,\"message\":\"API key is invalid\",\"name\":\"validation_error\"}; code's `!r.ok` branch fails both correctly, and no-key short-circuits at line 544. Caveat: false NEGATIVE for sending-only keys (needs full access), and only the first 20 domains are read."
+  },
+  {
+   "type": "email_resend (alias of resend)",
+   "calls": "same case block as resend (integrations.js:541-542)",
+   "verdict": "sound",
+   "notes": "Same behaviour as resend. The test checks key validity and From-domain verification but does not exercise POST /emails, so it would not catch the response-handling bug at emailSender.js:93. POST /emails probe: no key -> 401 missing_api_key; garbage key -> 401 validation_error; neither body contains an `error` key."
+  }
+ ]
+}

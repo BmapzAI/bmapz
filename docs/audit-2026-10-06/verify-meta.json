@@ -1,0 +1,301 @@
+{
+ "group": "Meta (Facebook/Instagram Graph API, Marketing API, WhatsApp Cloud API)",
+ "claims": [
+  {
+   "claim": "can_test_today = true: a role-holder on the app can run a full OAuth connect and a WhatsApp send/receive today with no App Review",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/docs/resp-plat-initiatives/individual-processes/app-review",
+   "source_quote": "If your app will only be used by app users who have a role on the app itself, App Review is not required.",
+   "correction": "Verdict holds (re-fetched today). But 'today' is not instant: you first need a Business-type app (use cases cannot be removed once chosen), a business portfolio, a Facebook Page, a linked Instagram professional account, an ad account, an accepted app role, and for WhatsApp a second app (recommended). Budget 3-5 hours of console work for the first working connect, not an hour."
+  },
+  {
+   "claim": "approval_required = false",
+   "verdict": "refuted",
+   "source_url": "https://developers.facebook.com/docs/development/release/business-verification/",
+   "correction": "False for a developer test, TRUE for any customer-facing use. Paraphrase of official pages: apps requesting Advanced Access need Business Verification (rule effective 2023-02-01); anyone without a role requires App Review first; Marketing API standard tier is a separate upgrade gate. Previous verifier's correction CONFIRMED."
+  },
+  {
+   "claim": "META_APP_ID is instant and self-service",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/docs/development/create-an-app/",
+   "correction": "Self-service yes, but the app needs a business portfolio when it will access data you do not own (paraphrase of the create-an-app page), which Bmapz does. The ID appears right after app creation, about 10 minutes once the portfolio exists."
+  },
+  {
+   "claim": "META_APP_SECRET: App settings > Basic > App secret > Show (re-enter password)",
+   "verdict": "unverifiable",
+   "source_url": "https://developers.facebook.com/apps",
+   "correction": "Console is behind login, so not re-fetched. Consistent with long-standing console behaviour and with the Meta docs that say to HMAC with the app secret from app settings. Low risk."
+  },
+  {
+   "claim": "META_GRAPH_VERSION: v26.0 is latest (released 2026-07-29); v25.0 supported until 2028-07-29",
+   "verdict": "confirmed",
+   "source_url": "https://developers.facebook.com/docs/graph-api/changelog/",
+   "correction": "Fetched twice today (changelog and /changelog/versions/), both agree: v26.0 released 2026-07-29, expiry TBD; v25.0 released 2026-02-18, available until 2028-07-29. No newer version exists as of 2026-10-06. Note the pages were served in Portuguese and read through a summarizer."
+  },
+  {
+   "claim": "(a) Is the pinned Graph API v24.0 still supported today, and when does it expire?",
+   "verdict": "confirmed",
+   "source_url": "https://developers.facebook.com/docs/graph-api/changelog/versions/",
+   "correction": "v24.0 (released 2025-10-08) is available until 2028-02-18, about 16 months from today. v23.0 until 2027-10-08, v22.0 until 2027-05-20. RECOMMENDATION: leave META_GRAPH_VERSION=v24.0 for launch (do not change it at the same time as first connect); schedule a bump to v25.0 or v26.0 well before 2028-02-18. v26.0 breaking items are mild for Bmapz: legacy pretty/debug/date_format params removed, a few Page-object fields deprecated (current_location, genre, network, parking, start_info), Marketing API removed Instagram Explore placement and poll ads."
+  },
+  {
+   "claim": "Standard Access is granted automatically to every app for all permissions",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/docs/graph-api/overview/access-levels/",
+   "correction": "Official wording (paraphrase): automatic Standard Access applies to business, consumer and gaming app TYPES, and the page says it applies only to apps created with an app type. The Instagram Facebook-Login doc separately says you need a Meta Business type app to add Instagram API setup with Facebook login, Facebook Login for Business and Webhooks. So make sure the OAuth app is Business type. Per-permission access levels still unreadable (permission reference pages returned HTTP 500 for both previous researchers); check the Customize use case screen."
+  },
+  {
+   "claim": "(b) Requested instagram_basic / instagram_content_publish / instagram_manage_messages are renamed or deprecated",
+   "verdict": "refuted",
+   "source_url": "https://developers.facebook.com/documentation/instagram-platform/overview",
+   "correction": "Not deprecated. The Instagram platform overview fetched today still lists instagram_basic, instagram_content_publish, instagram_manage_comments, instagram_manage_insights, instagram_manage_messages, pages_show_list, pages_read_engagement under Instagram API with FACEBOOK Login. The instagram_business_* names belong to the separate Instagram API with INSTAGRAM Login (different token, no Facebook Page needed) and are NOT interchangeable. No deprecation notice found for any of the 11 scopes. Instagram Basic Display API ended 2024-12-04 (third-party reports); Bmapz does not use it. Instagram accounts must be Business or Creator and connected to a Facebook Page."
+  },
+  {
+   "claim": "Facebook Login for Business needs config_id and scope is unusable",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-facebook-login/business-login-for-instagram",
+   "correction": "Mixed. The generic FLB page says config_id replaced scope; the Instagram-with-Facebook-Login page documents a manual login flow where scope is a required parameter listing instagram_* and pages_* permissions, and the redirect URI is entered under Facebook Login for Business > Settings > Client OAuth Settings > Valid OAuth Redirect URIs. So try the existing scope-based dialog first; only create a Configuration (config_id) if the dialog drops permissions. FLB also states Advanced Access to public_profile is required before FLB apps go live."
+  },
+  {
+   "claim": "A role on the app is the only gate; plus a second business portfolio is needed for first connect (previous verifier)",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/documentation/facebook-login/facebook-login-for-business",
+   "correction": "Previous verifier over-generalised. Fetched today: app must be Business type and tied to a portfolio you fully control; that portfolio is separate from client portfolios. The second (client) portfolio and full control of it matter for the Business Integration System User token flow. If the login configuration emits plain User access tokens (what a scope-based Bmapz flow expects), a Page admin with an app role is enough. Recommendation: use User-token configuration; if you ever choose system-user tokens you need a second portfolio (Meta reportedly lets one person create only 2 portfolios, source is a Vonage support article, not Meta)."
+  },
+  {
+   "claim": "Use cases Manage everything on your Page + Instagram + Ads can be combined in one app",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/docs/development/create-an-app/",
+   "correction": "Combination is allowed only when compatible; Meta states 'Authenticate and request data from users with Facebook Login' is INCOMPATIBLE with 'Manage everything on your Page', incompatible ones are greyed out, and use cases cannot be removed after app creation. I could not find a published compatibility matrix for Page + Instagram + Marketing API + WhatsApp, so a wrong first choice means deleting and recreating the app."
+  },
+  {
+   "claim": "WHATSAPP_APP_SECRET equals META_APP_SECRET (one app)",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started",
+   "correction": "Meta's WhatsApp quickstart tells you to create a NEW app with the 'Connect with customers through WhatsApp' use case and select or create a portfolio. Webhook signature = HMAC-SHA256 over the payload with the app secret of the app that owns the WhatsApp webhook (X-Hub-Signature-256: sha256=...). RECOMMENDATION: two apps in the same portfolio. App A (OAuth) -> META_APP_ID/META_APP_SECRET. App B (WhatsApp) -> WHATSAPP_APP_SECRET. Reasons: follows Meta's literal path; WhatsApp own-number needs no App Review so it can go live independently of App A's long review; a rejection or restriction on App A cannot take down WhatsApp; use-case choices are irreversible; env var already exists for it."
+  },
+  {
+   "claim": "WHATSAPP_ACCESS_TOKEN permanent path via System User",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/access-tokens/",
+   "correction": "Confirmed path: Business Settings > Users > System users > Add (Admin or Employee) > Assign assets: select the app and grant Manage app > Generate token > pick app and expiry > permissions business_management, whatsapp_business_management, whatsapp_business_messaging. The doc fetched does not mention a 'Never' expiry option or per-unverified-business system-user limits; treat both as unverified. Also assign the WhatsApp Business Account asset (standard practice, not stated in the excerpt). Needs portfolio + WABA to exist first, so not instant."
+  },
+  {
+   "claim": "WhatsApp temporary token expires in roughly a day",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/access-tokens/",
+   "correction": "Docs classify the API Setup token as a temporary user token for initial testing only; earlier verifier cited 'every few hours'. Never plan on it past the first test message."
+  },
+  {
+   "claim": "WHATSAPP_PHONE_NUMBER_ID and test number auto-provisioned; 5 allowlisted recipients; no payment method for test sends",
+   "verdict": "confirmed",
+   "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/phone-numbers",
+   "correction": "Official page confirms a test number is generated and registered automatically on completing Get Started. The 5-recipient limit and no-payment-method statement come from search snippets and the previous verifier, not from an official page I could fetch today (the Get Started page summarised does not state a recipient limit). Treat as likely correct, verify in API Setup."
+  },
+  {
+   "claim": "WHATSAPP_VERIFY_TOKEN self-chosen; webhook verification is GET echoing hub.challenge",
+   "verdict": "confirmed",
+   "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/create-webhook-endpoint",
+   "correction": "Official: GET with hub.mode=subscribe, hub.challenge, hub.verify_token; respond HTTP 200 with the challenge. POSTs carry X-Hub-Signature-256. Valid TLS certificate required, self-signed unsupported. Callback URL and Verify token entered under App Dashboard > WhatsApp > Configuration. Fields must be subscribed after verification. The summary also says no per-WABA/per-phone override is supported, so only one callback host can be active at a time: switch it from the Railway URL to api.bmapz.com when DNS is live."
+  },
+  {
+   "claim": "(c) Data Deletion Callback requirement and response format",
+   "verdict": "confirmed",
+   "source_url": "https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback/",
+   "correction": "Meta sends an HTTP POST with a signed_request parameter (base64url payload.signature, HMAC-SHA256 with the app secret, payload has user_id which is the app-scoped ID). The callback must return JSON exactly {\"url\":\"<status-page-URL>\",\"confirmation_code\":\"<alphanumeric>\"}. You need EITHER a data deletion callback URL OR a data deletion instructions URL in Basic settings, not both; the Pages API page says publishing requires app icon, privacy policy URL and a data deletion URL. RECOMMENDATION: paste https://ai.bmapz.com/DataDeletion as the instructions URL on BOTH apps unless the backend already implements the callback (unknown, code not read)."
+  },
+  {
+   "claim": "Marketing API: Standard Access = development tier (score 60); standard tier needs usage-gated upgrade",
+   "verdict": "confirmed",
+   "source_url": "https://developers.facebook.com/docs/marketing-api/overview/rate-limiting/",
+   "correction": "Re-fetched today: development max score 60 with 300s block; standard 9000 with 60s block; upgrade needs 500+ Marketing API calls in the past 15 days and under 15% error rate over the last 500 calls, requested via Upgrade on the Marketing API Access Tier feature in the App Review dashboard. No ad-account-count cap is stated on the page (older 5-account limit unconfirmed). Advanced Access for ads_management/ads_read for non-role customers is a separate App Review gate (page silent). No published SLA for the upgrade review."
+  },
+  {
+   "claim": "App Review decision 'within a week'",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/docs/resp-plat-initiatives/individual-processes/app-review/submission-guide",
+   "correction": "The official submission guide still says a decision within a week. Third-party sources (bundle.social, dated July/Aug 2026; singhamandeep.com) report real queues of 17-20 days since May 2026 and claim Meta tells developers to expect 20 days; I could NOT find that statement on an official Meta page, so treat as unconfirmed but credible. Submission prerequisites confirmed: 1024x1024 icon, privacy policy URL, app purpose/category, at least one successful API call per permission requested within 30 days before submitting, 1080p-or-better screen recording per permission showing the user granting it and the app using it, no personal Meta credentials as test logins. Third parties say the Request button stays greyed out until the call is logged (up to about 2 days)."
+  },
+  {
+   "claim": "Business Verification has no Meta SLA; 1-5 business days clean, 3-14 with documents",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/docs/development/release/business-verification/",
+   "correction": "Official page confirms the requirement for Advanced Access and gives no timeline, no country list, no sole-proprietor guidance. Secondary sources: Meta Security Center said about 2 business days (via ppc.land), 360dialog says standard verification up to 14 business days, Meta community forum threads in Sept 2026 report submissions stuck In Review 5+ business days to several weeks. Document types vary by country, so Derek's entity country matters (unknown)."
+  },
+  {
+   "claim": "Business verification is the only lever to lift WhatsApp number cap (20) and 2,000 messaging tier",
+   "verdict": "confirmed",
+   "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/messaging-limits",
+   "correction": "Prior refutation confirmed: new portfolios start at 250 and 2 registered numbers; 2,000 is reached by verifying the business, partner verification, or sending 2,000 delivered high-quality template messages to unique users in 30 days; phone cap rises to 20 on verification or on reaching 2,000. Production number needs display name, 2-step PIN, a number you own with country/area code that is not a short code."
+  },
+  {
+   "claim": "WhatsApp pricing and payment",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing",
+   "correction": "Per-message pricing by category and recipient country since 2025-07-01: marketing always charged; utility charged outside the 24h service window; authentication charged; service messages free. Rate updates effective 2026-10-01 for Bangladesh, Iraq, Nepal, Sri Lanka, Kazakhstan, Kuwait, Morocco, Oman, Ukraine only. Brazil-sold-to accounts billed in BRL from 2026-07-01. The fetched page does not state a payment-method requirement for production sends; the Embedded Signup page says onboarded customers of Tech Providers must add a payment method. Assume you will need a payment method before real sends and verify in WhatsApp Manager."
+  },
+  {
+   "claim": "Embedded Signup is irrelevant to Bmapz",
+   "verdict": "corrected",
+   "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/overview",
+   "correction": "Irrelevant ONLY while Bmapz sends from its own fixed number/token. If Bmapz will let customers connect their own WhatsApp numbers (multi-tenant), it must be a Tech Provider: official page says Embedded Signup v2 is deprecated 2026-10-15 (9 days from today; v3 date unconfirmed, ppc.land says same date), migrate to v4 (driven by a Facebook Login for Business Configuration); no onboarding until advanced access per permission; onboarding limit 10 customers rising to 200 per rolling 7 days after Business Verification, App Review and Access Verification; customers must add a payment method."
+  },
+  {
+   "claim": "Page/Instagram/ads webhooks for non-role users deliverable at Standard Access",
+   "verdict": "unverifiable",
+   "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview",
+   "correction": "No official page found. Third-party community threads say some webhooks are not sent while an app is in Development mode and that production WhatsApp numbers may need Live mode. Business-type apps are said to have no Development/Live toggle (prior researcher quote of app-types page, not re-fetched). Test with a role-user account first."
+  }
+ ],
+ "testable_today_without_review": {
+  "value": true,
+  "reasoning": "Yes for an end-to-end developer test, with limits. Meta's App Review page says review is not required when only people with a role on the app use it, and Business Verification likewise (previous verifier confirmed that on the verification page). So with Derek as admin of a Business-type app he can complete the Facebook/Instagram/ads OAuth dialog, receive a user token, call me/accounts, read the IG business account, publish a Page post and an IG media container, and list ad accounts (Marketing API development tier, score 60). WhatsApp: the Cloud API test number is auto-created, sends template messages (hello_world) to up to 5 allowlisted recipients and can receive replies via webhook with no review and no payment method (5-recipient and no-payment points rest on secondary sources). NOT testable without review: any customer or non-role user connecting, Messenger/Instagram message webhooks from non-role users, Marketing API volume above score 60, WhatsApp to arbitrary numbers, and sending from a real production number (needs registration, display name approval, 2-step PIN, likely payment method). Allow 3-5 hours of console prerequisites first and expect at least one failed first attempt on use-case choice, token type or redirect URI."
+ },
+ "customer_launch": {
+  "requires": [
+   "Business-type Meta app(s) with correct use cases, tied to Bmapz business portfolio",
+   "Business Verification of that portfolio (legal name and documents must match; entity country unknown)",
+   "App icon 1024x1024, privacy URL https://ai.bmapz.com/PrivacyPolicy, terms URL https://ai.bmapz.com/TermsOfService, data deletion URL https://ai.bmapz.com/DataDeletion (or callback), app category and purpose, contact email, in BOTH apps",
+   "Advanced Access via App Review for each of the permissions customers will grant (email/public_profile auto; pages_show_list, pages_read_engagement, pages_manage_posts, pages_messaging, instagram_basic, instagram_content_publish, instagram_manage_messages, ads_management, ads_read, business_management) plus public_profile for Facebook Login for Business",
+   "At least one successful API call per permission within the 30 days before submitting, and one 1080p screen recording per permission plus reviewer test instructions and non-personal test logins",
+   "Annual Data Use Checkup once Advanced Access is held (paraphrase of access-levels page)",
+   "Marketing API standard-tier upgrade: 500+ calls in 15 days with under 15% errors, then Upgrade request in App Review dashboard",
+   "WhatsApp own-number production: register real number (display name, 2-step PIN), likely payment method; raising 250-recipient/day limit needs verification or volume",
+   "If customers connect their own WhatsApp numbers: Tech Provider path, Embedded Signup v4, Access Verification, customer payment methods"
+  ],
+  "realistic_calendar_time": "4-8 weeks to customer-facing Facebook/Instagram connect (best case about 2.5-3 weeks if Business Verification clears in days and the first submission passes; 10+ weeks if rejected twice). Ads at scale about 6-10 weeks because the 15-day qualifying-traffic window runs in parallel but the upgrade review has no published SLA. WhatsApp own-number production 1-3 weeks (number registration plus optional verification). Arithmetic: BV 3 days to 3 weeks, screen recordings and logged API calls 3-5 days (parallel), App Review 1-3 weeks per round, one rejection round likely.",
+  "source_or_basis": "Official: app-review submission guide ('within a week'), rate-limiting page (15 days), business-verification page (no SLA). Secondary: bundle.social (17-20 day review queue), Meta community forum (BV stuck 5+ business days), 360dialog (up to 14 business days). Calendar total is my estimate, not a Meta commitment."
+ },
+ "corrected_setup_steps": [
+  "PART 1 - PREREQUISITES (about 60-90 min). 1. Log in to Facebook with the personal account that will own everything (turn on two-factor authentication first). Register as a developer at https://developers.facebook.com/ if not already.",
+  "2. Create the business portfolio at https://business.facebook.com/overview > Create a business portfolio. Use the exact legal business name, address, phone and website https://ai.bmapz.com. This same legal name must match documents for Business Verification later. (Reported limit: one person can create only 2 portfolios.) Do not create a second one now.",
+  "3. Make sure these assets exist and sit inside the portfolio (https://business.facebook.com/settings > Accounts): a Facebook Page you admin (create 'Bmapz Test Page' if needed), an Instagram Business or Creator account connected to that Page (Instagram app > Settings > Account type; then Page settings > Linked accounts), and one ad account (Accounts > Ad accounts). Add each via Add > Create or Add existing.",
+  "PART 2 - APP A: OAuth connector (Facebook/Instagram/Ads) (about 60 min). 4. Go to https://developers.facebook.com/apps > Create app. Name 'Bmapz Connect', contact email, select the portfolio from step 2. On the use-case screen select ONLY: 'Manage everything on your Page', 'Manage messaging & content on Instagram', and 'Create & manage app ads with Meta Marketing API'. Do NOT select 'Authenticate and request data from users with Facebook Login' (Meta says it is incompatible with the Page use case). If any of the three is greyed out, stop and tell me which one: do not guess, use cases cannot be removed later. If the list offers 'Other' > 'Business' type instead, choose Business type and add products manually.",
+  "5. App settings > Basic: copy App ID into META_APP_ID; click Show next to App secret, re-enter password, copy into META_APP_SECRET. Fill: Privacy Policy URL https://ai.bmapz.com/PrivacyPolicy; Terms of Service URL https://ai.bmapz.com/TermsOfService; User data deletion = Data deletion instructions URL https://ai.bmapz.com/DataDeletion; App domains: ai.bmapz.com, api.bmapz.com, bmapz-production.up.railway.app; upload a 1024x1024 app icon; category 'Business and pages'; save.",
+  "6. Dashboard > Use cases > Manage everything on your Page > Customize > Permissions and features: Add pages_read_engagement, pages_manage_posts, pages_messaging (business_management, pages_show_list, public_profile are pre-added). Same screen for the Instagram use case: Add instagram_basic, instagram_content_publish, instagram_manage_messages. Ads use case: Add ads_management, ads_read. Add email if offered. Do NOT click Request advanced access yet.",
+  "7. Left menu > Facebook Login for Business > Settings > Client OAuth Settings. Turn ON Client OAuth login, Web OAuth login, Enforce HTTPS and Use Strict Mode for redirect URIs. In Valid OAuth Redirect URIs paste BOTH (one per line, no trailing slash): https://api.bmapz.com/api/oauth/meta/callback and https://bmapz-production.up.railway.app/api/oauth/meta/callback . Save. (If the provider key in the backend is not 'meta', replace that segment; ask the code auditor.) If the app shows plain Facebook Login instead, same field exists there.",
+  "8. App roles > Roles: add every tester as Administrator/Developer/Tester; each must accept the invitation. Keep the app in Development/no toggle: no App Review is needed for role-holders.",
+  "9. Only if the Facebook dialog returns fewer permissions than requested: Facebook Login for Business > Configurations > Create configuration, login variation General, token type User access token (NOT system-user token), tick all permissions, save, copy Configuration ID and give it to the code auditor.",
+  "PART 3 - APP B: WhatsApp (about 45 min). 10. https://developers.facebook.com/apps > Create app > name 'Bmapz WhatsApp' > use case 'Connect with customers through WhatsApp' > select the SAME portfolio. Do the same Basic settings as step 5 (privacy, terms, data deletion instructions URL, icon, App domains). Copy this app's App secret into WHATSAPP_APP_SECRET (it differs from META_APP_SECRET).",
+  "11. App B > WhatsApp > API Setup: a test business number is created automatically; copy 'Phone number ID' (digits, not the +1555 number) into WHATSAPP_PHONE_NUMBER_ID. Under To > Manage phone number list add your own mobile (max 5); enter the WhatsApp code it sends.",
+  "12. Permanent token: https://business.facebook.com/settings > Users > System users > Add > name 'bmapz-whatsapp', role Admin > Assign assets: select App B and grant Manage app; also assign the WhatsApp Business Account asset with full control > Generate token > choose App B, expiry Never if offered (otherwise 60 days and put a renewal in your calendar) > tick business_management, whatsapp_business_management, whatsapp_business_messaging > copy into WHATSAPP_ACCESS_TOKEN immediately (shown once).",
+  "13. Run `openssl rand -hex 24` (or any long random string) -> WHATSAPP_VERIFY_TOKEN.",
+  "PART 4 - DEPLOY AND CONNECT (about 20 min). 14. In Railway set: META_APP_ID (App A), META_APP_SECRET (App A), META_GRAPH_VERSION=v24.0 (supported until 2028-02-18; leave as is), WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_VERIFY_TOKEN, WHATSAPP_APP_SECRET (App B). Redeploy and wait for it to be healthy BEFORE step 15.",
+  "15. App B > WhatsApp > Configuration > Webhook > Edit. Callback URL = https://bmapz-production.up.railway.app/<WhatsApp webhook path from the code auditor> (switch to https://api.bmapz.com/... only after DNS and TLS work; Meta supports a single callback). Verify token = the WHATSAPP_VERIFY_TOKEN value. Click Verify and save, then Webhook fields > Manage > subscribe 'messages'. If no events ever arrive, also subscribe the WABA to the app: POST https://graph.facebook.com/v24.0/<WABA_ID>/subscribed_apps with the system-user token.",
+  "16. For Page/Instagram messaging webhooks on App A: Dashboard > Webhooks, subscribe the Page and Instagram objects to messages, using the backend route and verify token from the code auditor (route not supplied; open item).",
+  "PART 5 - TESTS (no review needed). 17. TEST OAuth: from https://ai.bmapz.com, signed in as the app admin, click Connect Meta. Expect Page, Instagram and ad-account assets. Check granted scopes with https://graph.facebook.com/v24.0/debug_token?input_token=<USER_TOKEN>&access_token=<APP_ID>|<APP_SECRET> ; then /me/accounts, /<PAGE_ID>?fields=instagram_business_account, /me/adaccounts.",
+  "18. TEST WhatsApp out: POST https://graph.facebook.com/v24.0/<PHONE_NUMBER_ID>/messages, header Authorization: Bearer <WHATSAPP_ACCESS_TOKEN>, body {\"messaging_product\":\"whatsapp\",\"to\":\"<digits only, country code, no +>\",\"type\":\"template\",\"template\":{\"name\":\"hello_world\",\"language\":{\"code\":\"en_US\"}}}. TEST in: reply from your phone and confirm the backend accepted the X-Hub-Signature-256 check (it must use WHATSAPP_APP_SECRET of App B and the RAW body).",
+  "19. Run the write path tests (Page post, Instagram media + media_publish) with the Page token. These calls also satisfy the 'one successful call per permission within 30 days' review rule, so run one call for EACH of the 11 permissions and note the date.",
+  "PART 6 - CUSTOMER LAUNCH (weeks, start in parallel on day 1). 20. Start Business Verification immediately: https://business.facebook.com/settings > Security Center > Start verification. Use legal name, address and phone matching your registration documents (business country unknown, document list differs by country). Meta publishes no SLA; expect days to weeks.",
+  "21. Record one 1080p-or-better screen recording per permission (11 files, English UI, show a user granting the permission and the app using it), write reviewer instructions, create a non-personal test login. Keep the 15-day Marketing API traffic going in parallel (500+ ads_read/ads_management calls, under 15% errors).",
+  "22. App A > App Review > Permissions and features > Request advanced access for each permission, answer Data Use Checkup questions, Submit for review. Decision window: officially a week, realistically 1-3 weeks; handle rejection with the AI Developer Assistant first (Meta moved support there from tickets by mid-September per ppc.land) and resubmit.",
+  "23. After approval: Marketing API Access Tier > Upgrade (once 500 calls/15 days and error rate under 15% are met). For production WhatsApp: add and verify a real phone number, display name, 2-step PIN, payment method in WhatsApp Manager."
+ ],
+ "first_connect_blockers": [
+  "Wrong app type or use-case choice at creation: use cases cannot be removed, 'Authenticate and request data from users with Facebook Login' is incompatible with 'Manage everything on your Page', and Instagram Facebook-Login products need a Business-type app. Fix is delete and recreate.",
+  "A business portfolio is mandatory for this build (app accesses data Bmapz does not own; the WhatsApp quickstart also forces select-or-create a portfolio). Business Verification and portfolio legal name must match later.",
+  "Redirect URI must match exactly under Strict Mode. Register BOTH https://api.bmapz.com/api/oauth/meta/callback and https://bmapz-production.up.railway.app/api/oauth/meta/callback under Facebook Login for Business > Settings > Client OAuth Settings, and the redirect_uri sent in the dialog must be byte-identical to the one used in the code-for-token exchange. api.bmapz.com cannot be used until its DNS and TLS certificate are live (Enforce HTTPS); use the Railway host until then. Provider segment 'meta' is assumed.",
+  "scope vs config_id: the Instagram Facebook-Login doc shows scope is still used, the generic FLB doc says config_id replaced scope. Try scope first; if permissions are missing, create a configuration with token type User access token.",
+  "Token type: FLB can return a User token or a Business Integration System User token; a backend written for a short-lived user token plus long-lived exchange will break on a system-user token. Choose User token in the configuration.",
+  "Connecting Facebook user must hold an ACCEPTED role on the app, a Page task (admin or equivalent), an Instagram Business/Creator account connected to that Page, and ad account access; otherwise OAuth succeeds with empty assets or fewer granted scopes.",
+  "One app vs two secrets: if WhatsApp is in a separate app (recommended) WHATSAPP_APP_SECRET must be that app's secret; using META_APP_SECRET makes every webhook signature check fail silently.",
+  "WhatsApp webhook route path in the backend is unknown to me; GET must answer 200 with the bare hub.challenge, POST signature must be computed over the raw body, valid public TLS needed, only one callback URL allowed per app, and the field 'messages' must be subscribed (plus WABA subscribed_apps if no events).",
+  "WhatsApp temporary API Setup token dies within hours; use the System User token (needs both app and WABA assigned). Test number only reaches 5 allowlisted recipients, and outside a 24-hour window only template messages (hello_world) are allowed.",
+  "Webhook delivery in Development mode: community reports say some webhooks, and production-number webhooks, are not delivered until the app is Live; Business-type apps may have no toggle. Unconfirmed officially.",
+  "Marketing API development tier (score 60, 300s block) will throttle any sync loop; upgrade is usage-gated (500 calls/15 days, under 15% errors).",
+  "Public pages must stay reachable without login with the exact case-sensitive paths (/PrivacyPolicy, /TermsOfService, /DataDeletion); Basic settings need privacy URL and a data-deletion URL or callback or the app cannot be published/submitted.",
+  "Embedded Signup v2 is deprecated 2026-10-15: matters only if Bmapz plans customer-owned WhatsApp numbers."
+ ],
+ "confidence": "medium",
+ "uncertainties": [
+  "Per-permission access levels could not be read: permission reference pages returned HTTP 500 for both previous researchers, and I did not retry the new /documentation/development/permissions URL that appeared in search results. The Customize use case screen is the authority.",
+  "The fetch tool returns model-summarised and sometimes Portuguese-translated pages; version dates and key requirements were cross-checked across two pages each, but exact sentences are paraphrased and not guaranteed verbatim.",
+  "No official Meta page found that states the 20-day App Review expectation; it comes from bundle.social and singhamandeep.com (third-party). The official guide still says within a week.",
+  "Business Verification: no official SLA, no official country list, no official sole-proprietor guidance found. Whether Derek's business entity country affects document types, Tech Provider eligibility, WhatsApp billing currency (Brazil BRL localisation since 2026-07-01) or availability is unknown.",
+  "Use-case compatibility matrix for Page + Instagram + Marketing API (and WhatsApp) in one app is not published; only the Facebook Login vs Page incompatibility is documented. My two-app recommendation is a judgment call.",
+  "Whether 'Never' is still offered as System User token expiry, and any limit on system users for an unverified portfolio, was not confirmed from the docs fetched.",
+  "Whether Business-type apps have a Development/Live toggle today and whether Live mode is required for WhatsApp production-number webhooks and for Page/Instagram messaging webhooks from non-role users was not confirmed from official docs.",
+  "Whether a second business portfolio is required for the user-token flow: I judged no, from the FLB wording that ties the client portfolio to the system-user token flow; not proven.",
+  "The 2-portfolios-per-person creation cap comes from a Vonage support article, not Meta.",
+  "Whether the 5 test-recipient limit and 'no payment method for test WABA' still hold: confirmed only by secondary sources and the previous verifier, not an official page fetched today.",
+  "Whether production WhatsApp sending requires a payment method before the first message: official pages fetched did not say.",
+  "Callback provider key is assumed to be 'meta'; the WhatsApp and Page/Instagram webhook route paths and whether the backend implements a data-deletion callback are unknown (code not read by design).",
+  "Embedded Signup v3 deprecation date is unconfirmed (v2 is 2026-10-15 officially).",
+  "Changes since 2026-09-23: I found NO official Meta policy, pricing, or version change dated between 2026-09-23 and 2026-10-06. Graph API still tops out at v26.0 (2026-07-29); the WhatsApp changelog's latest entry I could see is 2026-05-12. Nothing in Meta's docs can be diffed against 09-23, so absence of evidence is not proof. New or newly relevant items: Embedded Signup v2 deprecation on 2026-10-15 (9 days out), Meta's AI developer assistant replacing support tickets (mid-September per ppc.land), September community reports of Business Verification delays, WhatsApp rate changes effective 2026-10-01 for nine non-US countries (deadline already passed).",
+  "Console labels (Use cases, Facebook Login for Business > Settings, Security Center path, Business settings paths) were not re-verified because they sit behind login and Meta redesigns them often; treat click paths as best current knowledge and stop on any mismatch."
+ ],
+ "changed_since_2026_09_23": [
+  {
+   "what": "Embedded Signup v2 deprecation date (2026-10-15) now 9 days away; v4 (Facebook Login for Business configuration based) is the replacement",
+   "impact": "No impact on the current own-number WhatsApp setup. Becomes a hard requirement if Bmapz lets customers connect their own WhatsApp numbers; do not build on v2/v3.",
+   "evidence_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/overview"
+  },
+  {
+   "what": "WhatsApp per-message rate updates effective 2026-10-01 for Bangladesh, Iraq, Nepal, Sri Lanka, Kazakhstan, Kuwait, Morocco, Oman and Ukraine (deadline already passed)",
+   "impact": "None for US-style tests; relevant only for those recipient countries.",
+   "evidence_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing"
+  },
+  {
+   "what": "Meta expanded its AI Developer Assistant to handle app review, business verification and permission questions by mid-September 2026, ahead of support tickets (third-party report, ppc.land)",
+   "impact": "If an App Review or Business Verification gets stuck or rejected, first-line help is the AI assistant, which may lengthen recovery time.",
+   "evidence_url": "https://ppc.land/meta-puts-ai-ahead-of-support-tickets-for-developers-by-mid-september/"
+  },
+  {
+   "what": "Community reports in September 2026 of Business Verification stuck In Review for 5+ business days to several weeks despite a stated ~2 business day target",
+   "impact": "Start Business Verification on day 1; do not plan the launch date around Meta's stated 2-day figure.",
+   "evidence_url": "https://communityforums.atmeta.com/discussions/Questions_Discussions/business-verification-stuck-in-review-since-sep-3---portfolio-id-313315281588669/1382987"
+  },
+  {
+   "what": "No new Graph API version since v26.0 (2026-07-29); v24.0 remains available until 2028-02-18; no new permission deprecations found",
+   "impact": "META_GRAPH_VERSION=v24.0 is safe for launch; no forced code change before 2028.",
+   "evidence_url": "https://developers.facebook.com/docs/graph-api/changelog/versions/"
+  }
+ ],
+ "costs": [
+  {
+   "item": "Meta app creation, developer registration, Graph API calls",
+   "cost": "No fee found",
+   "note": "No published fee in any page fetched."
+  },
+  {
+   "item": "App Review (Advanced Access)",
+   "cost": "No fee found",
+   "note": "Wait: official 'decision within a week'; third-party reports 17-20 days; rejections add a full cycle. No SLA published."
+  },
+  {
+   "item": "Business Verification",
+   "cost": "No fee found",
+   "note": "Needs legal documents (name, address, phone/domain match). No Meta SLA; secondary sources 2 business days to 14 business days, community reports of weeks."
+  },
+  {
+   "item": "Marketing API standard tier upgrade",
+   "cost": "No fee found",
+   "note": "Wait: at least 15 days of qualifying traffic (500+ calls, under 15% errors) plus review with no published SLA."
+  },
+  {
+   "item": "WhatsApp test number messages (up to 5 recipients)",
+   "cost": "Free (secondary sources)",
+   "note": "No payment method needed for test WABA template sends per previous verifier and search snippets; not confirmed on an official page I could fetch."
+  },
+  {
+   "item": "WhatsApp production messages",
+   "cost": "Per-message by category and recipient country (pricing page, since 2025-07-01)",
+   "note": "Marketing always charged; utility charged outside 24h windows; authentication charged; service replies free. Payment method requirement not stated on pages fetched. Real phone number cost is your carrier."
+  },
+  {
+   "item": "Ad spend and ad account payment method",
+   "cost": "Customer's own ad budget",
+   "note": "Reading ads data and creating test objects do not need spend by themselves; Meta fees only apply to ads that run."
+  },
+  {
+   "item": "Tech Provider path (only if customer-owned WhatsApp numbers)",
+   "cost": "No fee found",
+   "note": "Requires Business Verification, App Review, Access Verification; onboarding limit 10 then 200 customers per rolling 7 days; each customer needs a payment method."
+  },
+  {
+   "item": "Operator time",
+   "cost": "About 3-5 hours console work to first working test; additional 1-2 days for review materials",
+   "note": "Screen recordings per permission (11) are the biggest manual chunk."
+  }
+ ]
+}

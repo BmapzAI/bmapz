@@ -1,0 +1,332 @@
+{
+ "group": "LinkedIn (sign-in, member posting, Advertising API) and X/Twitter (OAuth2 + PKCE, posting) - audited 2026-10-06",
+ "findings": [
+  {
+   "severity": "broken_now",
+   "area": "X posting - false success",
+   "file": "backend/src/routes/social.js",
+   "line": 431,
+   "what": "publishToTwitter detects failure with `if (d.errors)`, but X returns failures as problem+json with NO `errors` key. PROBED today: POST /2/tweets with no key returns {\"title\":\"Unauthorized\",\"type\":\"about:blank\",\"status\":401,\"detail\":\"Unauthorized\"}; with a garbage bearer returns {\"title\":\"Unsupported Authentication\",...,\"status\":403}. Both skip the throw, so the function returns {post_id: undefined} and the post is recorded as published when nothing was posted. Same happens for 402/429/credits-depleted bodies.",
+   "evidence_quote": "Problem+json: {\"type\":\"[enum]\",\"title\":\"string\",\"detail\":\"string\",\"status\":integer}; success status 201",
+   "evidence_url": "https://docs.x.com/x-api/posts/creation-of-a-post",
+   "recommended_fix": "Replace line 431 with: `if (r.status !== 201 || !d.data?.id) throw new Error(d.detail || d.title || d.errors?.[0]?.message || `X post failed (HTTP ${r.status})`);` and return `{ post_id: d.data.id }`."
+  },
+  {
+   "severity": "broken_now",
+   "area": "X OAuth - token expiry / refresh token dropped",
+   "file": "backend/src/routes/oauth.js",
+   "line": 645,
+   "what": "The callback saves only `tokens.access_token`. The flow requests `offline.access` (line 602) so X issues a refresh_token, but it is discarded, and expires_in is not stored. X access tokens last about two hours, so the X integration stops working roughly 2 hours after connecting while integration_status (integrations.js:109, `!!k.twitter_access_token`) keeps showing it as connected. No refresh code exists anywhere in the backend.",
+   "evidence_quote": "Access token valid \"two hours\"; with offline.access \"an OAuth 2.0 refresh token will be issued.\"",
+   "evidence_url": "https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code",
+   "recommended_fix": "Save `{ twitter_access_token: tokens.access_token, twitter_refresh_token: tokens.refresh_token, twitter_token_expires_at: new Date(Date.now() + (tokens.expires_in || 7200) * 1000).toISOString() }` and reject the callback if `!tokens.access_token`. Add a refreshTwitterToken(companyId) helper: POST https://api.x.com/2/oauth2/token, header Authorization: Basic base64(clientId:clientSecret), form body grant_type=refresh_token&refresh_token=...&client_id=..., then persist the NEW refresh_token returned (rotation not stated in the docs, so always overwrite). Call it before any X request when expires_at is within 5 minutes, and on a 401. Add 'twitter_refresh_token','twitter_token_expires_at' to TOKEN_KEYS_BY_PROVIDER.twitter (oauth.js:788)."
+  },
+  {
+   "severity": "broken_now",
+   "area": "LinkedIn Ads - missing required campaign fields",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 196,
+   "what": "createCampaign (campaign group) sends totalBudget without runSchedule; LinkedIn requires runSchedule.start, and runSchedule.end whenever totalBudget is set. createAdGroup (campaign, lines 209-220) omits locale, targetingCriteria and offsiteDeliveryEnabled, all marked Required=True in the schema, and sends no unitCost for costType CPC. These requests will be rejected with 400 even with valid credentials.",
+   "evidence_quote": "runSchedule.start ... This field is required. | runSchedule.end ... required if `totalBudget` is set",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups",
+   "recommended_fix": "Campaign group body: add `runSchedule: { start: Date.now(), ...(c.budget ? { end: Date.now() + 90*864e5 } : {}) }`. Campaign body: add `locale: { country: 'US', language: 'en' }`, `offsiteDeliveryEnabled: false`, `runSchedule: { start: Date.now() }`, `targetingCriteria: { include: { and: [{ or: { 'urn:li:adTargetingFacet:locations': ['urn:li:geo:103644278'] } }] } }` built from g.targeting, `unitCost: { amount: '1.00', currencyCode }` when costType is CPC, and `objectiveType`/`optimizationTargetType:'NONE'` as appropriate (campaign schema: https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns)."
+  },
+  {
+   "severity": "broken_now",
+   "area": "LinkedIn Ads - id returned in header, not body",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 83,
+   "what": "LinkedIn create calls answer 201 with the new id in the `x-restli-id` RESPONSE HEADER and an empty body. callJson() discards headers and returns {}, so createCampaign/createAdGroup (lines 205, 221: `out.id || out.elements?.[0]?.id`) return undefined. publishCampaign then throws 'The platform did not return a campaign id' even though the campaign group/campaign WAS created on LinkedIn; the external_id is never saved, so a retry creates a duplicate.",
+   "evidence_quote": "A successful response returns a `201 Created` HTTP status code and the ID in the `x-restli-id` response header.",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns",
+   "recommended_fix": "Make callJson return the Response headers too, e.g. `return { ...body, __id: res.headers.get('x-restli-id') }`, and in the LinkedIn adapter use `return out.__id || out.id;` (strip any `urn:li:...:` prefix with `.split(':').pop()` because createAdGroup builds `urn:li:sponsoredCampaignGroup:${campaignExternalId}` at line 213). Exact header format for adCampaignGroups is not shown in the docs fetched, so handle both numeric and URN."
+  },
+  {
+   "severity": "broken_now",
+   "area": "LinkedIn Ads - OAuth scope too weak to publish",
+   "file": "backend/src/routes/oauth.js",
+   "line": 529,
+   "what": "The linkedin_ads connect flow requests `r_ads r_ads_reporting`. r_ads is read-only; creating and patching campaign groups/campaigns (adPublisher.js) requires rw_ads. Publishing will get 403 ACCESS_DENIED for every customer even after the Advertising API product is approved.",
+   "evidence_quote": "`rw_ads` (read/write). `r_ads` (read-only)",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups",
+   "recommended_fix": "Change line 529 to `'openid profile email rw_ads r_ads_reporting'` (rw_ads includes read). Customers who already connected must reconnect."
+  },
+  {
+   "severity": "broken_now",
+   "area": "LinkedIn OAuth - two flows clobber each other's token",
+   "file": "backend/src/routes/oauth.js",
+   "line": 528,
+   "what": "'linkedin' (w_member_social) and 'linkedin_ads' (r_ads...) request different scope sets but BOTH callbacks write the same key `linkedin_access_token` (lines 568-569); nothing ever writes `linkedin_ads_access_token`. LinkedIn invalidates the earlier token when a different scope set is granted, so connecting Ads kills member posting and connecting social kills ads, with integration_status still showing both as connected.",
+   "evidence_quote": "If you request a different scope than the previously granted scope, all the previous access tokens are invalidated.",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow",
+   "recommended_fix": "Request the UNION of scopes of every LinkedIn integration the company has connected or is connecting: base 'openid profile email'; add 'w_member_social' if type==='linkedin' or integration_status.linkedin; add 'rw_ads r_ads_reporting' if type==='linkedin_ads' or integration_status.linkedin_ads. In the callback also store `linkedin_granted_scope: tokens.scope` and, when type==='linkedin_ads', set `linkedin_ads_access_token` to the same token. Do NOT blindly request rw_ads for everyone: LinkedIn returns 401 'Invalid scope' if the app lacks the Advertising API product."
+  },
+  {
+   "severity": "broken_now",
+   "area": "LinkedIn feed read - restricted scope never requested",
+   "file": "backend/src/routes/social.js",
+   "line": 245,
+   "what": "The LinkedIn feed call GET /v2/ugcPosts?q=authors&authors=List(urn:li:person:~) needs r_member_social, a restricted scope available to approved apps only, and the OAuth flow only requests w_member_social. `urn:li:person:~` is also not a valid encoded person URN for this finder. The failure is swallowed by `catch { /* skip */ }` and `d.elements || []`, so LinkedIn posts silently never appear. Response parsing (p.specificContent..., p.created.time) is also the legacy UGC shape.",
+   "evidence_quote": "To retrieve all posts for a member. The `r_member_social` permission is required.",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/ugc-post-api",
+   "recommended_fix": "Either drop LinkedIn from the feed until LinkedIn approves r_member_social, or (once approved and the scope is added) call `GET https://api.linkedin.com/rest/posts?author=${encodeURIComponent('urn:li:person:'+sub)}&q=author&count=20&sortBy=LAST_MODIFIED` with headers Authorization, `Linkedin-Version: ${LINKEDIN_API_VERSION}`, `X-Restli-Protocol-Version: 2.0.0`, `X-RestLi-Method: FINDER`, and map `commentary` / `createdAt`. Surface the 403 instead of swallowing it."
+  },
+  {
+   "severity": "outdated",
+   "area": "LinkedIn member posting - legacy ugcPosts API",
+   "file": "backend/src/routes/social.js",
+   "line": 411,
+   "what": "Member posting uses POST https://api.linkedin.com/v2/ugcPosts. LinkedIn now titles that page 'UGC Post API (Legacy)' and says the Posts API replaces it. No sunset date is published for ugcPosts itself (probe: still routed, garbage token gets 401 INVALID_ACCESS_TOKEN), so this is not broken today, but it is on the legacy path. The call also omits X-Restli-Protocol-Version: 2.0.0, which the page says every ugcPosts request requires.",
+   "evidence_quote": "The Posts API replaces the ugcPosts API",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api",
+   "recommended_fix": "Migrate to `POST https://api.linkedin.com/rest/posts` with headers Authorization: Bearer, `Linkedin-Version: ${LINKEDIN_API_VERSION}`, `X-Restli-Protocol-Version: 2.0.0`, Content-Type: application/json and body `{ author: 'urn:li:person:'+me.sub, commentary: content, visibility: 'PUBLIC', distribution: { feedDistribution: 'MAIN_FEED', targetEntities: [], thirdPartyDistributionChannels: [] }, lifecycleState: 'PUBLISHED', isReshareDisabledByAuthor: false }`. Success is `r.status === 201` and the id is `r.headers.get('x-restli-id')` (the body is not documented to carry it, so do NOT call r.json() unguarded). Commentary is 'little text' (https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/little-text-format): escape its reserved characters before sending (exact set not fetched, treat as unverified)."
+  },
+  {
+   "severity": "outdated",
+   "area": "LinkedIn posting - success detection",
+   "file": "backend/src/routes/social.js",
+   "line": 393,
+   "what": "publishToLinkedIn never checks `meResp.ok`/`me.sub` (a failed userinfo call yields author `urn:li:person:undefined`) and never checks `r.ok` on the post; failure is inferred only from `d.status >= 400` after an unguarded `await r.json()`. A non-JSON or status-less error body either throws a confusing SyntaxError or is treated as success with post_id undefined.",
+   "evidence_quote": "You should get a 201 response and the response header x-restli-id contains the Post ID",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api",
+   "recommended_fix": "After userinfo: `if (!meResp.ok || !me.sub) throw new Error('LinkedIn token invalid or missing openid/profile scope - reconnect');`. After the post: `if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `LinkedIn post failed (HTTP ${r.status})`); } return { post_id: r.headers.get('x-restli-id') || (await r.json().catch(() => ({}))).id };`"
+  },
+  {
+   "severity": "outdated",
+   "area": "LinkedIn Ads - account-scoped resource paths",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 195,
+   "what": "Create/patch calls use https://api.linkedin.com/rest/adCampaignGroups, /rest/adCampaigns (line 208) and /rest/${path}/${externalId} (line 228) without the account segment. The current campaign and campaign-group docs (updated Jul/Sep 2026) show only the account-scoped form. A legacy page (versioning overview) still shows POST /rest/adCampaigns, and I could not probe an authenticated create without real credentials, so whether the unscoped form is still accepted is unverified, but the documented form is the safe one.",
+   "evidence_quote": "POST https://api.linkedin.com/rest/adAccounts/512352200/adCampaignGroups",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups",
+   "recommended_fix": "Line 195: `https://api.linkedin.com/rest/adAccounts/${cred.account}/adCampaignGroups`. Line 208: `https://api.linkedin.com/rest/adAccounts/${cred.account}/adCampaigns`. Line 228: pass cred (already available as setStatus's 4th arg) and use `https://api.linkedin.com/rest/adAccounts/${cred.account}/${path}/${externalId}`. The documented update body `{ patch: { $set: { status } } }` is already correct; the X-RestLi-Method header is not shown in the ads update examples and is harmless."
+  },
+  {
+   "severity": "outdated",
+   "area": "X OAuth - authorize host",
+   "file": "backend/src/routes/oauth.js",
+   "line": 608,
+   "what": "Authorize URL still uses twitter.com. PROBED: https://twitter.com/i/oauth2/authorize answers 301 to https://x.com/i/oauth2/authorize, so it works today only through a redirect; docs now publish x.com. No sunset date for twitter.com was found.",
+   "evidence_quote": "https://x.com/i/oauth2/authorize?response_type=code&client_id=...",
+   "evidence_url": "https://docs.x.com/fundamentals/authentication/oauth-2-0/user-access-token",
+   "recommended_fix": "Line 608: const authUrl = `https://x.com/i/oauth2/authorize?${params}`;"
+  },
+  {
+   "severity": "outdated",
+   "area": "X API host (token, users/me, tweets)",
+   "file": "backend/src/routes/oauth.js",
+   "line": 629,
+   "what": "All X calls use api.twitter.com: oauth.js:629 (token), integrations.js:611 (users/me), social.js:261, 267, 425. PROBED: api.twitter.com and api.x.com currently return identical bodies (token endpoint 400 invalid_client on garbage creds; users/me 401/403). Docs only reference api.x.com. No published sunset found, so not breaking, but the host is hard-coded in 5 places with no env override.",
+   "evidence_quote": "POST /2/tweets at https://api.x.com",
+   "evidence_url": "https://docs.x.com/x-api/posts/creation-of-a-post",
+   "recommended_fix": "Add `export const X_API_BASE = process.env.X_API_BASE || 'https://api.x.com';` in a shared lib and replace every `https://api.twitter.com` with `${X_API_BASE}` (token: `${X_API_BASE}/2/oauth2/token`, me: `${X_API_BASE}/2/users/me`, tweets: `${X_API_BASE}/2/tweets`)."
+  },
+  {
+   "severity": "outdated",
+   "area": "X OAuth - PKCE 'plain' with verifier carried in state",
+   "file": "backend/src/routes/oauth.js",
+   "line": 604,
+   "what": "code_challenge = codeVerifier with method 'plain', and the verifier also travels inside the (signed but not encrypted) state. The challenge in the authorize URL therefore equals the secret verifier, so PKCE provides no protection against code interception. X accepts S256, and the Canva flow in this same file already does it correctly (lines 830-842).",
+   "evidence_quote": "Supported code_challenge_method values: S256 OR plain",
+   "evidence_url": "https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code",
+   "recommended_fix": "Lines 604-605: `code_challenge: crypto.createHash('sha256').update(codeVerifier).digest('base64url'), code_challenge_method: 'S256'`. Keep the verifier out of the URL-visible state (store it server-side keyed by the state nonce, or encrypt it in the state) as the plain-text state is readable by anyone who sees the redirect."
+  },
+  {
+   "severity": "outdated",
+   "area": "X test case - stale tier message, mislabels garbage token",
+   "file": "backend/src/routes/integrations.js",
+   "line": 617,
+   "what": "PROBED: GET /2/users/me with a GARBAGE bearer returns 403 'Unsupported Authentication ... OAuth 2.0 Application-Only is forbidden'. The 403 branch then tells the user 'X token is valid but the API access tier forbids this call ... Posting needs a paid tier', which is false for a garbage/expired token (the test still correctly returns success:false). The 'paid tier' wording is also stale: X moved to pay-per-use credits (Post: Create $0.015/request) and closed the free tier to new signups on 2026-02-06; when credits run out requests are blocked.",
+   "evidence_quote": "\"API requests will be blocked until you add credits to cover the negative balance.\"",
+   "evidence_url": "https://docs.x.com/x-api/getting-started/pricing",
+   "recommended_fix": "In the 403 branch: `if (String(d.type || '').includes('unsupported-authentication')) return res.json({ success:false, message:'X token is invalid or expired. Please reconnect.' });` else `message: `X rejected the call (${msg}). Check the X developer app has API credits and tweet.read/tweet.write/users.read scopes.``. Also fetch via X_API_BASE."
+  },
+  {
+   "severity": "outdated",
+   "area": "Social feed - X credit burn and error swallowing",
+   "file": "backend/src/routes/social.js",
+   "line": 261,
+   "what": "Every feed refresh makes two billable X calls (users/me then users/{id}/tweets), and all failures (401 expiry, 402 credits, 429) are swallowed by `catch { /* skip */ }` or by ignoring non-ok bodies, so the UI shows an empty X feed with no reason. Under pay-per-use ('User: Read $0.010 per resource') this is a direct cost.",
+   "evidence_quote": "\"**User: Read** | $0.010 per resource\"",
+   "evidence_url": "https://docs.x.com/x-api/getting-started/pricing",
+   "recommended_fix": "Cache the X user id at connect time (`twitter_user_id` from GET /2/users/me in the callback) and skip the me call; check `r.ok` and return a per-platform error object (e.g. {platform:'twitter', error:'token expired'}) instead of dropping it."
+  },
+  {
+   "severity": "unverified",
+   "area": "LinkedIn version header - deployed env var",
+   "file": "backend/src/routes/integrations.js",
+   "line": 10,
+   "what": "Code default is 202606 (Active, sunset June 15, 2027, about 8 months out) with an env override LINKEDIN_API_VERSION, duplicated in integrations.js:10, adPublisher.js:18 and routes/ads.js:7. If the Railway service has LINKEDIN_API_VERSION set to an older value it overrides the good default: 202510 sunsets October 15, 2026 (9 days from today) and 202511 on November 16, 2026; LinkedIn returns an error for deprecated versions. I cannot read the deployed Railway variables from here.",
+   "evidence_quote": "Marketing Version 202510 ... will be sunset on October 15, 2026.",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/migrations",
+   "recommended_fix": "In Railway, delete LINKEDIN_API_VERSION or set it to 202609 (latest, sunset Sept 15, 2027). In code, centralise the constant once (e.g. lib/linkedin.js `export const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202609';`) and import it in the three files. Review the 202607-202609 changelog (new campaign-group fields from 202608) before bumping the default."
+  },
+  {
+   "severity": "ok",
+   "area": "LinkedIn Marketing version pin",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 18,
+   "what": "Linkedin-Version 202606 is listed Active with sunset June 15, 2027, so nothing is broken or sunsetting inside 6 months from the code default. Header name/format (YYYYMM) and X-Restli-Protocol-Version: 2.0.0 are correct (adPublisher.js:188-192, integrations.js:425-428).",
+   "evidence_quote": "version 202606 (June 2026) ... June 15, 2027 | Active",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/migrations",
+   "recommended_fix": "No change required; see the env-var and bump recommendation above."
+  },
+  {
+   "severity": "ok",
+   "area": "LinkedIn OAuth endpoints, scopes, token lifetime",
+   "file": "backend/src/routes/oauth.js",
+   "line": 539,
+   "what": "Authorization URL https://www.linkedin.com/oauth/v2/authorization (line 539) and token URL https://www.linkedin.com/oauth/v2/accessToken (line 559) with form-encoded grant_type/code/client_id/client_secret/redirect_uri match the docs. PROBED the token endpoint with garbage values: HTTP 401 {\"error\":\"invalid_request\",\"error_description\":...}, which matches the `tokens.error` check at line 565. Sign-in scopes `openid profile email` are current and the removed r_liteprofile/r_emailaddress are NOT used. 60-day lifetime handled by `expires_in || 5184000` (line 569). Programmatic refresh tokens exist only for a limited set of partners, so no refresh logic is expected; the UI must prompt reconnect near linkedin_token_expires_at.",
+   "evidence_quote": "Currently, all access tokens are issued with a 60-day lifespan.",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow",
+   "recommended_fix": "No change required."
+  },
+  {
+   "severity": "ok",
+   "area": "LinkedIn userinfo endpoint",
+   "file": "backend/src/routes/integrations.js",
+   "line": 600,
+   "what": "GET https://api.linkedin.com/v2/userinfo with a Bearer token is the documented OIDC endpoint (also used at social.js:393). Fields `sub`, `name`, `email` match; email is optional, which the code handles via `d.sub || d.email`. PROBED: no key returns 401 EMPTY_ACCESS_TOKEN, garbage returns 401 INVALID_ACCESS_TOKEN.",
+   "evidence_quote": "GET https://api.linkedin.com/v2/userinfo",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2",
+   "recommended_fix": "No change required for the endpoint."
+  },
+  {
+   "severity": "ok",
+   "area": "X scopes and token request shape",
+   "file": "backend/src/routes/oauth.js",
+   "line": 602,
+   "what": "Scopes `tweet.read tweet.write users.read offline.access` are all current. Token request using Authorization: Basic base64(client_id:client_secret) with grant_type=authorization_code, code, redirect_uri, code_verifier is the documented confidential-client form (probe: garbage creds give 400 invalid_client in the {error,error_description} shape handled at line 643). `media.write` exists if image posting is added later (publishToTwitter currently ignores mediaUrls).",
+   "evidence_quote": "Confidential clients: Authorization: Basic [base64(client_id:client_secret)]",
+   "evidence_url": "https://docs.x.com/fundamentals/authentication/oauth-2-0/user-access-token",
+   "recommended_fix": "No change required; add media.write to the scope string only when media posting is implemented."
+  },
+  {
+   "severity": "ok",
+   "area": "No Apollo-class unauthenticated-success tests in LinkedIn/X",
+   "file": "backend/src/routes/integrations.js",
+   "line": 419,
+   "what": "None of the four test endpoints returns 2xx without valid credentials. PROBED with NO key and a GARBAGE key: v2/userinfo 401/401; rest/adAccounts/{id}/adCampaigns (Linkedin-Version 202606) 401/401 (also 401 with deprecated 202401, so auth is evaluated before version); X users/me 401 (no key) / 403 (garbage). Also each case returns success:false early when the stored token is missing (lines 599, 610, 422).",
+   "evidence_quote": "{\"status\":401,\"serviceErrorCode\":65600,\"code\":\"INVALID_ACCESS_TOKEN\",\"message\":\"Invalid access token\"}",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api",
+   "recommended_fix": "No change required for fail-without-key behaviour. See the false-positive-risk finding for scope coverage."
+  },
+  {
+   "severity": "outdated",
+   "area": "LinkedIn test cases do not prove the scope they gate",
+   "file": "backend/src/routes/integrations.js",
+   "line": 600,
+   "what": "The linkedin/linkedin_social test passes for any token with openid/profile, including one that lacks w_member_social (e.g. after the Ads flow overwrote the token), so the UI shows green while posting returns 403. linkedin_ads only needs r_ads to pass but publishing needs rw_ads.",
+   "evidence_quote": "For 3-legged OAuth tokens, permission scopes will be displayed.",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/token-introspection",
+   "recommended_fix": "After the userinfo/adCampaigns success, POST https://www.linkedin.com/oauth/v2/introspectToken (form: client_id, client_secret, token) using the company's/env client credentials; require `active === true` and that `scope` contains `w_member_social` (linkedin) or `rw_ads` (linkedin_ads), else return success:false 'Reconnect LinkedIn - posting permission missing'. PROBED: garbage client id returns 400 invalid_client_id, so treat any non-200 as failure."
+  },
+  {
+   "severity": "unverified",
+   "area": "LinkedIn Ads test - search syntax",
+   "file": "backend/src/routes/integrations.js",
+   "line": 423,
+   "what": "The test URL uses `search=(test:False)`; the docs describe the filter only in prose ('set search.test=False') and the only documented Rest.li examples are `search=(type:(values:List(...)),status:(values:List(...)))`. I could not confirm that a capitalised `test:False` literal parses without a real token. The same string is in routes/ads.js:310. It fails closed on no/garbage keys (401), but could return 400 for a valid token.",
+   "evidence_quote": "search=(type:(values:List(SPONSORED_UPDATES)),status:(values:List(ACTIVE)))",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns",
+   "recommended_fix": "Use the documented form in both places: `?q=search&search=(status:(values:List(ACTIVE,PAUSED,DRAFT)))&pageSize=1` (ads.js:310 with pageSize=25), or `(test:(values:List(false)))` only after verifying with a sandbox token."
+  },
+  {
+   "severity": "outdated",
+   "area": "Disconnect does not clear LinkedIn Ads / X refresh keys",
+   "file": "backend/src/routes/oauth.js",
+   "line": 787,
+   "what": "TOKEN_KEYS_BY_PROVIDER has no `linkedin_ads` entry, so disconnecting LinkedIn Ads only flips integration_status and leaves linkedin_ads_access_token in api_keys; the twitter entry lists `twitter_access_secret` (an OAuth1 leftover) but will not cover the refresh/expiry keys recommended above. Tokens are also not revoked at the provider.",
+   "evidence_quote": "linkedin: ['linkedin_access_token', 'linkedin_token_expires_at']",
+   "evidence_url": "https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code",
+   "recommended_fix": "Add `linkedin_ads: ['linkedin_ads_access_token','linkedin_ads_account_id','linkedin_ads_connected']` and extend twitter to `['twitter_access_token','twitter_refresh_token','twitter_token_expires_at','twitter_user_id']`; remove twitter_access_secret. X revoke endpoint was not verified in the docs fetched."
+  }
+ ],
+ "pinned_versions": [
+  {
+   "name": "LinkedIn Marketing API Linkedin-Version header",
+   "in_code": "202606 (env LINKEDIN_API_VERSION override; duplicated in integrations.js:10, adPublisher.js:18, ads.js:7)",
+   "status": "current",
+   "current": "202609 (latest)",
+   "sunset_date": "2027-06-15"
+  },
+  {
+   "name": "LinkedIn Marketing version 202510 (only if Railway env var is set to it)",
+   "in_code": "not pinned in code; verify deployed LINKEDIN_API_VERSION",
+   "status": "deprecated",
+   "current": "202609",
+   "sunset_date": "2026-10-15"
+  },
+  {
+   "name": "LinkedIn Marketing version 202511 (only if Railway env var is set to it)",
+   "in_code": "not pinned in code; verify deployed LINKEDIN_API_VERSION",
+   "status": "current",
+   "current": "202609",
+   "sunset_date": "2026-11-16"
+  },
+  {
+   "name": "LinkedIn /v2/ugcPosts (member posting)",
+   "in_code": "/v2/ugcPosts, unversioned (social.js:411, 245)",
+   "status": "deprecated",
+   "current": "/rest/posts with Linkedin-Version header",
+   "sunset_date": "none published (docs label it Legacy; Posts API replaces it)"
+  },
+  {
+   "name": "LinkedIn /v2/userinfo (OIDC)",
+   "in_code": "/v2/userinfo (integrations.js:600, social.js:393)",
+   "status": "current",
+   "current": "/v2/userinfo"
+  },
+  {
+   "name": "X API v2 path version",
+   "in_code": "/2/* (tweets, users/me, oauth2/token)",
+   "status": "current",
+   "current": "/2/*"
+  },
+  {
+   "name": "X API hosts",
+   "in_code": "api.twitter.com (5 call sites) and twitter.com/i/oauth2/authorize",
+   "status": "deprecated",
+   "current": "api.x.com and x.com/i/oauth2/authorize",
+   "sunset_date": "none published; twitter.com authorize answers 301 to x.com"
+  },
+  {
+   "name": "X PKCE code_challenge_method",
+   "in_code": "plain (oauth.js:605)",
+   "status": "deprecated",
+   "current": "S256 (docs allow S256 or plain)"
+  },
+  {
+   "name": "X API access/pricing model",
+   "in_code": "message assumes 'paid tier' (integrations.js:619)",
+   "status": "deprecated",
+   "current": "pay-per-use credits since 2026-02-06; free tier closed to new signups"
+  }
+ ],
+ "test_cases": [
+  {
+   "type": "linkedin / linkedin_social",
+   "calls": "GET https://api.linkedin.com/v2/userinfo (Bearer stored linkedin_access_token)",
+   "verdict": "false_positive_risk",
+   "notes": "Correct endpoint and fails with no key (early return, and probed 401 EMPTY_ACCESS_TOKEN) and garbage key (probed 401 INVALID_ACCESS_TOKEN). But it passes any token with openid/profile, so it can show green when w_member_social is missing (e.g. token overwritten by the Ads flow). Add token introspection scope check."
+  },
+  {
+   "type": "linkedin_ads",
+   "calls": "GET https://api.linkedin.com/rest/adAccounts/{id}/adCampaigns?q=search&search=(test:False)&pageSize=1 with Linkedin-Version 202606",
+   "verdict": "sound",
+   "notes": "Path and headers match current docs. Probed no key 401 EMPTY_ACCESS_TOKEN and garbage 401 INVALID_ACCESS_TOKEN, so it cannot pass without valid credentials (r.ok required). Only r_ads is needed to pass while publishing needs rw_ads, and the `test:False` search literal is not shown in the docs (unverified), so a valid token could get a 400."
+  },
+  {
+   "type": "twitter",
+   "calls": "GET https://api.twitter.com/2/users/me (Bearer stored twitter_access_token)",
+   "verdict": "stale",
+   "notes": "Fails closed: no key 401, garbage key 403 Unsupported Authentication (probed), and success requires r.ok && d.data.id. But the host is legacy (use api.x.com), the 403 branch wrongly tells the user the token is valid and blames a paid tier (X is now pay-per-use), the read-only check does not prove tweet.write, and a stored access token expires after about 2 hours with no refresh."
+  },
+  {
+   "type": "social publish (not a test route): publishToTwitter",
+   "calls": "POST https://api.twitter.com/2/tweets",
+   "verdict": "false_positive_risk",
+   "notes": "Probed: no key returns 401 and garbage returns 403, both problem+json with no `errors` array, so `if (d.errors)` does not throw and the publish is recorded as success with post_id undefined."
+  }
+ ]
+}

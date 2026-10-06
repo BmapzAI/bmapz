@@ -1,0 +1,279 @@
+{
+ "group": "Meta (Facebook/Instagram Graph API, Marketing API, WhatsApp Cloud API)",
+ "findings": [
+  {
+   "severity": "broken_now",
+   "area": "Marketing API version",
+   "what": "All ads calls are pinned to v24.0. Meta's Marketing API changelog lists v24.0 as 'Available Until October 6, 2026', which is today. v23.0 already expired June 9, 2026. The Marketing API runs a short lifecycle (at least 90 days of support after a new version ships), separate from the Graph API's 2-year guarantee. After the date, a call to v24.0 'may fail or be upgraded to the next available version', so ad create/status/insights/lead-form calls become unpredictable. The Meta default is repeated as 'v24.0' in 10 files, and the ads files all use it: adPublisher.js, ads.js, integrations.js. The page I fetched shows v25.0 (released Feb 18, 2026) as latest, so v25.0 is the documented-safe target for ads calls. Graph API alone shows v26.0 (July 29, 2026), but I could not confirm the Marketing API supports v26.0.",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 17,
+   "evidence_url": "https://developers.facebook.com/documentation/ads-commerce/marketing-api/marketing-api-changelog",
+   "evidence_quote": "v24.0 | October 8, 2025 | October 6, 2026 (table); v23.0 | May 29, 2025 | June 9, 2026. Versioning page: 'After the 90-day grace period ends, the deprecated version stops working.'",
+   "recommended_fix": "Change the default to 'v25.0' in all 10 files: oauth.js:7, integrations.js:9, adPublisher.js:17, sdrEngine.js:21, workflowEngine.js:25, whatsappWebhook.js:29, social.js:6, messaging.js:9, ads.js:6, email.js:7. Replace `process.env.META_GRAPH_VERSION || 'v24.0'` with `process.env.META_GRAPH_VERSION || 'v25.0'`. Also set META_GRAPH_VERSION=v25.0 on Railway now so it applies without a deploy. Better, export the constant once from a shared lib (e.g. lib/metaVersion.js) so the next bump touches one line. Smoke-test the ad create flow on v25.0 first, because the Marketing API changelog excerpt I could read did not list v25.0 breaking changes for campaign/adset/ad creation."
+  },
+  {
+   "severity": "outdated",
+   "area": "Graph API version (non-ads)",
+   "what": "Graph API v24.0 stays supported until Feb 18, 2028 (about 16 months), so Graph-only calls (WhatsApp, Pages, Instagram) are not at risk. But v25.0 shipped Feb 18, 2026 and v26.0 on July 29, 2026, so v24.0 is two versions behind. A single shared constant means the ads deadline forces the bump for everything.",
+   "file": "backend/src/routes/oauth.js",
+   "line": 7,
+   "evidence_url": "https://developers.facebook.com/docs/graph-api/changelog/",
+   "evidence_quote": "v24.0 released October 8, 2025, available until February 18, 2028; list runs through v26.0 (July 29, 2026), the current latest.",
+   "recommended_fix": "Use v25.0 for everything now (matches the Marketing API). Move to v26.0 only after confirming the Marketing API lists it. Optionally split into META_ADS_API_VERSION (ads files) and META_GRAPH_VERSION (everything else), since the two lifecycles differ."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Facebook Page analytics",
+   "what": "social.js requests page_impressions, page_engaged_users, page_post_engagements and page_fans in a single call. Meta deprecated page_impressions* and page_fans on Nov 15, 2025 for ALL versions, and the API returns 'an invalid metric error' for them. One invalid metric fails the whole request. The code does `analytics.facebook = d.data || []` and never checks d.error, so the dashboard silently shows empty Facebook analytics. The status of page_engaged_users and page_post_engagements was not confirmed in the pages I could read.",
+   "file": "backend/src/routes/social.js",
+   "line": 309,
+   "evidence_url": "https://developers.facebook.com/documentation/pages-api/changelog",
+   "evidence_quote": "November 15, 2025: page_fans (Alternative: page_follows); page_impressions* (Alternative: page_media_view). 'the API will return an invalid metric error when calling any of these metrics'",
+   "recommended_fix": "Change line 309 to `const metrics = 'page_media_view,page_follows,page_post_engagements';`. Check d.error after the fetch and set `analytics.facebook = { error: d.error.message }` instead of swallowing it. Test page_post_engagements against a real Page token before relying on it. Note Meta says the new metrics are not 1:1 replacements (different methodology), so relabel the dashboard from 'impressions'/'fans' to 'views'/'follows'."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Instagram analytics",
+   "what": "social.js requests metrics=impressions,reach,profile_views,follower_count with period=day. `impressions` is 'Deprecated for v22.0+ and all versions April 21, 2025', so the call errors on v24.0. The reference lists only impressions and reach as time_series metrics. profile_views is not listed under supported metrics in the current reference, and follower_count is not listed either (it appears only in a note about accounts under 100 followers). One bad metric fails the whole call, and the code swallows it with `d.data || []`.",
+   "file": "backend/src/routes/social.js",
+   "line": 324,
+   "evidence_url": "https://developers.facebook.com/docs/instagram-platform/api-reference/instagram-user/insights",
+   "evidence_quote": "'Deprecated for v22.0+ and all versions April 21, 2025.' Only two metrics support time_series format: impressions and reach.",
+   "recommended_fix": "Use `const metrics = 'reach';` for the period=day time series. Fetch the totals separately with `metric=views,accounts_engaged,total_interactions&metric_type=total_value&period=day`. Drop impressions and profile_views. Fetch follower_count only if you can confirm it in the live API, because the page I read does not list it as a metric. Surface d.error rather than returning an empty array."
+  },
+  {
+   "severity": "broken_now",
+   "area": "OAuth scopes (missing)",
+   "what": "The Meta scope list has no instagram_manage_insights. The Instagram insights reference says Instagram API with Facebook Login requires instagram_basic, instagram_manage_insights and pages_read_engagement, so IG analytics fails with a permission error even after the metric fixes. Page insights historically also need read_insights. That was not verifiable from the pages I could fetch, so treat it as unverified. Also, pages_manage_metadata is not requested. It is normally required to subscribe a Page to webhooks for Instagram/Messenger DMs, but I did not verify that against current docs.",
+   "file": "backend/src/routes/oauth.js",
+   "line": 419,
+   "evidence_url": "https://developers.facebook.com/docs/instagram-platform/api-reference/instagram-user/insights",
+   "evidence_quote": "For Instagram API with Facebook Login: instagram_basic, instagram_manage_insights, pages_read_engagement, plus ads_management and ads_read if the app user has a Business Manager role.",
+   "recommended_fix": "Change line 419 to: 'email,pages_show_list,pages_read_engagement,pages_manage_posts,pages_messaging,read_insights,instagram_basic,instagram_content_publish,instagram_manage_messages,instagram_manage_insights,ads_management,ads_read,business_management'. Add each new permission to App Review before go-live. Add pages_manage_metadata only if you subscribe Pages to webhooks."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "Facebook Login for Business",
+   "what": "The OAuth dialog uses the classic `scope` parameter. Meta states that for Business-type apps 'config_id has replaced scope (which should not be used)'. Scope still works for user tokens and no sunset date is published, so it works today. But a Business-type app that goes live with scope-only could lose permissions or hit review friction. I could not confirm scope is rejected for new Business apps.",
+   "file": "backend/src/routes/oauth.js",
+   "line": 429,
+   "evidence_url": "https://developers.facebook.com/docs/facebook-login/facebook-login-for-business",
+   "evidence_quote": "Note that `config_id` has replaced `scope` (which should not be used).",
+   "recommended_fix": "If the Meta app is Business type, create a Facebook Login for Business configuration in the dashboard and send `config_id` (plus response_type=code and override_default_response_type=true). Do this in a new env var META_LOGIN_CONFIG_ID, and keep the `scope` fallback when it is unset. Check the app type in the Meta dashboard before launch."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "WhatsApp inbound webhook (BSUID)",
+   "what": "The webhook assumes `message.from` is always a phone number. Meta started adding BSUIDs to webhooks in April 2026. The phone-number fields `from` and `wa_id` 'will be omitted if the phone number cannot be included' (30-day interaction / contact-book conditions), and there is a new `from_user_id`. The code at line 162 uses message.from as the reply target, so for username users `to` becomes undefined and the reply fails. The webhook also reads only entry[0].changes[0].value.messages[0], so batched deliveries lose every message after the first. It also ignores `value.statuses`, as a comment notes.",
+   "file": "backend/src/routes/whatsappWebhook.js",
+   "line": 155,
+   "evidence_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids",
+   "evidence_quote": "A new `from_user_id` property is added to incoming message webhooks. To send to a BSUID: 'set `recipient` to the user's BSUID or parent BSUID' and 'omit the `to` property.'",
+   "recommended_fix": "Loop over every entry, change and message. Use `const fromId = message.from || message.from_user_id`. Store both. In sendWhatsAppMessage, send `{ to: phone }` when a phone number exists, else `{ recipient: bsuid }`. Meta's page says its APIs do not support sending to BSUIDs until July 2026, which has passed, but the exact `recipient` request shape (BSUID doc) was not fully confirmed for text messages, so smoke test it. Persist the BSUID on the lead record."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "WhatsApp outbound free-form text",
+   "what": "workflowEngine.js, sdrEngine.js and email.js send `type: 'text'` messages to leads and staff. Meta only allows service (free-form) messages inside the customer service window: 'To message WhatsApp users outside of a customer service window, use template messages instead.' Workflow sends to cold leads and SDR handover notifications (sdrEngine.js:558-561) to staff numbers will therefore be rejected unless the recipient messaged the business in the last 24 hours. In notifyHandover the fetch result is never checked (no r.ok test) and .catch(() => {}) hides errors, so failures are silent. workflowEngine.js checks d.error only, not HTTP status or messages[0].id.",
+   "file": "backend/src/lib/workflowEngine.js",
+   "line": 170,
+   "evidence_url": "https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages/",
+   "evidence_quote": "Service messages can only be sent via the Messages API. To message WhatsApp users outside of a customer service window, use template messages instead.",
+   "recommended_fix": "For proactive sends, use `type: 'template'` with an approved template name and language. Treat success as `r.ok && d.messages?.[0]?.id`. Log failures in notifyHandover (sdrEngine.js:558-561) instead of swallowing them, and mark the message failed with the Meta error code. The window rejection code (131047 in my memory) was not confirmed in the docs I fetched."
+  },
+  {
+   "severity": "unverified",
+   "area": "Instagram DM send endpoint",
+   "what": "The send call is `POST graph.facebook.com/{vVER}/{instagram_business_account_id}/messages` with a Page token. The Messenger-Platform-for-Instagram docs show `POST /me/messages` or `POST /PAGE-ID/messages` on graph.facebook.com with a Page access token. The `/<IG_ID>/messages` variant is documented for Instagram API with Instagram Login on graph.instagram.com and 'is not documented' on the Facebook Login page I read. So the endpoint likely fails or misroutes. Real behaviour was not probed (it needs a real token).",
+   "file": "backend/src/lib/sdrEngine.js",
+   "line": 452,
+   "evidence_url": "https://developers.facebook.com/docs/messenger-platform/instagram/features/send-message",
+   "evidence_quote": "POST /me/messages (primary examples), POST /PAGE-ID/messages (alternative). The Instagram-scoped ID for the customer must be in `recipient`. Required permission instagram_manage_messages; a Page access token.",
+   "recommended_fix": "Use the Page id and Page token: `https://graph.facebook.com/${META_GRAPH_VERSION}/${keys.facebook_page_id}/messages` (or `/me/messages`). Apply the same change in routes/email.js:66, which has the same pattern. Resolve pageId = keys.facebook_page_id. Do not fall back to the user token (meta_access_token) for sends, because that token cannot message as the Page."
+  },
+  {
+   "severity": "outdated",
+   "area": "Data deletion callback",
+   "what": "dataDeletion.js is an email form (POST {email}). Meta's Data Deletion Request Callback sends a POST with a `signed_request` parameter and expects JSON `{url, confirmation_code}`. If this route's URL is entered in the app's 'Data Deletion Request URL' field, Meta's POST has no email and the route returns HTTP 400, which fails Meta's review and any real deletion request. It is valid only as a 'Data Deletion Instructions URL' (a human-facing page). There is also no handler for the Deauthorize callback. That one I could not confirm as required.",
+   "file": "backend/src/routes/dataDeletion.js",
+   "line": 9,
+   "evidence_url": "https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback",
+   "evidence_quote": "The request includes a signed_request POST parameter... Your callback must return: { url: '<url>', confirmation_code: '<code>' }... 'either a data deletion callback instruction URL or a callback URL' in Basic Settings.",
+   "recommended_fix": "Either (a) put the public frontend instructions page in Basic Settings > 'Data Deletion Instructions URL' and leave this route alone, or (b) add `POST /api/data-deletion/meta` that verifies signed_request (HMAC-SHA256 with META_APP_SECRET, base64url payload), reads user_id, inserts a data_deletion_requests row and returns `{url: FRONTEND_URL + '/data-deletion?code=' + code, confirmation_code: code}`. Option (b) is the safer choice for review. Register the new URL in the Meta app dashboard."
+  },
+  {
+   "severity": "ok",
+   "area": "Test cases (meta, facebook, instagram, meta_ads, whatsapp)",
+   "what": "Probed with curl using no key and a garbage key. Every endpoint these tests call fails cleanly with 4xx and an `error` object, so none can report success without valid credentials. /me with garbage: HTTP 400 code 190 'Invalid OAuth access token data.'. /me with no token: 400 code 2500. act_123456 garbage: 400/190. act_ with no token: 403 code 200. WhatsApp phone node with Bearer garbage: 401/190. Without Authorization: 400 code 104. messages POST with garbage Bearer: 401/190. The tests also check `!r.ok || d.error`, so they fail. Note the version header was only returned on unauthenticated paths, so these probes do not prove v25/v26 behaviour.",
+   "file": "backend/src/routes/integrations.js",
+   "line": 322,
+   "evidence_url": "https://graph.facebook.com/v24.0/me?access_token=GARBAGE",
+   "evidence_quote": "{\"error\":{\"message\":\"Invalid OAuth access token data.\",\"type\":\"OAuthException\",\"code\":190}}",
+   "recommended_fix": "No change required for fail-without-key behaviour."
+  },
+  {
+   "severity": "outdated",
+   "area": "Test false-positive (whatsapp)",
+   "what": "The WhatsApp test reads WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID from the platform environment when the company has no keys. A company with no credentials of its own therefore gets success:true, because the platform's valid token passes. The message does say 'using the platform number, not one of yours', but `success` is still true. This is the same class as the Apollo finding: it reports success without the customer's own credentials.",
+   "file": "backend/src/routes/integrations.js",
+   "line": 328,
+   "evidence_url": "https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages/",
+   "evidence_quote": "Code at integrations.js:328: const usingPlatform = !k.whatsapp_api_token && !k.whatsapp_access_token;",
+   "recommended_fix": "If `usingPlatform` is true, return `success: false` with 'No WhatsApp credentials of your own on file. Messages would send from the platform number.' Or return success:true only for owner/system_admin roles."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Test false-negative (meta_ads)",
+   "what": "The meta_ads test builds `act_${accountId}` with no normalization, while adPublisher.js:resolveCredentials strips/adds the prefix. If a user saves the account id as `act_123` (the form Meta Ads Manager shows), the test calls act_act_123 and fails, while publishing would work. Probed: act_act_123 with a garbage token returns 400/190, so the real response for a valid token is not distinguishable here, but Meta resource ids do not accept the doubled prefix. Also, the account token is sent in the URL query string (also at social.js, ads.js and messaging.js), which risks logging it.",
+   "file": "backend/src/routes/integrations.js",
+   "line": 371,
+   "evidence_url": "https://graph.facebook.com/v24.0/act_act_123?fields=id,name&access_token=GARBAGE",
+   "evidence_quote": "const r = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/act_${accountId}?fields=id,name&access_token=${token}`);",
+   "recommended_fix": "Use `const acct = String(accountId).startsWith('act_') ? accountId : `act_${accountId}`;` and `fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${acct}?fields=id,name,account_status`, { headers: { Authorization: `Bearer ${token}` } })`. Fail when account_status is not 1 (active). Apply the same prefix normalization in ads.js:280/368."
+  },
+  {
+   "severity": "outdated",
+   "area": "Test depth (meta / facebook / instagram)",
+   "what": "The meta, facebook and instagram tests call /me only. That passes if the user token is valid even when the person declined messaging, insights or ads permissions in the consent dialog. Facebook Login lets users untick individual permissions. The OAuth callback also never reads /me/permissions, so no declined scope is detected. For facebook the test never validates the stored Page token. For instagram it never validates the IG account id.",
+   "file": "backend/src/routes/integrations.js",
+   "line": 582,
+   "evidence_url": "https://developers.facebook.com/docs/facebook-login/facebook-login-for-business",
+   "evidence_quote": "Facebook Login lets people grant a subset of the requested permissions (config shown in dashboard).",
+   "recommended_fix": "After /me, call `/${META_GRAPH_VERSION}/me/permissions` and require status=granted for the scopes each integration needs. For facebook, call `/{facebook_page_id}?fields=id,name` with facebook_page_access_token. For instagram, call `/{instagram_business_account_id}?fields=id,username` with the Page token. Also run the permission check inside /meta/callback and return a specific 'permission X was not granted' message."
+  },
+  {
+   "severity": "outdated",
+   "area": "OAuth page selection",
+   "what": "The callback takes `pagesData.data?.[0]` from /me/accounts with no pagination and no tolerance for an empty list. A user with several Pages always gets the first one silently, and /me/accounts default page size can hide Pages. A non-JSON or error response is parsed without a check. `tokens.access_token` is not validated before the fb_exchange_token call. This is a bug/UX risk rather than an API break.",
+   "file": "backend/src/routes/oauth.js",
+   "line": 469,
+   "evidence_url": "https://developers.facebook.com/docs/facebook-login/facebook-login-for-business",
+   "evidence_quote": "Code at oauth.js:467-469: me/accounts?access_token=... then pagesData.data?.[0]",
+   "recommended_fix": "Request `/me/accounts?fields=id,name,access_token,instagram_business_account&limit=100`. If more than one Page exists, store the list and let the user choose. Fail with a clear message when pagesData.error or the list is empty. Check `llTokens.error` before using it."
+  },
+  {
+   "severity": "ok",
+   "area": "Version overrides",
+   "what": "Every Meta call site in the nine audited files plus routes/ads.js and routes/email.js is versioned (no unversioned calls) and reads `process.env.META_GRAPH_VERSION`, so the version can be changed without a code edit. The weakness is that the default is repeated in 10 files and ads and non-ads share one variable.",
+   "file": "backend/src/routes/oauth.js",
+   "line": 7,
+   "evidence_url": "https://developers.facebook.com/docs/graph-api/changelog/",
+   "evidence_quote": "const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v24.0';",
+   "recommended_fix": "Create backend/src/lib/metaVersion.js exporting META_GRAPH_VERSION and META_ADS_VERSION with env overrides, and import it in all 10 files."
+  },
+  {
+   "severity": "ok",
+   "area": "Ads create endpoints",
+   "what": "POST /act_{id}/campaigns, /adsets and /ads and POST /{id} for status, form-encoded, with the token in the body, match the documented Marketing API shape. special_ad_categories as a JSON array and OUTCOME_TRAFFIC are valid. is_adset_budget_sharing_enabled is documented as not required. The campaign create uses `bid_strategy` only when set. Risk remaining: the changelog excerpt I could read had no v25.0 creation-breaking notes, but I did not read the full v25.0 or v26.0 changelog pages, and no real create call was made.",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 99,
+   "evidence_url": "https://developers.facebook.com/docs/marketing-api/reference/ad-campaign-group/",
+   "evidence_quote": "Businesses whose ads do not belong to a Special Ad Category must indicate NONE or send an empty array. Outcome-Driven (v11.0+): OUTCOME_TRAFFIC, OUTCOME_AWARENESS, ...",
+   "recommended_fix": "No change needed for shape. After bumping to v25.0, create a PAUSED campaign/adset/ad end to end in a test ad account."
+  },
+  {
+   "severity": "unverified",
+   "area": "Ad set / creative fields",
+   "what": "Not confirmed against current docs: createAdGroup sends `targeting` with age_max up to 65 and no `targeting_automation.advantage_audience` flag; createAd sets `link_data.picture` and `call_to_action` inline. Meta has changed required Advantage audience handling for ad sets in recent versions, but I could not read the ad set reference page to confirm it applies to v25.0. Also unverified: whether `LINK_CLICKS` / `IMPRESSIONS` is a valid pairing for the chosen campaign objective.",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 116,
+   "evidence_url": "https://developers.facebook.com/docs/marketing-api/reference/ad-campaign-group/",
+   "evidence_quote": "Page returned only campaign-level fields; ad set targeting requirements could not be read.",
+   "recommended_fix": "Add `targeting_automation: { advantage_audience: 0 }` to the targeting object explicitly, and test an ad set create on v25.0 in a test ad account before launch."
+  },
+  {
+   "severity": "ok",
+   "area": "WhatsApp webhook security and send",
+   "what": "Webhook verification (GET hub.mode/hub.verify_token/hub.challenge) and POST X-Hub-Signature-256 HMAC over the raw body are the documented scheme. The send endpoint POST /{phone-number-id}/messages with Bearer auth, messaging_product, to and text.body matches the Cloud API reference, and the success shape (messages[0].id) is as documented. The phone-node probe GET /{phone-id}?fields=display_phone_number,verified_name is a valid way to test credentials.",
+   "file": "backend/src/routes/whatsappWebhook.js",
+   "line": 56,
+   "evidence_url": "https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages/",
+   "evidence_quote": "POST /<WHATSAPP_BUSINESS_PHONE_NUMBER_ID>/messages; response contains messages[0].id",
+   "recommended_fix": "No change for these. Optionally strip the plus sign handling is unnecessary: Meta accepts +, hyphens and spaces."
+  },
+  {
+   "severity": "ok",
+   "area": "Instagram publishing and DM sync",
+   "what": "The two-step publish (POST /{ig-id}/media with image_url+caption, then /media_publish with creation_id) matches the Instagram content publishing flow I know. The conversation sync (GET /{page-id}/conversations?platform=instagram with a Page token) is the Messenger-Platform-for-Instagram read path. I did not fetch the content-publishing page or the conversations page this session, so these two are from memory rather than a fetched quote.",
+   "file": "backend/src/routes/social.js",
+   "line": 370,
+   "evidence_url": "https://developers.facebook.com/docs/messenger-platform/instagram/features/send-message",
+   "evidence_quote": "Not fetched for this specific call.",
+   "recommended_fix": "Treat as unverified until the content-publishing and conversations pages are read. Add a status poll (GET /{container-id}?fields=status_code) before media_publish."
+  },
+  {
+   "severity": "unverified",
+   "area": "Not audited",
+   "what": "Not covered this run: Page `/posts` edge fields (likes.summary, shares), /me/accounts behaviour after v25/v26, WhatsApp message status webhooks and pricing, expiry of long-lived Page tokens, and the full v25.0/v26.0 Graph API changelogs. The Marketing API changelog I could read had no entries for v26.0. Also, the Graph and Marketing API pages disagree on whether v25.0 or v26.0 is latest, so one of those pages may be cached or stale.",
+   "file": "backend/src/routes/social.js",
+   "line": 211,
+   "evidence_url": "https://developers.facebook.com/docs/graph-api/changelog/",
+   "evidence_quote": "Graph page: v26.0 (July 29, 2026) is latest. Marketing page: 'The latest Graph API version is: v25.0'.",
+   "recommended_fix": "Read the v25.0 and v26.0 changelogs in a browser before choosing the final version string."
+  }
+ ],
+ "pinned_versions": [
+  {
+   "name": "Graph API (oauth.js, integrations.js, sdrEngine.js, workflowEngine.js, whatsappWebhook.js, social.js, messaging.js, email.js)",
+   "in_code": "v24.0 (env META_GRAPH_VERSION override)",
+   "status": "deprecated",
+   "current": "v26.0 (released 2026-07-29); v25.0 (2026-02-18)",
+   "sunset_date": "2028-02-18 (Graph API); v24.0 not at risk for non-ads calls"
+  },
+  {
+   "name": "Marketing API (adPublisher.js, integrations.js meta_ads, ads.js)",
+   "in_code": "v24.0 (env META_GRAPH_VERSION override)",
+   "status": "sunset",
+   "current": "v25.0 (per Marketing API changelog; v26.0 not confirmed)",
+   "sunset_date": "2026-10-06"
+  },
+  {
+   "name": "Facebook Login dialog (oauth.js:429)",
+   "in_code": "https://www.facebook.com/v24.0/dialog/oauth with scope=",
+   "status": "deprecated",
+   "current": "Facebook Login for Business with config_id for Business-type apps",
+   "sunset_date": "none published"
+  },
+  {
+   "name": "Page Insights metrics (social.js:309)",
+   "in_code": "page_impressions,page_engaged_users,page_post_engagements,page_fans",
+   "status": "sunset",
+   "current": "page_media_view, page_follows",
+   "sunset_date": "2025-11-15"
+  },
+  {
+   "name": "Instagram insights metric `impressions` (social.js:324)",
+   "in_code": "impressions,reach,profile_views,follower_count",
+   "status": "sunset",
+   "current": "views, reach",
+   "sunset_date": "2025-04-21"
+  },
+  {
+   "name": "WhatsApp Cloud API inbound identifier",
+   "in_code": "message.from assumed to be a phone number",
+   "status": "deprecated",
+   "current": "from_user_id (BSUID); phone number may be omitted",
+   "sunset_date": "Phone-number-only identifier no longer guaranteed since June 2026"
+  }
+ ],
+ "test_cases": [
+  {
+   "type": "integrations test: meta / facebook / instagram",
+   "calls": "GET graph.facebook.com/{ver}/me?fields=id,name&access_token=",
+   "verdict": "sound",
+   "notes": "Probed: garbage token returns 400 code 190; no token returns 400 code 2500. Fails without a key. Weak on permission depth (only checks token validity)."
+  },
+  {
+   "type": "integrations test: meta_ads",
+   "calls": "GET graph.facebook.com/{ver}/act_{id}?fields=id,name&access_token=",
+   "verdict": "sound",
+   "notes": "Probed: garbage returns 400/190, no token returns 403 code 200. Fails without a key. Does not normalise an `act_` prefix on the stored id (false negative) and ignores account_status."
+  },
+  {
+   "type": "integrations test: whatsapp",
+   "calls": "GET graph.facebook.com/{ver}/{phoneId}?fields=display_phone_number,verified_name with Bearer",
+   "verdict": "false_positive_risk",
+   "notes": "Probed: garbage Bearer returns 401/190, no auth returns 400/104, so it fails correctly with bad keys. But when the company has no keys it falls back to the platform's env token and returns success:true, i.e. success without the company's own credentials."
+  }
+ ]
+}

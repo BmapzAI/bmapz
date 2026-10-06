@@ -4116,3 +4116,19 @@ the mobile section of INTEGRATIONS_RUNBOOK.md when present.
 (0 errors; the backend is linted since 2026-09-23 and that is what catches a missing import after a multi-file edit).
 Edit tip for this tree: files are CRLF; a multi-line anchor written with LF silently fails to match, and a template literal
 inside a script that is itself inside a template literal needs doubled backslashes.
+
+### UNFINISHED AT THE USAGE LIMIT (2026-10-06) - start here
+Done and pushed: everything above up to commit 2640367 (`node backend/tests/run.mjs` passes 7 files / 102 checks; eslint 0 errors).
+NOT done, in priority order:
+1. STRIPE/RESEND CODE FIXES (audit found them, none applied; Stripe is not live, so nothing is losing money yet). See docs/audit-2026-10-06/audit-stripe_resend.json:
+   - emailSender.js sendViaResend checks `d.error`, but Resend failures are `{statusCode,name,message}` with a 4xx: EVERY failed send is treated as sent. Fallback sender noreply@bmapzai.com is a domain that does not resolve (never verifiable). `replyTo` is dropped.
+   - stripeWebhook.js: the idempotency row is written BEFORE the work, so the 503 path and the catch (which still answers 200) make Stripe's retry a no-op: a plan grant can be silently lost. Fix needs care: checkout.session.completed does several non-atomic writes, so unlocking on failure can double-grant; make it one SQL function/transaction keyed on event id.
+   - subscription.updated writes Stripe's raw status; the LIVE table only allows trialing/active/past_due/canceled/paused (checked on the live DB), so unpaid/incomplete/incomplete_expired fail and the error is discarded. Plan: MAP them (unpaid->past_due, incomplete->past_due, incomplete_expired->canceled) and check `error`; do not widen the constraint.
+   - checkout.session.completed ignores `payment_status` and there is no async_payment_succeeded handler; plan changes in the Customer Portal never update plan/credits.
+   - backend/.env.example documents STRIPE_PRICE_ID_PRO (not a plan) and `EMAIL_FROM`; the code reads STRIPE_PRICE_ID_<STARTER|GROWTH|SCALE|ENTERPRISE>_<MONTHLY|ANNUAL> and RESEND_FROM_EMAIL. stripe API version is pinned 2024-06-20 in billing.js and stripeWebhook.js (current is 2026-09-30.endive; no sunset found): add a STRIPE_API_VERSION env override.
+   - SETUP TRAP: the Stripe dashboard wizard now defaults to THIN events; the handler needs SNAPSHOT. The dashboard can only create an endpoint for the latest API version, so create it via the API with api_version=2024-06-20 to match the handler.
+2. Audits not finished: Perplexity/Apollo/Hunter/Stability (verify+audit) and OpenAI/Anthropic model ids (audit). Re-run only those.
+3. docs/INTEGRATIONS_RUNBOOK.md (per-platform click-paths for Derek) is not written; generate it from docs/audit-2026-10-06/verify-*.json corrected_setup_steps.
+4. PROMPT_INTEGRATIONS_PHASE.md and PROMPT_CODEX_AUDIT.md are STALE (written 2026-09-23). Update from this section before use: Meta default is v25.0 now; Perplexity migration is done (unverified); Google Ads has no developer token; restricted Google scopes are off; X is pay-per-use; the `/status` "19 cards" claim was overstated.
+5. Mobile apps: read the project chat "Web app mobile development" FIRST and record its approach here; app-store research (Sign in with Apple, in-app purchase rules for subscriptions, account deletion, WebView OAuth) was NOT done.
+6. Derek's DNS sitting (two Railway records) is still pending; then set API_URL=https://api.bmapz.com and check /health oauth_host. Privacy policy needs the Google Limited Use section (counsel review).

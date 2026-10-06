@@ -1,0 +1,354 @@
+{
+ "group": "Google (OAuth client, Gmail/Drive/YouTube/Analytics/Search Console/Calendar, Google Ads API)",
+ "findings": [
+  {
+   "severity": "broken_now",
+   "area": "Google Analytics report",
+   "file": "backend/src/routes/integrations.js",
+   "line": 835,
+   "what": "GET /api/integrations/google/analytics asks GA4 runReport for metrics named `users` (line 835) and `pageviews` (line 836). Neither is a GA4 Data API metric name. I downloaded the official schema page today and parsed its metrics table. It lists screenPageViews, totalUsers, activeUsers, bounceRate and averageSessionDuration, and contains no `pageviews` or `users` entry. GA4 rejects the whole request with HTTP 400 for an unknown metric, so the analytics endpoint cannot return data. sendServerError then scrubs the message, so the user sees only a generic failure. The connection test (line 650) never calls runReport, so it reports green while this fails.",
+   "evidence_url": "https://developers.google.com/analytics/devguides/reporting/data/v1/api-schema",
+   "evidence_quote": "<td><code translate=\"no\" dir=\"ltr\">screenPageViews</code> (present in the metrics table; `pageviews` and `users` are absent)",
+   "recommended_fix": "Replace the metrics array at lines 833-839 with: [{ name: 'sessions' }, { name: 'totalUsers' }, { name: 'screenPageViews' }, { name: 'bounceRate' }, { name: 'averageSessionDuration' }]. Keep the order so index-based consumers still work. If the frontend reads values by header name, rename 'users' to 'totalUsers' and 'pageviews' to 'screenPageViews' there as well. I did not read the frontend."
+  },
+  {
+   "severity": "outdated",
+   "area": "Google Ads API version pin",
+   "file": "backend/src/routes/ads.js",
+   "line": 203,
+   "what": "The Google Ads REST version is hard-coded as `v24` in two places: ads.js:203 and integrations.js:376. Neither has an environment override, although META_GRAPH_VERSION in the same files does. Today (2026-10-06) the current version is v25, released 2026-07-22, and v26 is scheduled for October 2026. v24 was released 2026-04-22 and is sunset in May 2027, which is about 7 months away and just outside the 6-month window. After that date requests to v24 fail. v22 sunsets in October 2026; the code does not use it.",
+   "evidence_url": "https://developers.google.com/google-ads/api/docs/sunset-dates",
+   "evidence_quote": "v24 April 22, 2026 ... May 2027; v25 July 22, 2026 ... August 2027; v26 October 2026 ... November 2027",
+   "recommended_fix": "Add to a shared module (for example backend/src/lib/googleAds.js): `export const GOOGLE_ADS_API_VERSION = process.env.GOOGLE_ADS_API_VERSION || 'v25';`. Use it in both places: `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${id}/googleAds:searchStream` (ads.js:203 and integrations.js:376). Set the Railway env var to v26 after it ships and the test passes."
+  },
+  {
+   "severity": "ok",
+   "area": "Google Ads developer token",
+   "file": "backend/src/routes/integrations.js",
+   "line": 369,
+   "what": "The code's claim that developer tokens were sunset on 2026-09-09 is confirmed by Google's current docs, so the optional-header handling in integrations.js:363-388, ads.js:208-214 and adPublisher.js:41-52 is correct. Access is now governed by the Cloud project's access level (Test, Explorer, Basic, Standard). Search results say API v25 returns CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION for a Test-level project calling a production account, and older versions return ACTION_NOT_PERMITTED. The regex at integrations.js:394 covers both strings.",
+   "evidence_url": "https://developers.google.com/google-ads/api/docs/first-call/dev-token",
+   "evidence_quote": "Developer tokens were sunset on September 9, 2026.",
+   "recommended_fix": "No change needed for the sunset itself. See the related finding about rejection in a future major version."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "Google Ads developer-token header",
+   "file": "backend/src/routes/ads.js",
+   "line": 212,
+   "what": "Google says it will start REJECTING developer tokens in a future major version. No version or date is named. ads.js:212-214, integrations.js:382 and adPublisher.js:52 still send the header whenever GOOGLE_ADS_DEVELOPER_TOKEN or google_ads_developer_token is set. If a stale token is left in Railway, bumping GOOGLE_ADS_API_VERSION to that future major version would fail every Google Ads call.",
+   "evidence_url": "https://developers.google.com/google-ads/api/docs/first-call/dev-token",
+   "evidence_quote": "start rejecting developer tokens in API calls in a future major version",
+   "recommended_fix": "Stop sending the header by default. Gate it with `process.env.GOOGLE_ADS_SEND_DEV_TOKEN === 'true'` in ads.js:212-214 and integrations.js:382. Remove GOOGLE_ADS_DEVELOPER_TOKEN from the Railway env. Drop the developer-token field from the integrations UI."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Google Ads login-customer-id (manager accounts)",
+   "file": "backend/src/routes/integrations.js",
+   "line": 376,
+   "what": "Neither the Google Ads test (integrations.js:376-386) nor the campaigns fetch (ads.js:202-216) sends a `login-customer-id` header. adPublisher.js:55 reads `google_ads_login_customer_id` but nothing ever uses it. An agency or any user who reaches the customer through a manager (MCC) account will be rejected with a permission error. The test then reports failure for a setup that is valid. These are Bmapz's likely users.",
+   "evidence_url": "https://developers.google.com/google-ads/api/docs/concepts/call-structure",
+   "evidence_quote": "If your access to the customer account is through a manager account, this header is required",
+   "recommended_fix": "In both fetches add `...(k.google_ads_login_customer_id ? { 'login-customer-id': String(k.google_ads_login_customer_id).replace(/-/g, '') } : {})` to the headers. Use `company.google_ads_login_customer_id` in ads.js. Add a Login Customer ID field to the Google Ads integration form."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Google Ads error parsing",
+   "file": "backend/src/routes/integrations.js",
+   "line": 389,
+   "what": "I probed searchStream today with no token and with a garbage token. Failures come back as a JSON array, `[{\"error\":{...}}]`, not an object. The code reads `d.error?.message` (integrations.js:389, ads.js:223-224), which is undefined on an array. The user therefore sees 'HTTP 403' instead of Google's real reason, such as USER_PERMISSION_DENIED or a customer that is not enabled. The CLOUD_PROJECT_NOT_APPROVED regex still works because it stringifies the whole body. ads.js:223 relies on `!r.ok`, so it still throws, but with the generic text 'Google Ads API returned an error.'",
+   "evidence_url": "https://googleads.googleapis.com/v24/customers/1234567890/googleAds:searchStream",
+   "evidence_quote": "[{ \"error\": { \"code\": 401, \"message\": \"Request had invalid authentication credentials. ...\" } }] (live probe, HTTP 401)",
+   "recommended_fix": "After `const d = await r.json()` add `const apiErr = Array.isArray(d) ? d[0]?.error : d?.error; const gmsg = apiErr?.details?.[0]?.errors?.[0]?.message || apiErr?.message || `HTTP ${r.status}`;`. Use it in integrations.js:388-402 and ads.js:223-225. Keep `r.ok &&` as the success test."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Google OAuth: scope clobbering between integrations",
+   "file": "backend/src/routes/oauth.js",
+   "line": 332,
+   "what": "Every Google integration type shares one stored token (`google_access_token` and `google_refresh_token`). The callback overwrites it (oauth.js:388-390) with a token covering only that type's scopes. The authorization request (oauth.js:332-340) does not set `include_granted_scopes`. Connecting Calendar, YouTube or Analytics after Gmail therefore replaces the Gmail token with one that lacks the Gmail scopes. The Gmail test then fails with 'missing the required scope'. Reconnecting Gmail breaks the others. Google documents incremental authorization as the fix.",
+   "evidence_url": "https://developers.google.com/identity/protocols/oauth2/web-server",
+   "evidence_quote": "the new access token will also cover any scopes to which the user previously granted the application access",
+   "recommended_fix": "Add `include_granted_scopes: 'true'` to the URLSearchParams at oauth.js:332-340. Also store the scopes returned by the token response (`tokens.scope`) in api_keys, so the UI can tell which services are actually authorised."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Google Drive connection lifetime",
+   "file": "backend/src/routes/oauth.js",
+   "line": 386,
+   "what": "For google_drive the callback stores only `tokens.access_token` as `google_drive_token`. It discards the refresh token and the expiry. Access tokens last about an hour, and the Drive test (integrations.js:680-683) and the Drive files route (integrations.js:745) use that token with no refresh path. Drive stops working about an hour after connecting. /status still shows `google_drive: !!k.google_drive_token` (integrations.js:98) as connected. Because `google_drive_token` takes precedence, an expired token also masks a good `google_access_token`.",
+   "evidence_url": "https://developers.google.com/identity/protocols/oauth2/web-server",
+   "evidence_quote": "instructs the Google authorization server to return a refresh token and an access token",
+   "recommended_fix": "In oauth.js:385-392 treat google_drive like the other types and store google_access_token, google_refresh_token, google_token_expires_at and google_connected_email. Remove the `google_drive_token` special case (also oauth.js:782 and companies.js:35). In integrations.js:680-683 and 745, call `googleToken(req.companyId, k)` and drop the `dedicated` branch. This only works together with the include_granted_scopes fix."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "OAuth consent screen and scope verification (go-live)",
+   "file": "backend/src/routes/oauth.js",
+   "line": 274,
+   "what": "Scope sensitivity (gmail.* from the scopes page, the rest from my knowledge): gmail.readonly and gmail.compose are RESTRICTED. gmail.send is only sensitive. drive.readonly is restricted. adwords, analytics.readonly, webmasters.readonly, calendar and youtube.* are sensitive. Whether those last four are sensitive was not confirmed in today's docs. Unverified apps show a warning screen and have a user cap. If the consent screen is in 'Testing' status, refresh tokens expire after 7 days, so every Google connection dies weekly with invalid_grant. Storing or transmitting restricted-scope data on servers requires a security assessment. Three scopes are requested but unused: no backend call to YouTube upload, Gmail drafts or Calendar event creation exists in backend/src.",
+   "evidence_url": "https://developers.google.com/identity/protocols/oauth2",
+   "evidence_quote": "a publishing status of \"Testing\" is issued a refresh token expiring in 7 days",
+   "recommended_fix": "1) Set the OAuth consent screen to 'In production' and submit verification before onboarding customers. 2) Trim scopes in GOOGLE_SCOPES_MAP to what the code uses. Remove `youtube.upload` (oauth.js:297). Remove `gmail.compose` (oauth.js:307). Keep `gmail.send` (sensitive) for sending, plus `gmail.readonly` only if inbox reading (messaging.js:284) ships. Replace `calendar` with `calendar.readonly` until event creation exists. 3) Handle invalid_grant by marking the integration disconnected, so the UI prompts a reconnect."
+  },
+  {
+   "severity": "outdated",
+   "area": "Gmail scope redundancy",
+   "file": "backend/src/routes/oauth.js",
+   "line": 305,
+   "what": "gmail.send (sensitive) and gmail.compose (restricted) overlap. Google describes compose as 'Manage drafts and send emails'. The code only calls messages.send (emailSender.js:57) and messages.list/get (messaging.js:284, 294). Requesting compose adds a restricted scope with no use.",
+   "evidence_url": "https://developers.google.com/workspace/gmail/api/auth/scopes",
+   "evidence_quote": "gmail.compose: Manage drafts and send emails. (Restricted)",
+   "recommended_fix": "Change the gmail array at oauth.js:305-310 to ['https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/userinfo.profile']. Drop gmail.readonly as well if inbox sync is not shipping at launch."
+  },
+  {
+   "severity": "outdated",
+   "area": "userinfo access_token in query string",
+   "file": "backend/src/routes/oauth.js",
+   "line": 380,
+   "what": "The callback calls `oauth2/v2/userinfo?access_token=...`. Google still allows the query parameter but says the header is preferable because query strings are logged. A garbage token in the query string returned 401 on my probe, so the mechanism is live. The response is also never checked with `.ok`. A failed userinfo call is silently ignored.",
+   "evidence_url": "https://developers.google.com/identity/protocols/oauth2/web-server",
+   "evidence_quote": "the HTTP header is preferable, because query strings tend to be visible in server logs",
+   "recommended_fix": "Replace oauth.js:380 with: `const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } }); const userInfo = userInfoResp.ok ? await userInfoResp.json() : {};`"
+  },
+  {
+   "severity": "outdated",
+   "area": "Stale Google Ads publish message",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 301,
+   "what": "The 'google' adapter's user-facing message says 'campaign creation needs an approved developer token and the Google Ads mutate API'. Developer tokens were sunset on 2026-09-09 (see the finding above), and the comment at adPublisher.js:41-52 acknowledges this. The message tells users to obtain something that no longer exists. The adapter always throws NOT_SUPPORTED, and Google Ads publishing is not implemented.",
+   "evidence_url": "https://developers.google.com/google-ads/api/docs/first-call/dev-token",
+   "evidence_quote": "Developer tokens were sunset on September 9, 2026.",
+   "recommended_fix": "Change the string at adPublisher.js:301 to: 'Google Ads campaign creation is not enabled in this release. Your campaigns can still be read and reported.' Also remove the developer-token wording from any frontend copy."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Gmail manual-credential test path",
+   "file": "backend/src/routes/integrations.js",
+   "line": 334,
+   "what": "The gmail test accepts manual credentials (`gmail_client_id` plus `gmail_refresh_token`, line 334). googleToken then calls getGoogleAccessToken (lines 902-932), which only reads google_ads_refresh_token, google_refresh_token and google_client_id/secret. A manual-credential setup always gets 'Google is not connected'. This is a false failure, not a false success. The `gmail_refresh_token` is never exchanged.",
+   "evidence_url": "https://developers.google.com/identity/protocols/oauth2/web-server",
+   "evidence_quote": "https://oauth2.googleapis.com/token (token endpoint; refresh_token grant is what getGoogleAccessToken needs)",
+   "recommended_fix": "Either remove the `hasManual` branch from the gmail test and the UI, or make the gmail case refresh with the manual keys: POST https://oauth2.googleapis.com/token with grant_type=refresh_token, refresh_token=k.gmail_refresh_token, client_id=k.gmail_client_id and client_secret=k.gmail_client_secret. I did not check which credential emailSender.js actually uses."
+  },
+  {
+   "severity": "ok",
+   "area": "Google OAuth endpoints and refresh calls",
+   "file": "backend/src/routes/oauth.js",
+   "line": 342,
+   "what": "The authorization endpoint (oauth.js:342), the token endpoint with a form-encoded POST (oauth.js:370, 727; integrations.js:911; ads.js:456), `access_type=offline` and `prompt=consent` all match the current docs. A refresh with a fake client returns HTTP 401 `{\"error\":\"invalid_client\"}`, which the `tokens.error` and `!response.ok` checks handle.",
+   "evidence_url": "https://developers.google.com/identity/protocols/oauth2/web-server",
+   "evidence_quote": "Authorization endpoint: https://accounts.google.com/o/oauth2/v2/auth; Token endpoint: https://oauth2.googleapis.com/token",
+   "recommended_fix": "None."
+  },
+  {
+   "severity": "ok",
+   "area": "Google Analytics Admin accountSummaries",
+   "file": "backend/src/routes/integrations.js",
+   "line": 653,
+   "what": "GET analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=1 is a valid method. The page lists scopes analytics.readonly and analytics.edit and a maximum pageSize of 200. v1beta is still the documented version. Probes with no token and a garbage token both returned 401.",
+   "evidence_url": "https://developers.google.com/analytics/devguides/config/admin/v1/rest/v1beta/accountSummaries/list",
+   "evidence_quote": "GET https://analyticsadmin.googleapis.com/v1beta/accountSummaries",
+   "recommended_fix": "None for the endpoint. See the test_cases entry: the test does not exercise the Data API that /google/analytics actually uses."
+  },
+  {
+   "severity": "ok",
+   "area": "Search Console sites.list",
+   "file": "backend/src/routes/integrations.js",
+   "line": 667,
+   "what": "GET https://www.googleapis.com/webmasters/v3/sites is documented with scope webmasters.readonly and the siteEntry[].siteUrl/permissionLevel response. The page shows no deprecation notice. Probes returned 401 in both cases.",
+   "evidence_url": "https://developers.google.com/webmaster-tools/v1/sites/list",
+   "evidence_quote": "GET https://www.googleapis.com/webmasters/v3/sites",
+   "recommended_fix": "None for the endpoint. See the test_cases entry about not checking the configured site."
+  },
+  {
+   "severity": "ok",
+   "area": "Drive about.get",
+   "file": "backend/src/routes/integrations.js",
+   "line": 684,
+   "what": "GET drive/v3/about?fields=user is valid. The `fields` parameter is mandatory and drive.readonly is an accepted scope. Probes returned 401 with and without a token.",
+   "evidence_url": "https://developers.google.com/drive/api/reference/rest/v3/about/get",
+   "evidence_quote": "The `fields` parameter must be set.",
+   "recommended_fix": "None for the endpoint."
+  },
+  {
+   "severity": "ok",
+   "area": "YouTube channels.list mine=true",
+   "file": "backend/src/routes/integrations.js",
+   "line": 714,
+   "what": "GET youtube/v3/channels?part=id&mine=true is valid and costs 1 quota unit. Probes with no credentials returned 403 and with a garbage token 401. Both fail the test through `!r.ok`.",
+   "evidence_url": "https://developers.google.com/youtube/v3/docs/channels/list",
+   "evidence_quote": "A call to this method has a quota cost of 1 unit.",
+   "recommended_fix": "None for the endpoint."
+  },
+  {
+   "severity": "unverified",
+   "area": "Google Ads searchStream request shape",
+   "file": "backend/src/routes/integrations.js",
+   "line": 376,
+   "what": "I could not fetch Google's REST reference for searchStream today. Three candidate URLs returned 404, so POST /{version}/customers/{id}/googleAds:searchStream and the `query` body field are not confirmed from documentation fetched today. The call-structure page shows the same URL shape (`v25/customers/1234567890/campaignBudgets:mutate`), and the endpoint answers with a Google-style 401 on v22-v26. That is consistent but not proof, because the probe was unauthenticated.",
+   "evidence_url": "https://developers.google.com/google-ads/api/docs/concepts/call-structure",
+   "evidence_quote": "v25/customers/1234567890/campaignBudgets:mutate (example path on call-structure page)",
+   "recommended_fix": "Smoke-test against a Google Ads test account (Test access level is enough) after switching to v25. Confirm HTTP 200 with a `[{results:[...]}]` array body."
+  },
+  {
+   "severity": "unverified",
+   "area": "Scopes, Drive/Calendar/YouTube specifics not fetched",
+   "file": "backend/src/routes/oauth.js",
+   "line": 276,
+   "what": "These were not verified against docs fetched today: that the `adwords` scope is still current; that `userinfo.email` and `userinfo.profile` are not renamed in favour of OpenID `openid email profile`; the Drive files.list parameters (integrations.js:787); the Calendar calendarList.list shape (integrations.js:698); and the Gmail users.getProfile shape. The probes show those hosts and paths answer with ordinary Google 401s. Whether YouTube uploads from an unverified API project are forced private was not found in the YouTube auth docs I fetched.",
+   "evidence_url": "https://developers.google.com/youtube/v3/guides/auth/server-side-web-apps",
+   "evidence_quote": "(no statement found about private-only uploads for unverified projects)",
+   "recommended_fix": "Low risk, but confirm during the verification submission for the OAuth consent screen. Do not enable YouTube upload in the product until the project's audit status is confirmed."
+  },
+  {
+   "severity": "ok",
+   "area": "Versions hard-coded with no env override (stable APIs)",
+   "file": "backend/src/routes/integrations.js",
+   "line": 340,
+   "what": "These are hard-coded with no environment override: gmail v1 (line 340), analyticsadmin and analyticsdata v1beta (lines 653, 824), webmasters v3, drive v3, calendar v3 and youtube v3. I found no published sunset for any of them today. Only the Search Console v3 page and the Analytics Admin v1beta page were fetched and showed no deprecation. The other versions rest on live probes answering normally, not on a documentation check. Only the Google Ads version is on a fast sunset cycle (about 12 months per major).",
+   "evidence_url": "https://developers.google.com/analytics/devguides/config/admin/v1/rest/v1beta/accountSummaries/list",
+   "evidence_quote": "v1beta shown as the current version for Analytics Admin",
+   "recommended_fix": "No action needed now. Optionally centralise the base URLs in one constants file, as is done for META_GRAPH_VERSION."
+  }
+ ],
+ "pinned_versions": [
+  {
+   "name": "Google Ads API (REST path version)",
+   "in_code": "v24 (ads.js:203, integrations.js:376)",
+   "status": "current",
+   "current": "v25 released 2026-07-22; v26 scheduled October 2026",
+   "sunset_date": "May 2027 (v24)"
+  },
+  {
+   "name": "Google Ads developer-token header",
+   "in_code": "sent when GOOGLE_ADS_DEVELOPER_TOKEN or google_ads_developer_token is set",
+   "status": "sunset",
+   "current": "Header is optional and ignored; Google will reject it in an unnamed future major version",
+   "sunset_date": "2026-09-09"
+  },
+  {
+   "name": "Google Ads API v22 (not used by code)",
+   "in_code": "not used",
+   "status": "sunset",
+   "current": "v25",
+   "sunset_date": "October 2026 (tentative)"
+  },
+  {
+   "name": "Google OAuth authorization endpoint",
+   "in_code": "accounts.google.com/o/oauth2/v2/auth",
+   "status": "current",
+   "current": "same"
+  },
+  {
+   "name": "Google OAuth token endpoint",
+   "in_code": "oauth2.googleapis.com/token",
+   "status": "current",
+   "current": "same"
+  },
+  {
+   "name": "Google userinfo endpoint",
+   "in_code": "www.googleapis.com/oauth2/v2/userinfo?access_token=",
+   "status": "unknown",
+   "current": "Works (probe returned 401); the query-string form is discouraged by docs"
+  },
+  {
+   "name": "Google Analytics Admin API",
+   "in_code": "v1beta",
+   "status": "current",
+   "current": "v1beta"
+  },
+  {
+   "name": "Google Analytics Data API",
+   "in_code": "v1beta",
+   "status": "current",
+   "current": "v1beta (schema page fetched today)"
+  },
+  {
+   "name": "Search Console API (sites)",
+   "in_code": "webmasters/v3",
+   "status": "current",
+   "current": "v3 (page shows no deprecation)"
+  },
+  {
+   "name": "Drive API",
+   "in_code": "v3",
+   "status": "current",
+   "current": "v3"
+  },
+  {
+   "name": "YouTube Data API",
+   "in_code": "v3",
+   "status": "current",
+   "current": "v3"
+  },
+  {
+   "name": "Gmail API",
+   "in_code": "v1",
+   "status": "unknown",
+   "current": "v1 (probe only; docs not fetched for sunset)"
+  },
+  {
+   "name": "Calendar API",
+   "in_code": "v3",
+   "status": "unknown",
+   "current": "v3 (probe only; docs not fetched for sunset)"
+  }
+ ],
+ "test_cases": [
+  {
+   "type": "gmail",
+   "calls": "GET gmail.googleapis.com/gmail/v1/users/me/profile",
+   "verdict": "sound",
+   "notes": "Probes: no token returned 401 and a garbage token returned 401. The test requires r.ok and d.emailAddress, and returns failure before any network call if there is no token. The manual-credential branch (hasManual) is unreachable (see finding): a false failure, not a false success."
+  },
+  {
+   "type": "google_ads",
+   "calls": "POST googleads.googleapis.com/v24/customers/{id}/googleAds:searchStream",
+   "verdict": "sound",
+   "notes": "Probes: no token returned 401 and a garbage token returned 401. The body is a JSON array, `[{error}]`. Success needs r.ok, so there is no false positive. Failure messages lose Google's real reason because d.error is undefined on an array. Missing login-customer-id makes manager-account setups fail."
+  },
+  {
+   "type": "google_analytics",
+   "calls": "GET analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=1",
+   "verdict": "false_positive_risk",
+   "notes": "No-token and garbage-token probes fail correctly (401). However, success only needs the Admin API to answer and a property id to be saved. The report route uses a different API (analyticsdata.googleapis.com), which can be disabled in the Cloud project, and a different metric set, which is currently invalid. The test never calls runReport, never checks that the saved property is accessible, and so reports green while the report is broken."
+  },
+  {
+   "type": "google_search_console",
+   "calls": "GET www.googleapis.com/webmasters/v3/sites",
+   "verdict": "false_positive_risk",
+   "notes": "No-token and garbage-token probes fail correctly (401). Success needs at least one site entry, but the code never checks that `google_search_console_url` is one of them or that permissionLevel is not siteUnverifiedUser. A wrong or unverified property URL still passes. Fix: require sites to include k.google_search_console_url (exact match, including the sc-domain: form)."
+  },
+  {
+   "type": "google_drive",
+   "calls": "GET www.googleapis.com/drive/v3/about?fields=user",
+   "verdict": "sound",
+   "notes": "Probes returned 401 with and without a token, and the test requires d.user. The token stored for Drive expires after about an hour with no refresh, so the test passes only in the first hour after connecting (see finding)."
+  },
+  {
+   "type": "google_calendar",
+   "calls": "GET www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1",
+   "verdict": "sound",
+   "notes": "Probes returned 401 with and without a token. Success needs r.ok. It would also pass with a read-only calendar scope, which is fine for a connection test."
+  },
+  {
+   "type": "google_meet",
+   "calls": "Same as google_calendar (calendarList)",
+   "verdict": "false_positive_risk",
+   "notes": "The test only proves Calendar access, not that a Meet conference can be created (conferenceData on an event). It cannot pass without a valid token, so there is no no-key false positive. It can pass when conference creation is not possible, for example a read-only scope."
+  },
+  {
+   "type": "youtube",
+   "calls": "GET www.googleapis.com/youtube/v3/channels?part=id&mine=true",
+   "verdict": "sound",
+   "notes": "Probes: no key returned 403 ('unregistered callers') and a garbage token returned 401. Both are non-OK, so the test fails. The test also requires a non-empty items[], so a token without a channel fails."
+  },
+  {
+   "type": "google_oauth_token_refresh",
+   "calls": "POST oauth2.googleapis.com/token (refresh_token grant)",
+   "verdict": "sound",
+   "notes": "A fake client id returned 401 `{\"error\":\"invalid_client\"}` and a bad refresh token would return invalid_grant. getGoogleAccessToken throws when tokens.error is set, and googleToken converts that to a clear failure message, so no false success."
+  }
+ ]
+}

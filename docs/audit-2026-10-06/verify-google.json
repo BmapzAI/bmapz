@@ -1,0 +1,330 @@
+{
+ "group": "Google (OAuth client, Gmail/Drive/YouTube/Analytics/Search Console/Calendar, Google Ads API)",
+ "claims": [
+  {
+   "claim": "can_test_today = true: a real end-to-end OAuth connect works today for accounts listed as test users, with no Google review.",
+   "verdict": "confirmed",
+   "source_quote": "limited to up to 100 test users listed in the OAuth consent screen",
+   "source_url": "https://support.google.com/cloud/answer/15549945"
+  },
+  {
+   "claim": "approval_required = true",
+   "verdict": "corrected",
+   "correction": "True only for customer launch. Customer launch needs brand verification plus sensitive-scope verification, and restricted scopes (Drive full, Gmail read/modify/compose) add the annual CASA security assessment. Ads production scale needs Basic access, which needs brand verification and about 10 business days. youtube.upload needs a separate YouTube API compliance audit. For internal testing nothing is required.",
+   "source_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification"
+  },
+  {
+   "claim": "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are self-service and ready in about 10 minutes (Web application client, Branding must be registered first).",
+   "verdict": "unverifiable",
+   "correction": "I did not re-fetch the console client-creation pages, so I cannot quote them. Nothing I fetched contradicts it. Creating the client needs no review. Brand verification and sensitive-scope verification are separate gates for publishing, not for creating the client.",
+   "source_url": "https://support.google.com/cloud/answer/15549257"
+  },
+  {
+   "claim": "The client secret is shown in full only once, at creation.",
+   "verdict": "unverifiable",
+   "correction": "Not re-fetched. Treat as true and copy it straight into Railway."
+  },
+  {
+   "claim": "The Google Ads developer token was sunset on 2026-09-09; GOOGLE_ADS_DEVELOPER_TOKEN is legacy.",
+   "verdict": "confirmed",
+   "source_quote": "Developer tokens were sunset on September 9, 2026",
+   "source_url": "https://developers.google.com/google-ads/api/docs/api-policy/developer-token"
+  },
+  {
+   "claim": "A developer-token header can still be sent but is ignored.",
+   "verdict": "confirmed",
+   "source_quote": "optional and ignored by the API servers",
+   "source_url": "https://developers.google.com/google-ads/api/docs/api-policy/developer-token",
+   "correction": "The Ads OAuth overview page still says a developer token is required. That is stale text that contradicts the policy page. Check whether the Ads client library still insists on a non-empty value before removing it."
+  },
+  {
+   "claim": "The Google Ads manager-account API Center is dead; applications started there are not processed.",
+   "verdict": "corrected",
+   "correction": "The policy page says the API Center is deprecated and will be removed in the near future. It is kept only to view historical developer details. New applications go through Google Cloud Console. The prior quote that applications 'won't be processed' was not reproduced in what I fetched.",
+   "source_url": "https://developers.google.com/google-ads/api/docs/api-policy/developer-token"
+  },
+  {
+   "claim": "A new Cloud project gets Test access automatically when the Google Ads API is enabled, and Test access reaches test accounts only.",
+   "verdict": "confirmed",
+   "source_quote": "Enable Google Ads API in your Google Cloud project to automatically be granted Test access",
+   "source_url": "https://developers.google.com/google-ads/api/docs/access-levels",
+   "correction": "Test allows 15,000 operations per day and covers test accounts only. I could not re-confirm the error code names CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION or ACTION_NOT_PERMITTED. They were not on the pages I fetched."
+  },
+  {
+   "claim": "Explorer upgrade is self-serve and effectively same-day, with no brand verification needed.",
+   "verdict": "corrected",
+   "correction": "No brand-verification prerequisite is confirmed. 'Instant' is NOT confirmed: Google says it 'may automatically upgrade' after you apply, and the page also says that after initial API sign-up 'Google may allow you to apply'. No SLA is published. Explorer allows only 2,880 operations per day on production accounts, which is far too low for a multi-tenant SaaS. It also blocks account creation, user management, planning tools (keyword planning, audience insights) and billing/payment services.",
+   "source_quote": "may automatically upgrade your project's API access level to Explorer",
+   "source_url": "https://developers.google.com/google-ads/api/docs/api-policy/access-levels"
+  },
+  {
+   "claim": "Basic access needs brand verification and gives 15,000 operations per day.",
+   "verdict": "confirmed",
+   "source_quote": "Completing brand verification for your Google Cloud project is a prerequisite",
+   "source_url": "https://developers.google.com/google-ads/api/docs/api-policy/access-levels",
+   "correction": "Review 'typically' takes 10 business days, though Google 'may automatically upgrade' on submission. The 15,000 per day is for the whole project, so it is shared by every Bmapz customer. That is a hard multi-tenant ceiling until Standard."
+  },
+  {
+   "claim": "Standard access is a manual audit taking about 10 business days.",
+   "verdict": "corrected",
+   "correction": "Standard needs Basic first, then a detailed manual audit against Required Minimum Functionality (tool demo, target audience). It gives unlimited operations. The only published figure is 10 business days, which is the general review figure. No Standard-specific SLA is published.",
+   "source_url": "https://developers.google.com/google-ads/api/docs/api-policy/access-levels"
+  },
+  {
+   "claim": "The Ads access/upgrade page is at https://console.cloud.google.com/google-ads/overview",
+   "verdict": "refuted",
+   "correction": "Google's own setup guide links https://console.cloud.google.com/google/ads-apis/overview. Use that URL, with the project selector set to the project that owns the OAuth client.",
+   "source_url": "https://developers.google.com/google-ads/api/docs/oauth/cloud-project"
+  },
+  {
+   "claim": "Google Ads API v24 is still supported today (2026-10-06).",
+   "verdict": "confirmed",
+   "correction": "v24 was released 2026-04-22 with sunset projected May 2027. v25 was released 2026-07-22 (breaking changes) and v25.2 on 2026-09-23. v22 sunsets in Oct 2026 and v23 in Feb 2027. Google's own sunset page would not parse, so the sunset months come from the Ads blog snippets and a third-party table, and they are 'tentative, any day in the month'. Keep v24 for go-live and plan a move to v25 or later before Q1 2027.",
+   "source_url": "https://developers.google.com/google-ads/api/docs/release-notes"
+  },
+  {
+   "claim": "Refresh tokens issued while publishing status is Testing expire after 7 days.",
+   "verdict": "confirmed",
+   "source_quote": "Authorizations by a test user will expire seven days from the time of consent.",
+   "source_url": "https://support.google.com/cloud/answer/15549945"
+  },
+  {
+   "claim": "Testing is capped at 100 test users, and anyone else is blocked.",
+   "verdict": "confirmed",
+   "source_quote": "limited to up to 100 test users",
+   "source_url": "https://support.google.com/cloud/answer/15549945"
+  },
+  {
+   "claim": "(b) In production while UNVERIFIED: any Google account can connect, with an unverified-app warning and a user cap. Do refresh tokens still expire after 7 days?",
+   "verdict": "corrected",
+   "correction": "In production the app is 'available to any user with a Google Account'. The cap is 100 new users in total after the app presents the unverified-app screen. It applies over the entire lifetime of the project and cannot be reset or changed. Users see the 'Google hasn't verified this app' screen (Advanced > Go to app (unsafe)). Every Google statement I found ties 7-day expiry to the Testing status only, and the documented refresh-token expiry reasons do not include 'unverified'. So the documentation implies tokens do NOT carry the 7-day limit in production. I found no sentence stating this explicitly for unverified-in-production, so it is inferred, not quoted.",
+   "source_quote": "applies over the entire lifetime of the project",
+   "source_url": "https://support.google.com/cloud/answer/15549945"
+  },
+  {
+   "claim": "Refresh tokens can die for reasons other than Testing: 100-token-per-account-per-client limit, 6 months unused, Gmail-scope tokens revoked on password change.",
+   "verdict": "confirmed",
+   "source_quote": "100 refresh tokens per Google Account per OAuth 2.0 client ID",
+   "source_url": "https://developers.google.com/identity/protocols/oauth2",
+   "correction": "Add: tokens containing Gmail scopes stop working when the user changes their password."
+  },
+  {
+   "claim": "(a) Restricted scopes are drive and gmail.readonly.",
+   "verdict": "corrected",
+   "correction": "Official Gmail table: gmail.readonly, gmail.modify, gmail.compose, gmail.metadata, gmail.insert and https://mail.google.com/ are RESTRICTED. gmail.send is SENSITIVE. gmail.labels is NON-SENSITIVE. Official Drive table: drive, drive.readonly and drive.metadata are RESTRICTED. drive.file, drive.appdata and drive.install are NON-SENSITIVE.",
+   "source_quote": "Many apps can transition to per-file access without any changes",
+   "source_url": "https://developers.google.com/workspace/drive/api/guides/api-specific-auth"
+  },
+  {
+   "claim": "(a) adwords, analytics.readonly, webmasters.readonly, calendar, youtube.readonly and youtube.upload are SENSITIVE; userinfo.email is non-sensitive.",
+   "verdict": "confirmed",
+   "correction": "Google's per-API pages did not print a sensitivity column in what I could extract, and the master scope page was truncated for Ads, Analytics, Search Console and YouTube. Evidence is therefore secondary: the Google Ads blog (2020, via search) says the adwords scope is sensitive; a third-party review guide says Calendar, Gmail send, Ads and Analytics are sensitive; a third-party YouTube scopes guide says all YouTube scopes are sensitive, including read-only. webmasters.readonly is the only one I could not corroborate in writing. The Cloud console shows a 'Sensitive' badge when you add it in Data Access, so check that live. userinfo.email non-sensitive is also from a secondary source.",
+   "source_url": "https://nango.dev/docs/api-integrations/google-shared/google-security-review"
+  },
+  {
+   "claim": "Sensitive-scope verification takes 3-5 business days and needs a per-scope justification plus a demo video.",
+   "verdict": "confirmed",
+   "source_quote": "typically takes 3-5 business days",
+   "source_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification",
+   "correction": "Also required: an explanation of why a narrower scope is not sufficient, an unlisted YouTube demo video, and published branding status before a data-access verification can be requested. The page was last updated 2026-08-19, so it did not change after the 09-23 snapshot. The 3-5 days is the 'typical' figure after submission. Rejections and resubmissions restart it, and no SLA is published."
+  },
+  {
+   "claim": "Restricted scopes need an annual CASA security assessment (Letter of Assessment) taking several weeks.",
+   "verdict": "confirmed",
+   "source_quote": "can potentially take several weeks to complete",
+   "source_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification",
+   "correction": "It applies to every app that can reach restricted data 'through a third-party server' (Bmapz is one). It must be repeated at least every 12 months after the LOA approval date. The developer pays an authorized assessor."
+  },
+  {
+   "claim": "CASA cost is unknown.",
+   "verdict": "corrected",
+   "correction": "Google publishes no price. Third-party figures (not official): self-serve Tier 2 labs about $540-$720 (TAC Security: $540 for two revalidations, $720 unlimited), about $700 (Netsentries), $3,000+ (Prescient). Another source gives $15k-$75k for legacy tracks. Budget $500 to $3,000 per year and expect assessor-specific fixes to the app. If an app asks for many restricted scopes, one source warns Google may escalate to Tier 3.",
+   "source_url": "https://nango.dev/docs/api-integrations/google-shared/google-security-review"
+  },
+  {
+   "claim": "Brand verification takes a few minutes, up to 2-3 business days if manual, and the result is valid 7 days.",
+   "verdict": "confirmed",
+   "source_quote": "Compliant verification results are valid for 7 days",
+   "source_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification"
+  },
+  {
+   "claim": "(d) Brand verification needs the authorized domains verified in Search Console as a DNS Domain property.",
+   "verdict": "confirmed",
+   "source_quote": "Verify the ownership of your authorized domains using the Google Search Console",
+   "source_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification",
+   "correction": "The verifying Google account must hold owner permissions tied to the Cloud project. Domain-property method: add a TXT record with host '@' or blank. Verifying the root verifies all subdomains, but verifying a subdomain does not verify the parent."
+  },
+  {
+   "claim": "(d) A subdomain callback host (api.bmapz.com) under a verified bmapz.com is acceptable.",
+   "verdict": "confirmed",
+   "source_quote": "top private domain (e.g., example.com from sub.example.com)",
+   "source_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification",
+   "correction": "Authorized domains must cover the home page, privacy policy, terms and the redirect URIs/JavaScript origins. A single entry, bmapz.com, covers ai.bmapz.com and api.bmapz.com."
+  },
+  {
+   "claim": "The Railway fallback redirect URI is fine to keep once verification starts.",
+   "verdict": "corrected",
+   "correction": "Redirect-URI domains must be among the verified authorized domains. You cannot add a DNS TXT record on railway.app, so the Railway URI will block brand verification. Keep it for internal testing only, ideally on a separate non-published OAuth client. Remove it from the production client before 'Verify branding'. Whether the console accepts the Railway URI at creation is unconfirmed.",
+   "source_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification"
+  },
+  {
+   "claim": "(e) Home page must be public and the privacy policy hosted on the same domain.",
+   "verdict": "confirmed",
+   "source_quote": "hosted within the same domain as your application's home page",
+   "source_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification",
+   "correction": "Hard blocker to check: https://ai.bmapz.com must render a public, app-explaining page when logged OUT. If it redirects straight to login, brand verification can fail. The privacy policy must disclose how the app accesses, uses, stores or shares Google user data. Changing the name, logo or links after verification triggers Draft Branding and re-verification."
+  },
+  {
+   "claim": "(e) Limited Use disclosure wording the privacy policy must contain.",
+   "verdict": "corrected",
+   "correction": "The policy requires: use data only for user-facing features, no transfer except limited cases, no human reading without consent, and no transfer or sale to ad platforms, data brokers or resellers or use for serving ads. The widely used disclosure sentence is: 'Bmapz AI's use and transfer to any other app of information received from Google APIs will adhere to Google API Services User Data Policy, including the Limited Use requirements.' I confirmed that this wording is in widespread use on other companies' policies, but my fetch of Google's own policy page did not display the sentence (page dated 2024-02-15). Verify the exact text on that page. Gmail and Drive data also carry restrictions on training generalized AI/ML models. I could not confirm this wording from the page, and it is critical for an AI product.",
+   "source_url": "https://developers.google.com/terms/api-services-user-data-policy"
+  },
+  {
+   "claim": "youtube.upload is just another sensitive scope, with a YouTube quota audit only as an aside.",
+   "verdict": "corrected",
+   "correction": "Hidden gate: uploads from an unverified API project are forced private until the project passes a compliance audit.",
+   "source_quote": "restricted to private viewing mode",
+   "source_url": "https://developers.google.com/youtube/v3/docs/videos/insert"
+  },
+  {
+   "claim": "Billing is not required for the project.",
+   "verdict": "unverifiable",
+   "correction": "Not re-fetched. Ads access levels are also project-based, not billing-based, per the pages fetched."
+  },
+  {
+   "claim": "Up to 10 authorized domains per project; scopes must also be declared on Data Access.",
+   "verdict": "unverifiable",
+   "correction": "Not re-fetched in this session. The Data Access help page confirms scopes not in the picker can be added in the 'Manually add scopes' box."
+  }
+ ],
+ "changed_since_2026_09_23": [
+  {
+   "what": "The Google Ads API access-levels page now shows a last-updated date of 2026-09-30, after the researcher's 09-23 snapshot. It lists Explorer's blocked features (account creation, user management, planning tools, billing) and 'Google may allow you to apply' wording. I cannot tell which sentences changed.",
+   "impact": "Explorer is NOT a production path for a SaaS. Treat Basic (brand verification, about 10 business days) as the real minimum.",
+   "evidence_url": "https://developers.google.com/google-ads/api/docs/api-policy/access-levels"
+  },
+  {
+   "what": "Google Ads API v25.2 was released on 2026-09-23 and v25.1 on 2026-08-19. v22 is on its tentative Oct 2026 sunset. The 'safe' assumption is that it can disappear at any time this month.",
+   "impact": "v24 is fine for go-live (projected sunset May 2027). Do not build on v22. If the code pins v22, upgrade now.",
+   "evidence_url": "https://developers.google.com/google-ads/api/docs/release-notes"
+  },
+  {
+   "what": "The developer-token page now says the API Center in the manager account is deprecated and will be removed. The Ads OAuth overview page still says a developer token is required, so the Ads docs are internally inconsistent.",
+   "impact": "Do not spend time hunting for a developer token. Check whether the Ads client library still requires a placeholder value.",
+   "evidence_url": "https://developers.google.com/google-ads/api/docs/api-policy/developer-token"
+  },
+  {
+   "what": "The brand-verification and sensitive-scope pages are dated 2026-08-19, so the OAuth verification rules did not change after 09-23. I found no policy change, price change or console redesign announced after 09-23 in the pages I fetched.",
+   "impact": "The 09-23 verification timeline assumptions still hold: brand 2-3 days, sensitive 3-5 business days, restricted several weeks plus CASA.",
+   "evidence_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification"
+  },
+  {
+   "what": "The prior file's Ads console URL (console.cloud.google.com/google-ads/overview) disagrees with Google's setup guide (console.cloud.google.com/google/ads-apis/overview).",
+   "impact": "Use the guide's URL. This avoids a dead end at the very step where Derek checks the access level.",
+   "evidence_url": "https://developers.google.com/google-ads/api/docs/oauth/cloud-project"
+  }
+ ],
+ "testable_today_without_review": {
+  "value": true,
+  "reasoning": "YES, with limits. Create the Cloud project, enable the APIs, register Branding, set Audience to External in Testing, add up to 100 test users, declare the scopes in Data Access, and create the Web client. Then connect with a listed test account, click through 'Google hasn't verified this app' and read real Analytics, Search Console, Calendar, YouTube, Drive and Gmail data. Google requires no review for this. The limits are: (1) refresh tokens last 7 days, (2) only the listed test users can connect (up to 100), and (3) Ads: Test access reaches Google Ads TEST accounts only. Explorer (2,880 production ops per day, no planning tools) arrives only if Google auto-approves it, with no SLA, so do not plan on it. A real advertiser account is therefore NOT reliably testable today without a human review step. Stage everything else first: ads, brand verification and CASA are the only things that wait on Google. The callback must use the Railway URL until api.bmapz.com resolves. Both URIs can be registered together."
+ },
+ "customer_launch": {
+  "requires": [
+   "Public home page at ai.bmapz.com that works logged out, plus privacy policy, terms and data-deletion pages with Limited Use wording and a list of Google data used",
+   "Search Console Domain-property verification of bmapz.com (DNS TXT) by an account that owns the Cloud project, and bmapz.com in Authorized domains",
+   "Callback moved to https://api.bmapz.com/api/oauth/google/callback and the Railway URI removed from the production client",
+   "Brand verification (a few minutes up to 2-3 business days, valid for 7 days)",
+   "Publish to In production and submit sensitive-scope verification: per-scope justification, why narrower scopes are insufficient, unlisted YouTube demo video (3-5 business days typical)",
+   "If any restricted scope is kept (drive full, gmail.readonly/modify/compose/metadata/insert): CASA Tier 2 via an authorized assessor, Letter of Assessment, repeated every 12 months (several weeks, paid by developer)",
+   "Google Ads: Basic access (brand verification first, about 10 business days) for production accounts at scale. Standard later for unlimited operations",
+   "youtube.upload: YouTube API compliance audit, otherwise uploads stay private"
+  ],
+  "realistic_calendar_time": "Sensitive scopes only (adwords, analytics.readonly, webmasters.readonly, calendar, youtube.*, gmail.send, userinfo.email, drive.file): about 2-4 weeks if the DNS, homepage and privacy-policy prerequisites are ready on day one and there is one resubmission round. Add up to 1 more week for Ads Basic running in parallel. With restricted scopes (full drive, Gmail read/modify): plan 5-10 weeks, with a yearly renewal. Pace the plan around two clocks: DNS + brand verification first (days), then verification.",
+  "source_or_basis": "Google-published typical times: brand 2-3 business days, sensitive 3-5 business days, restricted 'several weeks', Basic 10 business days. Google publishes no SLA. The multi-week estimates for rejections/resubmissions and CASA scheduling are my estimates, informed by a third-party guide that quoted 5-20 days for CASA."
+ },
+ "corrected_setup_steps": [
+  "0. DECISIONS (my recommendations). (A) Ship v1 with SENSITIVE and NON-SENSITIVE scopes only. Replace Drive full 'drive' with 'drive.file', and Gmail read/modify with 'gmail.send' (+ 'gmail.labels' if needed). That avoids CASA, its yearly cost and its weeks of delay. If the app genuinely must read the user's whole Drive or inbox, make that a separate later release with its own verification. (B) Do NOT click Publish app until the branding is verified and you are ready to submit verification the same day: the 100-new-user cap is lifetime and cannot be reset. (C) Use one Google account that is the long-term owner of the business for the project and for Search Console.",
+  "1. DNS FIRST (this is the slow part): in the SAME Google account go to https://search.google.com/search-console > Add property > 'Domain' > enter bmapz.com > copy the TXT value starting google-site-verification=. At the registrar panel (nameservers ns1/ns2.dns-parking.com) add a TXT record: Host = @ (or blank), Value = what you copied. Leave the existing SPF TXT, MX and _dmarc records untouched. Do not merge the new value into the SPF line. Click Verify (DNS can take minutes to hours).",
+  "2. Create the project: https://console.cloud.google.com/projectcreate > Name 'bmapz-ai-prod' > Create. Make sure it is selected in the project picker for all later steps.",
+  "3. Enable APIs at https://console.cloud.google.com/apis/library (search each name, click Enable): Google Ads API; Google Analytics Data API; Google Analytics Admin API; Google Search Console API (search 'Search Console'); Google Calendar API; YouTube Data API v3; Google Drive API; Gmail API (only if gmail.send or other Gmail scopes are kept).",
+  "4. Branding: https://console.cloud.google.com/auth/branding > App name: Bmapz AI | User support email: a real inbox | App home page: https://ai.bmapz.com (open it in a private window first: it must show a public page without login) | Privacy policy: https://ai.bmapz.com/PrivacyPolicy | Terms of service: https://ai.bmapz.com/TermsOfService | Authorized domains: bmapz.com (one entry covers ai. and api.) | Developer contact email: a real inbox. Add the logo only if it is final, because later changes force re-verification. Save.",
+  "5. Audience: https://console.cloud.google.com/auth/audience > User type External. Leave status 'Testing'. Under Test users add your own Google account and any internal testers (max 100).",
+  "6. Data Access: https://console.cloud.google.com/auth/scopes > Add or remove scopes. Select or paste under 'Manually add scopes': https://www.googleapis.com/auth/adwords , https://www.googleapis.com/auth/analytics.readonly , https://www.googleapis.com/auth/webmasters.readonly , https://www.googleapis.com/auth/calendar , https://www.googleapis.com/auth/youtube.readonly , https://www.googleapis.com/auth/youtube.upload , https://www.googleapis.com/auth/userinfo.email , plus per decision A: https://www.googleapis.com/auth/drive.file and https://www.googleapis.com/auth/gmail.send. Update > Save. Anything labeled Restricted (drive, gmail.readonly/modify/compose) means CASA. If the code still requests them, change GOOGLE_SCOPES_MAP or accept the delay. Check that every scope the code sends is listed here.",
+  "7. Create the OAuth client: https://console.cloud.google.com/auth/clients > Create client > Application type 'Web application' > Name 'Bmapz AI backend' > Authorized JavaScript origins: https://ai.bmapz.com (only if the browser calls Google directly) > Authorized redirect URIs, add BOTH: https://api.bmapz.com/api/oauth/google/callback and https://bmapz-production.up.railway.app/api/oauth/google/callback > Create. If the console rejects either URI, keep the other and tell me. The Railway one is only for testing, because it can never pass brand verification.",
+  "8. In the dialog COPY the Client ID and Client secret immediately (the secret is not shown in full afterwards). In Railway > backend service > Variables set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET. Leave GOOGLE_ADS_DEVELOPER_TOKEN empty. Only if the app will not boot or the Ads client library errors, set it to any non-empty placeholder. Redeploy.",
+  "9. First test: connect from https://ai.bmapz.com with a test user. On the 'Google hasn't verified this app' screen click Advanced > Go to Bmapz AI (unsafe) > Allow all boxes. The authorization URL must use access_type=offline and prompt=consent so a refresh token is returned. Tokens from this stage last 7 days.",
+  "10. Google Ads today: open https://console.cloud.google.com/google/ads-apis/overview (right project selected). Access level will say Test (test accounts only). Expand 'Upgrade access level' > Apply for access (Explorer). It may or may not auto-approve, and it allows only 2,880 production ops per day and no keyword planning. Test the Ads call path against a Google Ads TEST account meanwhile. Use API v24 or v25, never v22.",
+  "11. Brand verification: Google Auth Platform > Verification Center (left menu, https://console.cloud.google.com/auth/verification if it does not appear) > Verify branding. Before clicking, remove the railway.app redirect URI from this client (or use a second client for testing). Confirm Search Console shows bmapz.com verified under the SAME Google account that owns the project. Result: minutes to 2-3 business days. It stays valid for only 7 days, so be ready to publish.",
+  "12. Within those 7 days: Audience > Publish app (status becomes In production) > Prepare for verification. For each sensitive scope write a justification and say why a narrower scope is not enough. Upload an unlisted YouTube demo video that shows the full consent flow and the feature using each scope. Submit. Typical 3-5 business days. Respond to Google's emails from the support inbox.",
+  "13. Privacy policy at https://ai.bmapz.com/PrivacyPolicy must (a) list each Google data type used and why, (b) include: 'Bmapz AI's use and transfer to any other app of information received from Google APIs will adhere to Google API Services User Data Policy, including the Limited Use requirements.' (verify the exact sentence on Google's policy page), (c) say Google data is not sold, not used for ads and not read by humans without consent, (d) say Google user data is not used to train generalized AI/ML models, and (e) link to https://ai.bmapz.com/DataDeletion. Make sure the homepage links to the privacy policy.",
+  "14. After brand verification passes, apply for Google Ads Basic at https://console.cloud.google.com/google/ads-apis/overview > Upgrade access level > Apply for access > Basic. About 10 business days. Basic is 15,000 operations per day for the whole project. Apply for Standard only once you approach that.",
+  "15. If youtube.upload must publish public videos, apply for the YouTube API Services compliance audit for this project. Until then uploads are private.",
+  "16. When api.bmapz.com resolves, set the backend callback to the api.bmapz.com URI and confirm no railway.app URI is left on the production client."
+ ],
+ "first_connect_blockers": [
+  "Redirect URI must match byte for byte: https://api.bmapz.com/api/oauth/google/callback and https://bmapz-production.up.railway.app/api/oauth/google/callback, with no trailing slash, no http, no wildcard. Print what the backend sends and compare.",
+  "Only test users listed under Audience can connect while the status is Testing (max 100). Anyone else gets access_denied. This is the usual 'works for me, not for the customer' failure.",
+  "Refresh tokens issued in Testing die after 7 days, so a working connect today will break next week. Log it explicitly.",
+  "Scopes requested in the auth URL must also be declared in Data Access. APIs must be enabled in the SAME Cloud project that owns the OAuth client, or you get 403 SERVICE_DISABLED. Ads access level is read from the project that owns the OAuth credentials.",
+  "The Railway redirect URI can never be a verified authorized domain, so it blocks brand verification. Remove it from the production client before 'Verify branding'.",
+  "https://ai.bmapz.com must be a public page when logged out and must link to the privacy policy. Check in a private window. If it redirects to login, brand verification fails.",
+  "Search Console verification must be a DNS Domain property for bmapz.com done with an account that owns the Cloud project. The TXT goes at host @. Do not edit the SPF record. A subdomain-only property does not verify the parent.",
+  "Google Ads: a Test-access project reaches only Google Ads test accounts. Explorer is not guaranteed (no SLA) and limits production to 2,880 ops per day. Basic needs brand verification first and about 10 business days. The 15,000 ops per day is shared across all customers.",
+  "Do not use the manager-account API Center. It is deprecated. Use https://console.cloud.google.com/google/ads-apis/overview. Do not chase a developer token. Stale docs still mention it.",
+  "Pick API v24 or v25. v22 sunsets this month and v23 in Feb 2027.",
+  "Any restricted scope in the code (drive, gmail.readonly, gmail.modify, gmail.compose, gmail.metadata, gmail.insert, mail.google.com) forces a CASA assessment for the whole verification. The sensitive-only submission cannot go through while those scopes are included.",
+  "100 new users lifetime cap on the unverified-app screen once in production, not resettable. Publishing early burns slots. Gmail-scoped tokens die on password change. Re-auth loops hit the 100-refresh-tokens-per-account limit.",
+  "The authorizing user also needs real permissions on the underlying resource (Search Console property, GA4 property, Ads customer ID). A clean grant with too little access returns empty lists, not errors.",
+  "YouTube uploads from an unverified API project are forced private until the compliance audit passes."
+ ],
+ "costs": [
+  {
+   "item": "Google Cloud project, OAuth client, enabling APIs",
+   "cost": "$0",
+   "note": "Billing not confirmed as required in this session. Prior researcher said it is optional."
+  },
+  {
+   "item": "Brand verification and sensitive-scope verification",
+   "cost": "$0 published",
+   "note": "Google's pages state no fee. A third-party guide says there is no cost. Wait: brand 2-3 business days, sensitive 3-5 business days typical, no SLA."
+  },
+  {
+   "item": "CASA Tier 2 security assessment (only if restricted scopes: full drive, gmail.readonly/modify/compose/metadata/insert)",
+   "cost": "No Google-published price. Third-party estimates: about $540-$720 (TAC Security self-serve), about $700 (Netsentries), $3,000+ (Prescient); another source cites $15k-$75k for legacy tracks",
+   "note": "Paid by the developer, repeated every 12 months. 'Several weeks' per Google. Avoid by using drive.file and gmail.send."
+  },
+  {
+   "item": "Google Ads API access levels (Test, Explorer, Basic, Standard)",
+   "cost": "No fee stated on Google's pages",
+   "note": "Waits: Test instant; Explorer 'may' auto-approve, no SLA; Basic about 10 business days after brand verification; Standard manual audit after Basic, no separate SLA."
+  },
+  {
+   "item": "YouTube API compliance audit (to un-lock public uploads / raise quota)",
+   "cost": "No fee found",
+   "note": "Wait unpublished. Not fetched beyond the videos.insert note."
+  },
+  {
+   "item": "Search Console domain verification (DNS TXT)",
+   "cost": "$0",
+   "note": "Registrar DNS change. Propagation minutes to hours."
+  }
+ ],
+ "confidence": "medium",
+ "uncertainties": [
+  "Scope sensitivity labels for adwords, analytics.readonly, webmasters.readonly, calendar and youtube.* came from secondary sources. Google's pages I could fetch did not print the labels. Gmail and Drive labels are official. Check the Sensitive badge in Data Access when adding each scope. webmasters.readonly is the least corroborated.",
+  "I could not read GOOGLE_SCOPES_MAP, so I do not know which Gmail and Drive scopes the code requests. The CASA decision depends entirely on that list.",
+  "Whether refresh tokens in production while unverified avoid the 7-day expiry is inferred. Google ties the expiry to Testing and I found no explicit sentence for unverified-in-production. Test it on day 8.",
+  "Whether test users from the Testing phase count against the 100 lifetime unverified-app cap is not stated in what I fetched.",
+  "Explorer approval time is not published. Whether an auto-upgrade lands the same day cannot be confirmed. The 2,880 ops per day production ceiling would also make it unusable for customers.",
+  "Ads error code names for Test-access projects calling production accounts could not be re-confirmed. The access-levels page was updated 2026-09-30 and I cannot diff it against the 09-23 version.",
+  "The Ads API sunset months (v22 Oct 2026, v23 Feb 2027, v24 May 2027) come from secondary snippets because Google's sunset page did not parse. Google says tentative dates can fall on any day in the month.",
+  "The exact Limited Use sentence is widely used by other companies but did not appear in the Google policy excerpt I received. Re-read the policy. Also confirm the Gmail/Drive generalized AI/ML training ban wording. It is critical for an AI product and I could not verify it from the page.",
+  "Business entity country is unknown. I found no Google OAuth or Ads API rule in what I read that depends on country, but the Ads Standard audit and CASA assessor paperwork may ask for business details.",
+  "Whether the Cloud console accepts https://bmapz-production.up.railway.app/... as a redirect URI, and whether api.bmapz.com is accepted before its DNS exists, is not documented. Try it. The public-suffix claim for up.railway.app was not re-verified.",
+  "The exact path of the Verification Center in the current console (https://console.cloud.google.com/auth/verification) was not confirmed. Navigate via Google Auth Platform in the left menu if the link fails.",
+  "YouTube default quota, upload quota ('1 unit in the Video Uploads quota bucket', 100 calls/day) and the audit form are only partly confirmed. Whether Bmapz needs more than the default is unknown.",
+  "Brand verification may reject logo, app name or homepage text for reasons not in the documentation. Allow for one resubmission cycle.",
+  "Not re-verified this session: client-secret one-time display, 'billing not required', 10-authorized-domain max, access_type=offline/prompt=consent behavior (standard Google behavior)."
+ ]
+}

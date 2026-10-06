@@ -1,0 +1,334 @@
+{
+ "group": "LinkedIn (sign-in, member posting, Advertising API) and X/Twitter (OAuth2 + PKCE, posting)",
+ "claims": [
+  {
+   "claim": "LinkedIn sign-in (openid profile email) and member posting (w_member_social) can be tested today with no LinkedIn review queue.",
+   "verdict": "confirmed",
+   "correction": "Holds only after: a LinkedIn Page exists, the app is created against that Page, and (treat as required) the Page super admin has verified the app. Both products are added self-service on the Products tab.",
+   "source_quote": "Paraphrase of getting-access page: Open Permissions (profile, email, w_member_social) are the only permissions available to all developers without special approval, added via self-service on the Products tab.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/getting-access"
+  },
+  {
+   "claim": "X posting can be tested today.",
+   "verdict": "corrected",
+   "correction": "Credentials are instant, but POST /2/tweets needs prepaid credits, so a saved/purchased card is required. NEW since 2026-09-23 (changelog entry dated 2026-10-02): a one-time $20 credit when the first eligible card is saved, so a first test can cost $0 out of pocket. 'Eligible card' is undefined (country may matter).",
+   "source_quote": "Paraphrase of X pricing page and changelog: pay-per-usage, no subscriptions; $20 free credits on saving first eligible payment card; first auto-recharge matched up to $50.",
+   "source_url": "https://docs.x.com/x-api/getting-started/pricing"
+  },
+  {
+   "claim": "LinkedIn Ads scopes (r_ads, r_ads_reporting) cannot be tested until Advertising API access is approved.",
+   "verdict": "confirmed",
+   "correction": "Requesting an unassigned scope fails the whole authorize request with 401 'Invalid scope', so the ads connect must be feature-flagged off until the Auth tab lists those scopes.",
+   "source_quote": "Paraphrase of error table: 401 Invalid scope means the scope in the request is not assigned to the app in the developer portal.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow"
+  },
+  {
+   "claim": "approval_required = true (only the LinkedIn Advertising API needs human approval).",
+   "verdict": "confirmed",
+   "correction": "Also true for any future LinkedIn Company Page posting (w_organization_social needs Community Management API, a separate legal-entity vetting; it must be the ONLY product on its app so it needs a second app/client id). Current scopes do not include it.",
+   "source_quote": "Paraphrase of partner support guide: Community Management API must be the only product on an app; apps with Ads or Share cannot request it.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/shared/linkedin-api-partner-support-guide"
+  },
+  {
+   "claim": "LINKEDIN_CLIENT_ID / LINKEDIN_CLIENT_SECRET are instant once the app exists.",
+   "verdict": "confirmed",
+   "correction": "They are on the app Auth tab. The app cannot exist without a LinkedIn Page, and the Page choice is permanent.",
+   "source_quote": "Paraphrase of help article a548360: individual-developer API products need a default Page; apps are permanently associated with one Page and cannot be transferred.",
+   "source_url": "https://www.linkedin.com/help/linkedin/answer/a548360"
+  },
+  {
+   "claim": "Latest LinkedIn versioned API is 202609; versions supported at least 12 months.",
+   "verdict": "confirmed",
+   "correction": "The code's pin 202606 is SUPPORTED today (status Active, sunset 2027-06-15). Newest is 202609 (sunset 2027-09-15). Recommendation: set LINKEDIN_API_VERSION=202609 for the longest runway; 202606 also works until 2027-06-15.",
+   "source_quote": "Paraphrase of migrations table: 202606 Active sunset June 15 2027; 202609 Active sunset September 15 2027.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/migrations"
+  },
+  {
+   "claim": "Marketing version 202510 sunsets 2026-10-15 'in about three weeks'.",
+   "verdict": "corrected",
+   "correction": "Now 9 days away (today 2026-10-06). 202511 sunsets 2026-11-16. Any Bmapz code path or test script still sending 202510 or 202511 breaks. A missing or deprecated Linkedin-Version header returns an error; there is no default version.",
+   "source_quote": "Paraphrase of versioning page: an error is returned when the version header is missing or deprecated; the latest version is not applied by default.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/marketing/versioning"
+  },
+  {
+   "claim": "/v2/userinfo and /v2/ugcPosts are unversioned; Linkedin-Version only matters for /rest/*.",
+   "verdict": "corrected",
+   "correction": "True per docs, but ugcPosts is legacy: the Posts API (POST /rest/posts, needs Linkedin-Version and X-Restli-Protocol-Version 2.0.0) replaces it. Self-serve w_member_social is reported by secondary sources to work on /rest/posts without Community Management API; official docs do not state the product requirement explicitly.",
+   "source_quote": "\"The Posts API replaces the ugcPosts API.\" (Posts API page)",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api?view=li-lms-2026-09"
+  },
+  {
+   "claim": "LinkedIn Advertising API review has no published SLA, treat as days-to-weeks.",
+   "verdict": "corrected",
+   "correction": "Still no published SLA for Development tier. Official facts: a vetting survey is auto-generated and must be completed within 21 days or the request is closed as Insufficient Details (Reapply button then available); reviewers may email the registered business email for documents; 'up to 30 business days' is stated only for the Standard-tier upgrade ticket. Third-party reports conflict (1-5 business days vs 4-8 weeks vs 3-4 months). Plan 2-6 weeks.",
+   "source_quote": "Paraphrase of partner support guide: survey due within 21 days; Standard-tier upgrade review can take up to 30 business days.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/shared/linkedin-api-partner-support-guide"
+  },
+  {
+   "claim": "Advertising API approval is just 'Request access, complete the form'.",
+   "verdict": "corrected",
+   "correction": "Review checks: approved use case, verified business email (personal Gmail fails), legally registered active organization, verified website/domain, privacy policy, and that the Page associated with the app belongs to the same organization. Denial reasons also include app name containing LinkedIn or Microsoft names. Use a bmapz.com mailbox, not d2mdigitalmarketing@gmail.com. The explicit business-email and legal-entity wording is on the Community Management review page; the status-definitions page lists the same checks generically, so applying them to Ads is an inference.",
+   "source_quote": "Paraphrase of status definitions: rejection reasons include email not verified, organization not a legally registered active entity, invalid website, privacy policy, or Page of a different organization.",
+   "source_url": "https://www.linkedin.com/help/linkedin/answer/a1449586/"
+  },
+  {
+   "claim": "Advertising API starts at Development tier: unlimited read, edit up to 5 ad accounts, 1 test ad account via API; Standard tier is a later support-portal request with video demo.",
+   "verdict": "confirmed",
+   "correction": "Nuance: Bmapz only reads (r_ads, r_ads_reporting) so Standard is NOT needed; LinkedIn says data/analytics-only tier-upgrade requests are rejected. Whether Development tier requires each customer ad account to be mapped in the portal (View Ad Accounts) for read is ambiguous in docs; the partner guide says reading has no account limit.",
+   "source_quote": "Paraphrase of increasing-access page: all applications start with Development tier; Standard must be requested separately.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/marketing/increasing-access"
+  },
+  {
+   "claim": "Changing scope sets forces re-consent and invalidates earlier tokens.",
+   "verdict": "confirmed",
+   "correction": "Design hazard for Bmapz: separate connects with different scope sets (sign-in vs post vs ads) for the same member may invalidate each other. Request one stable union (openid profile email w_member_social r_ads r_ads_reporting) once Ads is approved, or keep the scope set identical across flows. Actual behavior in production is not verified.",
+   "source_quote": "Paraphrase of auth code flow page: requesting a different scope than previously granted invalidates all previous access tokens; changed app scopes force users to re-authenticate.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow"
+  },
+  {
+   "claim": "LinkedIn redirect URL must be exact, absolute HTTPS, no #, query ignored; register one URL.",
+   "verdict": "corrected",
+   "correction": "Rules confirmed. Register BOTH callbacks (api.bmapz.com and the Railway host); the redirect_uri sent must match one registered entry and be identical in the token exchange. Auth code lives 30 minutes.",
+   "source_quote": "Paraphrase of auth code flow page: URLs must be absolute, cannot include #, query parameters are dropped; redirect_uri must match one of the registered URLs.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow"
+  },
+  {
+   "claim": "LinkedIn access tokens last 60 days; programmatic refresh only for a limited set of partners.",
+   "verdict": "confirmed",
+   "correction": "Plan on user re-consent every 60 days; silent refresh is not available to a new self-serve app. Re-auth is seamless only if the member is still logged into linkedin.com and the old token has not expired.",
+   "source_quote": "\"Programmatic refresh tokens are available for a limited set of partners.\"",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow"
+  },
+  {
+   "claim": "w_member_social throttle: 150 requests per member per UTC day, 100,000 per app.",
+   "verdict": "confirmed",
+   "correction": "Figures come from the Share on LinkedIn (ugcPosts) page last updated 2023; the Posts API page gives no numbers, so treat as indicative.",
+   "source_quote": "Paraphrase of Share on LinkedIn rate-limit table: Member 150/day, Application 100,000/day (UTC).",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin"
+  },
+  {
+   "claim": "Page super admin verifies the app; 30 days; Settings > Verify > Generate URL; denial invalidates every link.",
+   "verdict": "corrected",
+   "correction": "Super-admin approval and the 30-day window are confirmed. The exact Settings > Verify > Generate URL clicks and the 'denial invalidates all links' behavior could not be confirmed from the fetched help text. If Derek creates the Page himself he is super admin and self-approves.",
+   "source_quote": "Paraphrase of help article: the Page super admin has 30 days to approve the request to associate an app with a Page.",
+   "source_url": "https://www.linkedin.com/help/linkedin/answer/a548360"
+  },
+  {
+   "claim": "Sign in with LinkedIn using OpenID Connect and Share on LinkedIn add instantly, no review.",
+   "verdict": "confirmed",
+   "correction": "Official wording is 'self-service'. One Microsoft doc elsewhere says 'request' access; I did not observe the console, so verify scopes appear on the Auth tab right after adding each product.",
+   "source_quote": "Paraphrase of Sign-in doc: request the Sign in with LinkedIn using OpenID Connect product on the Products tab.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2"
+  },
+  {
+   "claim": "X has no free tier; pay-per-usage credits only.",
+   "verdict": "confirmed",
+   "correction": "Official pricing page: pay-per-usage, no subscriptions, no free tier. Secondary sources: free tier closed to new signups 2026-02-06, legacy Basic auto-migrated from 2026-06-01. Update since 2026-09-23: $20 one-time credit on saving a first eligible card plus first auto-recharge match up to $50 (changelog 2026-10-02).",
+   "source_quote": "Paraphrase of X changelog: Oct 2 2026 free-credit incentive; Apr 2026 pricing overhaul; Feb 6 2026 pay-per-use launch with console.x.com.",
+   "source_url": "https://docs.x.com/changelog"
+  },
+  {
+   "claim": "X prices: Post create $0.015, Post create with URL $0.200, Post read $0.005.",
+   "verdict": "confirmed",
+   "correction": "Also: User read $0.010 per resource, Owned Reads $0.001 per resource. Bmapz pays for every customer post made through its app, and link posts cost 13x. Monthly cap of 3 million Post reads on pay-per-usage; no cap on creates is documented. Changelog (Apr 2026) says following, likes and quote-posts were removed from all self-serve tiers.",
+   "source_quote": "Paraphrase of pricing page: Post: Create $0.015 per request; Post: Create (with URL) $0.200 per request.",
+   "source_url": "https://docs.x.com/x-api/getting-started/pricing"
+  },
+  {
+   "claim": "X has 'no minimum spend' / small top-up of $5-10.",
+   "verdict": "unverifiable",
+   "correction": "Official docs do not state a minimum purchase. One search snippet says $5 minimum; not confirmed on an official page. Spending limits per billing cycle and auto-recharge (one top-up per 5 minutes, paused at zero balance) are documented. At zero or negative balance API requests are blocked.",
+   "source_quote": "Paraphrase of pricing page: purchase credits upfront in the Developer Console; set a maximum spend per billing cycle.",
+   "source_url": "https://docs.x.com/x-api/getting-started/pricing"
+  },
+  {
+   "claim": "X credentials are self-service and instant at console.x.com with no review.",
+   "verdict": "confirmed",
+   "correction": "Docs describe sign up, create app, save credentials, accept Developer Agreement; no approval step is mentioned. Docs are silent on whether a card is needed before creating the app (assume not) and on any phone/email requirement.",
+   "source_quote": "Paraphrase of getting-access page: three steps, sign up, create an app, save credentials; credentials are displayed only once.",
+   "source_url": "https://docs.x.com/x-api/getting-started/getting-access"
+  },
+  {
+   "claim": "X app must be Web App or Automated App/Bot (confidential) to get a Client Secret; callbacks exact-match, max 10, https, 127.0.0.1 not localhost.",
+   "verdict": "confirmed",
+   "correction": "Register both Bmapz callback URIs (2 of 10). Authorization codes reportedly expire 30 seconds after the redirect, so the backend must exchange the code immediately.",
+   "source_quote": "Paraphrase of developer-apps page: 10 callback URLs per app, must match exactly including trailing slash, https in production, 127.0.0.1 for local.",
+   "source_url": "https://docs.x.com/fundamentals/developer-apps"
+  },
+  {
+   "claim": "X 'App permissions: Read and write' toggle must be set or tweet.write fails.",
+   "verdict": "corrected",
+   "correction": "Current docs list the Read / Read and write / Read, write and DMs tiers under OAuth 1.0a. For OAuth 2.0 the requested scopes (tweet.read tweet.write users.read offline.access) govern. If the console still shows an App permissions control, set Read and write anyway (harmless).",
+   "source_quote": "Paraphrase of developer-apps page: permission tiers are documented under OAuth 1.0a user authentication.",
+   "source_url": "https://docs.x.com/fundamentals/developer-apps"
+  },
+  {
+   "claim": "X token endpoint is api.x.com; does api.twitter.com still work?",
+   "verdict": "corrected",
+   "correction": "Docs use https://api.x.com/2/oauth2/token and https://x.com/i/oauth2/authorize. Tested today 2026-10-06: an unauthenticated malformed POST to /2/oauth2/token returned HTTP 400 JSON from BOTH api.x.com and api.twitter.com, and twitter.com/i/oauth2/authorize 301-redirects to x.com. So both are alive today, but only api.x.com is documented; use api.x.com and x.com.",
+   "source_quote": "Paraphrase of OAuth2 auth-code page: authorize at x.com/i/oauth2/authorize; token and refresh at api.x.com/2/oauth2/token.",
+   "source_url": "https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code"
+  },
+  {
+   "claim": "offline.access is required for a refresh token; otherwise access token lasts about 2 hours.",
+   "verdict": "confirmed",
+   "correction": "Docs also say refresh is grant_type=refresh_token with Basic auth for confidential clients. Refresh-token lifetime and whether each refresh rotates the refresh token are NOT documented on the pages fetched; store the new refresh_token returned on every refresh.",
+   "source_quote": "Paraphrase of auth-code page: without offline.access the token lasts two hours and no refresh token is issued.",
+   "source_url": "https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code"
+  },
+  {
+   "claim": "X apps may need to live inside a Project.",
+   "verdict": "unverifiable",
+   "correction": "The fetched docs do not mention Projects as a requirement in console.x.com. Watch for it during app creation.",
+   "source_quote": "Paraphrase: developer-apps page is silent on Projects.",
+   "source_url": "https://docs.x.com/fundamentals/developer-apps"
+  },
+  {
+   "claim": "LinkedIn data may be stored freely.",
+   "verdict": "corrected",
+   "correction": "Marketing API data storage limits: members' social activity 48 hours, other members' profile data 24 hours, ad account admin and reporting data one year, authenticated members' own profile and IDs unrestricted. Member data cannot be exported, combined with other data, or used for advertising, sales or recruiting. Do not use one individual profile to manage multiple customers' accounts.",
+   "source_quote": "Paraphrase of data-storage and restricted-use pages as above.",
+   "source_url": "https://learn.microsoft.com/en-us/linkedin/marketing/data-storage-requirements"
+  }
+ ],
+ "testable_today_without_review": {
+  "value": true,
+  "reasoning": "Split by flow. (1) LinkedIn sign-in plus member posting: yes, no LinkedIn review, as soon as a LinkedIn Page exists, the app is created and the Page super admin verifies it (Derek self-approves if he creates the Page), then both self-serve products are added. Any LinkedIn member can then consent; there is no tester allowlist. (2) X OAuth plus posting: yes, no review; credentials are instant, but a post call needs credits. Since 2026-10-02 saving a first eligible card yields $20 credit (about 1,300 plain posts or 100 link posts), so end-to-end can be tested for about $0 if the card is eligible, otherwise buy credits (minimum unknown). A card is required either way and Derek must enter it himself. (3) LinkedIn Ads (r_ads, r_ads_reporting): NO, blocked until Advertising API approval; keep that connect behind a flag. Bottom line: sign-in, member posting and X posting are testable the same day; Ads is not."
+ },
+ "customer_launch": {
+  "requires": [
+   "LinkedIn sign-in and member posting: Page + verified app + two self-serve products + both redirect URIs registered + app is public (no review needed for any member to consent).",
+   "X posting: Web App with both callback URIs, funded credits with a spend limit and a plan for who pays (Bmapz pays $0.015 per plain post and $0.20 per link post for every customer post).",
+   "LinkedIn Ads reporting: Advertising API access request approved at Development tier (business email on bmapz.com, legal-entity, website, privacy policy, Page of the same organization; survey completed within 21 days). Standard tier NOT needed for read-only; rejection forces a new app (new client id/secret).",
+   "Re-consent flow for 60-day LinkedIn tokens (no programmatic refresh) and a stable scope set to avoid token invalidation.",
+   "Compliance: LinkedIn data storage limits (48h/24h member data, 1 year ad reporting data) and deletion on member request; no export of member data to customers.",
+   "Not in current scope: posting to Company Pages needs Community Management API (separate app, legal-entity review, screen recording for Standard tier)."
+  ],
+  "realistic_calendar_time": "LinkedIn sign-in/posting and X posting: 1 working day of Derek time (about 1.5 to 3 hours of console work) if a Page exists and the Page super admin is Derek. Add a few days if the Page must be created and matured or a bmapz.com mailbox is missing. LinkedIn Ads: plan 2 to 6 weeks from submission (no published SLA; 21-day survey deadline; third-party reports range from 1-5 business days to 3-4 months), with rejection risk. Overall customer launch for posting: days; for ads reporting: weeks.",
+  "source_or_basis": "Official Microsoft Learn LinkedIn docs (partner support guide for 21-day survey and 30-business-day Standard review; increasing-access for tiers), X docs pricing/changelog. No official SLA exists for Development-tier Advertising API review; the 2-6 week figure is my estimate from conflicting third-party reports."
+ },
+ "corrected_setup_steps": [
+  "PREP A. Make sure a mailbox on your own domain exists (for example derek@bmapz.com via the Hostinger mail you already have: MX mx1/mx2.hostinger.com). LinkedIn's Advertising vetting verifies a business email and rejects personal Gmail. No DNS change is needed for LinkedIn or X, and do not add a second SPF record.",
+  "PREP B. Have a company X account ready (not a personal one) and a payment card you will enter yourself in the X console.",
+  "LINKEDIN 1. Signed in to LinkedIn as the person who will be super admin, create the Bmapz Page at https://www.linkedin.com/company/setup/new/ (type Company). Use the real company name 'Bmapz' and website https://ai.bmapz.com (or https://bmapz.com if it resolves). The Page choice is permanent and must belong to the same organization you will describe to LinkedIn.",
+  "LINKEDIN 2. Go to https://www.linkedin.com/developers/apps/new . App name: Bmapz AI (do not include the words LinkedIn or Microsoft). LinkedIn Page: select the Bmapz Page. Privacy policy URL: https://ai.bmapz.com/PrivacyPolicy . App logo: upload the Bmapz logo. Tick the legal terms. Click Create app.",
+  "LINKEDIN 3. Open the app, Settings tab, click Verify, generate the verification URL, open it while signed in as the Page super admin and approve. Confirm the app shows as verified. Do this before step 4.",
+  "LINKEDIN 4. Products tab: click Request access (Add) on 'Sign In with LinkedIn using OpenID Connect' and on 'Share on LinkedIn'. Then open the Auth tab and confirm the OAuth 2.0 scopes list shows openid, profile, email and w_member_social. Do not continue until all four appear.",
+  "LINKEDIN 5. Auth tab, 'Authorized redirect URLs for your app', add and save BOTH: https://api.bmapz.com/api/oauth/linkedin/callback and https://bmapz-production.up.railway.app/api/oauth/linkedin/callback . No trailing slash, no query, no #. (Confirm with the code audit that the provider path segment really is 'linkedin'.)",
+  "LINKEDIN 6. Auth tab, Application credentials: copy Client ID and Primary Client Secret. In Railway, Variables, set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET and LINKEDIN_API_VERSION=202609 (202606 also works until 2027-06-15; never 202510 or 202511). Paste secrets directly into Railway, not into chat or email. Redeploy.",
+  "LINKEDIN 7. Test from https://ai.bmapz.com: connect LinkedIn, consent, confirm sign-in returns name/email, then publish one short text post and delete it on LinkedIn. Optional token check: https://www.linkedin.com/developers/tools/oauth/token-inspector .",
+  "LINKEDIN 8 (only after 7 works; start the clock then). Products tab, Advertising API, Request access. Read https://learn.microsoft.com/en-us/linkedin/marketing/restricted-use-cases first. Complete the access form and the vetting survey within 21 days using your bmapz.com business email, legal company name and address, website https://ai.bmapz.com, privacy policy https://ai.bmapz.com/PrivacyPolicy . Describe the use case as read-only ad account reporting for customers who authorize with their own LinkedIn logins. Do NOT apply for Standard tier. Do NOT add Community Management API to this app. Watch the email inbox for reviewer follow-ups.",
+  "LINKEDIN 9 (after Ads shows Approved). Create or confirm a Campaign Manager ad account at https://www.linkedin.com/campaignmanager/accounts for your own login (needed to test r_ads). If connect still fails for read access, add the 9-digit ad account id under Products, View Ad Accounts, Add Ad Account. Then enable the ads connect with the single union scope set 'openid profile email w_member_social r_ads r_ads_reporting' so tokens are not invalidated by scope changes, and re-consent once.",
+  "X 1. Sign in at https://console.x.com with the company X account and accept the Developer Agreement.",
+  "X 2. Create App: name 'Bmapz AI', description and use case (scheduling and publishing social posts on behalf of users who connect their own X accounts). If the console asks for a Project, create one named Bmapz.",
+  "X 3. In the app open User authentication settings, turn on OAuth 2.0. App type: Web App (confidential client, issues a Client Secret). If shown, App permissions: Read and write. Callback URI / Redirect URL: add both https://api.bmapz.com/api/oauth/twitter/callback and https://bmapz-production.up.railway.app/api/oauth/twitter/callback (exact, no trailing slash). Website URL: https://ai.bmapz.com . Terms of service: https://ai.bmapz.com/TermsOfService . Privacy policy: https://ai.bmapz.com/PrivacyPolicy . Save. (Confirm with the code audit that the provider path segment really is 'twitter'.)",
+  "X 4. Keys and tokens: copy the OAuth 2.0 Client ID and generate/copy the Client Secret immediately (shown once). In Railway set TWITTER_CLIENT_ID and TWITTER_CLIENT_SECRET. Redeploy. If you lose the secret, regenerate it and update Railway at once.",
+  "X 5. Billing in the console: save your card (you enter it yourself) to receive the one-time $20 credit if the card is eligible; otherwise buy the smallest credit amount offered. Set a maximum spend per billing cycle (suggest $25 for testing). Leave auto-recharge off until you know your volume. Decide who pays: every customer post costs Bmapz $0.015, or $0.20 if it contains a link.",
+  "X 6. Test from https://ai.bmapz.com: connect X with scope 'tweet.read tweet.write users.read offline.access', confirm the app stores a refresh token, post one plain text test with NO link, then delete it on X. Check the credit balance dropped by about $0.015.",
+  "BOTH 7. Copy back to Claude (not secrets): the LinkedIn Page URL, a screenshot of the LinkedIn Auth tab scopes and Products statuses, the Advertising API status (Pending/Approved/Denied), the X app type shown, whether the X $20 credit appeared, and any error text from the first connect."
+ ],
+ "first_connect_blockers": [
+  "No LinkedIn Page exists, or Derek is not its super admin: the app cannot be created/verified. The Page must be the real Bmapz organization (a Page of a different organization is a listed denial reason for Ads) and the association is permanent.",
+  "App not yet verified by the Page super admin: treat products and Advertising request as blocked until verification is done (30-day window).",
+  "Redirect URI mismatch: the exact callback sent (api.bmapz.com is not live until DNS is done) must be registered on both platforms. Register both hosts on LinkedIn (401 Redirect_uri doesn't match / 400 invalid_redirect_uri) and X (exact match including trailing slash).",
+  "LinkedIn scopes requested before products are added: any scope not on the Auth tab (r_ads, r_ads_reporting, or openid before the OIDC product) returns 401 Invalid scope for the whole request. Keep ads scopes behind a flag until Ads is approved.",
+  "LinkedIn scope-set changes invalidate earlier tokens and force re-consent; separate connects with different scopes can break each other. Use one stable scope set per member.",
+  "LINKEDIN_API_VERSION unset, deprecated or sunset (202510 sunsets 2026-10-15, 202511 on 2026-11-16) returns an error; no default version is applied.",
+  "LinkedIn access tokens last 60 days and no programmatic refresh is available to this app: schedule re-consent prompts.",
+  "Advertising API: personal Gmail, no legal entity, wrong Page, app name containing LinkedIn/Microsoft, or survey not finished within 21 days causes rejection or 'Insufficient Details'; a rejection can require a brand-new app (new client id/secret, new Page verification).",
+  "Community Management API (Company Page posting) cannot coexist with other products on one app and is not covered by current scopes.",
+  "X: no credits means posting fails and requests are blocked at zero balance; a card is required. Spend is paid by Bmapz per customer post.",
+  "X: wrong app type (Native/SPA) means no Client Secret is issued; secret is shown only once, so regenerating invalidates the one already in Railway.",
+  "X: scope list must include offline.access or the token dies in about 2 hours with no refresh token. The authorization code reportedly expires within 30 seconds, so the callback must exchange it immediately. Use api.x.com for the token endpoint.",
+  "X refresh-token rotation/lifetime undocumented: persist the newest refresh_token on every refresh or users get silently disconnected.",
+  "Callbacks live on the backend host (api.bmapz.com or Railway), not on https://ai.bmapz.com; the backend must redirect the browser back to the app origin after storing tokens."
+ ],
+ "confidence": "medium",
+ "uncertainties": [
+  "Advertising API Development-tier review time: no official SLA. Third-party sources range from 1-5 business days to 4-8 weeks to 3-4 months; my 2-6 weeks is an estimate. Official figures: 21-day survey window; up to 30 business days only for the Standard-tier upgrade.",
+  "Whether the legal-entity and business-email vetting applies identically to the Advertising API as to Community Management: official explicit text is on the Community Management page; the Ads application is covered only by the generic status-definitions and partner-support pages.",
+  "Business entity country is unknown: LinkedIn's registered-organization check and X's definition of an 'eligible payment card' (for the $20 credit) may depend on country. Not confirmed anywhere.",
+  "X minimum credit purchase: not stated in official docs (a search snippet says $5). Credit expiry and refund terms not documented in pages fetched.",
+  "X refresh-token lifetime and whether refresh tokens rotate on each use: not found in the fetched docs.",
+  "X console exact labels (OAuth 2.0 settings, App permissions control, Projects requirement, Keys and tokens) could not be seen first-hand; the steps use doc wording and may differ slightly on screen.",
+  "X free-tier closure and legacy Basic/Pro migration dates (2026-02-06, 2026-06-01, 2026-09-01) come from third-party sources; the official X developer community thread returned HTTP 403. The official pricing page confirms only pay-per-usage with no subscriptions.",
+  "Does GET /2/users/me with a customer token bill as User Read ($0.010) or an Owned Read ($0.001)? Docs say owned reads are your own app's own data; unclear for customer-token calls.",
+  "LinkedIn: official text confirms the Page super admin has 30 days to approve; the Settings > Verify > Generate URL navigation and the 'denial invalidates all generated links' claim were not confirmed.",
+  "LinkedIn: whether /rest/posts with only the self-serve Share on LinkedIn product (w_member_social) works without Community Management API is supported by secondary sources only; the Posts API page lists the permission but not the product gating.",
+  "LinkedIn: whether Development tier needs each customer's ad account mapped in the portal for read-only access is ambiguous (getting-started says mapping is required for Development tier; increasing-access and partner guide say reads are unlimited).",
+  "LinkedIn Page creation prerequisites for a brand-new personal account (profile age, connections) were not verified.",
+  "Whether a LinkedIn Company Page website field must match the bmapz.com email domain exactly (bmapz.com vs ai.bmapz.com subdomain) is not stated.",
+  "api.twitter.com was only tested for reachability (HTTP 400 on a deliberately invalid request), not for a successful token exchange; X could stop serving it without notice.",
+  "No LinkedIn or X policy change dated after 2026-09-23 was found other than the X 2026-10-02 credit incentive; absence of other changes is not proven.",
+  "Callback path segment names (linkedin, twitter) were assumed from env var names; verify against the backend route names."
+ ],
+ "costs": [
+  {
+   "item": "LinkedIn app creation, Sign In with LinkedIn (OIDC), Share on LinkedIn",
+   "cost": "No fee found in docs",
+   "note": "Self-service; no published fee or SLA."
+  },
+  {
+   "item": "LinkedIn Advertising API access (Development tier)",
+   "cost": "No fee found in docs; wait: no published SLA",
+   "note": "21-day survey deadline is official; third-party reports 1 business day to 3-4 months. Ad spend itself is separate and not an API fee."
+  },
+  {
+   "item": "LinkedIn Advertising API Standard tier upgrade",
+   "cost": "No fee found; wait: up to 30 business days (official, partner support guide)",
+   "note": "Not needed for read-only reporting; analytics-only upgrade requests are rejected."
+  },
+  {
+   "item": "LinkedIn Community Management API (Company Page posting, future)",
+   "cost": "No fee found; wait: no published SLA",
+   "note": "Needs a separate app, legal-entity review, and a screen recording for Standard tier."
+  },
+  {
+   "item": "X API Post: Create",
+   "cost": "$0.015 per request",
+   "note": "Paid by Bmapz from prepaid credits for every customer post."
+  },
+  {
+   "item": "X API Post: Create containing a URL",
+   "cost": "$0.200 per request",
+   "note": "13 times the plain rate; most marketing posts include links."
+  },
+  {
+   "item": "X API Post read / User read / Owned Read / DM Event read",
+   "cost": "$0.005 / $0.010 / $0.001 / $0.010 per resource",
+   "note": "Monthly cap 3 million Post reads on pay-per-usage; higher volume requires an Enterprise plan."
+  },
+  {
+   "item": "X credit top-up",
+   "cost": "Minimum not published (third-party snippet says $5)",
+   "note": "Credits bought upfront in console.x.com; set a per-cycle spend limit; auto-recharge at most every 5 minutes and paused at zero balance."
+  },
+  {
+   "item": "X free credit incentive (new 2026-10-02)",
+   "cost": "-$20 one-time credit on saving first eligible card; first auto-recharge matched up to $50",
+   "note": "Eligibility rules not published; may depend on country."
+  },
+  {
+   "item": "X subscription tiers (Free/Basic/Pro)",
+   "cost": "Not available to new developers per secondary sources",
+   "note": "Official pricing page shows pay-per-usage only."
+  }
+ ],
+ "changed_since_2026_09_23": [
+  {
+   "what": "X added a free-credit incentive: one-time $20 credits when an account saves its first eligible payment card, plus a match of the first auto-recharge up to $50 (changelog entry dated 2026-10-02, also on the pricing page).",
+   "impact": "The earlier 'no free path, budget $5-10' advice is outdated: a first end-to-end X test can cost $0 if the card is eligible. A card is still mandatory, and 'no free tier' remains true.",
+   "evidence_url": "https://docs.x.com/changelog"
+  },
+  {
+   "what": "LinkedIn Marketing version 202510 now sunsets in 9 days (2026-10-15); 202511 follows on 2026-11-16. The prior report said 'about three weeks'.",
+   "impact": "Any script, Postman collection or fallback config still sending 202510/202511 breaks. Bmapz's pinned 202606 is unaffected (Active until 2027-06-15); latest is 202609 (until 2027-09-15).",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/migrations"
+  },
+  {
+   "what": "No LinkedIn policy, pricing, scope or console change dated after 2026-09-23 was found; the versioning and migrations pages were last updated 2026-09-16 and the increasing-access page 2026-07-28.",
+   "impact": "The LinkedIn conclusions (self-serve sign-in/posting, vetted Advertising API, Development tier) are current as of 2026-10-06 per the fetched docs, but absence of later changes cannot be proven.",
+   "evidence_url": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/recent-changes"
+  }
+ ]
+}

@@ -1,0 +1,382 @@
+{
+ "group": "Stripe (subscription billing + webhook) and Resend (transactional email)",
+ "claims": [
+  {
+   "claim": "approval_required: true for the group",
+   "verdict": "corrected",
+   "correction": "Only Stripe LIVE mode needs a human review (business verification/KYC). Stripe sandbox, the Stripe webhook, Resend signup, Resend API key and Resend domain verification have no reviewer in the documented flow (Resend verification is automated DNS detection). Whether Resend ever manually reviews a brand-new account is not documented either way.",
+   "source_url": "https://docs.stripe.com/get-started/account/activate"
+  },
+  {
+   "claim": "can_test_today: true (end-to-end connect of both with no human approval)",
+   "verdict": "confirmed",
+   "correction": "True, with caveats the prior file missed: (1) the Stripe webhook wizard now asks Thin vs Snapshot and recommends Thin, so the default breaks a classic constructEvent handler; (2) webhook payload shape follows the ENDPOINT's api_version, not the SDK's pinned 2024-06-20; (3) Resend with onboarding@resend.dev reaches only the account owner's own address, so any real multi-recipient test needs the verified subdomain (DNS only, no reviewer).",
+   "source_url": "https://docs.stripe.com/webhooks"
+  },
+  {
+   "claim": "STRIPE_SECRET_KEY: self-service, instant; sandbox secret key is always revealable, no creation step",
+   "verdict": "confirmed",
+   "correction": "Paraphrase of the keys page fetched today: in sandbox mode you can always see all keys including secret and restricted ones. Sandbox prefixes are sk_test_/rk_test_. NEW today: the page says that for new integrations you should use a separate general-purpose Sandbox rather than the account's test mode, and that Stripe no longer recommends unrestricted sk_ keys for new use cases (restricted rk_ keys preferred).",
+   "source_url": "https://docs.stripe.com/keys"
+  },
+  {
+   "claim": "Creating a new secret key needs an emailed or SMS verification code",
+   "verdict": "confirmed",
+   "correction": "Create-secret-key steps: click Create secret key, enter the code sent by email or text, name the key, create, copy it (cannot be retrieved later).",
+   "source_url": "https://docs.stripe.com/keys"
+  },
+  {
+   "claim": "The live key is generated at account creation and revealable",
+   "verdict": "corrected",
+   "correction": "Docs only say: toggle the API keys page to live mode; in live mode you can reveal only keys Stripe created for you (the default Standard key); a key you create yourself is shown once. Nothing published says a usable live key exists before activation. Treat live key availability before activation as unverified, and live charges as impossible until activation.",
+   "source_url": "https://docs.stripe.com/keys"
+  },
+  {
+   "claim": "Use a restricted key (rk_) with write on Checkout Sessions, Customers, Subscriptions, Invoices, Prices/Products and read on Webhook Endpoints",
+   "verdict": "unverifiable",
+   "correction": "Stripe does recommend restricted keys, but the exact permission set depends on which API calls billing.js makes (not read by me). For go-live use the existing sk_ key shape (what the code expects) and tighten to a restricted key only after the code audit lists the exact calls; a missing permission shows up as a 403 at first use.",
+   "source_url": "https://docs.stripe.com/keys/restricted-api-keys"
+  },
+  {
+   "claim": "STRIPE_WEBHOOK_SECRET is per-endpoint, self-service, instant, and differs between sandbox and live for the same URL",
+   "verdict": "confirmed",
+   "correction": "Docs: Stripe generates a unique secret per endpoint, and test-mode and live-mode secrets differ; webhook secrets are not API keys. Reveal label in the Workbench is 'Reveal secret' (wizard) or 'Click to reveal' (endpoint page).",
+   "source_url": "https://docs.stripe.com/webhooks"
+  },
+  {
+   "claim": "Dashboard flow: Create an event destination > Your account > pick API version > events > Webhook endpoint > URL",
+   "verdict": "corrected",
+   "correction": "There is now an extra mandatory choice after 'Your account': payload format 'Thin (recommended)' or 'Snapshot'; the API version is only asked for Snapshot. Derek MUST pick Snapshot (classic Event objects with data.object, which stripe.webhooks.constructEvent handlers expect). The prior file assumed snapshot but never told the operator to pick it, and the UI default recommends the other one.",
+   "source_url": "https://docs.stripe.com/webhooks"
+  },
+  {
+   "claim": "Pin the webhook API version in the dashboard step (implied: pick any version you like)",
+   "verdict": "corrected",
+   "correction": "Upgrade doc says the Dashboard can create an endpoint only for the latest API version; any other version must be set through the API (api_version parameter on POST /v1/webhook_endpoints). Event payload version = endpoint api_version if set, else the account default. Because billing.js pins 2024-06-20 for outgoing calls, the safest go-live choice is to create the webhook endpoint through the API with api_version=2024-06-20 so event shapes match what the handler was written against. A Dashboard-created endpoint will be on 2026-09-30.endive (or the account default).",
+   "source_url": "https://docs.stripe.com/api/webhook_endpoints/create"
+  },
+  {
+   "claim": "Current Stripe API version, and is 2024-06-20 still supported",
+   "verdict": "corrected",
+   "correction": "Current version is 2026-09-30.endive (published 2026-09-30, the 5th major release after acacia, basil, clover, dahlia). 2024-06-20 predates the monthly-release model (which began with 2024-09-30.acacia). I found NO official statement that 2024-06-20 is deprecated or removed, and none guaranteeing support either; the versioning page says monthly releases have no breaking changes and majors can. Verdict on 'still supported': no evidence of sunset, but unverifiable.",
+   "source_url": "https://docs.stripe.com/api/versioning"
+  },
+  {
+   "claim": "What changes if the pinned version is bumped",
+   "verdict": "confirmed",
+   "correction": "Basil (2025-03-31) breaking changes that hit a subscription SaaS: subscription-level current_period_start/end removed in favour of subscription-item periods; invoicing objects gain a 'parent' field (how the invoice was generated); Upcoming Invoice API replaced by Create Preview Invoice; legacy usage-based billing removed; singular coupon/promotion_code params replaced by stackable discounts; coupons without an end time unsupported; Checkout subscription-mode sessions now create the subscription only AFTER payment; invoice multiple-partial-payments model. Endive (2026-09-30) adds: payment_method_types removed from Checkout Sessions/PaymentIntents, unified billing-cycle-anchor format, new Failed Tax Calculation error. Clover and Dahlia breaking lists were not fetched. Recommendation: do NOT bump for go-live; keep 2024-06-20, plan a later migration.",
+   "source_url": "https://docs.stripe.com/changelog/basil"
+  },
+  {
+   "claim": "Subscribe to exactly 11 events: checkout.session.completed, customer.subscription.created/updated/deleted/trial_will_end, invoice.created/finalized/finalization_failed/paid/payment_failed/payment_action_required",
+   "verdict": "corrected",
+   "correction": "Stripe's subscription webhook page lists: customer.subscription.created/deleted/paused/resumed/trial_will_end/updated; invoice.created/finalized/finalization_failed/paid/payment_action_required/payment_failed/upcoming/updated; entitlements.active_entitlement_summary.updated; plus risk events charge.dispute.created, charge.refunded, radar.early_fraud_warning.created and customer.updated. checkout.session.completed is the standard Checkout fulfilment event (listed in the endpoint API enum, not in that table). Prior list omitted charge.refunded, charge.dispute.created and customer.subscription.paused/resumed. Also invoice.payment_succeeded still exists but Stripe recommends invoice.paid. DANGER: do not subscribe to invoice.created unless the handler returns 2xx for it; non-2xx delays auto-finalisation of invoices up to 72 hours. Final list must be diffed against routes/stripeWebhook.js (separate auditor). Minimum for provisioning: checkout.session.completed, customer.subscription.updated, customer.subscription.deleted, invoice.paid, invoice.payment_failed; add the rest only if the handler acts on them.",
+   "source_url": "https://docs.stripe.com/billing/subscriptions/webhooks"
+  },
+  {
+   "claim": "Handler must return 2xx quickly; invoice.created without a successful reply defers finalization up to 72 hours",
+   "verdict": "confirmed",
+   "correction": "Docs add: a proper reply means ALL webhook endpoints on the account (and connected platforms) must answer; Stripe also waits one hour after a positive invoice.created reply before attempting payment. Live retries run up to 3 days with exponential backoff; sandbox retries 3 times within hours.",
+   "source_url": "https://docs.stripe.com/billing/subscriptions/webhooks"
+  },
+  {
+   "claim": "Hard limit of 16 registered webhook endpoints",
+   "verdict": "confirmed",
+   "correction": "Docs: you can register up to 16 event destinations; URL must be public HTTPS; TLS 1.2 or 1.3 only.",
+   "source_url": "https://docs.stripe.com/webhooks"
+  },
+  {
+   "claim": "Redirect responses count as failures",
+   "verdict": "confirmed",
+   "correction": "Docs table: a 3xx (example 302) is treated as a failed delivery; fix is to register the final resolved URL.",
+   "source_url": "https://docs.stripe.com/webhooks"
+  },
+  {
+   "claim": "Raw request body is required for signature verification",
+   "verdict": "confirmed",
+   "correction": "Docs: any manipulation of the raw request body causes verification to fail; make sure the framework does not parse/alter it.",
+   "source_url": "https://docs.stripe.com/webhooks"
+  },
+  {
+   "claim": "Webhook route must be exempt from CSRF protection",
+   "verdict": "confirmed",
+   "correction": "Docs have a dedicated CSRF-exemption section (Rails example).",
+   "source_url": "https://docs.stripe.com/webhooks"
+  },
+  {
+   "claim": "Events can arrive out of order and duplicate; dedupe on event ID",
+   "verdict": "confirmed",
+   "correction": "Docs: delivery order is not guaranteed; track event IDs; do not use the created timestamp for ordering; two Event objects can exist for one change (dedupe by data.object id + type).",
+   "source_url": "https://docs.stripe.com/webhooks"
+  },
+  {
+   "claim": "Sandbox Products/Prices/Coupons are invalid in live; recreate with same IDs",
+   "verdict": "corrected",
+   "correction": "Confirmed that sandbox objects are not valid in live mode and that Stripe says to recreate them using the same IDs. CAVEAT from general API knowledge, not re-verified today: Stripe auto-generates Price IDs (price_...), so live Price IDs will differ; the app must be given the live price IDs (env/DB) or use lookup_keys. The code audit must check where price IDs live.",
+   "source_url": "https://docs.stripe.com/get-started/checklist/go-live"
+  },
+  {
+   "claim": "Stripe live activation is the only real gate; no published turnaround",
+   "verdict": "confirmed",
+   "correction": "Docs: to use a service in live mode you must verify your business and meet activation requirements (business, product and your relationship to the business); Stripe reviews under KYC and contacts you if more is needed. No official SLA found. Third-party sites say roughly 1-5 business days; these are unofficial. New: after a live service is activated the business country cannot be changed (you would need a new account), so decide the country BEFORE activating.",
+   "source_url": "https://docs.stripe.com/get-started/account/activate"
+  },
+  {
+   "claim": "RESEND_API_KEY is self-service and instant; shown only once",
+   "verdict": "confirmed",
+   "correction": "Docs: an API key has a name, a permission and an optional domain restriction; its value cannot be viewed or edited after creation.",
+   "source_url": "https://resend.com/docs/dashboard/api-keys/introduction"
+  },
+  {
+   "claim": "Permissions are full_access or sending_access, and domain restriction applies only to sending_access",
+   "verdict": "unverifiable",
+   "correction": "Intro page confirms permission and optional domain restriction exist but not the exact names or the sending_access-only rule; the prior cited the API reference, which I did not re-fetch. Verify in the create-key dialog.",
+   "source_url": "https://resend.com/docs/api-reference/api-keys/create-api-key"
+  },
+  {
+   "claim": "RESEND_FROM_EMAIL domain must be a verified (sub)domain; Resend recommends a subdomain",
+   "verdict": "confirmed",
+   "correction": "Docs: you must add and verify at least one domain to send; strongly recommend a subdomain (example notifications.example.com) to isolate reputation.",
+   "source_url": "https://resend.com/docs/add-a-domain"
+  },
+  {
+   "claim": "Regions: us-east-1, eu-west-1, sa-east-1, ap-northeast-1",
+   "verdict": "confirmed",
+   "correction": "API reference lists exactly these four; default us-east-1; custom_return_path default is send.",
+   "source_url": "https://resend.com/docs/api-reference/domains/create-domain"
+  },
+  {
+   "claim": "Return-Path defaults to send.<domain>",
+   "verdict": "confirmed",
+   "correction": "Docs state the Return-Path defaults to the send subdomain of the domain you add. Consequence: adding a domain literally named send.bmapz.com yields return-path send.send.bmapz.com; use a different label (recommend notify.bmapz.com).",
+   "source_url": "https://resend.com/docs/add-a-domain"
+  },
+  {
+   "claim": "For domains created after August 2026 Resend may generate CNAME records instead of SPF TXT+MX",
+   "verdict": "confirmed",
+   "correction": "manage-domains page says SPF is TXT+MX, or CNAME records for domains created after August 2026 (CNAMEs point to hosts carrying the SPF info). A new bmapz subdomain added today is in that bucket, so read the Records tab. Statuses include partially_verified (only one of two sending CNAMEs verified; sending works without fallback). Also: a CNAME cannot coexist with A/TXT/MX at the same host.",
+   "source_url": "https://resend.com/docs/dashboard/domains/manage-domains"
+  },
+  {
+   "claim": "Copy records into Cloudflare (the registrar for bmapz.com)",
+   "verdict": "refuted",
+   "correction": "nslookup against 8.8.8.8 today: bmapz.com NS = ns1.dns-parking.com and ns2.dns-parking.com, which are Hostinger's nameservers. DNS must be edited in Hostinger hPanel's DNS zone editor, not Cloudflare. Editing anywhere else has no effect. (No orange-cloud proxy issue exists.)",
+   "source_url": "https://www.hostinger.com/tutorials/how-to-point-domain-to-hostinger"
+  },
+  {
+   "claim": "Verification usually within 15 minutes; up to 72 hours; failed after 72h; temporary_failure rechecks 72h",
+   "verdict": "confirmed",
+   "correction": "Docs: often verifies within 15 minutes of adding records, up to 72 hours to propagate; failed = records not detected within 72 hours; temporary_failure on a previously verified domain is rechecked for 72 hours. 'Restart verification' re-triggers checks.",
+   "source_url": "https://resend.com/docs/add-a-domain"
+  },
+  {
+   "claim": "onboarding@resend.dev can only deliver to the account's own email; other recipients 403",
+   "verdict": "confirmed",
+   "correction": "Exact error text from Resend KB, and it says to verify a domain and change the from address.",
+   "source_quote": "You can only send testing emails to your own email address",
+   "source_url": "https://resend.com/docs/knowledge-base/403-error-resend-dev-domain"
+  },
+  {
+   "claim": "Unverified domain cannot send",
+   "verdict": "confirmed",
+   "correction": "Docs: you must add and verify at least one domain to send emails. The only unverified option is the resend.dev testing sender to the owner's own address.",
+   "source_url": "https://resend.com/docs/dashboard/domains/introduction"
+  },
+  {
+   "claim": "From address must be on the exact verified domain; a verified subdomain does not authorise the root",
+   "verdict": "unverifiable",
+   "correction": "The 403 text says to use an address on the verified domain; the subdomain-vs-root scope rule is not stated in fetched pages. Safe practice either way: set RESEND_FROM_EMAIL to an address on exactly the verified subdomain.",
+   "source_url": "https://resend.com/docs/knowledge-base/403-error-resend-dev-domain"
+  },
+  {
+   "claim": "DNS values must match exactly; registrars may auto-append the domain",
+   "verdict": "confirmed",
+   "correction": "Troubleshooting page: registrars may append your domain to MX values (fix: trailing period); paste values exactly with no quotes/truncation; MX must match the domain's AWS region; use nslookup (not dig) or dns.email to check. The Cloudflare-proxy trap does not apply because DNS is at Hostinger.",
+   "source_url": "https://resend.com/docs/knowledge-base/what-if-my-domain-is-not-verifying"
+  },
+  {
+   "claim": "Record pattern for a root-domain example: DKIM TXT at resend._domainkey, SPF TXT and MX at send",
+   "verdict": "confirmed",
+   "correction": "Resend's Namecheap guide shows: MX host send -> feedback-smtp.us-east-1.amazonses.com priority 10; TXT host send -> v=spf1 include:amazonses.com ~all; TXT host resend._domainkey -> p=<key>; paste only the host part, not the full domain. For a subdomain such as notify.bmapz.com the host labels gain the subdomain suffix (resend._domainkey.notify, send.notify): this suffix rule is my inference, so copy exactly what the Records tab shows.",
+   "source_url": "https://resend.com/docs/dashboard/domains/namecheap"
+  },
+  {
+   "claim": "Changing region later means deleting and re-adding the domain",
+   "verdict": "unverifiable",
+   "correction": "Not re-fetched. Troubleshooting page does confirm records are region-specific (MX must match the region). Pick the region once.",
+   "source_url": "https://resend.com/docs/dashboard/domains/regions"
+  },
+  {
+   "claim": "Resend free plan: 3,000 emails/month, 100/day, 3 domains, 30-day retention",
+   "verdict": "confirmed",
+   "correction": "Pricing page today shows these figures; no banner announcing changes. Free plan domains went to 3 per a changelog item dated 2026-08-25 (search snippet only). The prior file's 'July 2026 large free-tier increase' could not be located or reconciled.",
+   "source_url": "https://resend.com/pricing"
+  },
+  {
+   "claim": "Add a DMARC TXT at _dmarc.bmapz.com starting at p=none with rua",
+   "verdict": "corrected",
+   "correction": "DMARC is optional for verification (add-a-domain lists it as a final optional step). But a DMARC record ALREADY exists: _dmarc.bmapz.com = v=DMARC1; p=none (nslookup today). Do NOT add a second one (duplicates invalidate DMARC); a subdomain such as notify.bmapz.com inherits it. Optionally edit the existing record later to add an rua address.",
+   "source_url": "https://resend.com/docs/add-a-domain"
+  },
+  {
+   "claim": "Resend simulator recipients delivered@/bounced@/complained@resend.dev work for testing",
+   "verdict": "unverifiable",
+   "correction": "Not re-fetched in this run; the prior cites the send-test-emails page. Confirm empirically after the domain is verified.",
+   "source_url": "https://resend.com/docs/dashboard/emails/send-test-emails"
+  },
+  {
+   "claim": "Apex SPF/MX would conflict with Resend, so use a subdomain",
+   "verdict": "confirmed",
+   "correction": "Live DNS today: apex MX mx1.hostinger.com (pref 5) and mx2.hostinger.com (pref 10); single apex SPF TXT v=spf1 include:_spf.mail.hostinger.com ~all. Resend records live only on the subdomain, so the Hostinger mailbox setup is untouched. Not determined: whether send.* or notify.* already exist in the Hostinger zone (ANY queries return a placeholder), so check the zone list before adding."
+  }
+ ],
+ "testable_today_without_review": {
+  "value": true,
+  "reasoning": "Yes, for everything except real money. Stripe: create a sandbox, reveal sk_test_ key, register a Snapshot webhook at https://bmapz-production.up.railway.app/api/stripe/webhook, and run test Checkout (card 4242 4242 4242 4242) or stripe trigger; nothing is reviewed. Resend: zero-DNS smoke test works at once with onboarding@resend.dev to the account owner's own address only; a full test to arbitrary recipients needs the verified subdomain, which is DNS-only and typically verifies in about 15 minutes (up to 72 hours), no reviewer. Not testable today: live charges (Stripe activation/KYC) and sending to the public from resend.dev. Two things can still make a 'green' test misleading: webhook payload API version differs from the version the handler was written for, and Thin (not Snapshot) selected in the wizard."
+ },
+ "customer_launch": {
+  "requires": [
+   "Stripe business verification/activation submitted and cleared (business type, business and product details, representative identity, payout bank account, public business info); business country decided first because it cannot be changed after activation",
+   "Live-mode Products and Prices created (live Price IDs will differ from sandbox) and wired into the app",
+   "Live STRIPE_SECRET_KEY (sk_live_/rk_live_) and a NEW live-mode webhook endpoint created via API with api_version matching the handler, giving a NEW live whsec_ value; all set in Railway",
+   "Resend subdomain verified with DNS records added in Hostinger hPanel, RESEND_API_KEY (preferably sending-only, domain-restricted) and RESEND_FROM_EMAIL on that subdomain",
+   "One real low-value live subscription tested end to end, then refunded",
+   "Webhook URL later switched to api.bmapz.com once that domain is stable (update the existing endpoint's URL rather than adding a second one, to avoid double deliveries)"
+  ],
+  "realistic_calendar_time": "Resend: same day (about 15 minutes to 72 hours after DNS records are saved). Stripe sandbox plus webhook: under half a day of work. Stripe live: depends entirely on activation review, no published SLA; unofficial sources say 1-5 business days, so plan about a week and allow 2+ weeks if Stripe asks for extra documents (country unknown).",
+  "source_or_basis": "Stripe states it reviews KYC submissions and contacts you if more is needed, with no timeline (docs.stripe.com/get-started/account/activate). Resend timing from docs.stripe/resend add-a-domain page: often within 15 minutes, up to 72 hours. 1-5 business day figure is third-party, not official."
+ },
+ "corrected_setup_steps": [
+  "ORDER: do Resend steps R1-R5 FIRST (DNS wait time runs in the background), then Stripe S1-S9. Total hands-on time about 60-90 minutes.",
+  "R1. Go to https://resend.com/domains and click Add Domain. Name: notify.bmapz.com (do NOT use send.bmapz.com, because Resend's Return-Path defaults to a 'send' label under the domain). Region: us-east-1 (default; pick another only if most users are in EU/Brazil/Japan; it is baked into the DNS records). Leave Return-Path as 'send'. Leave Sending enabled and do NOT enable Receiving.",
+  "R2. Open the new domain's Records tab. Expect either the classic set (TXT DKIM at resend._domainkey.notify; MX and TXT SPF at send.notify) or, for domains created after August 2026, CNAME records instead. Use ONLY what the tab shows. Classic example values for reference: MX send.notify -> feedback-smtp.us-east-1.amazonses.com priority 10; TXT send.notify -> \"v=spf1 include:amazonses.com ~all\"; TXT resend._domainkey.notify -> p=<long key>.",
+  "R3. DNS is at HOSTINGER (nameservers ns1/ns2.dns-parking.com), not Cloudflare. Log in to Hostinger hPanel (https://hpanel.hostinger.com), open Domains > bmapz.com > DNS / DNS Zone Editor (exact menu label not verified; it may be called DNS records or DNS Details). Add each Resend record: Type, Name, Content/Value, Priority (MX only), TTL default. In the Name field type ONLY the host part relative to bmapz.com (for example resend._domainkey.notify and send.notify), never the full name with .bmapz.com. If the MX value shows .bmapz.com appended after saving, re-save the value with a trailing dot. Do NOT touch the existing apex records (MX mx1/mx2.hostinger.com, apex SPF TXT, _dmarc TXT). Do NOT add another SPF or DMARC record at the apex. First scan the zone list for any existing notify or send records and remove conflicts (a CNAME cannot coexist with TXT/MX at the same name).",
+  "R4. Back in Resend click Verify DNS Records. Wait; usually about 15 minutes, up to 72 hours. If stuck, check from a terminal with: nslookup -type=TXT resend._domainkey.notify.bmapz.com 8.8.8.8 ; and use Restart verification. Status must read verified.",
+  "R5. Create the API key at https://resend.com/api-keys: Name bmapz-production, Permission Sending access, Domain notify.bmapz.com (permission/domain names as shown in the dialog). Copy the re_... value immediately (shown once) and paste it into Railway as RESEND_API_KEY. Set RESEND_FROM_EMAIL to the plain address noreply@notify.bmapz.com (not 'Name <addr>' unless the code audit confirms the code accepts a display name). Redeploy Railway. Optional: if the app supports Reply-To, point it at a Hostinger mailbox such as support@bmapz.com, since noreply@notify cannot receive mail.",
+  "R6. Smoke test: trigger one transactional email to your own inbox; in Gmail use Show original and confirm DKIM: PASS and SPF: PASS. Then one to a different address to prove the 403 limit is gone. Before the domain verifies, the only temporary fallback is RESEND_FROM_EMAIL=onboarding@resend.dev, which can email only the Resend account owner's address.",
+  "S1. Sign in at https://dashboard.stripe.com. Decide the business country now; it cannot be changed after activation. Create a separate Sandbox from the account switcher (Stripe says use a general-purpose Sandbox for new integrations rather than the legacy test mode; exact menu label not verified). Work only inside the sandbox until S9.",
+  "S2. Open https://dashboard.stripe.com/test/apikeys (inside the sandbox). Click the Standard secret key to reveal it (sk_test_...). Paste into Railway as STRIPE_SECRET_KEY. Do not paste keys into chat or the repo.",
+  "S3. Create the Bmapz Products and recurring Prices in the sandbox (Product catalog). Copy each price_... ID and give them to the app config (the code audit says where price IDs are read from). Live mode will need its own Price IDs.",
+  "S4. Create the webhook endpoint so that its event payload version matches the code: because the Dashboard offers only the latest API version, create it by API using the sandbox secret key (run from a terminal that has the key in an environment variable, not typed into chat): curl https://api.stripe.com/v1/webhook_endpoints -u \"$STRIPE_SECRET_KEY:\" -d url=https://bmapz-production.up.railway.app/api/stripe/webhook -d api_version=2024-06-20 -d description=\"Bmapz production (sandbox)\" -d \"enabled_events[]=checkout.session.completed\" -d \"enabled_events[]=customer.subscription.updated\" -d \"enabled_events[]=customer.subscription.deleted\" -d \"enabled_events[]=invoice.paid\" -d \"enabled_events[]=invoice.payment_failed\" and add one -d \"enabled_events[]=...\" line for every other event routes/stripeWebhook.js actually handles (for example customer.subscription.created, invoice.payment_action_required, charge.refunded, charge.dispute.created). The JSON response contains secret: whsec_... which is the value for STRIPE_WEBHOOK_SECRET.",
+  "S4-alt. If you prefer clicking: https://dashboard.stripe.com/test/webhooks > Create an event destination > Your account > Payload format: Snapshot (NOT Thin) > choose the API version (2024-06-20 if the dropdown offers it; if only the latest is offered, use S4 instead) > select the same events > Continue > Webhook endpoint > Continue > paste the URL > Create > click Reveal secret and copy whsec_....",
+  "S5. In Railway set STRIPE_WEBHOOK_SECRET to that whsec_ value and redeploy. Do NOT subscribe to invoice.created, invoice.finalized or invoice.finalization_failed unless the handler returns HTTP 2xx for them (otherwise invoice finalization is delayed up to 72 hours).",
+  "S6. Test: from https://ai.bmapz.com buy a plan with test card 4242 4242 4242 4242 (any future expiry, any CVC); or run stripe trigger checkout.session.completed and stripe trigger invoice.paid. Open Workbench > Webhooks > your endpoint > Event deliveries: each event must show Delivered with 200. 400 = signature failure (raw body parsed, or wrong whsec_, or a sandbox secret used in live); 3xx = URL redirects; 5xx = read Railway logs. Confirm the app marks the subscription active and the Resend welcome/receipt email arrives.",
+  "S7. GO LIVE (only after S6 is green): finish business verification at https://dashboard.stripe.com/account/onboarding. Wait for Stripe's review (no published time).",
+  "S8. After activation, switch the Dashboard to live mode and repeat: (a) https://dashboard.stripe.com/apikeys: reveal the default Standard live secret key (live mode only lets you reveal keys Stripe created; a key you create yourself is shown once); (b) recreate Products and Prices in live mode and update the app's price IDs; (c) create a NEW live webhook endpoint with the S4 curl but using the live key, same URL, same api_version, same events, capturing the new live whsec_; (d) set Railway STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET to the live values together in one deploy; (e) if the app uses the Customer Portal, configure it in live mode too (assumed to be separate; not verified).",
+  "S9. Run one real low-value subscription end to end, confirm Delivered 200 in the live Event deliveries tab, then refund it. When https://api.bmapz.com/api/stripe/webhook is working, update the existing endpoint's URL in place (do not keep two endpoints active, because Stripe would deliver every event twice).",
+  "Copy back to the assistant (never paste secrets in chat): confirmation that R4 shows verified, the screenshot of Event deliveries with 200s, the list of event names selected in S4/S4-alt, and the names (not values) of the Railway variables set."
+ ],
+ "first_connect_blockers": [
+  "Stripe webhook wizard defaults to recommending Thin payloads; a Thin destination sends different, minimal events and a classic constructEvent handler will not work. Pick Snapshot.",
+  "Stripe webhook API-version mismatch: payload shape follows the endpoint api_version (or account default, probably 2026-09-30.endive for a new account), while billing.js pins 2024-06-20. Basil+ moved subscription current_period_* to items and invoice.subscription under parent, so a handler written for the old shape can silently break. Create the endpoint through the API with api_version=2024-06-20.",
+  "Raw body: any JSON body parser before /api/stripe/webhook causes signature failure (docs: manipulating the raw body breaks verification).",
+  "Wrong-mode whsec_: sandbox and live endpoints have different signing secrets; the live endpoint must be created separately.",
+  "Redirects count as failures; register the final URL (check trailing slash, HTTP to HTTPS, and the future switch to api.bmapz.com).",
+  "CSRF/auth middleware on the webhook route; Stripe is not logged in and sends no CSRF token.",
+  "Invoice finalization stalls up to 72 hours if invoice.created is subscribed and any endpoint on the account does not answer 2xx; only subscribe to events the handler acknowledges.",
+  "Live Price IDs differ from sandbox Price IDs; the app will fail with a no-such-price error if sandbox IDs are left in live config.",
+  "Business country is locked after activation; wrong choice means a new Stripe account.",
+  "Stripe live activation (KYC) is a human review with no published SLA; live charges are impossible until it clears.",
+  "Resend: 403 for every recipient except the account owner while RESEND_FROM_EMAIL is onboarding@resend.dev; fixed only by a verified domain.",
+  "Resend: DNS is at Hostinger (dns-parking.com), not Cloudflare; records added anywhere else do nothing. Hostinger/zone editors may auto-append bmapz.com to names and values; use relative host names and a trailing dot on MX values if needed.",
+  "Resend: records for domains created after August 2026 may be CNAMEs rather than TXT+MX; hand-copying from old guides will fail. Also a CNAME cannot share a name with TXT/MX, so check for pre-existing notify/send records.",
+  "Resend: do not add a second SPF or second DMARC record. A DMARC record (v=DMARC1; p=none) already exists at the apex and the apex SPF is Hostinger's; Resend's records belong only on the subdomain.",
+  "Resend: free plan is capped at 100 emails/day and 3,000/month; a signup loop or load test can hit the daily cap and fail.",
+  "RESEND_FROM_EMAIL format: if the code concatenates a display name, a value already in 'Name <addr>' form would double-wrap; use the plain address unless the code audit confirms otherwise."
+ ],
+ "confidence": "medium",
+ "uncertainties": [
+  "Business country is unknown: Stripe availability, activation documents, payout currency and card pricing all depend on it. The Stripe pricing page I could fetch geolocated to Brazil (domestic card rate in BRL; Billing 0.7% of billing volume; no setup or monthly fees); US/other-country rates were not confirmed.",
+  "No official Stripe activation SLA exists in the docs; the 1-5 business day figure is from third-party sites only.",
+  "Many Stripe docs pages were returned in Portuguese by the fetch tool, so UI labels were translated back from Portuguese; exact English labels (Create an event destination, Reveal secret, Event deliveries) may differ slightly.",
+  "I could not confirm whether the Stripe Dashboard webhook wizard lists 2024-06-20 in its API-version dropdown; the upgrade doc says non-latest versions need the API, so S4 (API) is the safe path.",
+  "Whether a stripe-node version in the backend accepts apiVersion 2024-06-20 and whether the handler's field access matches that version were not checked (source code not read, by instruction).",
+  "Whether 2024-06-20 will remain accepted indefinitely: no sunset notice found, no guarantee found. Clover and Dahlia breaking-change lists were not fetched.",
+  "Whether a live secret key is usable/revealable before activation completes is not documented.",
+  "Exact hPanel menu path/labels for the Hostinger DNS Zone Editor were not verified (the Hostinger support URL I tried returned 404); only that Hostinger's own nameservers are ns1/ns2.dns-parking.com and that it offers a DNS zone editor.",
+  "Whether existing records already occupy notify.bmapz.com or send.* in the Hostinger zone was not determinable (ANY lookups return a placeholder). Also unknown whether api.bmapz.com and ai.bmapz.com already resolve.",
+  "Exact host labels for a SUBDOMAIN's Resend records (resend._domainkey.notify, send.notify) are inferred from the root-domain examples; the Records tab is authoritative.",
+  "Whether Resend will issue classic TXT+MX or CNAME records for a domain added today is indeterminate from docs.",
+  "Resend permission names (full_access/sending_access), the sending_access-only domain restriction, the simulator test addresses, and region-change procedure were not re-verified.",
+  "Whether a verified subdomain authorises sending from the root domain (and vice versa) is not stated in fetched pages.",
+  "Resend changelog fetch returned titles without dates, so a complete list of Resend changes after 2026-09-23 was not obtained; none affecting setup was found. The prior file's July 2026 free-tier-increase blog post could not be reconciled with the pricing page.",
+  "Whether Resend manually reviews or rate-holds brand-new accounts is undocumented.",
+  "Customer Portal and other Billing settings being separate per mode (test vs live) is assumed from Stripe's go-live guidance, not verified for the portal specifically.",
+  "Which events routes/stripeWebhook.js handles, and whether the handler returns 2xx for ignored events, is unknown and must be diffed against the event list by the code auditor.",
+  "Gmail/Yahoo bulk-sender DMARC requirements for Bmapz volume were not researched; the existing apex DMARC is p=none with no reporting address."
+ ],
+ "costs": [
+  {
+   "item": "Stripe account, sandbox, API keys, webhooks",
+   "cost": "$0",
+   "note": "Page states no setup fees and no monthly fees for standard pricing (source: stripe.com/pricing, Brazil-localised view)."
+  },
+  {
+   "item": "Stripe card processing (live)",
+   "cost": "Country-dependent; Brazil page shows 3.99% + R$0.39 domestic, +2% international",
+   "note": "US/other rates not confirmed because business country is unknown."
+  },
+  {
+   "item": "Stripe Billing (subscriptions)",
+   "cost": "0.7% of Billing volume (pay-as-you-go) per the pricing page",
+   "note": "Applies on top of processing fees; Checkout and Payment Links are included with Payments; Checkout custom domain US$10/month if wanted (optional)."
+  },
+  {
+   "item": "Stripe dispute fee",
+   "cost": "R$55.00 on the Brazil page",
+   "note": "Other countries differ; unconfirmed for Bmapz's country."
+  },
+  {
+   "item": "Stripe live activation/KYC review",
+   "cost": "No fee published",
+   "note": "No published SLA; unofficial reports 1-5 business days."
+  },
+  {
+   "item": "Resend Free plan",
+   "cost": "$0: 3,000 emails/month, 100/day, 3 domains, 30-day retention",
+   "note": "Source: resend.com/pricing fetched today. Daily cap can break signup loops."
+  },
+  {
+   "item": "Resend Pro plan (needed if volume exceeds free caps)",
+   "cost": "$20/month for 50,000 emails; $35/month for 100,000",
+   "note": "Pro: no daily limit, 10 domains, 5 webhook endpoints (pricing page)."
+  },
+  {
+   "item": "Resend domain verification / DNS",
+   "cost": "$0 from Resend; Hostinger zone editing assumed included with the domain",
+   "note": "Wait: usually about 15 minutes, up to 72 hours before status becomes failed."
+  },
+  {
+   "item": "Wait: Stripe webhook retries",
+   "cost": "n/a",
+   "note": "Live: retried up to 3 days with exponential backoff; manual resend in Dashboard up to 15 days, CLI up to 30 days (docs)."
+  }
+ ],
+ "changed_since_2026_09_23": [
+  {
+   "what": "Stripe released API version 2026-09-30.endive (new major release with many breaking changes) on 2026-09-30; it is now the 'current version'.",
+   "impact": "New Stripe accounts and Dashboard-created webhook endpoints will default to it. billing.js still pins 2024-06-20 for requests, but webhook payloads follow the endpoint/account version, so an endpoint created in the Dashboard can send a different shape than the handler expects. Create the endpoint via API with api_version=2024-06-20.",
+   "evidence_url": "https://docs.stripe.com/changelog/endive"
+  },
+  {
+   "what": "Thin events for v1 API resources became generally available with Endive, and the Workbench 'Create an event destination' wizard now asks for payload format with Thin marked recommended.",
+   "impact": "Adds a step the 2026-09-23 runbook lacked; picking the default breaks a classic webhook handler. Must choose Snapshot.",
+   "evidence_url": "https://docs.stripe.com/webhooks"
+  },
+  {
+   "what": "Stripe keys docs now steer new integrations to a separate general-purpose Sandbox instead of the account's test mode, and discourage unrestricted secret keys for new use cases (date of change unknown).",
+   "impact": "Setup step 1-2 wording changes; sk_ still works but rk_ is preferred long-term.",
+   "evidence_url": "https://docs.stripe.com/keys"
+  },
+  {
+   "what": "Resend's August 2026 DNS change (CNAME-based SPF for newly created domains) is already in effect today, as is the free plan's 3-domain allowance (changelog dated 2026-08-25).",
+   "impact": "A domain added now is in the new bucket; do not pre-write DNS records, copy them from the Records tab.",
+   "evidence_url": "https://resend.com/docs/dashboard/domains/manage-domains"
+  },
+  {
+   "what": "No Resend pricing, free-tier or sending-policy change dated after 2026-09-23 was found; the pricing page shows no announcement banner. A Stripe Projects integration was announced by Resend on 2026-09-22 (irrelevant to setup).",
+   "impact": "None identified; free plan still 3,000/month and 100/day.",
+   "evidence_url": "https://resend.com/pricing"
+  }
+ ]
+}

@@ -1,0 +1,241 @@
+{
+ "group": "TikTok (Login Kit, Content Posting, Business/Ads API) and Canva Connect",
+ "findings": [
+  {
+   "severity": "broken_now",
+   "area": "Canva OAuth scopes",
+   "file": "backend/src/routes/oauth.js",
+   "line": 878,
+   "what": "CANVA_SCOPES omits design:meta:read. GET /v1/designs (listDesigns, called at canva.js:101) requires design:meta:read, so the Canva design picker will fail with a missing-scope 403 for every connected company. Canva scopes are fixed at authorization time, so existing connections must reconnect after the fix. profile:read is not needed for users/me and can be dropped.",
+   "evidence_url": "https://www.canva.dev/sources/connect/api/latest/api.yml",
+   "evidence_quote": "listDesigns ... security: oauthAuthCode: - design:meta:read  (scope text: \"View the metadata of the user's designs.\")",
+   "recommended_fix": "Change line 878 to: const CANVA_SCOPES = 'design:content:read design:content:write design:meta:read asset:read asset:write';  Also enable design:meta:read in the Canva developer portal app (Scopes tab) before redeploy, and force a reconnect. Optionally verify the granted `scope` field in the token response includes all five scopes and surface a 'reconnect Canva' message on 403 in canva.js GET /designs."
+  },
+  {
+   "severity": "broken_now",
+   "area": "TikTok token lifetime / refresh",
+   "file": "backend/src/routes/oauth.js",
+   "line": 755,
+   "what": "The TikTok callback saves only access_token and expires_at. TikTok access tokens live 24 hours and there is NO TikTok refresh code anywhere in the backend (refresh_token, refresh_expires_in and open_id are discarded, and tiktok_refresh_token is not in the companies.js ALLOWED list). Every TikTok connection silently dies 24h after connecting. integrations.js status flags (lines ~110-122) report 'connected' on token presence alone, ignoring expiry, so the UI shows connected while the token is dead. Callback also only checks tokens.error, not a missing access_token, and never checks the granted `scope`.",
+   "evidence_url": "https://developers.tiktok.com/doc/oauth-user-access-token-management",
+   "evidence_quote": "access token \"valid for 24 hours after initial issuance\"; refresh token \"valid for 365 days after the initial issuance\"; refresh uses grant_type=refresh_token at POST https://open.tiktokapis.com/v2/oauth/token/",
+   "recommended_fix": "In the callback (oauth.js:755-761) change the guard to `if (tokens.error || !tokens.access_token) ...` and persist: tiktok_refresh_token: tokens.refresh_token, tiktok_refresh_expires_at: new Date(Date.now() + (tokens.refresh_expires_in||31536000)*1000).toISOString(), tiktok_open_id: tokens.open_id, tiktok_scope: tokens.scope. Add those keys to the ALLOWED list in routes/companies.js and the disconnect map (oauth.js:846). Add `export async function refreshTikTokToken(companyId)` mirroring refreshCanvaToken: POST https://open.tiktokapis.com/v2/oauth/token/ form-encoded {client_key, client_secret, grant_type:'refresh_token', refresh_token}, save the NEW refresh_token returned. Call it from the integrations test and any publisher when tiktok_token_expires_at is within 5 minutes. Make the status flag in integrations.js treat an expired access token with no usable refresh token as disconnected."
+  },
+  {
+   "severity": "broken_now",
+   "area": "TikTok Ads token type",
+   "file": "backend/src/routes/integrations.js",
+   "line": 457,
+   "what": "tiktok_ads (integrations.js:454-457), the ad publisher (adPublisher.js:57-61, 242-283) and routes/ads.js:232 all send k.tiktok_access_token as the business-api.tiktok.com `Access-Token`. That token is the Login Kit token from open.tiktokapis.com, obtained with scopes user.info.basic,video.publish,video.list (oauth.js:724), none of which grant advertising access. TikTok API for Business is a separate platform with its own app_id/secret and its own advertiser authorization flow (https://business-api.tiktok.com/portal/auth, then POST /open_api/v1.3/oauth2/access_token/ with app_id, secret, auth_code). There is no code that performs that flow or discovers tiktok_advertiser_id; the advertiser id is only user-typed. Confidence is high but not proven with a real token: the official portal docs are JS-rendered and WebFetch returned only page titles. The v1.3 oauth2/access_token endpoint exists (probe returned code 40002 for garbage app_id). Caveat: an admin who manually pastes a Marketing API long-term token into tiktok_access_token would work, but the Connect button would then overwrite it with a Login Kit token.",
+   "evidence_url": "https://business-api.tiktok.com/portal/docs",
+   "evidence_quote": "Search of business-api.tiktok.com v1.3 docs: \"Access-Token ... represents the authorized access token\"; advertiser auth URL https://business-api.tiktok.com/portal/auth with app_id, redirect_uri, state; token exchange POST https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/ with app_id, auth_code, secret",
+   "recommended_fix": "Add a separate Ads connection: (1) register a TikTok API for Business app, env TIKTOK_ADS_APP_ID / TIKTOK_ADS_SECRET. (2) New routes /api/oauth/tiktok_ads/initiate redirecting to https://business-api.tiktok.com/portal/auth?app_id=...&state=...&redirect_uri=${API_URL}/api/oauth/tiktok_ads/callback. (3) Callback receives auth_code, POST https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/ JSON {app_id, secret, auth_code}; save data.access_token to a NEW key tiktok_ads_access_token and data.advertiser_ids[0] to tiktok_advertiser_id. (4) Switch integrations.js:454, adPublisher.js:58 and ads.js to tiktok_ads_access_token. Until built, make the tiktok_ads test return success:false with message 'TikTok Ads needs a separate Marketing API authorization' rather than calling the API with a Login Kit token."
+  },
+  {
+   "severity": "outdated",
+   "area": "TikTok Ads campaign/get HTTP method",
+   "file": "backend/src/routes/integrations.js",
+   "line": 457,
+   "what": "campaign/get is documented as a GET with query-string parameters; the code POSTs a JSON body (integrations.js:457-461 and the same pattern in routes/ads.js:232). Probes: DELETE on this path returns 405 (method check runs before auth), but POST is accepted by the gateway (returns 40105 for a garbage token), so the gateway does not reject POST, yet advertiser_id/page/page_size are very likely read from the query string, not the body. With a valid token this probably returns a params error (code != 0), so the test would FALSE-FAIL (not false-pass) and the Ads page fetch would break. I could not confirm the post-auth behavior without a real token.",
+   "evidence_url": "https://github.com/tiktok/tiktok-business-api-sdk/blob/main/python_sdk/business_api_client/api/campaign_creation_api.py",
+   "evidence_quote": "'/open_api/v1.3/campaign/get/', 'GET',",
+   "recommended_fix": "integrations.js:457-461 -> const qs = new URLSearchParams({ advertiser_id: String(advertiserId), page: '1', page_size: '1' }); const r = await fetch(`https://business-api.tiktok.com/open_api/v1.3/campaign/get/?${qs}`, { headers: { 'Access-Token': token } });  Apply the same change at routes/ads.js:232 (put filtering/fields as JSON-stringified query params). Keep the existing success check `r.ok && d.code === 0`."
+  },
+  {
+   "severity": "broken_now",
+   "area": "TikTok Ads error handling (false success)",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 280,
+   "what": "tiktok.setStatus() awaits callJson() and ignores the body. TikTok Business API returns HTTP 200 with a non-zero `code` on failure (probed: no token -> HTTP 200 code 40104; garbage token -> HTTP 200 code 40105), and callJson() only throws on !res.ok. So a failed pause/resume reports success and the local campaign state drifts from the live TikTok campaign. createCampaign/createAdGroup (lines 253, 271) do check out.code correctly but do not verify that campaign_id/adgroup_id was returned.",
+   "evidence_url": "https://business-api.tiktok.com/open_api/v1.3/campaign/get/",
+   "evidence_quote": "Live probe, garbage Access-Token: HTTP 200 {\"code\": 40105, \"message\": \"Access token is incorrect or has been revoked.\"}",
+   "recommended_fix": "adPublisher.js:280 -> const out = await callJson(...); if (out.code && out.code !== 0) throw new PublishError(out.message || 'TikTok rejected the status change'); Also at 253/271 add `if (!out.data?.campaign_id) throw new PublishError('TikTok returned no campaign id')` (and adgroup_id). Better: in callJson, when url includes 'business-api.tiktok.com' and body.code is a non-zero number, throw PublishError(body.message)."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Social publish false success",
+   "file": "backend/src/routes/social.js",
+   "line": 166,
+   "what": "For platform 'tiktok' the publisher sets results.tiktok = { status: 'pending', note: ... } with no `error`. allSuccess (line 173) is Object.values(results).every(r => !r.error), so a post targeting TikTok is marked 'published' and published_at is set although nothing was posted to TikTok.",
+   "evidence_url": "https://developers.tiktok.com/doc/content-posting-api-get-started",
+   "evidence_quote": "Real posting uses POST https://open.tiktokapis.com/v2/post/publish/video/init/ (scope video.publish); none of this is called by social.js",
+   "recommended_fix": "Replace social.js:166 with: results.tiktok = { error: 'TikTok publishing is not available yet. Post to TikTok manually or remove TikTok from this post.' };  When implementing for real: POST https://open.tiktokapis.com/v2/post/publish/creator_info/query/, then POST .../v2/post/publish/video/init/, upload to the returned upload_url, poll POST .../v2/post/publish/status/fetch/. Note unaudited clients are forced to private visibility."
+  },
+  {
+   "severity": "unverified",
+   "area": "TikTok requested scopes",
+   "file": "backend/src/routes/oauth.js",
+   "line": 724,
+   "what": "Scopes user.info.basic,video.publish,video.list are current names and comma-separated is correct (user.info.basic and video.publish verified; video.list is a Display API scope I could not fetch). But the code uses only user.info.basic (open_id, display_name). video.publish/video.list are requested yet unused; video.publish requires the Content Posting API product to be added and approved on the app, and TikTok app review commonly rejects unused scopes. If the product is not enabled, the authorize page can fail with an invalid-scope error.",
+   "evidence_url": "https://developers.tiktok.com/doc/content-posting-api-get-started",
+   "evidence_quote": "\"All content posted by unaudited clients will be restricted to private viewing mode.\"",
+   "recommended_fix": "oauth.js:724 -> scope: process.env.TIKTOK_SCOPES || 'user.info.basic',  and add video.publish (and video.upload for drafts) only after social.js posting is implemented and the Content Posting API product is approved. In the callback, compare tokens.scope to the required list and fail with a clear message if the user un-ticked a scope."
+  },
+  {
+   "severity": "ok",
+   "area": "TikTok Login Kit OAuth endpoints",
+   "file": "backend/src/routes/oauth.js",
+   "line": 749,
+   "what": "Authorize URL https://www.tiktok.com/v2/auth/authorize/ with client_key, scope (comma-separated), response_type=code, redirect_uri, state is current; token endpoint POST https://open.tiktokapis.com/v2/oauth/token/ form-encoded with client_key, client_secret, code, grant_type, redirect_uri is current. PKCE is not required for web. The v1 OAuth migration deadline (2024-02-29) is past and the code is already on v2. Probe with garbage code returned HTTP 200 {error:'invalid_grant'}, which the callback handles via tokens.error.",
+   "evidence_url": "https://developers.tiktok.com/doc/login-kit-web",
+   "evidence_quote": "Authorization URL: https://www.tiktok.com/v2/auth/authorize/ ; scope: \"A comma (,) separated string\"",
+   "recommended_fix": "No change to endpoints. See the refresh and missing access_token guard finding for the callback."
+  },
+  {
+   "severity": "ok",
+   "area": "TikTok user-info test case",
+   "file": "backend/src/routes/integrations.js",
+   "line": 647,
+   "what": "GET https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name with Authorization: Bearer matches the docs; open_id and display_name are both in user.info.basic so the 2024 scope migration does not affect it. Success requires r.ok && d.data.user. Probed with NO key and a GARBAGE key: both HTTP 401 {data:{}, error:{code:'access_token_invalid'}}. The test cannot pass without a valid token.",
+   "evidence_url": "https://developers.tiktok.com/doc/tiktok-api-v2-get-user-info",
+   "evidence_quote": "GET https://open.tiktokapis.com/v2/user/info/ with \"Authorization: Bearer act.example12345...\"; basic fields (open_id, display_name) need user.info.basic",
+   "recommended_fix": "None required. Optionally refresh the token first (see refresh finding) so an expired-but-refreshable connection does not report failure."
+  },
+  {
+   "severity": "ok",
+   "area": "Canva test case and OAuth endpoints",
+   "file": "backend/src/routes/integrations.js",
+   "line": 660,
+   "what": "GET https://api.canva.com/rest/v1/users/me with Bearer is current; the response is {team_user:{user_id,team_id}}, which the test checks (d.team_user). Probed NO token -> HTTP 401 {code:'invalid_access_token', message:'Access token is missing'}; GARBAGE token -> HTTP 401 'Access token is invalid'. The test cannot pass without a valid token. OAuth: authorize URL https://www.canva.com/api/oauth/authorize, token URL https://api.canva.com/rest/v1/oauth/token, Basic auth, PKCE S256, space-separated scopes all match the spec (oauth.js:902, 920, 951). Access tokens currently last 4 hours and the code reads expires_in rather than hard-coding it.",
+   "evidence_url": "https://www.canva.dev/docs/connect/authentication/",
+   "evidence_quote": "\"The REST APIs use OAuth 2.0 with the Authorization Code flow with Proof Key for Code Exchange (PKCE) using SHA-256.\"",
+   "recommended_fix": "None required. Optionally drop the dead `d.user` branch (only team_user exists in the schema)."
+  },
+  {
+   "severity": "ok",
+   "area": "Canva export / asset upload / create design calls",
+   "file": "backend/src/routes/canva.js",
+   "line": 123,
+   "what": "POST /exports {design_id, format:{type:'png'}} then poll GET /exports/{id} reading job.status and job.urls; POST /asset-uploads with application/octet-stream and an Asset-Upload-Metadata header holding name_base64 (name <= 50 chars, code slices to 50); poll GET /asset-uploads/{id}; POST /designs {type:'type_and_asset', design_type:{type:'preset', name:'presentation'}, asset_id, title<=255} all match the current OpenAPI spec. Required scopes: exports design:content:read, asset upload asset:write, asset poll asset:read, create design design:content:write (all present). Only /v1/comments (create comment) is deprecated in the changelog and Bmapz does not use it. No sunset dates found for any used Canva endpoint.",
+   "evidence_url": "https://www.canva.dev/sources/connect/api/latest/api.yml",
+   "evidence_quote": "ExportJob.urls: \"Download URL(s) for the completed export job. These URLs expire after 24 hours.\"; PresetDesignTypeName enum: doc, email, presentation, whiteboard",
+   "recommended_fix": "None for correctness. Note export URLs expire in 24h, so persist the image to Bmapz storage if it must outlive a day, and multi-page designs return one URL per page (only the first is used)."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "Canva single-use refresh token race",
+   "file": "backend/src/routes/canva.js",
+   "line": 78,
+   "what": "Canva refresh tokens are single use and each refresh returns a new one. getValidToken() refreshes whenever the token is within 60s of expiry, with no per-company lock, and swallows any refresh failure and carries on with the stale access token. Two concurrent requests (the UI fires /designs and /export together) both read the same refresh_token; the second refresh gets invalid_grant, is swallowed, and the request proceeds with an expired token, producing 401s. If the second write lands after the first, the stored refresh token may also be the already-spent one, killing the connection until the user reconnects. Failure messages from Canva's token endpoint use {code,message}, but oauth.js:932 only reads error_description/error.",
+   "evidence_url": "https://www.canva.dev/docs/connect/authentication/",
+   "evidence_quote": "\"Each refresh token can only be used once.\"",
+   "recommended_fix": "Add a module-level Map<companyId, Promise> in canva.js so concurrent callers share one in-flight refreshCanvaToken(); on invalid_grant, re-read api_keys once (another worker may have refreshed) and otherwise set integration_status.canva=false and return 409 NOT_CONNECTED instead of falling through. In oauth.js:932 use `tokens.error_description || tokens.message || tokens.error`."
+  },
+  {
+   "severity": "unverified",
+   "area": "Disconnect key map",
+   "file": "backend/src/routes/oauth.js",
+   "line": 846,
+   "what": "TOKEN_KEYS_BY_PROVIDER has `tiktok` only. There is no `canva`, `tiktok_social` or `tiktok_ads` entry, and tiktok_advertiser_id and any refresh token are not listed. integrations.js comments say the Integrations page uses `tiktok_social`, so a disconnect from that card resolves to an empty key list (line 850). I did not read clearOAuthTokens, so whether the tokens are retained (with only integration_status flipped) is unverified. Tokens are also never revoked at the vendor.",
+   "evidence_url": "https://developers.tiktok.com/doc/oauth-user-access-token-management",
+   "evidence_quote": "Revoke endpoint: POST https://open.tiktokapis.com/v2/oauth/revoke/",
+   "recommended_fix": "Add: tiktok_social: TIKTOK_KEYS, tiktok_ads: [...TIKTOK_KEYS,'tiktok_advertiser_id'], canva: ['canva_access_token','canva_refresh_token','canva_token_expires_at'] where TIKTOK_KEYS = ['tiktok_access_token','tiktok_token_expires_at','tiktok_refresh_token','tiktok_refresh_expires_at','tiktok_open_id','tiktok_scope']. Best-effort call POST https://open.tiktokapis.com/v2/oauth/revoke/ (client_key, client_secret, token) and Canva POST /rest/v1/oauth/revoke before clearing."
+  },
+  {
+   "severity": "unverified",
+   "area": "TikTok adgroup/create required fields",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 257,
+   "what": "adgroup/create sends only advertiser_id, campaign_id, adgroup_name, optimization_goal, budget_mode, budget, location_ids and schedule_start_time (possibly undefined). From knowledge, v1.3 also requires placement/promotion/billing/bid/schedule fields, so real publishing will likely be rejected with code 40002. The portal docs could not be fetched (JS-rendered, WebFetch returns only the title), so this is unconfirmed. It fails loudly (PublishError), not silently.",
+   "evidence_url": "https://business-api.tiktok.com/portal/docs",
+   "evidence_quote": "Not retrievable: portal pages returned only titles",
+   "recommended_fix": "Before enabling TikTok ad publishing, verify the Create an ad group page for v1.3 and add the required fields (placement_type, promotion_type, billing_event, bid_type, schedule_type, schedule_start_time, pacing, operation_status). Test in a TikTok sandbox advertiser first. Until then keep createAd/createAdGroup behind NOT_SUPPORTED."
+  },
+  {
+   "severity": "outdated",
+   "area": "Hard-coded API versions and hosts (no env override)",
+   "file": "backend/src/lib/adPublisher.js",
+   "line": 242,
+   "what": "TikTok Ads 'open_api/v1.3' is hard-coded in 5 places (adPublisher.js:242, 257, 280; integrations.js:457; ads.js:232). Canva 'https://api.canva.com/rest/v1' is hard-coded at canva.js:15 and oauth.js:920, 951. TikTok open.tiktokapis.com/v2 is hard-coded at oauth.js:749 and integrations.js:647. Only LinkedIn follows the good pattern (integrations.js:12: process.env.LINKEDIN_API_VERSION || '202606'). TikTok already retired v1.2 (Aug 2023), so a future v1.4 or sandbox host swap needs a redeploy.",
+   "evidence_url": "https://help.boomi.com/docs/Atomsphere/Data_Integration/APIUpgradesChangelog/2023/tiktok-api-upgrade-13",
+   "evidence_quote": "\"Effective August 15, 2023, TikTok Ads deprecated API v1.2 and now supports only v1.3\"",
+   "recommended_fix": "Create backend/src/lib/vendorApis.js exporting: export const TIKTOK_ADS_BASE = process.env.TIKTOK_ADS_API_BASE || 'https://business-api.tiktok.com/open_api/v1.3'; export const TIKTOK_OPEN_BASE = process.env.TIKTOK_OPEN_API_BASE || 'https://open.tiktokapis.com/v2'; export const CANVA_API = process.env.CANVA_API_BASE || 'https://api.canva.com/rest/v1'; and import them at every call site listed (TikTok sandbox uses https://sandbox-ads.tiktok.com/open_api/v1.3)."
+  },
+  {
+   "severity": "unverified",
+   "area": "Sunset check for next 6 months",
+   "file": "backend/src/routes/oauth.js",
+   "what": "No sunset inside the next 6 months was found for the used Login Kit v2, user-info, Content Posting v2 or Canva Connect v1 endpoints (TikTok changelog last updated Aug 2026 lists nothing for them; Canva changelog 2025-2026 lists only comment-API deprecations and the future removal of the page `index` property). The TikTok API for Business changelog and Marketing API docs are JS-rendered and could not be read, so any v1.3 endpoint-level deprecation there is unverified. v1.2 is long deprecated and still answers, but Bmapz does not call it.",
+   "evidence_url": "https://developers.tiktok.com/doc/changelog",
+   "evidence_quote": "Changelog shows deprecation-related entries only through 2023-2024 (OAuth v1 migration deadline 2024-02-29; user.info.basic scope split)",
+   "recommended_fix": "Subscribe to the TikTok for Business API changelog and Canva changelog; have a human open https://business-api.tiktok.com/portal/docs (Changelog) once to confirm no v1.3 campaign/adgroup deprecations are scheduled."
+  }
+ ],
+ "pinned_versions": [
+  {
+   "name": "TikTok Business/Marketing API",
+   "in_code": "open_api/v1.3",
+   "status": "current",
+   "current": "v1.3 (v1.2 deprecated 2023-08-15 but still responds)",
+   "sunset_date": "none found for v1.3 (changelog unverified)"
+  },
+  {
+   "name": "TikTok Login Kit / Display / user info",
+   "in_code": "/v2/auth/authorize/, /v2/oauth/token/, /v2/user/info/",
+   "status": "current",
+   "current": "v2 (OAuth v1 migration deadline 2024-02-29 already passed)"
+  },
+  {
+   "name": "TikTok Content Posting API",
+   "in_code": "not called (stub in social.js:166)",
+   "status": "current",
+   "current": "v2 /post/publish/video/init/"
+  },
+  {
+   "name": "Canva Connect REST API",
+   "in_code": "https://api.canva.com/rest/v1",
+   "status": "current",
+   "current": "v1 (OpenAPI info.version 2024-06-18)"
+  },
+  {
+   "name": "TikTok scope user.info.basic",
+   "in_code": "user.info.basic,video.publish,video.list",
+   "status": "current",
+   "current": "user.info.basic still valid for open_id/display_name; profile and stats fields moved to user.info.profile / user.info.stats"
+  }
+ ],
+ "test_cases": [
+  {
+   "type": "integrations test: tiktok / tiktok_social",
+   "calls": "GET https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name (Bearer)",
+   "verdict": "sound",
+   "notes": "Probed NO key and GARBAGE key: both HTTP 401 access_token_invalid with empty data. Success requires r.ok and data.user, so it cannot pass without a valid token. Missing token is short-circuited before any call."
+  },
+  {
+   "type": "integrations test: tiktok_ads",
+   "calls": "POST https://business-api.tiktok.com/open_api/v1.3/campaign/get/ with Access-Token and JSON body",
+   "verdict": "wrong_endpoint",
+   "notes": "No false-positive: success needs r.ok && d.code === 0 and the API returns HTTP 200 with code 40104 (no token) or 40105 (garbage token). But the documented method is GET with query params, and the token is a Login Kit token that cannot authorize the Marketing API, so with real credentials it likely false-FAILS. Fix as per findings."
+  },
+  {
+   "type": "integrations test: canva",
+   "calls": "GET https://api.canva.com/rest/v1/users/me (Bearer)",
+   "verdict": "sound",
+   "notes": "Probed NO token: HTTP 401 'Access token is missing'; GARBAGE: HTTP 401 'Access token is invalid'. Success requires r.ok plus team_user."
+  },
+  {
+   "type": "probe: TikTok token endpoint with garbage code",
+   "calls": "POST https://open.tiktokapis.com/v2/oauth/token/ (garbage client_key, secret, code)",
+   "verdict": "sound",
+   "notes": "HTTP 200 with {error:'invalid_grant', error_description:'Authorization code is expired.'}. The callback's `if (tokens.error)` branch handles this, but it does not guard a missing access_token."
+  },
+  {
+   "type": "probe: Canva token endpoint with garbage client",
+   "calls": "POST https://api.canva.com/rest/v1/oauth/token (Basic garbage:garbage)",
+   "verdict": "sound",
+   "notes": "HTTP 401 {code:'invalid_access_token', message:'Client secret is invalid for garbage'}. Callback falls through to the generic 'Canva token exchange failed' because it reads error/error_description, not message."
+  },
+  {
+   "type": "probe: TikTok Ads method handling",
+   "calls": "DELETE / GET / POST on /open_api/v1.3/campaign/get/ with garbage Access-Token",
+   "verdict": "unverified",
+   "notes": "DELETE returns 405 before auth, so method checks precede auth. GET and POST both reach auth (40105), so the gateway accepts POST, but whether the body is honoured after auth could not be confirmed without a real token."
+  },
+  {
+   "type": "false-positive class scan (Apollo-style, unauthenticated 200)",
+   "calls": "All TikTok and Canva tests in integrations.js",
+   "verdict": "sound",
+   "notes": "No TikTok or Canva test passes without valid credentials. The TikTok Ads API does return HTTP 200 for auth failures, so r.ok alone would be a false positive; integrations.js:462 and ads.js correctly also require code === 0, but adPublisher.js:280 does not."
+  }
+ ]
+}

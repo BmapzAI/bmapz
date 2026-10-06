@@ -1,0 +1,338 @@
+{
+ "group": "TikTok (Login Kit, Content Posting, Business/Ads API) and Canva Connect (now \"Canva REST APIs\")",
+ "claims": [
+  {
+   "claim": "Production TikTok app has no API access until app review passes; review takes 'several days to two weeks'",
+   "verdict": "confirmed",
+   "source_quote": "App review may take several days to two weeks after submission. ... You will not have access to the APIs until your application has been approved.",
+   "source_url": "https://developers.tiktok.com/doc/getting-started-faq"
+  },
+  {
+   "claim": "TIKTOK_CLIENT_KEY / SECRET are issued instantly on app creation (production)",
+   "verdict": "corrected",
+   "correction": "Docs do not say production credentials are usable or even revealable before approval. A third-party integrator doc says the key/secret can be revealed 'once your App is Live'. Plan: sandbox credentials immediately; production credentials only after review passes. Whether the sandbox has its own key/secret is NOT stated in TikTok's sandbox page (it only says Credentials hold the client key/secret) - read the Credentials panel inside the Sandbox toggle before wiring env vars.",
+   "source_quote": "Sandbox mode is a restricted environment that allows you to try out integrations without having to submit your app for review.",
+   "source_url": "https://developers.tiktok.com/doc/add-a-sandbox"
+  },
+  {
+   "claim": "Sandbox: up to 5 sandboxes per app, up to 10 target users, no public Content Posting",
+   "verdict": "confirmed",
+   "source_quote": "Sandbox mode does not offer access to Content Posting API for public videos or Data Portability API.",
+   "source_url": "https://developers.tiktok.com/doc/add-a-sandbox"
+  },
+  {
+   "claim": "Sandbox target-user list 'may take up to an hour' to show",
+   "verdict": "unverifiable",
+   "correction": "Not present in the add-a-sandbox text retrieved today; keep as a precaution only.",
+   "source_url": "https://developers.tiktok.com/doc/add-a-sandbox"
+  },
+  {
+   "claim": "Unaudited clients: SELF_ONLY only and max 5 users per 24h; an audit lifts it",
+   "verdict": "confirmed",
+   "source_quote": "Unaudited API Clients can only post contents in SELF_ONLY viewership. / ... can allow up to 5 users to post in a 24 hour window.",
+   "source_url": "https://developers.tiktok.com/doc/content-sharing-guidelines"
+  },
+  {
+   "claim": "A private TikTok account only matters for making posts public",
+   "verdict": "corrected",
+   "correction": "WORSE than claimed: for unaudited clients the target TikTok ACCOUNT must itself be private or the publish call is BLOCKED (error unaudited_client_can_only_post_to_private_accounts), not merely forced to SELF_ONLY. The test account in the sandbox must be switched to Private before running Direct Post.",
+   "source_quote": "Unaudited clients can only post to a private account. The publish attempt will be blocked when calling /publish/video/init/.",
+   "source_url": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post"
+  },
+  {
+   "claim": "Content Posting audit entry point could not be found",
+   "verdict": "corrected",
+   "correction": "The audit application lives at https://developers.tiktok.com/application/content-posting-api (linked from both the Get Started page and the Content Sharing Guidelines). Prior researcher said it was unfindable.",
+   "source_quote": "your API client must undergo an audit to verify compliance",
+   "source_url": "https://developers.tiktok.com/doc/content-posting-api-get-started"
+  },
+  {
+   "claim": "Audit turnaround is '5-10 business days' (third-party)",
+   "verdict": "corrected",
+   "correction": "TikTok publishes no SLA. Other 2026 third-party sources say 'weeks, and variable' and '2-6 weeks'. Plan for 2-6 weeks, no promise. Also: posts published while unaudited stay private; customers onboarded before the audit cannot be made public retroactively per one integrator's report (unverified).",
+   "source_quote": "Content Audit: Weeks, and variable",
+   "source_url": "https://bundle.social/blog/tiktok-api-approval"
+  },
+  {
+   "claim": "video.publish requires approval before use",
+   "verdict": "confirmed",
+   "source_quote": "Get approval and authorization of the video.publish scope",
+   "source_url": "https://developers.tiktok.com/doc/content-posting-api-get-started"
+  },
+  {
+   "claim": "Direct Post configuration must be enabled on the Content Posting API product",
+   "verdict": "confirmed",
+   "source_quote": "enable the Direct Post configuration for the Content Posting API in your app",
+   "source_url": "https://developers.tiktok.com/doc/content-posting-api-get-started"
+  },
+  {
+   "claim": "Login Kit redirect URI rules (https, static, no fragment, <512 chars, max 10); scopes comma-separated; authorize endpoint v2",
+   "verdict": "confirmed",
+   "source_quote": "URIs must be absolute and begin with https ... A maximum of 10 URIs is supported ... comma (,) separated string of authorization scope(s)",
+   "source_url": "https://developers.tiktok.com/doc/login-kit-web"
+  },
+  {
+   "claim": "URL property verification is required before submitting for review",
+   "verdict": "corrected",
+   "correction": "Confirmed, and scoped more precisely: for apps created after 2024-09-09 the Terms of Service URL, Privacy Policy URL and Web/Desktop URL must all be verified; Content Posting API users must additionally verify URLs they pull media from (PULL_FROM_URL) regardless of creation date. Verification is by Domain or URL prefix via the 'URL properties' button. The exact verification artifact (DNS TXT vs signature file) was not retrievable today - the console shows it.",
+   "source_quote": "verify URL properties for all URLs in your app configuration",
+   "source_url": "https://developers.tiktok.com/doc/getting-started-create-an-app"
+  },
+  {
+   "claim": "Demo videos: 1-5, max 50 MB each; live site with visible Privacy Policy and Terms",
+   "verdict": "confirmed",
+   "source_quote": "At least one demo video that shows the complete end-to-end flow of the up-to-date integrations. You may upload a maximum of 5 videos, up to 50 MB each.",
+   "source_url": "https://developers.tiktok.com/doc/app-review-guidelines"
+  },
+  {
+   "claim": "Org owner recommended over individual; icon 1024x1024 <=5 MB",
+   "verdict": "confirmed",
+   "source_quote": "1024 x 1024 px ... JPEG, JPG, or PNG ... Up to 5 MB",
+   "source_url": "https://developers.tiktok.com/doc/getting-started-create-an-app"
+  },
+  {
+   "claim": "TikTok audit/review checks a specific posting UX (nickname, preview, consent declaration, commercial-content toggles)",
+   "verdict": "unverifiable",
+   "correction": "Not re-fetched in full today. Partially corroborated by a 2026 integrator write-up: the composer must be built from the creator_info response, show caption/privacy/interaction settings before publish, and 'Skipping this call is an audit failure'. Most common rejection cause is UI not matching API capabilities (e.g. offering Duet when the creator disabled it) and requesting unused scopes. Have the code auditor confirm the creator_info/query call and a compliant composer exist before recording the demo.",
+   "source_url": "https://bundle.social/blog/tiktok-api-approval"
+  },
+  {
+   "claim": "video.list works in sandbox",
+   "verdict": "unverifiable",
+   "correction": "Still unconfirmed. Also a rejection risk: requesting a scope the demo video does not clearly use. Recommendation: drop video.list from the scope request unless the Bmapz UI really displays the user's TikTok videos; that removes a review risk."
+  },
+  {
+   "claim": "TikTok API for Business is a separate program/portal from developers.tiktok.com",
+   "verdict": "confirmed",
+   "source_quote": "Create a developer app | TikTok API for Business (page at business-api.tiktok.com/portal/docs/create-a-developer-app/v1.3)",
+   "source_url": "https://business-api.tiktok.com/portal/docs/create-a-developer-app/v1.3"
+  },
+  {
+   "claim": "Business API rejects individual developers / requires company-domain email and real company website",
+   "verdict": "unverifiable",
+   "correction": "Official portal pages are JavaScript-rendered and returned only a page title to the fetcher; search engines could not surface the sentence either. Treat as likely but unconfirmed. One third-party guide says to register with a company email and business verification 'can take days'."
+  },
+  {
+   "claim": "Business API approval takes 3-7 days",
+   "verdict": "corrected",
+   "correction": "Search extracts of the official docs and an older integrator guide say 2 to 3 business days for the developer-app review (status under My Apps > Verification Status). Official page not directly readable today. Also: the app creation form asks whether access is limited to internal use or shared with external accounts - Bmapz is multi-tenant, so answer 'external' and expect more scrutiny/allowlist features (unverified detail).",
+   "source_quote": "the review may take 2 to 3 business days",
+   "source_url": "https://business-api.tiktok.com/portal/docs/create-a-developer-app/v1.3"
+  },
+  {
+   "claim": "Business API v1.3 is still current",
+   "verdict": "confirmed",
+   "correction": "Official portal doc URLs listed today all end in /v1.3 (marketing-api-get-started/v1.3, create-a-developer-app/v1.3, register-as-a-developer/v1.3); v1.2 was retired 2023-08-15; no v1.4 or v1.3 deprecation notice found. Medium confidence because the portal is JS-rendered.",
+   "source_url": "https://business-api.tiktok.com/portal/docs/marketing-api-get-started/v1.3"
+  },
+  {
+   "claim": "Business API OAuth: portal/auth authorize URL and open_api/v1.3/oauth2/access_token/ token endpoint",
+   "verdict": "unverifiable",
+   "correction": "Only third-party guides state this; they also claim ~24h access tokens and ~1yr refresh tokens, which conflicts with my recollection that Marketing API tokens were long-lived - do not hard-code token lifetimes; have the code read expires_in/refresh fields from the response.",
+   "source_url": "https://unified.to/blog/how_to_get_your_tiktok_ads_api_key"
+  },
+  {
+   "claim": "Canva: PKCE with SHA-256 is mandatory; code_verifier 43-128 chars; scopes space-separated and must be enabled in the portal",
+   "verdict": "confirmed",
+   "source_quote": "The REST APIs use OAuth 2.0 with the Authorization Code flow with Proof Key for Code Exchange (PKCE) using SHA-256.",
+   "source_url": "https://www.canva.dev/docs/apps/rest-apis/authentication.md"
+  },
+  {
+   "claim": "Canva redirect_uri must be registered; first one used if omitted",
+   "verdict": "corrected",
+   "correction": "Docs say the parameter is optional only if you have exactly one redirect URL: 'If you have only one redirect URL set ... you don't need to provide this parameter.' With two registered (our plan) the backend must send redirect_uri explicitly on authorize AND token exchange. Max number of redirect URLs is still not documented anywhere fetched; the earlier '10' is unverified.",
+   "source_quote": "you must have at least one redirect URL set in your app's settings",
+   "source_url": "https://www.canva.dev/docs/connect/authentication/"
+  },
+  {
+   "claim": "Canva scope names design:content:read, design:content:write, asset:read, asset:write, profile:read are valid",
+   "verdict": "confirmed",
+   "source_quote": "design:content:write - Create designs on the user's behalf. asset:write - Upload, update, or delete assets on the user's behalf.",
+   "source_url": "https://www.canva.dev/docs/apps/rest-apis/scopes.md"
+  },
+  {
+   "claim": "Canva portal labels: 'Your integrations' / Outside Canva > Configuration > Credentials and Outside Canva > Redirect URLs",
+   "verdict": "corrected",
+   "correction": "The Connect docs are deprecated and relocated; 'The Connect APIs are now the Canva REST APIs, documented as part of the Canva Developers SDK'. The live label path is Outside Canva > Configuration (Credentials, scopes) and Outside Canva > Redirect URLs, created via the 'Canva for your platform' app surface. 'Your integrations' is the old wording.",
+   "source_quote": "On Outside Canva > Configuration, under Credentials: Note the Client ID",
+   "source_url": "https://www.canva.dev/docs/apps/quickstart/?app-surface=Canva%20for%20your%20platform"
+  },
+  {
+   "claim": "Canva: an unreviewed integration can only be authorized by you/your team (customers outside our Canva team cannot connect before review)",
+   "verdict": "unverifiable",
+   "correction": "No fetched official page states the pre-review audience in a sentence. Indirect evidence: a search extract of Canva's own Creating-integrations text says a Brand Restricted integration (the default) is usable only by the team that owns it, and the docs say public integrations are 'available to all Canva users' only after Canva review. OPERATIONAL ANSWER: plan on NO - an outside customer cannot connect until the integration is approved as Public. The cannot-confirm-in-a-sentence caveat remains; the first outside-user authorize attempt is the proof.",
+   "source_quote": "Public apps are created for release to the general public. After they're reviewed by Canva and released, they can be discovered in the Apps Marketplace.",
+   "source_url": "https://canva.dev/docs/connect/creating-integrations"
+  },
+  {
+   "claim": "Canva private (team-only) integrations need an Enterprise plan; type cannot be changed after creation",
+   "verdict": "confirmed",
+   "correction": "CONSEQUENCE the prior steps omitted: Derek must choose PUBLIC when creating the app. Private = Enterprise only, our team only, and irreversible.",
+   "source_quote": "Private apps are only available to teams on an Enterprise plan. ... You can't change this after the app is created.",
+   "source_url": "https://www.canva.dev/docs/apps/creating-apps"
+  },
+  {
+   "claim": "Canva review has no published duration; no fee",
+   "verdict": "confirmed",
+   "source_quote": "It's not practical for us to provide an average or expected duration",
+   "source_url": "https://www.canva.dev/docs/apps/app-review-process.md"
+  },
+  {
+   "claim": "Canva submission checklist: valid redirect URL, no local URLs, listing assets, test credentials, demo video",
+   "verdict": "corrected",
+   "correction": "Checklist items confirmed: 'at least one valid authentication redirect URL', 'don't have any local URLs set as an authentication redirect URL', marketplace listing text + graphics, login credentials for test accounts, platform documentation, 'suitable, reliable hosting (avoid free services)'. A demo video was NOT listed in the checklist fetched today. NEW prerequisite the prior missed: Apps Marketplace developer verification (name, email, phone, physical address, registration details where applicable, and an identity document verifying identity and legal-entity status); not required for private apps; whether it applies to REST-API-only public integrations is not stated.",
+   "source_quote": "Developers in the Apps Marketplace must now provide additional information during the submission process.",
+   "source_url": "https://www.canva.dev/docs/apps/developer-verification.md"
+  },
+  {
+   "claim": "Canva public apps cannot use preview APIs",
+   "verdict": "confirmed",
+   "correction": "NEW blocker the prior did not flag: every Canva endpoint Bmapz calls (asset upload job by URL, design import by URL, profile, etc.) must be checked for a 'Preview' badge on its reference page. Public apps using preview endpoints cannot pass review.",
+   "source_quote": "Public apps that use preview APIs or features will not pass the review process, and can't be made available to all Canva users.",
+   "source_url": "https://www.canva.dev/docs/apps/rest-apis.md"
+  },
+  {
+   "claim": "Canva access token lifetime is 4 hours; refresh tokens single-use",
+   "verdict": "corrected",
+   "correction": "Single-use refresh is confirmed ('Each refresh token can only be used once'). The 4-hour figure was not on the pages retrieved today (they say only 'short period'); read expires_in from the response rather than assuming. Refresh-token lifetime remains undocumented.",
+   "source_quote": "Each refresh token can only be used once.",
+   "source_url": "https://www.canva.dev/docs/connect/authentication/"
+  },
+  {
+   "claim": "Canva client secret is shown only once; token exchange must be server-side with HTTP Basic auth",
+   "verdict": "unverifiable",
+   "correction": "Not re-fetched today (prior quotes came from the generate-access-token reference page, which was not re-read). The quickstart confirms a client secret is generated in Outside Canva > Configuration > Credentials. Treat one-time display as true and copy it immediately.",
+   "source_url": "https://www.canva.dev/docs/apps/rest-apis/reference/authentication/generate-access-token.md"
+  },
+  {
+   "claim": "CANVA_IMPORT_ALLOWED_HOSTS is the app's own allowlist; Canva import URLs must be public",
+   "verdict": "unverifiable",
+   "correction": "It is not a Canva credential (true by definition). The 'publicly available' import-URL sentence was not re-fetched; also verify the URL-import endpoints are not Preview (see preview-API blocker)."
+  },
+  {
+   "claim": "Canva: only Derek's own account (owner) can complete OAuth today with no review (can_test_today true for Canva)",
+   "verdict": "confirmed",
+   "correction": "Still an inference from the Quickstart (a full OAuth connect with only redirect URL + scopes configured and no submit step) plus the Brand-Restricted default; no official sentence says 'draft integrations can be authorized by the owner'. If the first authorize returns unauthorized_client, check app status, scopes ticked, and that the signing-in Canva user is a member of the owning team.",
+   "source_url": "https://www.canva.dev/docs/apps/quickstart/?app-surface=Canva%20for%20your%20platform"
+  },
+  {
+   "claim": "No cost for TikTok app review/audit or Canva review",
+   "verdict": "unverifiable",
+   "correction": "Neither platform's fetched review pages mention any fee ('No fees are mentioned'). Absence is not proof of no fee. Only paid item found: Canva Enterprise for PRIVATE apps (not recommended).",
+   "source_url": "https://www.canva.dev/docs/apps/app-review-process.md"
+  }
+ ],
+ "testable_today_without_review": {
+  "value": true,
+  "reasoning": "Yes, but only on narrow paths, and NOT for customers or ads. (1) CANVA: self-service; create a PUBLIC-type app, ticking the 5 scopes and registering the redirect URL gives a Client ID/secret at once, and the owner's own Canva account (or members of the owning Canva team) can run the full OAuth+PKCE connect, refresh rotation, asset upload and import. Based on the official Quickstart (no review step) plus the Brand-Restricted default; the pre-review audience sentence is not found verbatim, so it is a strong inference. People outside our Canva team cannot be expected to connect. (2) TIKTOK: only via a Sandbox ('without having to submit your app for review'). Add Login Kit + Content Posting API with Direct Post, register the HTTPS redirect URIs, add your own TikTok account as a target user (needs that account's login, max 10), and set that TikTok account to PRIVATE (otherwise the publish is blocked with unaudited_client_can_only_post_to_private_accounts). The post will be private. Production client key cannot call APIs before approval. video.list in sandbox is unverified. (3) TIKTOK BUSINESS/ADS: NOT testable today without the separate developer-app review (2-3 business days per search extracts of the official docs; third-party for older guide) and a TikTok For Business account; there is no confirmed self-serve sandbox. So: Canva owner-flow = yes; TikTok sandbox login+private post = yes; any real customer on either platform = no; TikTok ads = no."
+ },
+ "customer_launch": {
+  "requires": [
+   "CANVA: submit the integration (created as PUBLIC) for Canva review and get it approved; before submitting: no local/127.0.0.1 redirect URLs, at least one valid redirect URL, marketplace listing text and graphics, platform documentation, a working test login for Bmapz (reviewers must be able to log in to ai.bmapz.com), reliable (non-free) hosting, no Preview-API endpoints, and Apps Marketplace developer verification (name, email, phone, physical address, registration details, identity document proving identity/legal entity). Review has no published duration.",
+   "TIKTOK step 1 - App review for Login Kit + Content Posting: verified URL properties (Terms, Privacy, Web URL, and any pull-from URLs), a fully developed live website at https://ai.bmapz.com with Privacy/Terms links visible without opening menus, 1-5 demo videos (max 50 MB each) clearly showing every requested product and scope, a Web redirect URI, and a compliant posting UI built from the creator_info response. Official time: several days to two weeks.",
+   "TIKTOK step 2 - Content Posting API audit (apply at https://developers.tiktok.com/application/content-posting-api) to lift SELF_ONLY and the 5-users-per-24h cap. No official SLA; third-party reports say 2-6 weeks or 'weeks, and variable'. Until it passes, every customer post is private and at most 5 customers can post per 24h.",
+   "TIKTOK ADS (only if shipping): separate registration and developer-app review on https://business-api.tiktok.com/portal (about 2-3 business days per search extracts; official page not directly readable), a TikTok For Business account, likely company-domain email/website (unverified), and answering that the app is used by external accounts. Each customer then authorizes their advertiser account.",
+   "Operator-side: a company-owned TikTok developer account/organization and Canva account (not personal), the business entity's legal details and ID for Canva developer verification, and DNS access at the registrar panel for TikTok URL verification (add as a NEW TXT record; do not touch the single SPF TXT).",
+   "Decisions: whether to ship TikTok ads at launch (recommendation: NO, defer; it is a separate program and the env var list for this group has no ads app id/secret) and whether to keep video.list (recommendation: drop unless the UI shows the user's videos)."
+  ],
+  "realistic_calendar_time": "Canva: 1-4 weeks after a clean submission (no SLA; plan for at least one rework round). TikTok: app review about 1-2 weeks, then audit 2-6 weeks, so 3-8 weeks before customers can publish publicly; Login Kit sign-in itself can go live after step 1. TikTok ads (optional): add about 1 week if started in parallel. Everything runs in parallel, so the whole group is realistically 4-8 weeks from submission, with the audit as the long pole. Day-0 work (accounts, console setup, URL verification, sandbox tests, demo video) is about 4-6 hours spread across the TikTok propagation wait.",
+  "source_or_basis": "Official: TikTok FAQ 'several days to two weeks'; Canva review page 'not practical to provide an average or expected duration' (no SLA). Estimates for the audit (2-6 weeks), Business API review (2-3 business days) and the total are from third-party sources/judgment, not TikTok or Canva statements."
+ },
+ "corrected_setup_steps": [
+  "0. DO THESE FIRST (15 min, unblocks everything): (a) Use a COMPANY-owned Google/email identity for both consoles, not a personal one. (b) Make sure https://ai.bmapz.com (the root page, not just /PrivacyPolicy) shows visible footer links to https://ai.bmapz.com/PrivacyPolicy and https://ai.bmapz.com/TermsOfService without opening a menu; TikTok review requires them visible on a fully developed website. (c) Set the TikTok test account to PRIVATE (TikTok app > Settings and privacy > Privacy > Private account).",
+  "CANVA 1. Go to https://www.canva.dev/ and click 'Developer Portal'; sign in with the company-owned Canva account that will own the app. If Canva prompts you to turn on multi-factor authentication, do it (older docs required it; not confirmed in today's pages).",
+  "CANVA 2. Create a new app using the 'Canva for your platform' / REST APIs surface. When asked for the type choose PUBLIC, never Private (Private needs an Enterprise plan, works for your own team only and cannot be changed later). Name it 'Bmapz AI'.",
+  "CANVA 3. Open Outside Canva > Configuration > Credentials. Copy Client ID -> Railway variable CANVA_CLIENT_ID. Click 'Generate secret', copy it immediately -> CANVA_CLIENT_SECRET (assume it is shown only once).",
+  "CANVA 4. Same page, scopes: tick design:content = Read and Write, asset = Read and Write, profile = Read. Do not tick the extra design:meta or brandtemplate:* scopes that the Canva sample app shows (the app requests only the 5 scopes; extra ones weaken the review).",
+  "CANVA 5. Open Outside Canva > Redirect URLs. Add URL 1: https://api.bmapz.com/api/oauth/canva/callback and URL 2: https://bmapz-production.up.railway.app/api/oauth/canva/callback. The maximum number of URLs is undocumented: if the portal accepts only one, enter the Railway one now and swap to api.bmapz.com when the domain is live. Never add 127.0.0.1 or localhost (it blocks submission). With two URLs the backend MUST send redirect_uri on both the authorize and token calls.",
+  "CANVA 6. Railway: set CANVA_IMPORT_ALLOWED_HOSTS to the public hostname(s) that serve files Canva will fetch (exact format: ask the code auditor). Open one such file URL in a private browser window to prove it needs no login.",
+  "CANVA 7. TEST from https://ai.bmapz.com with YOUR OWN Canva account (the owner). Expect: connect succeeds, profile works, refresh gives a new refresh token and the old one fails, asset/design import by URL completes. Do NOT test with another person's Canva account unless they are a member of your Canva team; others are expected to fail until approval. Copy back to me: the exact error text of any failure.",
+  "CANVA 8. Before submitting, check every Canva endpoint Bmapz calls in its reference page for a 'Preview' badge; a public app using Preview APIs cannot pass review. Then in the app's left menu choose Submit for review and provide: listing text and graphics, a test login for Bmapz, platform documentation, and the developer verification details (name, email, phone, physical address, registration details, ID document). Copy back: the submission date and any Canva feedback.",
+  "TIKTOK 1. Go to https://developers.tiktok.com/ and sign in with the company email. Developer Portal > My organizations > Create organization (use the full legal business name; it cannot be renamed and is shown to TikTok users). Then Manage apps > Connect an app, owner = the organization, platform = Web.",
+  "TIKTOK 2. Fill the app form: name Bmapz AI; icon 1024x1024 JPG/PNG up to 5 MB; category; description; Web/website URL https://ai.bmapz.com ; Terms of Service URL https://ai.bmapz.com/TermsOfService ; Privacy Policy URL https://ai.bmapz.com/PrivacyPolicy.",
+  "TIKTOK 3. Add products: Login Kit and Content Posting API. On Content Posting API enable the Direct Post configuration. Scopes: user.info.basic and video.publish. Add video.list ONLY if the Bmapz screen really shows the user's TikTok videos and the demo video will show it; otherwise leave it off.",
+  "TIKTOK 4. Under Login Kit (Web) add Redirect URIs, exactly: https://api.bmapz.com/api/oauth/tiktok/callback and https://bmapz-production.up.railway.app/api/oauth/tiktok/callback (https, no trailing slash, no query, no #; limit 10). The authorize URL is https://www.tiktok.com/v2/auth/authorize/ and scopes in it are COMMA-separated.",
+  "TIKTOK 5. Click 'URL properties' at the top of the app page and verify https://ai.bmapz.com (and the Privacy and Terms URLs, plus any storage/CDN host the code uses with PULL_FROM_URL). Follow the method the console shows; if it is a DNS TXT record, add it at the registrar panel as a NEW TXT record on the name TikTok shows and do NOT edit or duplicate the SPF TXT record. Copy back: whether it shows Verified.",
+  "TIKTOK 6. SANDBOX (can be done before review): on the app page flip the Sandbox toggle > Create Sandbox > name it > clone the production config > Confirm. In the sandbox add Login Kit, Content Posting API with Direct Post, the same scopes and the same two redirect URIs, then click Apply changes. Under Target users click Add account and log in with your PRIVATE test TikTok account; the list can take up to an hour to show.",
+  "TIKTOK 7. Open the sandbox's Credentials panel. Copy the Client key -> Railway TIKTOK_CLIENT_KEY and Client secret -> TIKTOK_CLIENT_SECRET. If the sandbox shows the same values as production, tell me; if production values are hidden until approval, that is expected. Keep the production values aside for after approval.",
+  "TIKTOK 8. TEST from https://ai.bmapz.com: connect (expect access token and open_id), user info, then a Direct Post. Expected result: the post appears as private/Only me on the private test account. If you see unaudited_client_can_only_post_to_private_accounts the TikTok account is not private. Also run the creator_info query first (required). Copy back: any error code from TikTok.",
+  "TIKTOK 9. Record 1-5 demo videos (max 50 MB each) showing login/consent, the composer built from creator_info (nickname, caption, privacy, interaction toggles, commercial-content disclosure), a preview, the consent text and the post, plus every requested scope in use. Click Submit for review on the PRODUCTION app. Wait: several days to two weeks. Copy back: date submitted and any rejection reason.",
+  "TIKTOK 10. After app review is approved: put the PRODUCTION client key/secret into Railway, then apply for the Content Posting API audit at https://developers.tiktok.com/application/content-posting-api (no SLA; plan 2-6 weeks). Until it passes, all posts are private and only 5 users per 24h can post; do not onboard customers for public posting before that.",
+  "TIKTOK ADS (DEFER unless advertiser features ship at launch): separate program at https://business-api.tiktok.com/portal . Register as a developer with a company email/website, create a developer app (docs: https://business-api.tiktok.com/portal/docs/create-a-developer-app/v1.3), choose that it serves external accounts, add the ads redirect URI(s) used by the code (confirm the exact path with the code auditor; I could not see it), wait about 2-3 business days, and copy back the App ID and Secret. Note: the group's env var list has no variable for these, so the code auditor must confirm where ads credentials are configured. The API version api/v1.3 is current.",
+  "ORDER OF WORK TODAY: TikTok console setup + URL verification + sandbox (start the one-hour target-user clock first) -> Canva console setup and own-account test while waiting -> record videos -> submit TikTok app review -> submit Canva review."
+ ],
+ "first_connect_blockers": [
+  "TikTok production key cannot call any API before approval; testing with production credentials will look like a code bug. Use the sandbox credentials.",
+  "TikTok unaudited posting: the target TikTok ACCOUNT must be private, else the publish call is blocked (unaudited_client_can_only_post_to_private_accounts). Posts that do succeed are private and capped at 5 users per 24h.",
+  "TikTok sandbox target-user list can take up to an hour (unverified this session); authorizing a non-listed account fails.",
+  "TikTok redirect URI must be byte-identical to a registered one: https only, no query, no fragment, under 512 chars, max 10; scopes in the authorize URL are comma-separated.",
+  "TikTok URL verification (Terms, Privacy, Web URL, and pull-from domains) must be done before the review can be submitted; DNS TXT additions must not disturb the single SPF TXT record.",
+  "TikTok review/audit rejection risks: ai.bmapz.com root page not showing Privacy/Terms links without a menu; composer not driven by creator_info; requesting scopes not shown in the demo (video.list); beta/incomplete app.",
+  "TikTok Ads is a separate program (business-api.tiktok.com) with its own app id/secret and review; TIKTOK_CLIENT_KEY/SECRET will not work there. The env var list for this group contains no ads credential variable.",
+  "Canva: only owners/team members can connect before approval; a customer outside our Canva team is expected to be rejected. Test with the owner's own Canva account.",
+  "Canva: choosing Private instead of Public at app creation is irreversible, needs an Enterprise plan and makes customer launch impossible; the app would have to be recreated (new client id/secret).",
+  "Canva: with two redirect URLs registered the backend must send redirect_uri explicitly; the max number of redirect URLs is undocumented, so if the second is rejected use the Railway URL first.",
+  "Canva: PKCE S256 required; scopes space-separated and must be ticked in the portal; the secret is generated once; each refresh token is single-use so a rotation bug appears hours after a successful connect.",
+  "Canva: any Preview-API endpoint in Bmapz's calls will fail public review; any local/127.0.0.1 redirect URL blocks submission; Marketplace developer verification needs an identity document and legal-entity details.",
+  "Canva: possible MFA prompt before app creation (older docs; unconfirmed today)."
+ ],
+ "confidence": "medium",
+ "costs": [
+  {
+   "item": "TikTok app review (Login Kit + Content Posting)",
+   "cost": "No fee found",
+   "note": "Wait: 'several days to two weeks' (official FAQ). Docs are silent on fees, which is not proof of none."
+  },
+  {
+   "item": "TikTok Content Posting API audit",
+   "cost": "No fee found",
+   "note": "No published SLA. Third-party: 'weeks, and variable' / 2-6 weeks."
+  },
+  {
+   "item": "TikTok sandbox",
+   "cost": "No fee found",
+   "note": "Up to 5 sandboxes, 10 target users each; setup hours (target user propagation up to an hour, unverified today)."
+  },
+  {
+   "item": "TikTok API for Business developer app",
+   "cost": "No developer fee found; needs a TikTok For Business account",
+   "note": "Review 2-3 business days (search extract of official docs / older integrator guide). Whether an ad account with spend is needed is unverified. Official pages not readable (JS-rendered)."
+  },
+  {
+   "item": "Canva public integration (create + submit + review)",
+   "cost": "No fee found; no paid Canva plan needed for a public integration (search extract, not a fetched sentence)",
+   "note": "Review has no published duration: 'It's not practical for us to provide an average or expected duration'. Marketplace listing, if applicable, is added manually 'typically within a week' after release (apps surface; unconfirmed for REST-only)."
+  },
+  {
+   "item": "Canva PRIVATE integration",
+   "cost": "Requires a Canva Enterprise plan (price not published; contact sales)",
+   "note": "NOT recommended: team-only and cannot be converted to public."
+  },
+  {
+   "item": "Canva developer verification",
+   "cost": "No fee stated",
+   "note": "Requires name, email, phone, address, registration details and an identity document; verification time not stated."
+  },
+  {
+   "item": "DNS TXT verification record for TikTok",
+   "cost": "None",
+   "note": "Added at the registrar panel; keep exactly one SPF record."
+  }
+ ],
+ "uncertainties": [
+  "Business entity country is unknown: TikTok API/product availability, TikTok for Business account/verification, and Canva developer verification (legal-entity document) can depend on country. Not checked.",
+  "Canva: no official sentence found stating who may authorize an app before review; 'team members only' rests on a search extract of Canva's Creating-integrations text (Brand Restricted default) plus the 'public after review' wording. First attempt by a non-team user is the real test.",
+  "Canva: whether Marketplace developer verification applies to REST-API-only public integrations is not stated; assume yes.",
+  "Canva: maximum number of redirect URLs, HTTPS enforcement for non-local URLs, refresh-token lifetime and the exact access-token lifetime (4h) were not confirmed in today's pages.",
+  "Canva: MFA requirement and the exact portal URL for the Developer Portal were not confirmed today (reach it from the canva.dev 'Developer Portal' link).",
+  "Canva: which of Bmapz's endpoints (URL asset upload, URL design import) are Preview, and thus review-blocking, was not checked.",
+  "TikTok: whether the sandbox has its own client key/secret, and whether production credentials are hidden until approval, is not stated by TikTok (a third-party doc says keys can be revealed 'once your App is Live').",
+  "TikTok: whether video.list / Display API work in sandbox is unverified; video.list may be unnecessary.",
+  "TikTok: the exact UX requirements the audit checks (nickname, preview, consent declaration, commercial-content toggles) were not re-fetched in full; only corroborated via a third-party 2026 write-up.",
+  "TikTok: whether editing redirect URIs or config on an already-approved app triggers re-review is not stated; registering both callbacks before submission avoids the question.",
+  "TikTok Business API: official portal pages are JS-rendered; registration eligibility (individual developer rejection, company email), approval time (2-3 business days), token lifetimes, and the existence of a Business API sandbox are only from third-party or search extracts. v1.3 current is medium confidence.",
+  "TikTok Business API: the callback path the code uses for ads and the env vars holding the ads app id/secret are unknown (group env list shows only TIKTOK_CLIENT_KEY/SECRET). Code auditor must confirm.",
+  "No TikTok policy change after 2026-09-23 was detected (key pages are headed 'last updated August 4, 2026'), but absence of evidence is not proof; Canva's changelog shows only unrelated entries (2026-09-23 GA of chart-data/video autofill; 2026-09-29 and 2026-10-01 new Preview generation APIs; 2026-09-21 Autofill opened to Pro/Teams).",
+  "Calendar estimates for the TikTok audit and the Canva review are judgment based on third-party reports; neither platform publishes an SLA."
+ ]
+}
