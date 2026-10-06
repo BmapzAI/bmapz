@@ -5,6 +5,7 @@ import { safeFetch } from '../lib/safeFetch.js';
 import { sendServerError } from '../lib/httpError.js';
 import { askPerplexity } from '../lib/perplexity.js';
 import { getGoogleAccessToken } from '../lib/googleToken.js';
+import { getXAccessToken, X_API_BASE } from '../lib/xApi.js';
 import { GOOGLE_ADS_API_VERSION, googleAdsHeaders, googleAdsApiError, googleAdsErrorMessage } from '../lib/googleAds.js';
 
 const router = Router();
@@ -618,26 +619,45 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         const r = await fetch('https://api.linkedin.com/v2/userinfo', { headers: { Authorization: `Bearer ${token}` } });
         const d = await r.json().catch(() => ({}));
         if (r.ok && (d.sub || d.email)) {
+          // Connected is not the same as able to POST: connecting LinkedIn Ads used to replace this
+          // token with one that has no w_member_social, leaving a green card that 403s on every post.
+          const granted = String(k.linkedin_scopes || '');
+          if (granted && !granted.includes('w_member_social')) {
+            return res.json({ success: false, message: `LinkedIn is connected${d.name ? ` (${d.name})` : ''} but the permission to POST was not granted. Disconnect and reconnect LinkedIn.` });
+          }
           return res.json({ success: true, message: `LinkedIn connected${d.name ? `: ${d.name}` : ''}` });
         }
         return res.json({ success: false, message: d.message || 'LinkedIn token is invalid or expired. Please reconnect.' });
       }
 
       case 'twitter': {
-        const token = k.twitter_access_token;
+        if (!k.twitter_access_token && !k.twitter_refresh_token) {
+          return res.json({ success: false, message: 'X/Twitter is not connected. Run the X connect flow first.' });
+        }
+        // X access tokens last ~2 hours, so refresh first or this reports "expired" for a grant that is fine.
+        let token;
+        try {
+          token = await getXAccessToken(req.companyId, k);
+        } catch (e) {
+          return res.json({ success: false, message: `X refused to refresh the token (${e.message}). Disconnect and reconnect X.` });
+        }
         if (!token) return res.json({ success: false, message: 'X/Twitter is not connected. Run the X connect flow first.' });
-        const r = await fetch('https://api.twitter.com/2/users/me', { headers: { Authorization: `Bearer ${token}` } });
+        const r = await fetch(`${X_API_BASE}/2/users/me`, { headers: { Authorization: `Bearer ${token}` } });
         const d = await r.json().catch(() => ({}));
         if (r.ok && d.data?.id) {
-          return res.json({ success: true, message: `X/Twitter connected (@${d.data.username || d.data.id})` });
+          // A read passing does not prove POSTING works: posting is billed per request from prepaid credits.
+          return res.json({ success: true, message: `X/Twitter connected (@${d.data.username || d.data.id}). Posting is pay-per-use, so it also needs credits on the X developer account.` });
         }
-        // Read works on far cheaper tiers than write, so a passing read test does
-        // not prove posting will work. Say so rather than implying a full pass.
         const msg = d.detail || d.title || `HTTP ${r.status}`;
-        if (r.status === 403) {
-          return res.json({ success: false, message: `X token is valid but the API access tier forbids this call: ${msg}. Posting needs a paid tier.` });
+        // A garbage or expired token comes back as 403 "Unsupported Authentication", which is NOT
+        // an access-tier problem. The old wording blamed the plan for a bad token.
+        if (r.status === 401 || String(d.type || '').includes('unsupported-authentication')) {
+          return res.json({ success: false, message: `X token is invalid or expired (${msg}). Please reconnect.` });
         }
-        return res.json({ success: false, message: `X/Twitter token invalid or expired: ${msg}` });
+        if (r.status === 402 || /credit/i.test(msg)) {
+          return res.json({ success: false, message: `The X developer account has no API credits (${msg}). Add credits in the X developer console.` });
+        }
+        return res.json({ success: false, message: `X rejected the call (${msg}). Check the X app is in a project with credits and has the tweet.read, tweet.write and users.read permissions.` });
       }
 
       case 'tiktok':

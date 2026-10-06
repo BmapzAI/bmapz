@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { getXAccessToken, X_API_BASE } from '../lib/xApi.js';
 
 const router = Router();
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
@@ -258,14 +259,16 @@ router.get('/feed', requireAuth, async (req, res) => {
     if (!platform || platform === 'twitter') {
       if (company.twitter_access_token) {
         try {
-          const meResp = await fetch('https://api.twitter.com/2/users/me', {
-            headers: { Authorization: `Bearer ${company.twitter_access_token}` }
+          const xToken = await getXAccessToken(company.id, company);
+          const meResp = await fetch(`${X_API_BASE}/2/users/me`, {
+            headers: { Authorization: `Bearer ${xToken}` }
           });
           const meData = await meResp.json();
+          if (!meResp.ok) console.warn(`[social feed] X users/me failed: HTTP ${meResp.status} ${meData.detail || meData.title || ''}`);
           if (meData.data?.id) {
             const r = await fetch(
-              `https://api.twitter.com/2/users/${meData.data.id}/tweets?max_results=20&tweet.fields=created_at,public_metrics`,
-              { headers: { Authorization: `Bearer ${company.twitter_access_token}` } }
+              `${X_API_BASE}/2/users/${meData.data.id}/tweets?max_results=20&tweet.fields=created_at,public_metrics`,
+              { headers: { Authorization: `Bearer ${xToken}` } }
             );
             const d = await r.json();
             (d.data || []).forEach(t => feed.push({
@@ -404,7 +407,8 @@ async function publishToLinkedIn(company, content, mediaUrls) {
   const meResp = await fetch('https://api.linkedin.com/v2/userinfo', {
     headers: { Authorization: `Bearer ${token}` }
   });
-  const me = await meResp.json();
+  const me = await meResp.json().catch(() => ({}));
+  if (!meResp.ok || !me.sub) throw new Error('LinkedIn token is invalid or missing the sign-in permission - reconnect LinkedIn');
   const authorUrn = `urn:li:person:${me.sub}`;
 
   const body = {
@@ -424,23 +428,32 @@ async function publishToLinkedIn(company, content, mediaUrls) {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const d = await r.json();
-  if (d.status >= 400) throw new Error(d.message || 'LinkedIn post failed');
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.message || `LinkedIn post failed (HTTP ${r.status})`);
   return { post_id: d.id };
 }
 
 async function publishToTwitter(company, content, mediaUrls) {
-  const token = company.twitter_access_token;
+  // Access tokens last ~2 hours; refresh first (company.id is present: this row came from select('*')).
+  let token;
+  try {
+    token = await getXAccessToken(company.id, company);
+  } catch (e) {
+    throw new Error(`X needs to be reconnected: ${e.message}`);
+  }
   if (!token) throw new Error('Twitter/X not connected');
 
-  const r = await fetch('https://api.twitter.com/2/tweets', {
+  const r = await fetch(`${X_API_BASE}/2/tweets`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: content }),
   });
-  const d = await r.json();
-  if (d.errors) throw new Error(d.errors[0]?.message || 'Tweet failed');
-  return { post_id: d.data?.id };
+  const d = await r.json().catch(() => ({}));
+  // A real post is HTTP 201 with data.id. Anything else is a failure, whatever shape the body has.
+  if (r.status !== 201 || !d.data?.id) {
+    throw new Error(d.detail || d.title || d.errors?.[0]?.message || `X post failed (HTTP ${r.status})`);
+  }
+  return { post_id: d.data.id };
 }
 
 export default router;

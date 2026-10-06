@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
+import { X_API_BASE, X_AUTH_URL, pkceChallenge } from '../lib/xApi.js';
 
 const router = Router();
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
@@ -567,7 +568,7 @@ router.get('/meta/callback', async (req, res) => {
 router.get(['/linkedin/initiate', '/linkedin/initiate-url'], allowLaunchTicket, async (req, res) => {
   try {
     const { type = 'linkedin', origin } = req.query;
-    const { apiKeys } = await getCompanyKeys(req.companyId);
+    const { apiKeys, integrationStatus } = await getCompanyKeys(req.companyId);
 
     const clientId = apiKeys.linkedin_client_id || process.env.LINKEDIN_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'LinkedIn Client ID not configured' });
@@ -578,9 +579,20 @@ router.get(['/linkedin/initiate', '/linkedin/initiate-url'], allowLaunchTicket, 
       origin: origin || FRONTEND_URL,
     }, res);
     const redirectUri = `${API_URL}/api/oauth/linkedin/callback`;
-    const linkedinScopes = type === 'linkedin_ads'
-      ? 'openid profile email r_ads r_ads_reporting'
-      : 'openid profile email w_member_social';
+    // LinkedIn invalidates a member's earlier token when a DIFFERENT scope set is granted, and
+    // every LinkedIn integration writes the same stored token. Connecting Ads therefore killed
+    // posting and connecting posting killed Ads, with both cards still showing "connected".
+    // So ask for the UNION of what this company already has plus what is being connected now.
+    // Ads scopes are only added when ads are already connected or being connected: LinkedIn
+    // refuses the whole authorisation for a scope the app has not been approved for.
+    const status = integrationStatus || {};
+    const wantsPosting = type === 'linkedin' || type === 'linkedin_social' || !!(status.linkedin || status.linkedin_social);
+    const wantsAds = type === 'linkedin_ads' || !!status.linkedin_ads;
+    // r_ads is read-only; creating campaigns needs rw_ads, which may need a higher Advertising
+    // API tier than reporting does. Reporting is the default; LINKEDIN_ADS_WRITE=true opts in.
+    const adsScopes = process.env.LINKEDIN_ADS_WRITE === 'true' ? 'rw_ads r_ads_reporting' : 'r_ads r_ads_reporting';
+    const linkedinScopes = ['openid profile email', wantsPosting ? 'w_member_social' : '', wantsAds ? adsScopes : '']
+      .filter(Boolean).join(' ');
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: clientId,
@@ -615,10 +627,13 @@ router.get('/linkedin/callback', async (req, res) => {
       body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: clientId, client_secret: clientSecret }),
     });
     const tokens = await tokenResp.json();
-    if (tokens.error) return res.send(popupHtml('error', 'LinkedIn', tokens.error_description));
+    if (tokens.error || !tokens.access_token) return res.send(popupHtml('error', 'LinkedIn', tokens.error_description));
 
     const newKeys = {
       linkedin_access_token: tokens.access_token,
+      // What LinkedIn ACTUALLY granted, so a test can tell "connected" from "connected but
+      // cannot post". Comma-separated in LinkedIn's token response.
+      linkedin_scopes: String(tokens.scope || ''),
       linkedin_token_expires_at: new Date(Date.now() + (tokens.expires_in || 5184000) * 1000).toISOString(),
     };
 
@@ -654,11 +669,12 @@ router.get(['/twitter/initiate', '/twitter/initiate-url'], allowLaunchTicket, as
       redirect_uri: redirectUri,
       scope: 'tweet.read tweet.write users.read offline.access',
       state,
-      code_challenge: codeVerifier,
-      code_challenge_method: 'plain',
+      // S256, not 'plain': with plain the challenge IS the secret verifier, so PKCE protected nothing.
+      code_challenge: pkceChallenge(codeVerifier),
+      code_challenge_method: 'S256',
     });
 
-    const authUrl = `https://twitter.com/i/oauth2/authorize?${params}`;
+    const authUrl = `${X_AUTH_URL}?${params}`;
     if (req.path.endsWith('/initiate-url')) return res.json({ authUrl });
     res.redirect(authUrl);
   } catch (err) {
@@ -679,7 +695,7 @@ router.get('/twitter/callback', async (req, res) => {
     const redirectUri = `${API_URL}/api/oauth/twitter/callback`;
 
     const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-    const tokenResp = await fetch('https://api.twitter.com/2/oauth2/token', {
+    const tokenResp = await fetch(`${X_API_BASE}/2/oauth2/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -693,9 +709,18 @@ router.get('/twitter/callback', async (req, res) => {
       }),
     });
     const tokens = await tokenResp.json();
-    if (tokens.error) return res.send(popupHtml('error', 'Twitter/X', tokens.error_description));
+    // X reports failures as problem+json (title/detail) as well as OAuth-style error fields, so
+    // checking tokens.error alone could save an undefined token and report success.
+    if (tokens.error || !tokens.access_token) return res.send(popupHtml('error', 'Twitter/X', tokens.error_description || tokens.detail));
 
-    await saveOAuthTokens(companyId, { twitter_access_token: tokens.access_token }, integrationType);
+    // X access tokens last about TWO HOURS. offline.access makes X issue a refresh token, which
+    // was thrown away, so the integration died two hours after connecting while still showing
+    // "connected". Store the refresh token and the expiry (see lib/xApi.js getXAccessToken).
+    await saveOAuthTokens(companyId, {
+      twitter_access_token: tokens.access_token,
+      ...(tokens.refresh_token ? { twitter_refresh_token: tokens.refresh_token } : {}),
+      twitter_token_expires_at: new Date(Date.now() + (tokens.expires_in || 7200) * 1000).toISOString(),
+    }, integrationType);
     res.send(popupHtml('success', 'Twitter/X', null, integrationType));
   } catch (err) {
     res.send(popupHtml('error', 'Twitter/X', err.message));
@@ -841,8 +866,10 @@ router.post('/disconnect', requireAuth, requireCompanyAdmin, async (req, res) =>
       meta: ['meta_access_token', 'meta_token_expires_at', 'facebook_page_id', 'facebook_page_access_token', 'instagram_business_account_id'],
       facebook: ['meta_access_token', 'meta_token_expires_at', 'facebook_page_id', 'facebook_page_access_token'],
       instagram: ['instagram_business_account_id'],
-      linkedin: ['linkedin_access_token', 'linkedin_token_expires_at'],
-      twitter: ['twitter_access_token', 'twitter_access_secret'],
+      linkedin: ['linkedin_access_token', 'linkedin_token_expires_at', 'linkedin_scopes'],
+      linkedin_social: ['linkedin_access_token', 'linkedin_token_expires_at', 'linkedin_scopes'],
+      linkedin_ads: ['linkedin_ads_access_token', 'linkedin_ads_account_id', 'linkedin_ads_connected'],
+      twitter: ['twitter_access_token', 'twitter_refresh_token', 'twitter_token_expires_at', 'twitter_access_secret'],
       tiktok: ['tiktok_access_token', 'tiktok_token_expires_at'],
     };
 
