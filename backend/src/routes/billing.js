@@ -20,7 +20,7 @@ router.get('/payment-method', requireAuth, async (_req, res) => {
 
 async function getStripe() {
   const Stripe = (await import('stripe')).default;
-  return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+  return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: process.env.STRIPE_API_VERSION || '2024-06-20' });
 }
 
 // GET /api/billing/subscription

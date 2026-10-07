@@ -16,10 +16,10 @@ export async function sendCompanyEmail(apiKeys, { to, subject, html, text, from,
     return sendViaSMTP(company, { to, subject, html, text, from, replyTo });
   }
   if (company.resend_api_key) {
-    return sendViaResend(company.resend_api_key, company.resend_from_email, { to, subject, html, text, from });
+    return sendViaResend(company.resend_api_key, company.resend_from_email, { to, subject, html, text, from, replyTo });
   }
   if (process.env.RESEND_API_KEY) {
-    return sendViaResend(process.env.RESEND_API_KEY, process.env.RESEND_FROM_EMAIL, { to, subject, html, text, from });
+    return sendViaResend(process.env.RESEND_API_KEY, process.env.RESEND_FROM_EMAIL, { to, subject, html, text, from, replyTo });
   }
   const err = new Error('No email provider configured. Connect Gmail, SMTP, or Resend.');
   err.code = 'NO_EMAIL_PROVIDER';
@@ -79,17 +79,35 @@ export async function sendViaSMTP(company, { to, subject, html, text, from, repl
   });
 }
 
-export async function sendViaResend(apiKey, fromEmail, { to, subject, html, text, from }) {
+export async function sendViaResend(apiKey, fromEmail, { to, subject, html, text, from, replyTo }) {
+  const sender = from || fromEmail;
+  // This used to fall back to noreply@bmapzai.com. That domain does not resolve (NXDOMAIN, checked
+  // 2026-10-06), so it can never be verified in Resend and every send that used it was refused.
+  if (!sender) {
+    const e = new Error('No From address is configured for Resend. Set RESEND_FROM_EMAIL to an address on a domain verified in Resend.');
+    e.code = 'NO_FROM_ADDRESS';
+    throw e;
+  }
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: from || fromEmail || 'noreply@bmapzai.com',
+      from: sender,
       to: Array.isArray(to) ? to : [to],
       subject, html, text,
+      // Resend's field is reply_to; replyTo was accepted by this function and dropped on the floor.
+      ...(replyTo ? { reply_to: replyTo } : {}),
     }),
   });
-  const d = await r.json();
-  if (d.error) throw new Error(d.error.message || 'Resend failed');
+  const d = await r.json().catch(() => ({}));
+  // Resend does NOT use an `error` key. Failures are { statusCode, name, message } with a 4xx/5xx status
+  // (probed: a bad key is HTTP 401 {"message":"API key is invalid","name":"validation_error"}), so the old
+  // `if (d.error)` check treated EVERY failed send - bad key, unverified domain, rate limit - as sent.
+  if (!r.ok || !d.id) {
+    const e = new Error(d.message || `Resend failed (HTTP ${r.status})`);
+    e.status = r.status;
+    e.code = d.name;
+    throw e;
+  }
   return d;
 }

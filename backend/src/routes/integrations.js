@@ -552,8 +552,14 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       case 'email_resend': {
         const apiKey = clean(k.resend_api_key || process.env.RESEND_API_KEY);
         if (!apiKey) return res.json({ success: false, message: 'Resend API key not set' });
-        const r = await fetch('https://api.resend.com/domains', { headers: { Authorization: `Bearer ${apiKey}` } });
+        // limit=100: the default page is 20 domains, so a team with more could be told a verified domain is not.
+        const r = await fetch('https://api.resend.com/domains?limit=100', { headers: { Authorization: `Bearer ${apiKey}` } });
         const d = await r.json().catch(() => ({}));
+        // A sending-only key can send but cannot LIST domains, so it answers restricted_api_key. That is a
+        // valid key, not a rejected one - reporting it as rejected would push people off the safer key type.
+        if (!r.ok && d.name === 'restricted_api_key') {
+          return res.json({ success: true, message: 'Resend sending-only key accepted. Domain status cannot be read with this key type; send a test email to confirm the From address works.' });
+        }
         if (!r.ok) return res.json({ success: false, message: `Resend key rejected (${r.status}): ${d.message || 'invalid key'}` });
 
         // A valid key is not the same as being able to send. Resend only delivers
@@ -587,13 +593,18 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) return res.json({ success: false, message: `Stripe key rejected (${r.status}): ${d.error?.message || 'invalid key'}` });
         const mode = /^sk_live_/.test(apiKey) ? 'LIVE' : /^sk_test_/.test(apiKey) ? 'TEST' : 'unknown';
-        const webhookSet = !!clean(process.env.STRIPE_WEBHOOK_SECRET);
+        // "Any non-empty value" passed a mistyped secret; Stripe signing secrets start with whsec_.
+        const webhookSet = /^whsec_/.test(clean(process.env.STRIPE_WEBHOOK_SECRET));
+        // A valid key plus a webhook secret still cannot take money if checkout has no price to charge: it
+        // answers 400 "price_id is required". Check the per-plan price ids the checkout route resolves.
+        const missingPrices = ['STARTER', 'GROWTH', 'SCALE'].filter((p) =>
+          !(process.env[`STRIPE_PRICE_ID_${p}_MONTHLY`] || process.env[`STRIPE_PRICE_ID_${p}`]));
         const bits = [`Stripe connected in ${mode} mode`, d.id ? `account ${d.id}` : null,
           d.charges_enabled === false ? 'charges NOT enabled yet' : null,
-          webhookSet ? null : 'STRIPE_WEBHOOK_SECRET is missing, so subscription events will be ignored'].filter(Boolean);
-        // Charges disabled or no webhook secret means billing does not actually
-        // work end to end, so this is not a pass.
-        const ok = d.charges_enabled !== false && webhookSet;
+          webhookSet ? null : 'STRIPE_WEBHOOK_SECRET is missing or is not a whsec_ signing secret, so subscription events will be rejected',
+          missingPrices.length ? `no price id for: ${missingPrices.join(', ')} (set STRIPE_PRICE_ID_<PLAN>_MONTHLY), so checkout will fail` : null].filter(Boolean);
+        // Charges disabled, no webhook secret or no prices means billing does not actually work end to end.
+        const ok = d.charges_enabled !== false && webhookSet && missingPrices.length === 0;
         return res.json({ success: ok, message: bits.join(' — ') });
       }
 

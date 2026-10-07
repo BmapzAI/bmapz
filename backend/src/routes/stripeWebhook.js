@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { toLocalSubscriptionStatus } from '../lib/stripeStatus.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { grantAddon } from './addons.js';
 import { PLAN_MONTHLY_CREDITS, PLAN_SCAN_TOKENS } from '../lib/aiCredits.js';
@@ -26,7 +27,7 @@ router.post('/api/stripe/webhook', async (req, res) => {
   let event;
   try {
     const Stripe = (await import('stripe')).default;
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: process.env.STRIPE_API_VERSION || '2024-06-20' });
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
     console.error('[stripe webhook] signature verification failed:', err.message);
@@ -56,10 +57,20 @@ router.post('/api/stripe/webhook', async (req, res) => {
     return res.status(503).json({ error: 'temporarily unable to process' });
   }
 
+  // Give the event back so Stripe's RETRY is processed. The row above means "already handled", so any
+  // path that answers failure after recording it must remove it, or the retry is acknowledged as a duplicate
+  // and the work is never done. Only safe where nothing has been written yet, or the write is idempotent.
+  const unlock = () => supabaseAdmin.from('webhook_events').delete().eq('id', event.id);
+
   try {
     switch (event.type) {
-      case 'checkout.session.completed': {
+      // A delayed-notification payment method completes the Checkout session UNPAID and pays later,
+      // announcing it with async_payment_succeeded. Granting on 'completed' alone gave the plan away
+      // before the money arrived, and nothing handled the later event.
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded': {
         const session = event.data.object;
+        if (session.payment_status === 'unpaid') break;
         const companyId = session.metadata?.company_id;
         const plan = session.metadata?.plan || 'starter';
         if (!companyId) break;
@@ -115,6 +126,9 @@ router.post('/api/stripe/webhook', async (req, res) => {
         // Fail the webhook so Stripe RETRIES, rather than writing on a bad read.
         if (subReadErr) {
           console.error('[stripe webhook] subscription read failed, asking Stripe to retry:', subReadErr.message);
+          // Nothing has been written yet, so the event can safely be handed back. Without this the 503
+          // was followed by a retry that hit the duplicate row and was acknowledged "already processed".
+          await unlock();
           return res.status(503).json({ error: 'subscription read failed' });
         }
 
@@ -183,36 +197,57 @@ router.post('/api/stripe/webhook', async (req, res) => {
 
       case 'customer.subscription.updated': {
         const sub = event.data.object;
-        await supabaseAdmin
+        // The table accepts five statuses and Stripe has eight (see lib/stripeStatus.js). Writing the raw
+        // value violated the constraint and the error was discarded, so an unpaid customer stayed active.
+        const localStatus = toLocalSubscriptionStatus(sub.status);
+        if (!localStatus) {
+          console.error(`[stripe webhook] unrecognised subscription status "${sub.status}" on ${sub.id}; not writing it`);
+          break;
+        }
+        const { error: subUpdErr } = await supabaseAdmin
           .from('subscriptions')
           .update({
-            status: sub.status,
+            status: localStatus,
             stripe_subscription_id: sub.id,
           })
           .eq('stripe_customer_id', sub.customer);
+        if (subUpdErr) throw subUpdErr;
         break;
       }
 
       case 'customer.subscription.deleted': {
         const sub = event.data.object;
-        await supabaseAdmin
+        const { error: subDelErr } = await supabaseAdmin
           .from('subscriptions')
           .update({ status: 'canceled', plan: 'trial', ai_credits_total: 100 })
           .eq('stripe_customer_id', sub.customer);
+        if (subDelErr) throw subDelErr;
         break;
       }
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object;
-        await supabaseAdmin
+        const { error: invErr } = await supabaseAdmin
           .from('subscriptions')
           .update({ status: 'past_due' })
           .eq('stripe_customer_id', invoice.customer);
+        if (invErr) throw invErr;
         break;
       }
     }
   } catch (err) {
     console.error('[stripe webhook] handler error:', err.message);
+    // This used to fall through to 200, so a failed handler was acknowledged and never retried.
+    // The status updates above are idempotent, so for those the event is given back and Stripe is told to
+    // retry. checkout.session.* performs several NON-atomic writes: unlocking after a partial failure could
+    // grant twice, so for those the row is kept (never double-grant) but the failure is made loud and
+    // greppable instead of vanishing. Making that path transactional is the open fix (AGENT_HANDOFF.md).
+    if (/^checkout\.session\./.test(event.type)) {
+      console.error(`[stripe webhook] NEEDS MANUAL RECONCILIATION: ${event.type} ${event.id} failed partway (${err.message})`);
+    } else {
+      await unlock();
+      return res.status(500).json({ error: 'handler failed, retry' });
+    }
   }
 
   res.json({ received: true });
