@@ -1,6 +1,11 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { api, apiFetch } from '@/api/apiClient';
+import { isNativeApp } from '@/lib/platform';
+import { authEventPlan } from '@/lib/authEvents';
+
+// The links in e-mails (sign-up confirmation) must open on the website: the app's own origin (capacitor://localhost or https://localhost) is not a page any mail client can open.
+const WEB_APP_URL = import.meta.env.VITE_APP_URL || 'https://ai.bmapz.com';
 
 const AuthContext = createContext(null);
 
@@ -10,9 +15,12 @@ export function AuthProvider({ children }) {
   const [company, setCompany] = useState(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
+  // Who is on screen right now, so a repeat "signed in" announcement for the same person does not reset the whole app.
+  const loadedUserId = useRef(null);
 
-  const loadProfile = useCallback(async (session) => {
+  const loadProfile = useCallback(async (session, { silent = false } = {}) => {
     if (!session) {
+      loadedUserId.current = null;
       setUser(null); setDbUser(null); setCompany(null);
       setIsLoadingAuth(false);
       return;
@@ -23,6 +31,7 @@ export function AuthProvider({ children }) {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       setDbUser(dbU); setCompany(co); setAuthError(null);
+      loadedUserId.current = session.user.id;
       // A sales team member who signs in becomes available for leads again
       // (unless they deliberately set themselves Offline).
       if (dbU?.is_sales_team) {
@@ -30,6 +39,8 @@ export function AuthProvider({ children }) {
       }
     } catch (err) {
       console.error('[AuthContext] loadProfile error:', err);
+      // A quiet refresh that fails (no signal) must not replace a working app with an error screen.
+      if (silent) return;
       const msg = err.message || '';
       if (msg.includes('403') || msg.toLowerCase().includes('not registered') || msg.toLowerCase().includes('complete registration')) {
         setAuthError({ type: 'unknown', message: msg });
@@ -43,9 +54,11 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => { loadProfile(session); });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsLoadingAuth(true);
-      loadProfile(session);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const plan = authEventPlan({ event, sessionUserId: session?.user?.id, loadedUserId: loadedUserId.current });
+      if (!plan.reload) return;
+      if (plan.spinner) setIsLoadingAuth(true);
+      loadProfile(session, { silent: plan.silent });
     });
     return () => subscription.unsubscribe();
   }, [loadProfile]);
@@ -57,6 +70,9 @@ export function AuthProvider({ children }) {
   };
 
   const signInWithGoogle = async () => {
+    // This redirect flow cannot work inside the app (its origin is not a page Google or Supabase can send the browser back to).
+    // The app signs in through the phone's account picker instead (lib/nativeAuth.js, shown by GoogleSignInButton).
+    if (isNativeApp()) throw new Error('Use the Continue with Google button.');
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -73,7 +89,7 @@ export function AuthProvider({ children }) {
       email, password,
       options: {
         data: { full_name, company_name },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${isNativeApp() ? WEB_APP_URL : window.location.origin}/auth/callback`,
       },
     });
     if (error) throw error;
@@ -87,7 +103,8 @@ export function AuthProvider({ children }) {
     if (dbUser?.is_sales_team) {
       await api.patch('/api/users/me/presence', { connected: false }).catch(() => {});
     }
-    await supabase.auth.signOut();
+    // On the phone, sign out of THIS device only: the default scope is global and would also end the person's session on their computer.
+    await supabase.auth.signOut(isNativeApp() ? { scope: 'local' } : undefined);
     api.post('/api/auth/logout').catch(() => {});
     setUser(null); setDbUser(null); setCompany(null);
     if (shouldRedirect) window.location.href = '/';

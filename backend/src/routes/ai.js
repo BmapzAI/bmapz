@@ -26,6 +26,7 @@ import {
 } from '../lib/aiCredits.js';
 import { getCompanyBrain, recordOutcomeLearning } from '../lib/companyBrain.js';
 import { getLiveModels, getLiveImageModels } from '../lib/modelRegistry.js';
+import { audioUploadFor } from '../lib/audioUpload.js';
 
 const router = Router();
 
@@ -1428,7 +1429,8 @@ router.post('/transcribe', requireAuth, async (req, res) => {
     const client = await getOpenAIClient(req.companyId, null, req.dbUser?.role);
     const { toFile } = await import('openai');
     const buffer = Buffer.from(audio_base64, 'base64');
-    const file = await toFile(buffer, filename, { type: 'audio/webm' });
+    const upload = audioUploadFor(filename);
+    const file = await toFile(buffer, upload.name, { type: upload.type });
 
     // whisper-1 shuts down 2027-02-26: set OPENAI_TRANSCRIBE_MODEL to the replacement before then.
     const params = { file, model: process.env.OPENAI_TRANSCRIBE_MODEL || 'whisper-1' };

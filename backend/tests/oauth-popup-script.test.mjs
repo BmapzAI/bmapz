@@ -23,10 +23,10 @@ try { new Function(body); } catch { valid = false; }
 t('emitted popup.js is syntactically valid', valid);
 t('emitted regex is not a comment (the template-literal escape trap)', !body.includes('///+') && /replace\(\/\\\/\+\$\//.test(body), body.match(/replace\((.*?),/)?.[1]);
 
-function run({ status, opener, target }) {
+function run({ status, opener, target, client }) {
   const calls = { posted: null, replaced: null, closed: 0 };
   vm.runInNewContext(body, {
-    document: { body: { dataset: { status, provider: 'Google', integration: 'gmail', target } } },
+    document: { body: { dataset: { status, provider: 'Google', integration: 'gmail', target, ...(client ? { client } : {}) } }, getElementById: (id) => (id === 'back' && client === 'app' ? { href: 'bmapz://oauth?status=' + status + '&provider=google&integration=gmail' } : null) },
     window: { opener: opener ? { postMessage: (m, o) => { calls.posted = { m, o }; } } : null, close: () => { calls.closed++; } },
     location: { replace: (u) => { calls.replaced = u; } },
     setTimeout: (fn) => fn(), encodeURIComponent,
@@ -39,6 +39,10 @@ c = run({ status: 'success', opener: false, target: 'https://ai.bmapz.com' });
 t('NO opener (severed popup / in-app browser) -> redirects into the app with the outcome', c.replaced === 'https://ai.bmapz.com/Integrations?oauth=success&provider=gmail&prov=Google' && !c.posted, c.replaced);
 c = run({ status: 'error', opener: false, target: 'https://ai.bmapz.com/' });
 t('NO opener + error + trailing slash on the target', c.replaced === 'https://ai.bmapz.com/Integrations?oauth=error&provider=gmail&prov=Google', c.replaced);
+c = run({ status: 'success', opener: false, target: 'https://ai.bmapz.com', client: 'app' });
+t('APP browser (no opener) -> goes back to the app by bmapz://oauth, NOT to the website login', c.replaced === 'bmapz://oauth?status=success&provider=google&integration=gmail' && !c.posted, c.replaced);
+c = run({ status: 'error', opener: false, target: 'https://ai.bmapz.com', client: 'app' });
+t('APP browser + error -> the error status goes back to the app too', (c.replaced || '').startsWith('bmapz://oauth?status=error'), c.replaced);
 c = run({ status: 'success', opener: false, target: '' });
 t('NO opener and no target configured -> only tries to close', !c.replaced && c.closed === 1);
 

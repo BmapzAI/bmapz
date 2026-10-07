@@ -1,0 +1,24 @@
+node_modules/
+www/
+# Native build output and machine-specific files
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+android/.idea/
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+ios/App/App/public/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+ios/App/App/capacitor.config.json
+*.keystore
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist

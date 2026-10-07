@@ -1,10 +1,26 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
 import { X_API_BASE, X_AUTH_URL, pkceChallenge } from '../lib/xApi.js';
 
 const router = Router();
+
+/**
+ * Which client started this connect: the website (a popup) or the Android / iOS app (the system browser).
+ *
+ * It only changes the page the callback shows at the very end: a popup closes itself or goes back to the website, the app's
+ * system browser hands control back to the app through bmapz://oauth. The flag is a short-lived httpOnly cookie in the browser
+ * that started the flow, set from a signed launch ticket, so a page on another site cannot set it. It is request-scoped here
+ * (AsyncLocalStorage) because popupHtml() is called from every provider's callback, including its error paths.
+ */
+const oauthRequest = new AsyncLocalStorage();
+const OAUTH_CLIENT_COOKIE = 'bmapz_oauth_client';
+router.use((req, _res, next) => {
+  oauthRequest.run({ client: readCookie(req, OAUTH_CLIENT_COOKIE) === 'app' ? 'app' : 'web' }, next);
+});
+
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v25.0';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -122,8 +138,8 @@ function encodeOAuthState(payload, res, nonce = null) {
  * The popup now opens OUR initiate route carrying this ticket. That navigation is
  * first-party, so the nonce cookie sticks, and we redirect on to the provider.
  */
-function mintLaunchTicket({ userId, companyId }) {
-  const body = Buffer.from(JSON.stringify({ userId, companyId, purpose: 'launch', issuedAt: Date.now() })).toString('base64url');
+function mintLaunchTicket({ userId, companyId, client }) {
+  const body = Buffer.from(JSON.stringify({ userId, companyId, purpose: 'launch', issuedAt: Date.now(), ...(client === 'app' ? { client: 'app' } : {}) })).toString('base64url');
   return `${body}.${crypto.createHmac('sha256', oauthStateSecret()).update(body).digest('base64url')}`;
 }
 
@@ -133,9 +149,17 @@ function mintLaunchTicket({ userId, companyId }) {
  * Tickets are valid for two minutes — long enough to open a window, too short to
  * be worth capturing — and only ever stand in for the user who minted them.
  */
+function setClientCookie(res, client) {
+  const opts = { httpOnly: true, secure: process.env.NODE_ENV !== 'development', sameSite: 'lax', path: '/api/oauth' };
+  // Always set or cleared, so an app connect followed by a website connect in the same phone browser cannot leave the app
+  // page showing up inside the website's popup.
+  if (client === 'app') res.cookie?.(OAUTH_CLIENT_COOKIE, 'app', { ...opts, maxAge: OAUTH_STATE_MAX_AGE_MS });
+  else res.clearCookie?.(OAUTH_CLIENT_COOKIE, opts);
+}
+
 function allowLaunchTicket(req, res, next) {
   const t = req.query?.t;
-  if (!t) return requireAuth(req, res, next);
+  if (!t) { setClientCookie(res, 'web'); return requireAuth(req, res, next); }
   try {
     const [body, sig] = String(t).split('.');
     if (!body || !sig) throw new Error('malformed');
@@ -149,6 +173,7 @@ function allowLaunchTicket(req, res, next) {
 
     req.dbUser = { id: p.userId };
     req.companyId = p.companyId;
+    setClientCookie(res, p.client === 'app' ? 'app' : 'web');
     return next();
   } catch (err) {
     console.error('[oauth] launch ticket rejected:', err.message);
@@ -169,7 +194,7 @@ router.get('/launch-url', requireAuth, (req, res) => {
     });
   }
 
-  const ticket = mintLaunchTicket({ userId: req.dbUser.id, companyId: req.companyId });
+  const ticket = mintLaunchTicket({ userId: req.dbUser.id, companyId: req.companyId, client: req.query.client === 'app' ? 'app' : 'web' });
   const params = new URLSearchParams({ t: ticket, ...(type ? { type } : {}) });
   res.json({ authUrl: `${API_URL}/api/oauth/${provider}/initiate?${params}` });
 });
@@ -1094,6 +1119,12 @@ function popupHtml(status, provider, errorMsg = null, integrationType = null) {
   // The opener's exact origin, so the message is not broadcast.
   const target = process.env.APP_URL || process.env.FRONTEND_URL || '';
 
+  // Opened by the Android / iOS app in the system browser: there is no opener to message and no website to land on, so the
+  // page's job is to hand control back to the app. The link carries a status and a provider name and nothing else (the code
+  // and tokens never leave the server); the app re-checks the connection with the server and does not trust the link.
+  const fromApp = oauthRequest.getStore()?.client === 'app';
+  const backLink = `bmapz://oauth?status=${ok ? 'success' : 'error'}&provider=${encodeURIComponent(safeProvider)}&integration=${encodeURIComponent(safeType)}`;
+
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>${ok ? 'Connected' : 'Connection failed'}</title></head>
@@ -1102,10 +1133,14 @@ function popupHtml(status, provider, errorMsg = null, integrationType = null) {
   data-provider="${esc(safeProvider)}"
   data-integration="${esc(safeType)}"
   data-target="${esc(target)}"
+  data-client="${fromApp ? 'app' : 'web'}"
 >
-<p>${ok
-    ? 'Connected. This window will close automatically.'
-    : 'That connection could not be completed. Please close this window and try again.'}</p>
+<p>${fromApp
+    ? (ok ? 'Connected.' : 'That connection could not be completed.')
+    : (ok
+      ? 'Connected. This window will close automatically.'
+      : 'That connection could not be completed. Please close this window and try again.')}</p>
+${fromApp ? `<p><a id="back" href="${esc(backLink)}">Return to Bmapz AI</a></p>` : ''}
 <script src="/api/oauth/popup.js"></script>
 </body>
 </html>`;
@@ -1136,6 +1171,14 @@ router.get('/popup.js', (_req, res) => {
   } catch (e) { /* opener gone or cross-origin */ }
 
   if (delivered) { setTimeout(function () { window.close(); }, 300); return; }
+
+  // The app's system browser: go back to the app. The same link is on the page as a button for the browsers that only follow
+  // it when the person taps.
+  if (b.dataset.client === 'app') {
+    var back = document.getElementById('back');
+    if (back && back.href) location.replace(back.href);
+    return;
+  }
 
   // NO OPENER. Verified 2026-10-06: this page is served with COOP same-origin (helmet
   // default) while the app that opens it sends none, which per the spec puts the popup

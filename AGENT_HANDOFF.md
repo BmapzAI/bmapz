@@ -24,6 +24,7 @@ Shared coordination file for Codex and Claude Code.
 | Codex | Review original Base44 zip and add useful findings | `docs/CODE_AUDIT_2026-05-18.md`, `AGENT_HANDOFF.md` | Done | 2026-05-18 |
 | Codex | Set up simple live board for Codex/Claude visibility | `AGENT_LIVE_BOARD.md`, `CLAUDE_COWORK_PROMPT.md`, `AGENT_HANDOFF.md` | Done | 2026-05-18 |
 | Claude | Phase 1 + 2: Fix all JSX corruption; frontend build passes | All `frontend-src/**/*.jsx` files, `backend/src/index.js`, `backend/src/routes/companies.js` | **✅ BUILD PASSING** | 2026-05-18 |
+| Claude (Sonnet 5.5) | MOBILE PHASE 1 (Capacitor, per the project chat "Web app mobile deployment"): new `mobile/` folder (own package.json, Capacitor, android/ios), a small native-platform layer in `frontend-src/lib/`, hiding billing surfaces in the native build, native OAuth return path, CORS for the Capacitor origins in `backend/src/index.js`, `.github/workflows/mobile-*.yml`. Branch `mobile/phase1-capacitor` (NOT main until verified). Do not edit these without reading the "Mobile" section at the end of this file | In progress | 2026-10-07 |
 
 ## Next Recommended Step
 

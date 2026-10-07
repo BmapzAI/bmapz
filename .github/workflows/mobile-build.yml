@@ -1,0 +1,113 @@
+name: Mobile build (Android + iOS, no store credentials)
+
+# Builds the Capacitor apps so a broken mobile build is caught without anyone owning a Mac or an Android SDK.
+# It NEVER deploys anything and uses no signing keys or store accounts: the Android job makes a DEBUG apk, the iOS job
+# compiles for the simulator with code signing off. Release signing and store upload are a separate, later workflow.
+# It runs only on mobile branches, on pull requests that touch the mobile code, or by hand, so it can never affect the
+# production deploy in deploy.yml (which runs on pushes to main only).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['mobile/**']
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'frontend-src/**'
+      - 'package.json'
+      - '.github/workflows/mobile-build.yml'
+
+concurrency:
+  group: mobile-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-bundle:
+    name: Build the web bundle for the apps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install web dependencies
+        run: npm install --no-audit --no-fund
+      - name: Install mobile dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: mobile
+      - name: Build the web bundle (same code as the website, native build flags)
+        run: node mobile/scripts/build-web.mjs
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_API_URL: https://api.bmapz.com
+      - name: Prove the app bundle contains no purchase surface
+        run: node mobile/scripts/check-bundle.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-web-bundle
+          path: mobile/www
+          retention-days: 7
+
+  android-debug:
+    name: Android debug build
+    needs: web-bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-web-bundle
+          path: mobile/www
+      - name: Install mobile dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: mobile
+      - name: Copy the web bundle and plugins into the Android project
+        run: npx cap sync android
+        working-directory: mobile
+      - name: Assemble the debug apk
+        run: ./gradlew --no-daemon assembleDebug
+        working-directory: mobile/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bmapz-android-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+  ios-simulator:
+    name: iOS simulator build (no signing)
+    needs: web-bundle
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-web-bundle
+          path: mobile/www
+      - name: Install mobile dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: mobile
+      - name: Copy the web bundle and plugins into the iOS project
+        run: npx cap sync ios
+        working-directory: mobile
+      - name: Build for the simulator without code signing
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+        working-directory: mobile

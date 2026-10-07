@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Company } from '@/api/entities';
 import { api } from '@/api/apiClient';
 import { useLanguage } from '@/components/ui/LanguageContext';
+import { isNativeApp, openExternalUrl, closeExternalBrowser, onAppUrlOpen, onAppResume, onBrowserFinished } from '@/lib/platform';
 
 // All integrations that use BMAPZ's own internalized OAuth flow (server-side)
 // These use the `initiateOAuth` backend function to generate the OAuth URL
@@ -371,9 +372,50 @@ export default function ConnectIntegrationModal({ integration, company, user, is
         } catch { return { ok: false }; }
       };
       const [{ authUrl }, baseline] = await Promise.all([
-        api.get('/api/oauth/launch-url', { provider, type: integration.type }),
+        api.get('/api/oauth/launch-url', { provider, type: integration.type, ...(isNativeApp() ? { client: 'app' } : {}) }),
         readOauthState(),
       ]);
+
+      // INSIDE THE ANDROID / iOS APP there is no popup window. The sign-in opens in the system browser (Google forbids OAuth in an
+      // embedded WebView) and the person comes back by the bmapz://oauth link the callback page offers, by closing that browser tab, or
+      // by switching back to the app. Any of those only starts the check: the SERVER decides whether the connection exists.
+      if (isNativeApp()) {
+        const stops = [];
+        let checking = false;
+        const comeBack = () => {
+          if (checking) return;
+          checking = true;
+          stops.forEach((stop) => stop());
+          closeExternalBrowser();
+          verifyNative();
+        };
+        const verifyNative = async () => {
+          const deadline = Date.now() + 45000;
+          while (Date.now() < deadline) {
+            const cur = await readOauthState();
+            if (cur.ok && cur.connected && (!baseline.ok || !baseline.connected || cur.stamp !== baseline.stamp)) {
+              setConnecting(false);
+              queryClient.invalidateQueries({ queryKey: ['companies'] });
+              setStep(3);
+              onSuccess?.();
+              return;
+            }
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+          setConnecting(false);
+          toast.error(t('connectionNotCompletedMsg'));
+        };
+        const opened = await openExternalUrl(authUrl);
+        if (!opened) {
+          setConnecting(false);
+          toast.error(t('popupBlockedMsg'));
+          return;
+        }
+        stops.push(onAppUrlOpen((url) => { if (String(url).startsWith('bmapz://oauth')) comeBack(); }));
+        stops.push(onBrowserFinished(comeBack));
+        stops.push(onAppResume(comeBack));
+        return;
+      }
 
       const popup = window.open(
         authUrl,

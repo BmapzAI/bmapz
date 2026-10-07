@@ -22,6 +22,7 @@ import MentionTextarea from '@/components/mentions/MentionTextarea';
 import { useAuth } from '@/lib/AuthContext';
 import { api } from '@/api/apiClient';
 import { TranscribeAudio, UploadFile } from '@/api/integrations';
+import { audioFileNameFor } from '@/lib/audio';
 import { DashboardConfig, Company } from '@/api/entities';
 
 const QUICK_ACTIONS = [
@@ -558,7 +559,7 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
 
       const transcript = await TranscribeAudio({
         audio_base64,
-        filename: 'recording.webm',
+        filename: audioFileNameFor(audioBlob.type),
       });
 
       if (transcript) {

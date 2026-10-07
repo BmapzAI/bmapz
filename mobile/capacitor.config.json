@@ -1,0 +1,42 @@
+{
+  "appId": "com.bmapz.ai",
+  "appName": "Bmapz AI",
+  "webDir": "www",
+  "backgroundColor": "#0a0a0a",
+  "loggingBehavior": "none",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": []
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "allowsLinkPreview": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native",
+      "style": "DARK"
+    },
+    "SplashScreen": {
+      "launchShowDuration": 0,
+      "backgroundColor": "#0a0a0a"
+    },
+    "Keyboard": {
+      "resize": "native",
+      "resizeOnFullScreen": true
+    },
+    "SocialLogin": {
+      "providers": {
+        "google": true,
+        "apple": true,
+        "facebook": false,
+        "twitter": false
+      },
+      "logLevel": 1
+    }
+  }
+}

@@ -11,6 +11,10 @@ export default [
       'node_modules/**',
       'dist/**',
       'backend/node_modules/**',
+      'mobile/node_modules/**',
+      'mobile/android/**',   // generated native projects
+      'mobile/ios/**',
+      'mobile/www/**',       // the built web bundle
       '*.config.js',
       'vite.config.*',
       'frontend-src/**/*.ts',  // TypeScript requires @typescript-eslint/parser
@@ -78,7 +82,7 @@ export default [
   // Scoped to correctness rules rather than style, so turning it on reports real
   // latent crashes instead of drowning them in formatting noise.
   {
-    files: ['backend/**/*.{js,mjs}'],
+    files: ['backend/**/*.{js,mjs}', 'mobile/scripts/**/*.mjs'],
     languageOptions: {
       globals: {
         ...globals.node,
