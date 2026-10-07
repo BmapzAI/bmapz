@@ -1,202 +1,155 @@
-# Prompt for the integrations phase
+# Prompt for the integrations phase (new Claude chat in the Bmapz.AI Development project)
 
-Paste everything below the line into a new Claude chat in this project.
+Updated 2026-10-07. This REPLACES the 2026-09-23 version, which was wrong in several ways (see "Things that used to be believed").
+Paste everything below the line into a new chat.
 
 ---
 
-You are continuing work on **Bmapz AI**. The previous session finished the backend
-work and the code is ready. This phase is about obtaining real credentials from
-external platforms, configuring them, and proving each one works end to end.
+You are continuing **Bmapz AI**. The backend work for integrations is done and verified as far as it can be without real provider
+credentials. This phase is: get the real credentials, configure them, connect each platform once, and prove each connection with a
+test, while spending as little of Derek's time as possible. Derek has very little time and has asked you to be precise and to decide
+well on his behalf; he does not have time to re-verify what you tell him, so **every claim you make to him must come from a test
+result, a command output or a quoted official page, never from assumption.**
 
-## Briefing
+## 0. Do these FIRST, in this order, before you say anything to Derek
 
-- **Repo:** `BmapzAI/bmapz` (public) · local `C:\Users\derek\OneDrive\Documents\Bmapz App`
-- **Frontend:** `https://ai.bmapz.com` (Cloudflare Pages, deployed by GitHub Actions on push to `main`)
-- **Backend:** `https://bmapz-production.up.railway.app` (Railway, deploys on push to `main`)
-- **Railway:** project `e169f38c-e598-4f19-b89f-b52e5fed832a` · service `8b0a5a58-aa6a-4718-9d92-99667908e605` · env `6c6d5454-2b08-4e1f-b296-e3e83772e20c`
-- **Supabase:** project `jmtnubzgnfjmtcwbegow`
-- Read `AGENT_HANDOFF.md` before doing anything. The 2026-09-23 sections are the immediate background.
+1. Read `AGENT_HANDOFF.md`: the sections dated 2026-10-06 and 2026-10-07, and "UNFINISHED AT THE USAGE LIMIT" (the end of the file).
+2. **Read the project chat "Web app mobile development"** (Android and iOS apps are being built IN PARALLEL with this phase; the chat was
+   added to the project after the previous session started, so the previous session could not read it). Write its decisions into
+   `AGENT_HANDOFF.md` under a "Mobile" heading. Then read `docs/audit-2026-10-06/mobile-research.md` if it exists. Section 8 below says
+   what to check against it.
+3. Read `docs/INTEGRATIONS_RUNBOOK.md` (per-platform verified click-paths, costs, waits, first-connect traps). It is generated; see its header.
+4. Establish ground truth (do not trust this prompt for any of it):
+   ```bash
+   git log --oneline -3 && git status --short          # what is checked out
+   curl -s https://api.bmapz.com/health                # {"status","commit","oauth_host"} - commit must equal git HEAD
+   node backend/tests/run.mjs                          # 8 files, no credentials or database needed
+   npx eslint . --quiet                                # must print nothing
+   ```
+5. Check `docs/audit-2026-10-06/README.md`: it says which of the vendor audits finished. Re-run any that did not.
 
-**Verified working in production right now** (checked, not assumed):
-- `/health` returns the running commit SHA — use it to confirm any deploy
-- All OAuth routes mounted and auth-gated; `APP_URL` confirmed live as `https://ai.bmapz.com`
-- `POST /api/integrations/test/:type` covers **33 integrations**, each making a real API call
-- Stripe webhook returns 400 with **zero redirects** (Stripe treats a 30x as a failure), and raw-body parsing is mounted before `express.json` so signature verification will work
-- WhatsApp webhook verify handshake correctly rejects a wrong token with 403
+## 1. Where things stand
 
-**What has never been done:** no human has completed a real OAuth connect since the
-launch-ticket/nonce/popup rewrite. **That is the single most important thing to prove
-in this phase.** Until it succeeds once, treat the whole OAuth path as unproven.
+- **Repo** `BmapzAI/bmapz` (public), local `C:\Users\derek\OneDrive\Documents\Bmapz App`. Frontend `https://ai.bmapz.com` (Cloudflare Pages, deployed by GitHub
+  Actions on push to `main`). Backend on Railway (project `e169f38c-e598-4f19-b89f-b52e5fed832a`, service `8b0a5a58-aa6a-4718-9d92-99667908e605`,
+  env `6c6d5454-2b08-4e1f-b296-e3e83772e20c`). Supabase project `jmtnubzgnfjmtcwbegow`.
+- **API host.** `https://api.bmapz.com` is live (custom domain on Railway, Let's Encrypt certificate, DNS added by Derek). Railway `API_URL=https://api.bmapz.com`.
+  Every OAuth redirect URI is built from it: `https://api.bmapz.com/api/oauth/<provider>/callback`. The old `bmapz-production.up.railway.app` host still works
+  and may be registered as a SECOND redirect URI while testing, but must be removed from the production Google client before "Verify branding".
+- **Credentials.** There are NO provider credentials in Railway yet (only Supabase, OpenAI, Anthropic, JWT/OAuth-state secrets). Nothing in the integrations
+  is proven against a real account. The 102+ passing checks in `backend/tests` use fakes and documented response shapes; they prove the code does what it
+  intends, not that the providers behave as documented.
+- **No human has completed a real OAuth connect** since the launch-ticket / nonce / popup rewrite. The first one is the most important event of this phase.
+- **Tests.** `POST /api/integrations/test/<type>` (the Test button on each card) makes a real API call per integration; its messages name the fix.
+  A passing test is the only acceptable evidence that something works.
+- DNS for `bmapz.com` is in the **registrar panel** (nameservers `ns1/ns2.dns-parking.com`; email is Hostinger). No tool available to you reaches it:
+  Derek adds DNS records himself. Never touch the apex `MX`, SPF `TXT` or `_dmarc` records.
 
-**`API_URL` is set in Railway but its live value cannot be observed from outside** —
-its only consumer is `oauth.js` and every route reaching it needs a session. The first
-successful connect is what confirms it.
+## 2. Standing constraints (override everything)
 
-## Standing constraints — these override convenience
+1. Never commit real `.env` files or secrets. Credentials go in **Railway variables**. By default Derek sets them himself; do not ask him to paste secrets into chat.
+2. **Never enter Derek's credentials on his behalf and never create accounts for him.** Give him the click path; he signs in.
+3. Do not change Cloudflare, Supabase or GitHub deployment settings unless the task requires it. Railway variables and the `api.bmapz.com` domain are in scope.
+4. **BYOK is strictly owner/system_admin only**; customers cap at `company_admin`. **Design Studio is an absolute business secret: `role === 'owner'` only, including in AI replies.**
+   No one outside the App Owner's company may be assigned `system_admin`. Only App owners access all company-brain information.
+5. Document every auth / billing / OAuth / RLS / schema change in `AGENT_HANDOFF.md`.
+6. **"No assumptions, only verifiable facts."** Never report an integration as working without a Test result you ran and quoted.
+7. If something genuinely needs Derek's judgement, ask in plain English with pros, cons and consequences, once, early, batched. Do not decide for him.
+   (Exception: he explicitly delegated decisions to your best recommendation on 2026-10-06 and 2026-10-07; see section 3.)
+8. The auto-mode classifier blocked an attempt to relax a security header (COOP). Do not retry blocked actions by another route; leave them for Derek.
+9. Do not run destructive git commands. Do not overwrite Codex's changes. Update `AGENT_LIVE_BOARD.md` when you start and finish.
 
-1. Never commit real `.env` files or production secrets. Credentials go in **Railway variables**, never in the repo.
-2. **Never enter Derek's credentials on his behalf and never create accounts for him.** Give him the click-path; he does the signing in. Ask him to paste values back, or to set them in Railway himself.
-3. Do not change Cloudflare, Supabase or GitHub deployment settings unless the task requires it.
-4. **BYOK is strictly owner/system_admin only.** Customers cap at `company_admin`. BYOK bypasses billing.
-5. **Design Studio is an absolute business secret — `role === 'owner'` only, including in AI replies.**
-6. No one outside the App Owner's company may be assigned `system_admin`.
-7. Document every auth / billing / OAuth / RLS / schema change in `AGENT_HANDOFF.md`.
-8. **Never report an integration as working without direct evidence. No assumptions, only verifiable facts.** A green test is evidence; a successful deploy is not.
-9. If something needs Derek's judgement, **stop and ask him in plain English** with the pros, cons and consequences. Do not decide for him.
+## 3. Decisions already taken (reversible; do not re-litigate, do tell Derek if one bites)
 
-## Two things changed under this project — do not plan around the old facts
-
-**Google Ads developer tokens no longer exist.** Confirmed from Google's own docs:
-"Developer tokens were sunset on September 9, 2026", and the header is now "optional
-and ignored by the API servers". There is no application and no multi-week wait.
-Access is now a property of the **Cloud project**: Test (automatic, *test accounts
-only*) → Explorer (self-serve) → Basic (brand verification) → Standard (~10 business
-days). Earlier notes in this project said the Ads token was the long pole. It is not.
-The code no longer requires it.
-
-**Perplexity sunsets Sonar chat completions on 2026-09-27.** `lib/webSearch.js` calls
-exactly that surface (`model: 'sonar'` at `/chat/completions`). It was deliberately
-not migrated because there was no key to test a rewrite against. **If you set up
-Perplexity, migrate `lib/webSearch.js` and the `perplexity` case in
-`routes/integrations.js` together, to the Agent API (`POST /v1/responses`).** Test them
-with the same key in the same sitting.
-
-## Priority order
-
-The ordering principle: **submit everything with a human review queue on day one, then
-spend the waiting time on what needs no approval at all.**
-
-### Tier 0 — decide this first, it changes every redirect URI
-
-`up.railway.app` is on the Public Suffix List, so Google will accept it as a redirect
-URI but **you can never brand-verify it** (that needs DNS-level ownership, which Derek
-does not have for Railway's domain). Google OAuth verification — required to leave
-"Testing" status — will therefore be impossible on the current callback host.
-
-**Ask Derek whether to put the API on a domain he owns** (e.g. `api.bmapz.com`,
-CNAME'd to Railway) before registering anything. If yes, register **both** URLs as
-redirect URIs everywhere from the start, so the switch is a config change rather than
-a re-verification. This is cheap now and expensive later.
-
-### Tier 1 — start the slow queues immediately (day 1, then wait)
-
-| Platform | What to submit | Expected wait |
+| Decision | Why | Reverse with |
 |---|---|---|
-| TikTok | Production app review | days to ~2 weeks |
-| LinkedIn | Advertising API product (`r_ads`, `r_ads_reporting`) | no published SLA — assume weeks |
-| Meta | Business Verification + App Review (only needed for non-admin users) | days+ |
-| Google Ads | Explorer access from the Cloud Console Google Ads API page | may auto-upgrade; unconfirmed |
-| Resend | Add the sending domain and its DNS records | ~15 min, up to 72h to propagate |
+| API on `api.bmapz.com` | `up.railway.app` is on the Public Suffix List, so it can never be a verified Google redirect domain | n/a (done) |
+| Canva is **platform-app-only** (no per-company Canva credentials) | A company_admin must not be able to write OAuth client secrets | add `canva_client_id/secret` to the allowlist in `routes/companies.js` and restore the per-company reads in `routes/oauth.js` |
+| **Google restricted scopes OFF** (Gmail read, Drive) | They need a paid yearly security assessment (about $540 to $3,000/yr, third-party figures) and 5-10 weeks; an unverified production app is capped at 100 new users for the life of the project | `GOOGLE_ENABLE_RESTRICTED_SCOPES=true` once the assessment is budgeted. Costs: Gmail inbox sync and Drive browsing are unavailable until then |
+| Google Ads developer token not used | Sunset 2026-09-09; the header is ignored | `GOOGLE_ADS_SEND_DEV_TOKEN=true` |
+| LinkedIn Ads scopes read-only | write needs a higher tier | `LINKEDIN_ADS_WRITE=true` |
 
-### Tier 2 — prove the OAuth rewrite today (nothing blocks these)
+## 4. How to work with Derek (his time is the scarce resource)
 
-1. **Google** — the highest-value first target. The OAuth client is instant and
-   self-service, and one connect unlocks Gmail, Calendar, Drive, YouTube, Analytics
-   and Search Console. It exercises the launch-ticket, nonce, popup and callback path
-   that has never been proven. **Do this one first.**
-2. **Meta** — instant, provided the connecting Facebook user holds Administrator,
-   Developer or Tester on the app. No App Review needed for that. Also unlocks the
-   WhatsApp Cloud API test number.
+- **One sitting per console.** Before asking him to open a console, collect every value you will need from it, then give ONE message:
+  the numbered click path (exact URLs and field values from the runbook), what to paste where, and exactly what to send back ("reply `done` and
+  the Phone Number ID", nothing else). Do not ping him one field at a time.
+- **He sets Railway variables himself** (Railway > service > Variables). Give the exact names; warn about a trailing newline when pasting a key.
+  After he says done, confirm the redeploy finished: `curl -s https://api.bmapz.com/health` and compare `commit`.
+- **Start the review queues first**, because they run while he does everything else (section 5).
+- After each connect, run the Test and quote the message. If it fails, report the real error and fix the cause; never describe a failure as a success with a caveat.
+- Keep a running table in `AGENT_HANDOFF.md`: platform | credential set | connected | test message | date.
+- When he asks "is it ready?", answer from that table, not from memory.
 
-### Tier 3 — instant, self-service, low risk
+## 5. Priority order
 
-Canva · Stripe (test mode) · Resend (key) · Hunter (free, no card) · Apollo ·
-Stability (sign up with the **Google** button to get the free credits) ·
-Perplexity (needs a prepaid credit purchase first — see the migration note above)
+The principle: **submit everything with a human reviewer first**, then spend the waiting time on what needs no approval.
 
-### Tier 4 — instant credentials, but gated by money or review
+**Tier 1 - start the slow queues (day one).**
+1. Google: Search Console DOMAIN property (a DNS TXT record Derek adds) -> brand verification. Needs the privacy policy to have a Google section first:
+   `docs/PRIVACY_GOOGLE_SECTION_DRAFT.md` is the draft; it needs counsel/Derek sign-off before it goes on the page. Sensitive-scope verification afterwards (about 2-4 weeks).
+2. Meta: Business Verification (start it day one; reports of 5+ business days to weeks despite a stated 2 days), then App Review.
+3. TikTok: app review (about 1-2 weeks) then a separate content-posting audit (2-6 weeks). Sandbox works immediately for testing.
+4. Canva: submit the integration for review (no published SLA; 1-4 weeks). Until approved only members of your own Canva team can connect.
+5. LinkedIn Advertising API request (optional; no published SLA; weeks to months; business email on bmapz.com required).
 
-- **X/Twitter** — client ID/secret are instant, but **write access requires paid prepaid credits**. A passing read test does not prove posting works; the test says so explicitly.
-- **TikTok** — use a **Sandbox** key while production review is pending. Sandbox works instantly; a production key is inert until approved.
-- **LinkedIn** — sign-in and member posting work as soon as the two self-serve products are added. Ads scopes wait on Tier 1.
+**Tier 2 - prove the plumbing today, no approval needed.**
+1. **Google** OAuth client + first connect with a test user. It exercises the launch ticket, the nonce cookie, the popup and the callback that nobody has ever run. Do this first.
+2. Stripe sandbox + webhook (**create the endpoint as SNAPSHOT, and via the API with `api_version=2024-06-20`**; the dashboard wizard defaults to Thin events, which the handler cannot read).
+3. Resend: add the SUBDOMAIN `send.bmapz.com`; copy the records from Resend's own Records tab (they changed in August 2026).
+4. Meta development-mode connect (needs two business portfolios and an app role; 2-4 hours of prerequisite console work) and the WhatsApp test number.
 
-## Step-by-step plan
+**Tier 3.** LinkedIn sign-in/posting, X (needs a funded card; see decision 10a), TikTok sandbox, Canva with Derek's own team, Perplexity (prepaid credit first), Hunter (free), Apollo, Stability (sign up with the Google button for the free credits).
 
-For each platform, in priority order:
+## 6. Known-incomplete (do not rediscover; each is in `AGENT_HANDOFF.md` with the fix)
 
-1. **Tell Derek exactly what to do**, as a numbered click-path: the console URL, each
-   screen, each field, and the exact values to paste. Assume he has not seen the
-   console before. Never do the signing-in yourself.
-2. **Give him the exact redirect URI to register**, byte-for-byte. This is the single
-   most common first-connect failure — no trailing slash, no `http`, no query string.
-   The pattern is `https://bmapz-production.up.railway.app/api/oauth/<provider>/callback`.
-3. **Have him set the Railway variables** (exact names in the table below). Watch for a
-   trailing newline pasted with the value — it produces a 401 that looks exactly like a
-   revoked key.
-4. **Confirm the deploy that picked up the variables is live**: `curl https://bmapz-production.up.railway.app/health` and compare `commit` to `git rev-parse --short HEAD`. A variable change restarts the service; make sure the restart finished.
-5. **Run the connect** from the app: Integrations → the provider's card → Connect. Watch the popup complete and the card flip to connected.
-6. **Run the test**: `POST /api/integrations/test/<type>`, via the card's Test button. Report the actual message it returns.
-7. **Only then** record it as working, in `AGENT_HANDOFF.md`, with the evidence.
+- LinkedIn ads campaign bodies are incomplete and the create calls lose the new id (`x-restli-id` header); TikTok Ads needs a separate Business API app and flow that is not built; TikTok publishing is not implemented; X PKCE verifier still travels in the readable `state`.
+- WhatsApp: inbound webhooks may carry a BSUID instead of a phone number; proactive messages outside the 24-hour window must be templates; with no company number the platform number is used for every tenant.
+- Stripe: a plan change made in the Customer Portal does not update plan/credits; `getStripe()` never returns null; success URL lacks the session id; the Stripe SDK is two majors behind (pinned for launch).
+- The Integrations page shows STORED status, not `GET /api/integrations/status`; platform keys set in Railway do not light up the cards until a Test/connect writes status.
+- Google token refresh still exists in two older copies (`routes/messaging.js`, `routes/ads.js`); 192 route-level `catch` blocks still return `err.message` on a 500 (helper `lib/httpError.js`).
+- Perplexity is written to its documented spec and unit-tested but NOT live-verified; the first key settles which surface answers.
 
-If a step fails, report the real error. Do not retry blindly and do not describe a
-failure as a success with a caveat.
+## 7. Things that used to be believed (all corrected; do not repeat them to Derek)
 
-## Exact environment variable names the backend reads
+- "The Google Ads developer token is the long pole" - false. Tokens were sunset 2026-09-09. Google Ads Explorer access is NOT a production path; Basic (brand verification, about 10 business days) is the real minimum.
+- "Meta is instant and needs no approval" - false. No approval for a first developer test, but 4-8 weeks to customer-facing access.
+- "19 integration cards could never light up" - overstated; see section 6.
+- "Sonar (Perplexity) works until 2026-09-27" - it has been retired; the code uses the Agent API.
+- "OAuth popups signal success" - they could not (the callback is served with COOP same-origin, which severs the opener). The UI now confirms with the server.
 
-Use these spellings exactly; the code reads no others.
+## 8. Mobile apps (Android + iOS) in parallel
 
-| Platform | Railway variables |
-|---|---|
-| Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (`GOOGLE_ADS_DEVELOPER_TOKEN` is legacy/optional) |
-| Meta | `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_VERSION` |
-| WhatsApp | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` |
-| LinkedIn | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_API_VERSION` |
-| X/Twitter | `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET` |
-| TikTok | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` |
-| Canva | `CANVA_CLIENT_ID`, `CANVA_CLIENT_SECRET`, `CANVA_IMPORT_ALLOWED_HOSTS` |
-| Billing | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` |
-| Email | `RESEND_API_KEY`, `RESEND_FROM_EMAIL` |
-| Search/AI | `PERPLEXITY_API_KEY`, `STABILITY_API_KEY` |
-| Prospecting | `APOLLO_API_KEY`, `HUNTER_API_KEY` |
+Whatever the chosen approach, check these against `docs/audit-2026-10-06/mobile-research.md` and the mobile chat:
+- A native shell has no `window.opener`; the OAuth return path was built for that (the callback redirects to `https://ai.bmapz.com/Integrations?oauth=...`, the page confirms with the server).
+  The connect must open the SYSTEM browser (Google blocks OAuth in embedded WebViews) and return through a universal link (iOS) / app link (Android) on `ai.bmapz.com`, which needs
+  `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json` served from Cloudflare Pages with the right content type and no redirect.
+- Redirect URIs stay https on the API host; Android/iOS OAuth clients are needed only if a native SDK (e.g. native Google Sign-In) is added.
+- Store rules affect **billing** (digital subscriptions sold inside the app), **login** (Sign in with Apple when a third-party login is offered) and **account deletion**.
+  Decide what the apps may sell or show before building billing screens into them.
+- Do NOT widen CORS for `capacitor://localhost` or `https://localhost` unless the shell bundles the site instead of loading `https://ai.bmapz.com`.
+- Apple and Google enrolment have their own lead times and run in parallel with the platform reviews above.
 
-Webhook URLs to register: Stripe `…/api/stripe/webhook` · WhatsApp `…/api/whatsapp/webhook`.
+## 9. Open decisions to put to Derek (one message, early, plain English, with pros/cons)
 
-## Known first-connect blockers, per platform
+a. **X posting costs Bmapz money**: $0.015 per post and $0.20 per post containing a link, from prepaid credits, for every customer post. Who pays, and what spend limit?
+b. **Stripe business country** (cannot be changed after activation) and when to go live.
+c. Whether and when to pay for Google's restricted-scope assessment (unlocks Gmail inbox sync and Drive).
+d. Whether the platform WhatsApp number should be allowed as a fallback for tenants with no number of their own.
+e. Whether to build the separate TikTok Business (ads) connection or drop TikTok Ads.
+f. Whether to request LinkedIn Advertising API now.
+g. Whatever the mobile chat decided that touches integrations or billing.
 
-These came from research and are worth pre-empting rather than debugging:
+## 10. Verification commands
 
-- **Google** — the redirect URI must match byte-for-byte. While publishing status is
-  "Testing", only accounts listed as test users can authorize (max 100); everyone else
-  gets `access_denied`, which is the classic "works for me, not for the customer"
-  failure. **Refresh tokens issued in Testing expire after 7 days** (confirmed in
-  Google's docs), so a connect made today silently stops refreshing next week — do not
-  mistake a working test for a working product.
-- **Meta** — the connecting user must hold a role on the app, or the permissions are
-  not granted in development mode.
-- **LinkedIn** — an app cannot be created without a LinkedIn **Page**, and the app is
-  permanently bound to it. The Page super admin must then verify the app before any
-  product can be requested. Changing scopes later invalidates existing tokens.
-- **TikTok** — redirect URIs must be static HTTPS with no parameters; scopes are
-  **comma**-separated (Canva's are space-separated); a production key is dead until
-  review passes; sandbox needs your own account added as a target user.
-- **Stripe** — sandbox and live produce **different** `whsec_` signing secrets, and
-  pairing the wrong one gives a 400 that looks like broken code. Objects created in
-  sandbox do not exist in live. Creating a new secret key requires a 2FA code, so
-  Derek needs access to that channel.
-- **Resend** — a valid key is not the same as being able to send. Mail is refused
-  unless the **from-domain is verified**; the test checks this and will tell you.
-- **Apollo** — the key goes in an `x-api-key` header, not `Bearer`, and a non-master
-  (scoped) key 403s on endpoints it was not scoped to.
-- **Stability** — the free credits only come from signing up with the **Google** button.
-
-## How to verify anything
-
-- **What is deployed:** `curl https://bmapz-production.up.railway.app/health` → `{"status":"ok","commit":"<sha>"}`. Compare to `git rev-parse --short HEAD`. **An auth-gated route returns 401 whether or not the handler behind it changed**, so endpoint probes prove a route exists and nothing about its version.
-- **An integration:** `POST /api/integrations/test/<type>` — the messages name the fix, not just the symptom (Google's "API not enabled in your Cloud project" is the most common one and is a single checkbox).
-- **Connection state:** `GET /api/integrations/status`.
-- **The frontend is code-split** — grepping `assets/index-*.js` proves nothing about whether a page shipped. Read the page's own chunk.
-
-## Confidence note — read this before trusting the research above
-
-The platform research behind this plan was produced by six agents reading official
-documentation. An adversarial verification pass was planned for all six; **five of the
-six failed to run** (session limit) and only **Meta** was independently checked.
-
-Independently confirmed by direct verification: the Google Ads developer-token sunset,
-the Google 7-day refresh-token rule, the Perplexity 2026-09-27 sunset, Apollo's
-health endpoint returning 200 with no key, and the production facts listed at the top.
-
-**Everything else — particularly TikTok's and LinkedIn's review timelines, and Canva's
-and X's exact console flows — is single-source and unverified.** Re-check each against
-the platform's current documentation before telling Derek to follow it. Console UIs
-change frequently. If the docs disagree with this prompt, trust the docs and say so.
+```bash
+curl -s https://api.bmapz.com/health                      # commit + oauth_host
+node backend/tests/run.mjs && npx eslint . --quiet        # regression evidence
+# Test one integration: the Test button on its card, or POST /api/integrations/test/<type> with a session token.
+# Types: gmail google_calendar google_meet youtube google_analytics google_search_console google_ads
+#        meta facebook instagram meta_ads whatsapp  linkedin linkedin_ads twitter  tiktok_social tiktok_ads canva
+#        stripe resend  perplexity apollo hunter stability  openai anthropic
+```
+- An auth-gated route returns 401 whether or not the handler behind it changed: endpoint probes prove a route exists, not its version. Use `/health`'s `commit`.
+- The frontend is code-split: grepping `assets/index-*.js` proves nothing about a page; read that page's own chunk.
+- Files in this tree are CRLF: a multi-line edit anchor written with LF silently fails; use the edit tool, or normalise line endings first.

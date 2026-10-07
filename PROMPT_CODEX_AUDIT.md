@@ -1,206 +1,78 @@
-# Prompt for Codex — audit, verify and fix
+# Prompt for Codex: audit, verify and fix
 
+Updated 2026-10-07. REPLACES the 2026-09-23 version (Codex never ran it; nothing was pushed by Codex between 2026-09-23 and 2026-10-07).
 Paste everything below the line into a fresh Codex session in this repository.
 
 ---
 
-You are picking up the Bmapz AI codebase from Claude, who has just finished a batch
-of backend work. Your job is to **audit it, verify the claims, and fix what is
-broken** — including anything Claude got wrong. Treat the notes below as *claims to
-be checked*, not as facts.
+You are picking up the Bmapz AI codebase from Claude after a large batch of backend and frontend work. **Treat everything below as claims to
+check, not facts.** Your job: audit it, re-run the evidence, find what is wrong or missing (including mistakes Claude made), and fix it in small commits.
+Where you disagree with Claude, say so and show why.
 
 ## The project
 
-- **Repo:** `BmapzAI/bmapz` (public), local path `C:\Users\derek\OneDrive\Documents\Bmapz App`
-- **Stack:** Vite + React 18 (`frontend-src/`), Express ESM (`backend/src/`), Supabase Postgres 17 with RLS
-- **Production:** frontend `https://ai.bmapz.com` (Cloudflare Pages), backend `https://bmapz-production.up.railway.app` (Railway)
-- **Supabase project:** `jmtnubzgnfjmtcwbegow`
-- **Deploys:** push to `main` triggers both. Backend = Railway. Frontend = GitHub Actions → Cloudflare Pages.
-- Read `AGENT_HANDOFF.md` first. It is long but it is the real memory of this project;
-  the sections dated 2026-09-23 are the work you are auditing.
+- Repo `BmapzAI/bmapz` (public), local `C:\Users\derek\OneDrive\Documents\Bmapz App`. Vite + React 18 (`frontend-src/`), Express ESM (`backend/src/`), Supabase Postgres 17 + RLS.
+- Production: frontend `https://ai.bmapz.com` (Cloudflare Pages, via GitHub Actions on push to `main`), backend `https://api.bmapz.com` (Railway; the older `bmapz-production.up.railway.app` also answers). Supabase project `jmtnubzgnfjmtcwbegow`.
+- **Read `AGENT_HANDOFF.md` first** (sections dated 2026-09-23, 2026-10-06 and 2026-10-07, and "UNFINISHED AT THE USAGE LIMIT") and `AGENT_LIVE_BOARD.md`. Add a row when you start and release it when you finish.
+- The backend uses `supabaseAdmin` (service role, BYPASSRLS): backend code is the ONLY tenant guard. supabase-js **resolves** with `{data:null,error}` on failure and never throws, so a discarded `error` silently becomes "no rows".
 
-## Non-negotiable constraints
+## Constraints (non-negotiable)
 
-1. Never commit real `.env` files or production secrets.
-2. Do not change Railway, Cloudflare, Supabase or GitHub deployment settings unless the task requires it.
-3. Do not overwrite Claude's changes wholesale, and do not run destructive git commands unless explicitly asked.
-4. Document any auth / billing / OAuth / RLS / schema change in `AGENT_HANDOFF.md`.
-5. **BYOK (bring-your-own AI key) is strictly owner/system_admin only.** Customers cap at `company_admin`. BYOK bypasses billing, which is why.
-6. **Design Studio is an absolute business secret — visible only to `role === 'owner'`, including in AI replies.**
-7. No one outside the App Owner's company may ever be assigned `system_admin`.
-8. **Never report something as working without direct evidence. No assumptions, only verifiable facts.** If you did not observe it, say you did not observe it.
-9. If something genuinely needs Derek's judgement, **stop and ask him in plain English**, laying out the pros, cons and consequences. Do not decide for him.
+1. Never commit `.env` files or secrets. Do not change Railway/Cloudflare/Supabase/GitHub deployment settings unless the task requires it.
+2. Do not overwrite Claude's changes wholesale; no destructive git commands.
+3. Document any auth / billing / OAuth / RLS / schema change in `AGENT_HANDOFF.md`.
+4. BYOK (own AI keys) is owner/system_admin only; customers cap at `company_admin`. Design Studio is `role === 'owner'` only, including in AI replies. No one outside the App Owner's company may be `system_admin`.
+5. **No assumptions: never report something working without evidence you produced.** If something needs Derek's judgement, stop and ask in plain English with pros, cons and consequences.
+6. **Do NOT do these** (a classifier or a decision already blocks them): relax `Cross-Origin-Opener-Policy` on the OAuth router; widen the `companies.js` `api_keys` allowlist for secrets (Canva per-company credentials were deliberately removed); switch on `GOOGLE_ENABLE_RESTRICTED_SCOPES`; widen CORS for native app origins before the mobile approach is known.
 
-## What Claude changed (8 commits, `d9d4cb9..6f17d76`)
+## What changed since `3d9fb3d` (verify, do not trust)
 
 | Commit | What |
 |---|---|
-| `d9d4cb9` | AI history import (Claude/ChatGPT exports → Company Brain), one-way |
-| `9a01038` | Verified that deploy in production; added CHECK constraints on `ai_context_imports` |
-| `18c8823` | Integration test harness: 16 → 33 types; fixed a false-positive gmail test; enabled backend linting |
-| `4cb53ac` | `lib/httpError.js` — stop route-level 500s leaking the DB schema (applied to `integrations.js` only) |
-| `e0339a6` | Google token failures stay actionable after that scrubbing |
-| `d0e653b` | **WhatsApp multi-tenant bug** — per-company number was silently ignored |
-| `4711bcd` | Swept for company keys that can never be set; removed dead Stripe operands |
-| `6f17d76` | `/health` now reports the running commit SHA |
-| `7baaaa6` | 19 integration cards that could never show "connected", incl. `tiktok_social` |
-| `8bfad3b` | **Google Ads developer token sunset** (was blocking publishing entirely); Apollo test passing with no key; Perplexity sunset warnings |
+| `9745dcc` | OAuth return path (callback redirects when there is no opener; modal asks the server); Google token/scope fixes; Meta v25 + insights; live-model resolution; Perplexity Agent API module; Canva platform-only; lowercase compliance routes; `/health` shows `oauth_host` |
+| `c85596d` | X (failed posts were recorded as published; 2h token expiry; PKCE S256; hosts) and LinkedIn (scope union) |
+| `5cd10e3` | TikTok (24h token expiry; fake "published"); Canva (missing scope; single-flight refresh) |
+| `2640367`, `a0dcca3` | handoff, board, the behaviour tests in `backend/tests`, the audit evidence in `docs/audit-2026-10-06` |
+| `0a0b716` | Resend failures reported as sent; Stripe webhook retry/idempotency and status mapping; connection tests |
+| `05aac97` | Retry-safe plan grant; Google revoke on disconnect; runbook generator; privacy-policy draft |
 
-## Priority 1 — finish the schema-leak fix (192 sites)
+## How to verify (start here)
 
-`backend/src/index.js` has a global error handler that deliberately refuses to send
-`err.message` on a 5xx, because Postgres names tables, columns and constraints and a
-crash would otherwise hand an attacker a map of the schema.
-
-That handler **only runs for errors passed to `next()`**. Routes that catch their own
-errors and call `res.status(500).json({ error: err.message })` answer the request
-themselves and never reach it. There were 193 such sites. Claude fixed the 6 in
-`integrations.js`. **192 remain.**
-
-The helper is built and unit-tested: `backend/src/lib/httpError.js`
-
-```js
-import { sendServerError } from '../lib/httpError.js';
-} catch (err) { sendServerError(res, err, '[routeName]'); }
+```bash
+node backend/tests/run.mjs            # 8 files, ~130 checks; no credentials or database (fake PostgREST where needed)
+npx eslint . --quiet                  # must print nothing; the backend IS linted (that is what catches a missing import after a multi-file edit)
+curl -s https://api.bmapz.com/health  # {"commit","oauth_host"}: the commit must match git HEAD; oauth_host must be api.bmapz.com
 ```
+Then **read each test and ask whether it could pass while the product is broken.** Several earlier "tests" passed with no credentials at all (Gmail "credentials present", Apollo's health endpoint
+answers 200 with no key). A test is only evidence if it would fail without valid credentials. Audit all ~33 cases in `routes/integrations.js` for that class again.
 
-For `{ success, message }` shaped endpoints pass `'success'` as the 4th argument.
+## Priorities
 
-Remaining by file: admin 26, adsManager 21, tasks 15, users 12, leads 12,
-messaging 10, companies 10, workflows 7, social 7, oauth 7, ai 7, ads 6, seo 5,
-notifications 5, billing 5, sdr 4, funnels 4, designTemplates 4, dashboardConfigs 4,
-brandScans 4, blog 4, automations 4, auth 4, addons 2, help 1, dataDeletion 1, canva 1.
+**P1. Independent review of the money path.** `routes/stripeWebhook.js`, `routes/billing.js`, `lib/paymentProviders.js`, `lib/stripeStatus.js`.
+- The plan grant is meant to be retry-safe by construction: subscription write SETS a final state; the ledger row carries `metadata.payment_ref = plan:<session id>` and the existing unique index `uq_credit_tx_payment_ref` is the claim; the purchase row is inserted only if absent; every write is checked; every event type now hands the event back (deletes its `webhook_events` row, answers 5xx) on failure. Try to break it: races between two deliveries, a failure between the subscription write and the ledger row (a retry resets `ai_credits_used` to 0 again: is that acceptable?), `grantAddon` (claims its ledger row FIRST, so a failed grant is acknowledged as "already granted" on retry and the paid credits are missing; the catch only logs `NEEDS MANUAL RECONCILIATION`).
+- Still open and not done: a plan change made in the Customer Portal does not update plan/credits/contacts_limit (`customer.subscription.updated` only syncs status; map the price id back to a plan); `invoice.paid` is not handled; `getStripe()` never returns null so the "provider not configured" guard is unreachable; `success_url` lacks `{CHECKOUT_SESSION_ID}`; `"resend"` in `backend/package.json` is an unused dependency; Stripe SDK is `^16` (latest 23) and `apiVersion` defaults to `2024-06-20` (env `STRIPE_API_VERSION` overrides): upgrade together and re-test.
+- The live `subscriptions` table allows `trialing|active|past_due|canceled|paused`; Stripe statuses are MAPPED, the constraint is deliberately not widened. Check every place that reads `status`.
 
-**Do not do this with a blind sed.** Two reasons, both real:
-- A sed in this codebase already replaced an inner `decodeOAuthState` call and created
-  infinite recursion in `consumeOAuthState`. It is recorded in `AGENT_HANDOFF.md`.
-- Some catch blocks deliberately surface a message that IS meant for the user. Flattening
-  those into "Something went wrong" is a regression in error reporting, not a fix.
+**P2. Finish the schema-leak sweep.** 192 route-level `catch` blocks still return `err.message` on a 500, bypassing the global handler in `index.js` that scrubs it (Postgres messages name tables and columns). Helper: `lib/httpError.js` (`sendServerError`). Do NOT use a blind sed (an earlier sed created infinite recursion in `consumeOAuthState`); read each block, because a few deliberately surface a message meant for the user (give those an explicit 4xx `status`).
 
-Read each catch block. Where the message is genuinely user-facing, either give the error
-an explicit 4xx `status` (which `safeMessage` preserves) or leave that site alone and note why.
+**P3. Verify the integration code against current vendor docs.** `docs/audit-2026-10-06/*.json` has per-platform audits (file:line, quote, fix). Re-check the ones Claude fixed and the ones it did not: LinkedIn ads campaign bodies (`lib/adPublisher.js`: missing `runSchedule`, `locale`, targeting; the `x-restli-id` response header is discarded so create calls return undefined); LinkedIn feed (`GET /v2/ugcPosts` needs a restricted scope) and posting on the legacy `ugcPosts` endpoint; WhatsApp (inbound BSUID senders, template-only proactive messages, platform-number fallback for tenants); TikTok Ads (the stored token is a Login Kit token; the Business API is a separate app/flow that does not exist); X PKCE verifier travelling inside the readable `state`; Google token refresh still has two older copies (`routes/messaging.js`, `routes/ads.js getGoogleAdsAccessToken`) that should use `lib/googleToken.js`.
 
-## Priority 2 — verify Claude's integration tests are actually correct
+**P4. The OAuth return path.** Nothing has been run by a human. Read `routes/oauth.js` (`/popup.js`, `launch-url`, `consumeOAuthState`), `components/integrations/ConnectIntegrationModal.jsx` (waits up to 45s and asks `GET /api/integrations/status`), `pages/Integrations.jsx` (`?oauth=` handler). The callback page is served with COOP `same-origin` (helmet default) so the popup has no `window.opener`; the design copes with that instead of relaxing the header. Look for: the 45-second wait stranding a user who cancelled; the `?oauth=` query being only a claim; `window.close()` side effects; mobile in-app browsers.
 
-`POST /api/integrations/test/:type` now claims to test 33 integrations with real API
-calls. **Claude wrote these from documentation and could not execute most of them**,
-because no provider credentials exist in Railway yet. Check each against current
-provider docs:
+**P5. The Integrations page reads STORED `integration_status`, not `GET /api/integrations/status`** (only `AdsRealDataPanel` calls it), so a platform key set in Railway never lights a card. Decide and implement carefully: "detected" means a credential EXISTS, not that it works.
 
-- Correct endpoint, method, auth header shape, and API version
-- Correct success-detection (some providers return HTTP 200 with an error in the body — `meta` is the classic)
-- Correct company-key names against the `ALLOWED` list in `backend/src/routes/companies.js`
-- `googleErr()` — do its regexes actually match the strings Google returns today?
-- Perplexity is tested with model `sonar` to match `lib/webSearch.js`. Still valid?
-- Canva, X/Twitter and TikTok endpoints are the ones most likely to be stale.
+**P6. Model handling.** `lib/aiCredits.js` `liveModelFor()` swaps a chosen model that is absent from the live catalog (`lib/modelRegistry.js`, refreshed every 12h) for a live one of the same tier; it does nothing when no catalog is loaded. Check the pricing multipliers against the current Claude 5 / GPT price lists (`inferModelMultiplier` uses family guesses), and whether `temperature` is still accepted by the newest Claude models. The OpenAI/Anthropic audit may not have finished: see `docs/audit-2026-10-06/README.md`.
 
-## Priority 3 — independently re-check the WhatsApp fix
-
-Claim: the UI saves `whatsapp_api_token`, but four send sites read
-`whatsapp_access_token`, which is not in the `ALLOWED` list and so could never be set —
-meaning every company's WhatsApp messages went out from the **platform** number.
-
-Verify it, then check the fix is complete:
-- Are there send paths Claude missed? Search beyond `sdrEngine.js`, `workflowEngine.js`, `email.js`, `messaging.js`.
-- Does anything else read `whatsapp_phone_id` / `whatsapp_verify_token` inconsistently?
-- `whatsappWebhook.js` uses `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_APP_SECRET` from env only — is per-company inbound routing correct, or does a second tenant's inbound message land on the wrong company?
-
-**Rerun the sweep that found it** (method is in `AGENT_HANDOFF.md`): flag every
-`<keys>.<name> || process.env.<VAR>` where `<name>` is absent from the `ALLOWED` list in
-`companies.js`. That left operand is dead and the failure is invisible, because the env
-fallback keeps the feature working — just for the wrong tenant.
-
-## Priority 3.5 — the two external deadlines, and a false-positive test class
-
-**Perplexity sunsets Sonar chat completions on 2026-09-27.** `lib/webSearch.js` calls
-exactly that surface (`model: 'sonar'` at `/chat/completions`), as does the `perplexity`
-case in `integrations.js`. Claude confirmed the date from Perplexity's own docs and
-deliberately did **not** migrate, because no `PERPLEXITY_API_KEY` exists in Railway so a
-rewrite of the primary web-search provider could not be executed even once. Both call
-sites carry the deadline in a comment. **If a key now exists, migrate both together** to
-the Agent API (`POST /v1/responses`) and test them in the same sitting. If it has already
-lapsed, confirm the fallback actually degrades to the next provider rather than throwing.
-
-**Google Ads developer tokens were sunset 2026-09-09** and the header is "optional and
-ignored by the API servers", with rejection promised in a future version. This had been
-a live bug: `adPublisher.js` threw *"Google Ads needs an approved developer token"*
-whenever one was absent, making Google Ads publishing unreachable for any new setup.
-Verify the fix is complete — the token should be optional everywhere and never sent as
-`""` or the string `"undefined"` — and check whether the header should now be removed
-entirely.
-
-**A test that can pass without valid credentials is not a test.** Two were found:
-`gmail` returned success for "credentials present" without calling Google, and `apollo`
-used `if (r.ok)` against an endpoint that returns **HTTP 200 with no key at all**
-(verified live: `{"healthy":true,"is_logged_in":false}`). **Audit the other 31 test cases
-for the same class.** The question is not "did the call succeed" but "could this have
-succeeded without valid credentials".
-
-## Priority 4 — things Claude deliberately did NOT do
-
-- **`canva_client_id` / `canva_client_secret` are dead reads.** Every other provider
-  (`meta_app_id`, `linkedin_client_id`, `twitter_client_id`, `tiktok_client_key`) is
-  settable per company; Canva is not, purely by omission. Fixing it is a two-string
-  change to the `ALLOWED` list, but it widens what a `company_admin` can write.
-  **This is Derek's decision — do not make it. Ask him.**
-- **~40 integrations still have no test** (slack, notion, shopify, hubspot, zoom,
-  twilio, etc.). Out of scope for the current phase; `default:` returns an honest
-  "No test defined" rather than a false pass. Leave unless asked.
-- **`uuid` transitive advisory** — knowingly accepted, documented.
-- **Supabase leaked-password protection** is Pro-only and the org is on Free. Accepted
-  and documented; password-strength settings are the compensating control and are set.
-- **The OAuth callback host cannot ever be brand-verified.** `up.railway.app` is on the
-  Public Suffix List, so Google accepts it as a redirect URI but verification needs
-  DNS-level ownership Derek does not have. Moving the API to a domain he owns
-  (e.g. `api.bmapz.com`) is a prerequisite for leaving Google's "Testing" status —
-  and Testing issues refresh tokens that **expire after 7 days**. Flagged in
-  `PROMPT_INTEGRATIONS_PHASE.md`; it is an infrastructure decision, not a code fix.
-
-## Priority 5 — lint debt now that the backend is linted
-
-`eslint.config.js` previously ignored `backend/**` entirely. It no longer does.
-Project-wide result is **0 errors, 24 warnings**. The warnings are unused `err`
-bindings in catch blocks — worth cleaning as you touch each file for Priority 1.
-
-**One warning is intentional: `oauth.js` `popupHtml`'s unused `errorMsg`.** Provider
-error text can carry token fragments, so it is deliberately replaced with a fixed
-sentence. Leave it, and do not "fix" it by reintroducing the interpolation.
-
-## How to verify anything
-
-- **What is actually deployed:** `curl https://bmapz-production.up.railway.app/health`
-  now returns `{"status":"ok","ts":...,"commit":"<short sha>"}`. Compare it to
-  `git rev-parse --short HEAD`. This is the only reliable check — an auth-gated route
-  returns 401 whether or not the handler behind it changed, so endpoint smoke tests
-  prove a route exists and nothing about its version.
-- **Backend boots:**
-  ```bash
-  cd backend && SUPABASE_URL="https://jmtnubzgnfjmtcwbegow.supabase.co" SUPABASE_SERVICE_ROLE_KEY=t SUPABASE_ANON_KEY=t JWT_SECRET=t PORT=3999 node -e "import('./src/index.js').then(()=>setTimeout(()=>process.exit(0),2500))"
-  ```
-- **Lint:** `npx eslint . --quiet` must exit 0.
-- **Syntax:** `node --check <file>` on everything you touch.
-- **Frontend:** the app is **code-split**. Grepping `assets/index-*.js` proves nothing
-  about whether a page shipped — read the page's own chunk (e.g. `Settings-*.js`).
-  Claude briefly reached a wrong conclusion on exactly this.
-- **Database:** use the Supabase MCP against project `jmtnubzgnfjmtcwbegow`. Round-trip
-  writes with real inserts and clean up after yourself.
+**P7. Privacy.** `docs/PRIVACY_GOOGLE_SECTION_DRAFT.md` is a draft with evidence per statement; it must NOT be published without Derek/counsel. One finding to double-check: imported inbound email reaches `handleInboundEvent` -> `handleInboundForSdr` and the text is sent to an AI model when a company enables its SDR (default off).
 
 ## Known traps in this codebase
 
-- `supabase-js` **resolves** on failure with `{data: null, error}` — it never throws. A
-  discarded `error` silently becomes "no rows". This has caused multiple outages here.
-- The backend uses `supabaseAdmin` (**service role → BYPASSRLS**). Backend code is the
-  *only* tenant guard. Every query must filter by `company_id` itself.
-- `tasks` has **three** FKs to `users`, so PostgREST embeds are ambiguous — use `attachPeople`.
-- `ai_outputs` has no top-level title/content/category/status; they live in `metadata` JSONB.
-- `companies.value_propositions` is `text[]`; `personal_agent_name` lives in `companies.api_keys`; `competitors`/`region` live in `companies.settings`.
-- eslint's `no-undef` does **not** resolve JSX element names, and `vite build` does not either.
-  "0 errors + green build" is not evidence that a screen renders.
-- On Windows, PowerShell `Get-Content`/`Set-Content` round-trips corrupt UTF-8 (ANSI default).
-  Use the edit tools or Node, never that pair.
+- Files are CRLF. A multi-line edit anchor written with LF silently fails to match. A script that is itself inside a template literal needs doubled backslashes: a single `\/` collapsed into `//` (a comment) and silently killed `/api/oauth/popup.js` until the EMITTED script was tested (`backend/tests/oauth-popup-script.test.mjs`).
+- `supabase-js` GET `.maybeSingle()` asks for a JSON array and reads `[]` as "no row"; test doubles must answer that way.
+- `tasks` has three FKs to `users` (use `attachPeople`); `ai_outputs` keeps title/content/status in `metadata` JSONB; `eslint no-undef` does not resolve JSX element names and `vite build` does not either, so green lint + build is not evidence a screen renders.
+- The frontend is code-split: grepping `assets/index-*.js` proves nothing about a page. An auth-gated route returns 401 whether or not its handler changed; use `/health`'s `commit`.
+- Windows PowerShell `Get-Content`/`Set-Content` corrupt UTF-8; use Node or the edit tools.
 
 ## Deliverable
 
-A prioritised report of what you found, what you fixed, and what you deliberately left —
-with the evidence for each. Where you disagree with Claude's reasoning, say so directly
-and show why. Commit in small, focused commits with the reasoning in the message.
+A prioritised report: what you found, what you fixed (small commits, reasoning in the message), what you left and why, with the evidence for each. Update `AGENT_HANDOFF.md` and `AGENT_LIVE_BOARD.md`.

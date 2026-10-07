@@ -4132,3 +4132,44 @@ NOT done, in priority order:
 4. PROMPT_INTEGRATIONS_PHASE.md and PROMPT_CODEX_AUDIT.md are STALE (written 2026-09-23). Update from this section before use: Meta default is v25.0 now; Perplexity migration is done (unverified); Google Ads has no developer token; restricted Google scopes are off; X is pay-per-use; the `/status` "19 cards" claim was overstated.
 5. Mobile apps: read the project chat "Web app mobile development" FIRST and record its approach here; app-store research (Sign in with Apple, in-app purchase rules for subscriptions, account deletion, WebView OAuth) was NOT done.
 6. Derek's DNS sitting (two Railway records) is still pending; then set API_URL=https://api.bmapz.com and check /health oauth_host. Privacy policy needs the Google Limited Use section (counsel review).
+
+
+## 2026-10-07 — DOMAIN LIVE, BILLING PATHS HARDENED, RUNBOOK + PROMPTS REWRITTEN (Claude Sonnet 5.5)
+
+Status of the items listed under "UNFINISHED AT THE USAGE LIMIT" (2026-10-06):
+1. Stripe/Resend code fixes — DONE (`0a0b716`, `05aac97`). 2. Remaining audits — IN PROGRESS (see end of section).
+3. Runbook — DONE and generated (`docs/INTEGRATIONS_RUNBOOK.md`; regenerate with `node docs/tools/gen-runbook.cjs` when a verify file lands).
+4. Stale prompts — DONE (`PROMPT_INTEGRATIONS_PHASE.md`, `PROMPT_CODEX_AUDIT.md` rewritten 2026-10-07).
+5. Mobile — the chat is STILL not visible to the tooling (`list_sessions` empty, searches for "mobile" empty); app-store research is running (see end).
+6. DNS — DONE by Derek; `API_URL` switched.
+
+### api.bmapz.com is live (verified from outside, not assumed)
+- Railway `domain-status`: `verified: true`, CNAME `api -> gdufkcmn.up.railway.app` PROPAGATED; certificate issued by Let's Encrypt (notBefore 2026-10-07).
+- `https://api.bmapz.com/health` and the old Railway host BOTH return `{"commit":"0a0b716","oauth_host":"api.bmapz.com"}` after setting Railway `API_URL=https://api.bmapz.com`
+  (this is the first external proof of the live `API_URL`, which used to be unobservable).
+- Still to do by Derek when each step starts: the Search Console DOMAIN TXT, the Resend `send.bmapz.com` records. Do not touch the apex MX/SPF/_dmarc.
+
+### Money paths (all proved by `backend/tests/stripe-and-resend.test.mjs`, 30 checks, using Stripe's own signing helper through the real route)
+- Plan grant is RETRY-SAFE by construction: subscription write SETS state; ledger row `metadata.payment_ref = plan:<session>` is the claim (existing unique index
+  `uq_credit_tx_payment_ref`; a 23505 answer is read as "already granted"); purchase row only if absent; every write checked. All event types now hand the event back (delete the
+  `webhook_events` row, answer 500) on failure. A retry after a half-finished grant only does the missing part.
+- A paid add-on that fails to grant is still swallowed ON PURPOSE (`grantAddon` claims its ledger row first, so a retry would be told "already granted") but logs
+  `NEEDS MANUAL RECONCILIATION: paid add-on not granted for <event>`. Grep the Railway logs for that string after go-live.
+- A retry resets `ai_credits_used` to 0 again (the subscription write sets the final state): acceptable for a retry that lands within minutes, but review it.
+- Delayed-payment methods: `checkout.session.completed` with `payment_status=unpaid` grants nothing; `checkout.session.async_payment_succeeded` grants. `async_payment_failed` is not handled.
+- Stripe statuses are MAPPED to the five the live table allows (`lib/stripeStatus.js`). The constraint was NOT widened.
+- Resend failures are no longer reported as sent; the fake fallback sender `noreply@bmapzai.com` (a domain that does not resolve) is gone: no From address now fails loudly.
+
+### Google disconnect now revokes the grant at Google (best effort), so the app leaves the person's connected-apps list.
+
+### Privacy finding
+Imported inbound email (only when Gmail read access is enabled, which is OFF by default) is passed by `insertMessageIfNew` -> `handleInboundEvent` -> `handleInboundForSdr`; when a company
+has switched its SDR agent on (default off) the email TEXT is sent to the AI provider. The Company Brain reads only `channel`/`direction`. The policy text must say so.
+Draft with an evidence table and the claims only a human can make: `docs/PRIVACY_GOOGLE_SECTION_DRAFT.md`. NOT published.
+
+### Tests now in the repo: `node backend/tests/run.mjs` (8 files). Lint: `npx eslint . --quiet` (clean; the backend, `.mjs` tests and `docs/tools` are covered).
+
+### Left open (owners: Codex unless stated)
+Plan changes in the Stripe Customer Portal do not update plan/credits; `invoice.paid` unhandled; `getStripe()` never null; `success_url` without session id; dead `resend` dependency; Stripe SDK 16 -> 23;
+LinkedIn ads bodies + `x-restli-id`; LinkedIn feed/legacy posting; WhatsApp BSUID/templates/tenant fallback; TikTok publishing and Business-API ads; X PKCE verifier in `state`;
+two older Google token-refresh copies; Integrations page vs `/status`; 192 `err.message` catch blocks. Derek: Search Console TXT, Resend records, X cost policy, Stripe country, restricted-scope budget.
