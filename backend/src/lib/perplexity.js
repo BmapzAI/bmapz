@@ -24,10 +24,12 @@
  * `perplexity` case in routes/integrations.js calls this same function, so the first
  * real key produces direct evidence of which surface actually answers.
  *
- * The legacy /chat/completions path is kept as a FALLBACK, not the primary: one
- * Perplexity page says legacy synchronous requests "keep working: they are being
- * reformulated as Agent API requests", another says support ended. Both cannot be
- * true, and a key is the only way to find out, so the code tolerates either.
+ * The legacy /chat/completions path is kept only as a FALLBACK. Perplexity's migration page
+ * reconciles its own pages: Sonar support ENDED on 2026-09-27 and legacy synchronous calls are
+ * "reformulated as Agent API requests" (proxied, not supported; async calls are gone). Probed
+ * 2026-10-07: /v1/agent and /chat/completions both still route (a garbage key gets 401 on each).
+ * DELETE the fallback (and LEGACY_URL) once a first real key shows the Agent API answering, so a
+ * request-shape error surfaces instead of being retried against a retired contract.
  */
 
 export const AGENT_URL = 'https://api.perplexity.ai/v1/agent';
@@ -42,8 +44,13 @@ const uniq = (arr) => [...new Set(arr.filter((u) => typeof u === 'string' && u))
 export function parseAgentResponse(body) {
   if (!body || typeof body !== 'object') throw new Error('empty response');
 
-  // Trap 1: failure arrives as HTTP 200.
-  if (body.status && body.status !== 'completed') {
+  // Trap 1: failure arrives as HTTP 200. 'incomplete' is the one non-completed status that can
+  // still carry a usable answer: a run that hit max_output_tokens stops with the text it had. The
+  // 'fast' preset's own cap is 8,192 and our caps are far lower, so treating every incomplete run
+  // as a failure would turn a good answer into a false FAIL and push real searches to the
+  // OpenAI/Anthropic fallback. It is accepted only if text exists; with no text it still throws.
+  const partial = body.status === 'incomplete';
+  if (body.status && body.status !== 'completed' && !partial) {
     const why = body.error?.message || body.incomplete_details?.reason || body.status;
     throw new Error(`run ${body.status}: ${why}`);
   }
@@ -64,7 +71,10 @@ export function parseAgentResponse(body) {
   const answer = (typeof body.output_text === 'string' && body.output_text.trim())
     ? body.output_text
     : parts.join('').trim();
-  if (!answer) throw new Error('no answer in response');
+  if (!answer) {
+    const why = body.error?.message || body.incomplete_details?.reason || body.status;
+    throw new Error(partial ? `run incomplete: ${why}` : 'no answer in response');
+  }
   return { answer, citations: uniq(urls).slice(0, 8) };
 }
 

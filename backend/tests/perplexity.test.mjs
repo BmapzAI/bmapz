@@ -57,4 +57,38 @@ await t('timeout aborts instead of hanging', async () => {
   let threw = false; try { await askPerplexity({ key: 'k', query: 'q', timeoutMs: 30, fetchImpl: slow }); } catch (e) { threw = /abort/.test(e.message); }
   if (!threw) throw new Error('did not abort');
 });
+// ── an INCOMPLETE run (hit max_output_tokens) that produced text is a partial answer, not a failure
+await t('incomplete run WITH text is returned as a partial answer', async () => {
+  const r = parseAgentResponse({ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: 'Half an answer', output: [{ type: 'search_results', results: [{ url: 'https://z.com' }] }] });
+  eq(r.answer, 'Half an answer', 'partial answer'); eq(r.citations, ['https://z.com'], 'citations kept');
+});
+await t('incomplete run with NO text still fails, naming the reason', async () => {
+  let m = ''; try { parseAgentResponse({ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' } }); } catch (e) { m = e.message; }
+  if (!/run incomplete: max_output_tokens/.test(m)) throw new Error('message was: ' + m);
+});
+await t('cancelled / failed / queued runs are still failures even when text is present', async () => {
+  for (const status of ['failed', 'cancelled', 'queued', 'in_progress']) {
+    let threw = false; try { parseAgentResponse({ status, output_text: 'x' }); } catch { threw = true; }
+    if (!threw) throw new Error(status + ' was accepted');
+  }
+});
+
+// ── Anthropic web search: a PAUSED turn must not be cached and returned as the answer
+Object.assign(process.env, { SUPABASE_URL: 'http://127.0.0.1:1', SUPABASE_SERVICE_ROLE_KEY: 't', SUPABASE_ANON_KEY: 't', ANTHROPIC_API_KEY: 'k-test' });
+delete process.env.PERPLEXITY_API_KEY; delete process.env.OPENAI_API_KEY;
+const { webSearch } = await import('../src/lib/webSearch.js');
+const realFetch = globalThis.fetch;
+const anthropicReturns = (body) => { globalThis.fetch = async (url) => ({ ok: true, status: 200, statusText: 'OK', json: async () => (String(url).includes('anthropic.com') ? body : {}) }); };
+anthropicReturns({ stop_reason: 'pause_turn', content: [{ type: 'text', text: "I'll search for that now." }] });
+await t('a paused search turn is NOT returned as an answer', async () => {
+  const r = await webSearch({ query: 'paused turn query one' });
+  if (r !== null) throw new Error('returned: ' + JSON.stringify(r));
+});
+anthropicReturns({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'The real answer.', citations: [{ url: 'https://src.example/a' }] }] });
+await t('a finished search turn is returned with its citation', async () => {
+  const r = await webSearch({ query: 'finished turn query two' });
+  eq(r?.answer, 'The real answer.', 'answer'); eq(r?.citations, ['https://src.example/a'], 'citations'); eq(r?.provider, 'anthropic', 'provider');
+});
+globalThis.fetch = realFetch;
+
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

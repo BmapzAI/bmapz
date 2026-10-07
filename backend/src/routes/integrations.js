@@ -271,13 +271,21 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       }
 
       case 'stability': {
-        const apiKey = k.stability_api_key;
+        // Same key chain as generation (ai.js) and the status list, so an env-only deployment is not told "not set".
+        const apiKey = clean(k.stability_api_key || process.env.STABILITY_API_KEY);
         if (!apiKey) return res.json({ success: false, message: 'Stability AI key not set' });
-        const r = await fetch('https://api.stability.ai/v1/user/account', {
+        // /v1/user/account succeeds for a valid key with ZERO credits, so it reported "connected" for an
+        // account that cannot generate a single image. The balance endpoint answers the question that matters.
+        const r = await fetch('https://api.stability.ai/v1/user/balance', {
           headers: { Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(20000),
         });
-        if (r.ok) return res.json({ success: true, message: 'Stability AI connected' });
-        return res.json({ success: false, message: 'Stability AI key invalid' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return res.json({ success: false, message: `Stability AI key rejected (${r.status}): ${d.message || d.name || 'invalid key'}` });
+        if (!(Number(d.credits) > 0)) {
+          return res.json({ success: false, message: 'Stability AI key is valid but the account has no credits, so image generation will fail. Buy credits at platform.stability.ai (signing up with the Google button gives free credits).' });
+        }
+        return res.json({ success: true, message: `Stability AI connected (${Number(d.credits).toFixed(1)} credits)` });
       }
 
       // Apollo's health endpoint answers HTTP 200 even with NO key and with a
@@ -290,6 +298,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         if (!apiKey) return res.json({ success: false, message: 'Apollo API key not set' });
         const r = await fetch('https://api.apollo.io/api/v1/auth/health', {
           headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(20000),
         });
         const d = await r.json().catch(() => ({}));
         if (r.ok && d.is_logged_in === true) return res.json({ success: true, message: 'Apollo.io connected' });
@@ -304,10 +313,12 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       }
 
       case 'hunter': {
-        const apiKey = k.hunter_api_key || process.env.HUNTER_API_KEY;
+        const apiKey = clean(k.hunter_api_key || process.env.HUNTER_API_KEY);
         if (!apiKey) return res.json({ success: false, message: 'Hunter API key not set' });
-        const r = await fetch(`https://api.hunter.io/v2/account?api_key=${apiKey}`);
-        const d = await r.json();
+        // Header, not ?api_key=: query strings end up in proxy and access logs. Probed: no key, a garbage
+        // query key, a garbage header and a garbage Bearer all answer 401, so the header form is safe.
+        const r = await fetch('https://api.hunter.io/v2/account', { headers: { 'X-API-KEY': apiKey }, signal: AbortSignal.timeout(20000) });
+        const d = await r.json().catch(() => ({}));
         if (d.data?.email) return res.json({ success: true, message: `Hunter connected (${d.data.email})` });
         return res.json({ success: false, message: d.errors?.[0]?.details || 'Hunter key invalid' });
       }
@@ -534,15 +545,17 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         // answered (the Agent API, or the retired Sonar path as a fallback). That is
         // direct evidence on the one question the docs contradict each other on.
         try {
-          const out = await askPerplexity({ key: apiKey, query: 'Reply with the single word: ok', maxTokens: 32, timeoutMs: 20000 });
+          const out = await askPerplexity({ key: apiKey, query: 'Reply with the single word: ok', maxTokens: 256, timeoutMs: 20000 });
           const via = out.surface === 'agent' ? 'the Agent API' : 'the legacy Sonar endpoint (retired 2026-09-27 — still answering, but plan to rely on the Agent API)';
           return res.json({ success: true, message: `Perplexity connected via ${via} (web search will work)` });
         } catch (e) {
           const msg = String(e.message || '');
-          if (e.status === 401) return res.json({ success: false, message: `Perplexity key rejected: ${msg}` });
-          if (e.status === 402 || e.status === 429 || /credit|balance|quota/i.test(msg)) {
-            // The key exists and authenticates; the account has nothing to spend.
-            return res.json({ success: false, message: `Perplexity key is valid but the account has no usable credit (prepaid credits must be bought first): ${msg}` });
+          // Perplexity answers 401 for an invalid or deleted key AND for an account with no credit, so the
+          // status alone cannot tell them apart; say both. 429 is a rate limit (the key is fine).
+          if (e.status === 429) return res.json({ success: false, message: `Perplexity rate limit hit (the key is valid; retry shortly): ${msg}` });
+          if (e.status === 401) return res.json({ success: false, message: `Perplexity rejected the key: it is invalid or deleted, OR the account has no credit (prepaid credits must be bought first). ${msg}` });
+          if (e.status === 402 || /credit|balance|quota/i.test(msg)) {
+            return res.json({ success: false, message: `Perplexity account has no usable credit (prepaid credits must be bought first): ${msg}` });
           }
           return res.json({ success: false, message: `Perplexity call failed: ${msg}` });
         }
@@ -948,15 +961,29 @@ router.post('/apollo/enrich', requireAuth, async (req, res) => {
       .eq('id', req.companyId)
       .single();
 
-    const apiKey = companyRow?.api_keys?.apollo_api_key || process.env.APOLLO_API_KEY;
+    const apiKey = clean(companyRow?.api_keys?.apollo_api_key || process.env.APOLLO_API_KEY);
     if (!apiKey) return res.status(400).json({ error: 'Apollo API key not configured' });
+    if (!email && !domain) return res.status(400).json({ error: 'email or domain is required' });
 
-    const r = await fetch('https://api.apollo.io/api/v1/people/match', {
+    // Apollo's People Enrichment page documents these as QUERY parameters (they were sent in a JSON body,
+    // which a garbage-key probe cannot tell apart). reveal_personal_emails used to be hard-coded true:
+    // it spends extra credits and exposes people's PERSONAL addresses on every call, so it is opt-in now.
+    const qs = new URLSearchParams(Object.entries({
+      email, domain, ...(req.body.reveal_personal_emails === true ? { reveal_personal_emails: 'true' } : {}),
+    }).filter(([, v]) => v));
+    const r = await fetch(`https://api.apollo.io/api/v1/people/match?${qs}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ email, domain, reveal_personal_emails: true }),
+      signal: AbortSignal.timeout(20000),
     });
-    const d = await r.json();
+    const d = await r.json().catch(() => ({}));
+    // Apollo removes the legacy root-level error fields (error, error_code, message) on 2027-02-16 and keeps
+    // only error_details. Answer in OUR shape so nothing downstream depends on theirs. A 401/422 from Apollo is
+    // a problem with the stored key, not with the caller's request, so it is not passed through as one.
+    if (!r.ok) {
+      return res.status(r.status === 401 || r.status === 422 ? 502 : r.status)
+        .json({ error: d.error_details?.message || d.error || 'Apollo request failed', code: d.error_details?.code || null });
+    }
     res.json(d);
   } catch (err) {
     sendServerError(res, err, '[integrations]');
@@ -976,9 +1003,16 @@ router.post('/hunter/find-email', requireAuth, async (req, res) => {
     const apiKey = companyRow?.api_keys?.hunter_api_key || process.env.HUNTER_API_KEY;
     if (!apiKey) return res.status(400).json({ error: 'Hunter API key not configured' });
 
-    const params = new URLSearchParams({ domain, first_name, last_name, api_key: apiKey });
-    const r = await fetch(`https://api.hunter.io/v2/email-finder?${params}`);
-    const d = await r.json();
+    // URLSearchParams turns a missing field into the literal string "undefined", so a request without a
+    // first name queried Hunter for a person called "undefined" and could spend a lookup.
+    if (!domain || !first_name || !last_name) return res.status(400).json({ error: 'domain, first_name and last_name are required' });
+    const params = new URLSearchParams({ domain, first_name, last_name });
+    const r = await fetch(`https://api.hunter.io/v2/email-finder?${params}`, {
+      headers: { 'X-API-KEY': clean(apiKey) },
+      signal: AbortSignal.timeout(20000),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status === 401 ? 502 : r.status).json({ error: d.errors?.[0]?.details || 'Hunter request failed', code: d.errors?.[0]?.id || null });
     res.json(d);
   } catch (err) {
     sendServerError(res, err, '[integrations]');

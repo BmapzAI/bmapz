@@ -93,7 +93,9 @@ async function viaPerplexity(query, key) {
     key,
     query,
     system: 'Answer factually and concisely from current sources. If sources disagree or are thin, say so.',
-    maxTokens: 700,
+    // 700 was Sonar's cap. The Agent API's fast preset defaults to 8,192 and reports an over-cap run
+    // as 'incomplete'; a roomier cap keeps ordinary answers from being cut off.
+    maxTokens: 1500,
   });
   return { answer, citations, provider: 'perplexity' };
 }
@@ -139,6 +141,11 @@ async function viaAnthropic(query, key) {
       messages: [{ role: 'user', content: query }],
     }),
   });
+
+  // A long web-search turn can PAUSE (stop_reason 'pause_turn') and expect the caller to resend it. The
+  // text blocks present then are only the narration before the search ("I'll search for..."), which
+  // would be cached for 10 minutes and returned as if it were the answer.
+  if (body?.stop_reason === 'pause_turn') throw new Error('search turn paused before an answer');
 
   const answer = (body?.content || [])
     .filter(b => b?.type === 'text')
