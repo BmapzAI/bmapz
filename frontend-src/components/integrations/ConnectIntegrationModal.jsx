@@ -9,7 +9,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Company } from '@/api/entities';
 import { api } from '@/api/apiClient';
 import { useLanguage } from '@/components/ui/LanguageContext';
-import { isNativeApp, openExternalUrl, closeExternalBrowser, onAppUrlOpen, onAppResume, onBrowserFinished } from '@/lib/platform';
+import { isNativeApp } from '@/lib/platform';
+import { connectProvider } from '@/lib/oauthConnect';
 
 // All integrations that use BMAPZ's own internalized OAuth flow (server-side)
 // These use the `initiateOAuth` backend function to generate the OAuth URL
@@ -362,6 +363,27 @@ export default function ConnectIntegrationModal({ integration, company, user, is
       // a popup cannot send an Authorization header) makes that cookie first-party,
       // and the callback then requires it to match the signed state.
       const provider = oauthPath.split('/')[3];   // /api/oauth/<provider>/initiate
+
+      // INSIDE THE ANDROID / iOS APP there is no popup window: the shared flow (lib/oauthConnect.js) opens the system browser, takes the
+      // bmapz://oauth hand-back, and asks the SERVER whether the connection exists. It throws only when the sign-in cannot be started,
+      // which the catch below turns into the usual "not configured" message.
+      if (isNativeApp()) {
+        const result = await connectProvider({ provider, type: integration.type });
+        setConnecting(false);
+        if (result.status === 'connected') {
+          queryClient.invalidateQueries({ queryKey: ['companies'] });
+          setStep(3);
+          onSuccess?.();
+        } else if (result.status === 'popup_blocked') {
+          toast.error(t('popupBlockedMsg'));
+        } else if (result.status === 'failed') {
+          toast.error(`Connection failed: ${result.message || 'Unknown error'}`);
+        } else {
+          toast.error(t('connectionNotCompletedMsg'));
+        }
+        return;
+      }
+
       // What the server says BEFORE the popup opens, so that finishing a re-consent of an already-connected provider can be
       // told apart from closing the window without finishing. Fetched together with the launch URL to add no delay
       // before window.open.
@@ -372,50 +394,9 @@ export default function ConnectIntegrationModal({ integration, company, user, is
         } catch { return { ok: false }; }
       };
       const [{ authUrl }, baseline] = await Promise.all([
-        api.get('/api/oauth/launch-url', { provider, type: integration.type, ...(isNativeApp() ? { client: 'app' } : {}) }),
+        api.get('/api/oauth/launch-url', { provider, type: integration.type }),
         readOauthState(),
       ]);
-
-      // INSIDE THE ANDROID / iOS APP there is no popup window. The sign-in opens in the system browser (Google forbids OAuth in an
-      // embedded WebView) and the person comes back by the bmapz://oauth link the callback page offers, by closing that browser tab, or
-      // by switching back to the app. Any of those only starts the check: the SERVER decides whether the connection exists.
-      if (isNativeApp()) {
-        const stops = [];
-        let checking = false;
-        const comeBack = () => {
-          if (checking) return;
-          checking = true;
-          stops.forEach((stop) => stop());
-          closeExternalBrowser();
-          verifyNative();
-        };
-        const verifyNative = async () => {
-          const deadline = Date.now() + 45000;
-          while (Date.now() < deadline) {
-            const cur = await readOauthState();
-            if (cur.ok && cur.connected && (!baseline.ok || !baseline.connected || cur.stamp !== baseline.stamp)) {
-              setConnecting(false);
-              queryClient.invalidateQueries({ queryKey: ['companies'] });
-              setStep(3);
-              onSuccess?.();
-              return;
-            }
-            await new Promise((r) => setTimeout(r, 1500));
-          }
-          setConnecting(false);
-          toast.error(t('connectionNotCompletedMsg'));
-        };
-        const opened = await openExternalUrl(authUrl);
-        if (!opened) {
-          setConnecting(false);
-          toast.error(t('popupBlockedMsg'));
-          return;
-        }
-        stops.push(onAppUrlOpen((url) => { if (String(url).startsWith('bmapz://oauth')) comeBack(); }));
-        stops.push(onBrowserFinished(comeBack));
-        stops.push(onAppResume(comeBack));
-        return;
-      }
 
       const popup = window.open(
         authUrl,

@@ -7,6 +7,7 @@ import { Save, Eye, EyeOff, CheckCircle, XCircle, Loader2, TestTube, ExternalLin
 import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
 import { Company } from '@/api/entities';
+import { connectProvider } from '@/lib/oauthConnect';
 
 function SecretInput({ label, value, onChange, placeholder, hint }) {
   const [show, setShow] = useState(false);
@@ -274,65 +275,27 @@ export default function ApiKeysTab({ company, user, onSave }) {
   const set = (field, val) => setKeys(prev => ({ ...prev, [field]: val }));
 
   const connectMetaOAuth = async (integrationType) => {
-    setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: true }));
-
-    let popup;
-    let handledByMessage = false;
-
-    const onMessage = (event) => {
-      if (event.data?.type === 'oauth_success') {
-        handledByMessage = true;
-        window.removeEventListener('message', onMessage);
-        setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
+    const busyKey = `oauth_${integrationType}`;
+    setTesting(prev => ({ ...prev, [busyKey]: true }));
+    try {
+      // Shared flow (lib/oauthConnect.js): popup on the website, system browser in the app, and the SERVER confirms. This used to report
+      // "not completed" the moment the popup read as closed, even when the connection had been saved.
+      const result = await connectProvider({ provider: 'meta', type: integrationType });
+      if (result.status === 'connected') {
         setStatuses(prev => ({ ...prev, [integrationType]: true }));
         queryClient.invalidateQueries({ queryKey: ['companies'] });
         toast.success('Meta connected!');
-      } else if (event.data?.type === 'oauth_error') {
-        handledByMessage = true;
-        window.removeEventListener('message', onMessage);
-        setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
-        toast.error(`OAuth failed: ${event.data.error || 'Unknown error'}`);
+      } else if (result.status === 'popup_blocked') {
+        toast.error('Could not open the sign-in window. Please allow popups for Bmapz AI and try again.');
+      } else if (result.status === 'failed') {
+        toast.error(`OAuth failed: ${result.message || 'Unknown error'}`);
+      } else {
+        toast.error('Meta connection was not completed. Please finish the login and approve access.');
       }
-    };
-    try {
-      // Our own origin first, so the anti-CSRF nonce cookie is first-party.
-      const { authUrl } = await api.get('/api/oauth/launch-url', {
-        provider: 'meta',
-        type: integrationType,
-      });
-
-      popup = window.open(authUrl, 'oauth_popup', 'width=620,height=720,left=200,top=80');
-
-      if (!popup) {
-        setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
-        toast.error('Popup blocked. Please allow popups for Bmapz AI and try again.');
-        return;
-      }
-
-      window.addEventListener('message', onMessage);
-
-      const pollTimer = setInterval(() => {
-        if (!popup || popup.closed) {
-          clearInterval(pollTimer);
-          window.removeEventListener('message', onMessage);
-          if (!handledByMessage) {
-            setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
-            toast.error('Meta connection was not completed. Please finish the login popup and approve access.');
-          }
-        }
-      }, 1000);
-
-      setTimeout(() => {
-        clearInterval(pollTimer);
-        window.removeEventListener('message', onMessage);
-        if (!handledByMessage) {
-          setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
-        }
-      }, 120000);
     } catch (e) {
-      window.removeEventListener('message', onMessage);
-      setTesting(prev => ({ ...prev, [`oauth_${integrationType}`]: false }));
       toast.error(`OAuth failed: ${e?.message || 'Could not start Meta login'}`);
+    } finally {
+      setTesting(prev => ({ ...prev, [busyKey]: false }));
     }
   };
 

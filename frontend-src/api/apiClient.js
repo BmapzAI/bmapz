@@ -4,6 +4,8 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { isNativeApp } from '@/lib/platform';
+import { neutralizeForApp } from '@/lib/nativeMessages';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -45,6 +47,8 @@ export async function apiFetch(path, options = {}) {
       errorCode = body.code || null;
       errorDetails = body.details || null;
     } catch (_e) { /* use the default errorMsg */ }
+    // In the app the server's "upgrade / buy credits" wording is replaced by a plain statement (see lib/nativeMessages.js).
+    if (isNativeApp()) errorMsg = neutralizeForApp(errorMsg, errorCode);
     const err = new Error(errorMsg);
     if (errorCode) err.code = errorCode;
     if (errorDetails) err.details = errorDetails;

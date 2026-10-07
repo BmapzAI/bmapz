@@ -42,6 +42,7 @@ import internalChatRoutes from './routes/internalChat.js';
 import metricsRoutes from './routes/metrics.js';
 import canvaRoutes from './routes/canva.js';
 import { runAIChat } from './routes/ai.js';
+import { APP_ORIGINS } from './lib/appOrigins.js';
 import { refreshGlobalLearnings } from './lib/companyBrain.js';
 import { startAutomationScheduler } from './lib/automationScheduler.js';
 import { startModelRegistryRefresh } from './lib/modelRegistry.js';
@@ -67,8 +68,7 @@ const allowedOrigins = [
   // Android from https://localhost. Both only exist on the person's own device (nobody can host a page there for other people's
   // browsers), so listing them does not let another website in, and the API is Bearer-token only (no cookie authenticates a request), so an allowed origin still needs a signed-in person's token.
   // Exact strings, never a wildcard or a pattern.
-  'capacitor://localhost',
-  'https://localhost',
+  ...APP_ORIGINS,
 ];
 app.use(cors({
   origin: (origin, callback) => {

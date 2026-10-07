@@ -7,6 +7,8 @@ import { Search, CheckCircle, AlertCircle, Zap, Upload, Download } from 'lucide-
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { providerFamily } from '@/lib/oauthState';
 import ConnectIntegrationModal from '@/components/integrations/ConnectIntegrationModal';
 import { useAuth } from '@/lib/AuthContext';
 import { Company, Lead, Message, Activity } from '@/api/entities';
@@ -198,32 +200,6 @@ export default function Integrations() {
       window.history.replaceState({}, '', window.location.pathname);
     }
 
-    // Return from an OAuth round trip that had no window to message — an in-app or
-    // mobile system-browser tab, or a popup whose opener was severed (the callback
-    // page redirects here; see /api/oauth/popup.js). The query string is only a CLAIM
-    // from our own callback page, so confirm with the server before saying "connected".
-    const oauth = params.get('oauth');
-    if (oauth) {
-      const who = (params.get('provider') || 'Account').slice(0, 40);
-      const prov = (params.get('prov') || '').slice(0, 40);
-      window.history.replaceState({}, '', window.location.pathname);
-      if (oauth === 'success') {
-        api.get('/api/integrations/status')
-          .then((res) => {
-            if (res?.status?.[who] === true || (prov && res?.oauth_connected?.[prov] === true)) toast.success(`${who} connected successfully!`);
-            else toast(`Returned from ${who}. If its card does not show Connected, press Test on it.`);
-          })
-          .catch(() => { /* the card state below is still refreshed */ })
-          .finally(() => queryClient.invalidateQueries({ queryKey: ['companies'] }));
-      } else {
-        toast.error(`${who} connection was not completed. Please try again.`);
-      }
-      // If this page landed INSIDE the OAuth popup, close it. A normal or in-app tab
-      // refuses (only script-opened windows may close), which is exactly right there:
-      // the person is already back in the app.
-      setTimeout(() => { try { window.close(); } catch { /* not script-closable */ } }, 700);
-    }
-
     // postMessage from OAuth popup
     const onMessage = (event) => {
       if (event.data?.type === 'oauth_success') {
@@ -236,6 +212,35 @@ export default function Integrations() {
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
+
+  // Return from an OAuth round trip that had no window to message: an in-app or system-browser tab, a popup whose opener was severed, or the
+  // app's bmapz://oauth link (components/layout/AppLinkHandler.jsx sends it here). The query string is only a CLAIM from our own callback page,
+  // so the server is asked before anything says "connected". Keyed on the query string so a return that arrives while this page is already open
+  // is handled too, and cleared through the router so the same return can be handled again later.
+  const location = useLocation();
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const oauth = params.get('oauth');
+    if (!oauth) return;
+    const who = (params.get('provider') || 'Account').slice(0, 40);
+    const family = providerFamily(params.get('prov')) || providerFamily(who);
+    navigate(location.pathname, { replace: true });
+    if (oauth === 'success') {
+      api.get('/api/integrations/status')
+        .then((res) => {
+          if (res?.status?.[who] === true || (family && res?.oauth_connected?.[family] === true)) toast.success(`${who} connected successfully!`);
+          else toast(`Returned from ${who}. If its card does not show Connected, press Test on it.`);
+        })
+        .catch(() => { /* the card state below is still refreshed */ })
+        .finally(() => queryClient.invalidateQueries({ queryKey: ['companies'] }));
+    } else {
+      toast.error(`${who} connection was not completed. Please try again.`);
+    }
+    // If this page landed INSIDE the OAuth popup, close it. A normal or in-app tab refuses (only script-opened windows may close), which is
+    // exactly right there: the person is already back in the app.
+    setTimeout(() => { try { window.close(); } catch { /* not script-closable */ } }, 700);
+  }, [location.search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: () => Company.list() });
   const company = companies[0];

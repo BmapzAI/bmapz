@@ -27,6 +27,7 @@ const Pricing = lazyWithRetry(() => import('./pages/Pricing'), 'Pricing');
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { LanguageProvider } from '@/components/ui/LanguageContext';
 import SupportAssistant from '@/components/layout/SupportAssistant';
+import AppLinkHandler from '@/components/layout/AppLinkHandler';
 import { canSeeDesign } from '@/lib/featureFlags';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -176,6 +177,7 @@ const AppRoutes = () => {
   return (
     <>
       <AuthenticatedRoutes currentUser={dbUser} />
+      <AppLinkHandler />
       <SupportAssistant />
     </>
   );

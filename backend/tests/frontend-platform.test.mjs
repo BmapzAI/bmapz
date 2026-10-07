@@ -123,5 +123,39 @@ t('auth: a DIFFERENT person signing in gets the full treatment', JSON.stringify(
 t('auth: signing out clears everything with the spinner', JSON.stringify(plan('SIGNED_OUT', undefined, 'u1')) === JSON.stringify({ reload: true, spinner: true, silent: false }));
 t('auth: a user update for the same person is quiet too', plan('USER_UPDATED', 'u1', 'u1').spinner === false);
 
+// 10. "did the connection happen?" decisions (lib/oauthState.js): the server decides, never the popup or the link
+const { isNewConnection, waitForConnection, statusOfAppLink } = await import('../../frontend-src/lib/oauthState.js');
+const none = { ok: true, connected: false, stamp: null };
+const was = { ok: true, connected: true, stamp: 'T1' };
+t('connect: not connected before, connected now -> a new connection', isNewConnection({ ok: true, connected: true, stamp: 'T2' }, none) === true);
+t('connect: still not connected -> nothing happened', isNewConnection(none, none) === false);
+t('connect: already connected, stamp unchanged -> the window was closed without finishing (NOT a connection)', isNewConnection(was, was) === false);
+t('connect: already connected, stamp moved -> a re-consent finished', isNewConnection({ ok: true, connected: true, stamp: 'T2' }, was) === true);
+t('connect: the server could not be asked -> never claim success', isNewConnection({ ok: false }, none) === false);
+t('connect: baseline unreadable but now connected -> success (cannot do better)', isNewConnection({ ok: true, connected: true, stamp: 'T9' }, { ok: false }) === true);
+
+let reads = 0;
+const fastRead = async () => { reads++; return reads >= 3 ? { ok: true, connected: true, stamp: 'N' } : none; };
+t('connect: polls until the server shows the connection', (await waitForConnection({ provider: 'google', baseline: none, read: fastRead, timeoutMs: 2000, intervalMs: 5 })) === true && reads === 3, 'reads=' + reads);
+reads = 0;
+t('connect: gives up when it never shows within the time allowed', (await waitForConnection({ provider: 'google', baseline: none, read: async () => { reads++; return none; }, timeoutMs: 60, intervalMs: 20 })) === false && reads >= 2, 'reads=' + reads);
+t('connect: succeeds at once when it is already there on the first look', (await waitForConnection({ provider: 'meta', baseline: none, read: async () => ({ ok: true, connected: true, stamp: 'Z' }), timeoutMs: 60, intervalMs: 20 })) === true);
+
+t('app link: bmapz://oauth?status=success -> success', statusOfAppLink('bmapz://oauth?status=success&provider=unknown&integration=twitter') === 'success');
+t('app link: bmapz://oauth?status=error -> error', statusOfAppLink('bmapz://oauth?status=error&provider=google') === 'error');
+t('app link: another host or scheme is not ours', statusOfAppLink('bmapz://other?status=success') === null && statusOfAppLink('https://ai.bmapz.com/oauth?status=success') === null && statusOfAppLink('evil://oauth?status=success') === null);
+t('app link: a missing or unknown status is ignored; garbage never throws', statusOfAppLink('bmapz://oauth') === null && statusOfAppLink('bmapz://oauth?status=maybe') === null && statusOfAppLink('::::') === null && statusOfAppLink(undefined) === null);
+
+const { providerFamily } = await import('../../frontend-src/lib/oauthState.js');
+t('provider family: every integration type maps to the key /status reports', ['gmail', 'google_calendar', 'google_ads', 'youtube', 'Google Analytics'].every((v) => providerFamily(v) === 'google') && ['meta', 'meta_ads', 'facebook', 'instagram', 'whatsapp'].every((v) => providerFamily(v) === 'meta') && providerFamily('linkedin_ads') === 'linkedin' && ['twitter', 'Twitter/X', 'x'].every((v) => providerFamily(v) === 'twitter') && providerFamily('tiktok_social') === 'tiktok' && providerFamily('Canva') === 'canva');
+t('provider family: an unknown name (including the "unknown" the callback uses) is null, never a guess', providerFamily('unknown') === null && providerFamily('') === null && providerFamily(undefined) === null && providerFamily('zapier') === null);
+
+// 9. in the app the server's buying language is replaced (lib/nativeMessages.js)
+const { neutralizeForApp } = await import('../../frontend-src/lib/nativeMessages.js');
+t('app wording: credits exhausted says so plainly, no "upgrade" / "credit pack"', neutralizeForApp('Insufficient AI credits: 0 remaining, 40 needed. Upgrade your plan or buy a credit pack.', 'CREDITS_EXHAUSTED') === "You've used all of your AI credits for this period.");
+t('app wording: an uncoded message that steers to buying is neutralised too', neutralizeForApp('Brand Scans are not included in the trial. Upgrade to Growth+ ... or purchase one from the pricing page.', undefined) === "This isn't available on your current plan.");
+t('app wording: a message about something else is left exactly as written', neutralizeForApp('OpenAI API key not configured. Add one in Settings.', 'MISSING_API_KEY') === 'OpenAI API key not configured. Add one in Settings.');
+t('app wording: no message at all stays empty', neutralizeForApp('', undefined) === '' && neutralizeForApp(undefined, undefined) === undefined);
+
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

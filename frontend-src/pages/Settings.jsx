@@ -22,6 +22,7 @@ import SalesTeamTab from '@/components/settings/SalesTeamTab';
 import AIImportTab from '@/components/settings/AIImportTab';
 import { Company } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
+import WebOnly from '@/components/ui/WebOnly';
 import { REGIONS, DEFAULT_REGION_CODE } from '@shared/regions';
 
 function TagInput({ label, values = [], onChange, placeholder }) {
@@ -146,7 +147,7 @@ export default function Settings() {
           <TabsTrigger value="ai-import" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Brain size={14} className="mr-1.5" />{isPt ? 'Importar IA' : 'Import AI'}</TabsTrigger>
           <TabsTrigger value="sales-team" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Users size={14} className="mr-1.5" />{isPt ? 'Time de Vendas' : 'Sales Team'}</TabsTrigger>
           <TabsTrigger value="usage" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><Zap size={14} className="mr-1.5" />{t('usageTab')}</TabsTrigger>
-          <TabsTrigger value="subscription" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><CreditCard size={14} className="mr-1.5" />{t('subscriptionTab')}</TabsTrigger>
+          <WebOnly><TabsTrigger value="subscription" className="data-[state=active]:bg-[#38b6ff]/20 data-[state=active]:text-[#38b6ff]"><CreditCard size={14} className="mr-1.5" />{t('subscriptionTab')}</TabsTrigger></WebOnly>
         </TabsList>
 
         {/* General */}
@@ -548,6 +549,7 @@ export default function Settings() {
           <AIImportTab />
         </TabsContent>
 
+        <WebOnly>
         <TabsContent value="subscription" className="space-y-6">
           <div className="rounded-2xl bg-white/5 border border-white/10 p-6 space-y-6">
             <div>
@@ -587,6 +589,7 @@ export default function Settings() {
             </div>
           </div>
         </TabsContent>
+        </WebOnly>
       </Tabs>
     </div>
   );

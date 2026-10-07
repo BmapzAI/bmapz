@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
+import { canUseBYOK } from '../lib/aiCredits.js';
 import { invalidateCompanyBrain } from '../lib/companyBrain.js';
 import { invalidateAISettingsCache } from './ai.js';
 import { daysUntilHandleChange } from './users.js';
@@ -18,6 +19,15 @@ const DIRECT_COLUMNS = new Set([
   // (random | balanced | queued) — see lib/leadAssignment.js.
   'lead_routing_method',
 ]);
+
+/**
+ * The company's OWN AI provider keys (bring-your-own-key). Only the Bmapz platform team (owner / system_admin) may hold them: BYOK
+ * bypasses the credit billing that is the product's revenue, and customers cap at company_admin. The chat path already ignores these keys for
+ * everyone else (lib/aiCredits.js canUseBYOK) and the settings screen hides them, but this route accepted them from ANY company admin, so
+ * they could be stored with a plain API call. They are now refused here too. The model and provider PREFERENCES (openai_model, ai_provider...)
+ * are not keys and stay open.
+ */
+const BYOK_KEY_FIELDS = new Set(['openai_api_key', 'anthropic_api_key', 'stability_api_key']);
 
 /**
  * Fields stored inside the api_keys JSONB column.
@@ -278,6 +288,10 @@ router.patch('/current', requireAuth, requireCompanyAdmin, async (req, res) => {
       if (DIRECT_COLUMNS.has(key)) {
         directUpdates[key] = value;
       } else if (API_KEY_FIELDS.has(key)) {
+        if (BYOK_KEY_FIELDS.has(key) && !canUseBYOK(req.dbUser?.role)) {
+          console.warn(`[companies/patch] ${key} ignored: only owner/system_admin may store their own AI provider keys (role ${req.dbUser?.role})`);
+          continue;
+        }
         apiKeyUpdates[key] = value;
       } else if (SETTINGS_FIELDS.has(key)) {
         settingsUpdates[key] = value;

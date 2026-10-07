@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Company, User, Subscription } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
+import WebOnly from '@/components/ui/WebOnly';
 
 function Badge({ color, children }) {
   const colors = {
@@ -186,6 +187,7 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
                   : <>You've reached your limit of <strong>{totalAllowed}</strong> company profile{totalAllowed !== 1 ? 's' : ''} on your current <strong className="capitalize">{subscription?.plan}</strong> plan.</>}
               </p>
             </div>
+            <WebOnly>
             <p className="text-gray-400 text-sm">{isPt ? 'Escolha uma opção para adicionar mais perfis de empresa:' : 'Choose an option to add more company profiles:'}</p>
             <div className="space-y-3">
               <button onClick={() => { onClose(); navigate(createPageUrl('Billing')); }}
@@ -216,6 +218,7 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
                 <ArrowRight size={16} className="text-[#cb6ce6] group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
+            </WebOnly>
             <div className="flex justify-end pt-1">
               <Button variant="outline" onClick={onClose} className="border-white/10 text-white hover:bg-white/5">{t('close')}</Button>
             </div>
@@ -567,6 +570,7 @@ export default function CompanyAdminPanel() {
                 </div>
               </div>
 
+              <WebOnly>
               {/* Upsell path: this tab is where an admin discovers they are
                   running low, so give them somewhere to go from here. */}
               <div className="rounded-2xl border border-[#38b6ff]/25 bg-gradient-to-br from-[#3572b9]/10 to-[#cb6ce6]/10 p-5 flex items-center justify-between gap-4 flex-wrap">
@@ -591,6 +595,7 @@ export default function CompanyAdminPanel() {
                   </Button>
                 </div>
               </div>
+              </WebOnly>
 
               <div className="rounded-xl border border-[#38b6ff]/20 bg-[#38b6ff]/5 p-4 flex items-start gap-3">
                 <AlertTriangle size={16} className="text-[#38b6ff] flex-shrink-0 mt-0.5" />

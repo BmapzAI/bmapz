@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, ExternalLink, Plug } from 'lucide-react';
 import { toast } from 'sonner';
 import { Canva } from '@/api/entities';
-import { api } from '@/api/apiClient';
+import { connectProvider } from '@/lib/oauthConnect';
 
 /**
  * Canva design picker — lists the user's Canva designs and exports the chosen
@@ -14,6 +14,7 @@ import { api } from '@/api/apiClient';
  */
 export default function CanvaPicker({ open, onClose, onSelect }) {
   const { isPt } = useLanguage();
+  const queryClient = useQueryClient();
   const [exportingId, setExportingId] = useState(null);
 
   const { data: status } = useQuery({ queryKey: ['canvaStatus'], queryFn: () => Canva.status(), enabled: open });
@@ -25,14 +26,19 @@ export default function CanvaPicker({ open, onClose, onSelect }) {
 
   const connectCanva = async () => {
     try {
-      // Our own origin first, so the anti-CSRF nonce cookie is first-party.
-      const { authUrl } = await api.get('/api/oauth/launch-url', { provider: 'canva', type: 'canva' });
-      const popup = window.open(authUrl, 'canva_oauth', 'width=620,height=760,left=200,top=80');
-      const onMsg = (e) => {
-        if (e.data?.type === 'oauth_success') { window.removeEventListener('message', onMsg); popup?.close(); toast.success('Canva connected!'); }
-        if (e.data?.type === 'oauth_error') { window.removeEventListener('message', onMsg); toast.error('Canva connection failed'); }
-      };
-      window.addEventListener('message', onMsg);
+      // Shared with the other connects: the popup on the website, the system browser in the app, and in both the SERVER decides whether it
+      // connected (the old code trusted a window message that never arrives when the callback page severs the popup's opener).
+      const result = await connectProvider({ provider: 'canva', type: 'canva' });
+      if (result.status === 'connected') {
+        queryClient.invalidateQueries({ queryKey: ['canvaStatus'] });
+        toast.success('Canva connected!');
+      } else if (result.status === 'popup_blocked') {
+        toast.error(isPt ? 'Não foi possível abrir a janela de login.' : 'Could not open the sign-in window.');
+      } else if (result.status === 'failed') {
+        toast.error('Canva connection failed');
+      } else {
+        toast.error(isPt ? 'A conexão com o Canva não foi concluída.' : 'The Canva connection was not completed.');
+      }
     } catch (e) {
       toast.error(e.code === 'NOT_CONFIGURED'
         ? (isPt ? 'A integração com o Canva ainda não foi configurada pelo administrador.' : 'Canva integration is not configured yet by the admin.')

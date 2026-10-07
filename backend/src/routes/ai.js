@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
-import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
+import { requireAuth, requireCompanyAdmin, requireAppOwner } from '../middleware/auth.js';
 import {
   extractActions, applyActions, describeActions, isKnownOp,
   proposeActions, looksActionable, buildSectionAction, ACTION_PROTOCOL, friendlyError,
@@ -1590,7 +1590,9 @@ router.post('/generate-image', requireAuth, async (req, res) => {
 // (e.g. "make the sky purple"). Uses gpt-image-1 edits; returns a data URL the
 // frontend persists to storage. (remove-background and enhance operations were
 // removed — they altered the source too much.)
-router.post('/edit-image', requireAuth, async (req, res) => {
+// Design Studio's image editor. Design Studio is the owner's trade secret, and its screen was hidden from everyone else while this endpoint was
+// reachable by any signed-in customer who knew the path. requireAppOwner answers 404 (not 403) so it does not even confirm the feature exists.
+router.post('/edit-image', requireAuth, requireAppOwner, async (req, res) => {
   let editCharged = false;
   let editRefunded = false;
   const refundEdit = async (why) => {
