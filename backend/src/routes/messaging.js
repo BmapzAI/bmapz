@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
 import { handleInboundEvent } from '../lib/workflowEngine.js';
+import { getGoogleAccessToken } from '../lib/googleToken.js';
 
 const router = Router();
 
@@ -387,63 +388,6 @@ async function syncLinkedIn() {
   };
 }
 
-async function getGoogleAccessToken(companyId, company) {
-  if (company.google_access_token && !isExpired(company.google_token_expires_at)) {
-    return company.google_access_token;
-  }
-
-  const refreshToken = company.google_refresh_token || company.gmail_refresh_token;
-  const clientId = company.google_client_id || company.gmail_client_id || process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = company.google_client_secret || company.gmail_client_secret || process.env.GOOGLE_CLIENT_SECRET;
-  if (!refreshToken || !clientId || !clientSecret) return company.google_access_token || null;
-
-  const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
-  });
-  const tokens = await tokenResp.json();
-  if (!tokenResp.ok || tokens.error) {
-    throw new Error(tokens.error_description || tokens.error || 'Google token refresh failed');
-  }
-
-  const expiresAt = new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString();
-  const { data: companyRow, error: readErr } = await supabaseAdmin
-    .from('companies')
-    .select('api_keys')
-    .eq('id', companyId)
-    .single();
-  // Skip the write if the read failed. This is a read-merge-write over the whole
-  // api_keys blob, so merging onto `{}` would persist ONLY the two Google fields
-  // and delete every other stored credential. This refresh runs unattended
-  // (roughly hourly per connected company), so a silent wipe here would be
-  // discovered long after the fact. The freshly minted token is still returned
-  // below, so this request succeeds either way.
-  if (readErr) {
-    console.error('[messaging] token refresh: api_keys read failed, not persisting:', readErr.message);
-  } else {
-    await supabaseAdmin
-      .from('companies')
-      .update({
-        api_keys: {
-          ...(companyRow?.api_keys || {}),
-          google_access_token: tokens.access_token,
-          google_token_expires_at: expiresAt,
-        },
-      })
-      .eq('id', companyId);
-  }
-
-  company.google_access_token = tokens.access_token;
-  company.google_token_expires_at = expiresAt;
-  return tokens.access_token;
-}
-
 async function googleFetchJson(url, token, fallbackMessage) {
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await response.json().catch(() => ({}));
@@ -593,11 +537,6 @@ function stripHtml(html) {
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function isExpired(isoDate) {
-  if (!isoDate) return false;
-  return new Date(isoDate).getTime() < Date.now() + 60000;
 }
 
 function buildSyncMessage(results, imported) {

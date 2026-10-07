@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { getGoogleAccessToken } from '../lib/googleToken.js';
 import { GOOGLE_ADS_API_VERSION, googleAdsHeaders, googleAdsApiError, googleAdsErrorMessage } from '../lib/googleAds.js';
 
 const router = Router();
@@ -437,47 +438,8 @@ function extractMetaConversions(conversions) {
   return conversions.reduce((sum, item) => sum + Number(item.value || 0), 0);
 }
 
-async function getGoogleAdsAccessToken(companyId, company) {
-  const refreshToken = company.google_ads_refresh_token || company.google_refresh_token;
-  const clientId = company.google_ads_client_id || company.google_client_id || process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = company.google_ads_client_secret || company.google_client_secret || process.env.GOOGLE_CLIENT_SECRET;
-  const currentToken = company.google_access_token;
-  const expiresAt = company.google_token_expires_at ? new Date(company.google_token_expires_at).getTime() : 0;
-
-  if (currentToken && expiresAt > Date.now() + 5 * 60 * 1000) return currentToken;
-  if (!refreshToken || !clientId || !clientSecret) return currentToken || null;
-
-  const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
-  });
-  const tokens = await tokenResp.json();
-  if (!tokenResp.ok || tokens.error || !tokens.access_token) {
-    throw new Error(tokens.error_description || tokens.error || 'Google OAuth token refresh failed. Reconnect Google Ads.');
-  }
-
-  // Read-merge-write over the whole api_keys blob: if the read fails and we
-  // merge onto `{}`, the update DELETES every other stored credential. Skip
-  // persisting rather than wiping — the token below still works for this call.
-  const { data: row, error: readErr } = await supabaseAdmin
-    .from('companies').select('api_keys').eq('id', companyId).single();
-  if (readErr) {
-    console.error('[ads] Google token refresh: api_keys read failed, not persisting:', readErr.message);
-    return tokens.access_token;
-  }
-  const apiKeys = row?.api_keys || {};
-  await supabaseAdmin.from('companies').update({
-    api_keys: {
-      ...apiKeys,
-      google_access_token: tokens.access_token,
-      google_token_expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
-    },
-  }).eq('id', companyId);
-  return tokens.access_token;
+// The Ads grant first, and a 5-minute margin so a long report batch does not expire mid-way. The refresh itself is the shared
+// one (lib/googleToken.js): this used to be a private copy that had drifted from the others.
+function getGoogleAdsAccessToken(companyId, company) {
+  return getGoogleAccessToken(companyId, company, { preferAds: true, marginMs: 5 * 60 * 1000 });
 }

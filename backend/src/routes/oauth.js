@@ -67,7 +67,7 @@ function readCookie(req, name) {
  * SameSite=Lax survives the top-level GET redirect back from the provider while
  * still refusing cross-site POSTs. httpOnly keeps it away from scripts.
  */
-function issueOAuthNonce(res) {
+function newOAuthNonce(res) {
   const nonce = crypto.randomBytes(32).toString('base64url');
   res.cookie?.(OAUTH_NONCE_COOKIE, nonce, {
     httpOnly: true,
@@ -76,11 +76,34 @@ function issueOAuthNonce(res) {
     maxAge: OAUTH_STATE_MAX_AGE_MS,
     path: '/api/oauth',
   });
-  return sha256(nonce);
+  return nonce;
 }
 
-function encodeOAuthState(payload, res) {
-  const nonceHash = res ? issueOAuthNonce(res) : null;
+function issueOAuthNonce(res) {
+  return sha256(newOAuthNonce(res));
+}
+
+/**
+ * The PKCE code_verifier, derived instead of stored.
+ *
+ * It used to travel inside the OAuth `state`, which is only SIGNED, not encrypted: anyone who sees the authorize URL (the provider,
+ * browser history, a proxy, a Referer header) could read it, and with the code that is everything PKCE exists to keep secret.
+ * Now the state carries only the HASH of the nonce, and the verifier is HMAC(server secret, nonce): it can be recomputed at the
+ * callback from the httpOnly nonce cookie that only the initiating browser holds, and nobody who sees the URL can compute it.
+ * 43 base64url characters, inside RFC 7636's 43-128.
+ */
+function pkceVerifierFor(nonce) {
+  if (!nonce) throw new Error('That connection did not start in this browser. Please try connecting again.');
+  return crypto.createHmac('sha256', oauthStateSecret()).update(`pkce-verifier:${nonce}`).digest('base64url');
+}
+
+/** The verifier at the callback. A flow started before this change still carries it in the state: honour it until it expires. */
+function verifierFromCallback(stateData, req) {
+  return stateData.codeVerifier || pkceVerifierFor(readCookie(req, OAUTH_NONCE_COOKIE));
+}
+
+function encodeOAuthState(payload, res, nonce = null) {
+  const nonceHash = nonce ? sha256(nonce) : (res ? issueOAuthNonce(res) : null);
   const body = Buffer.from(JSON.stringify({
     ...payload, issuedAt: Date.now(), ...(nonceHash ? { nonceHash } : {}),
   })).toString('base64url');
@@ -156,8 +179,8 @@ router.get('/launch-url', requireAuth, (req, res) => {
  *
  * The state was a stateless signed bearer blob valid for a full 15 minutes, so a
  * captured callback URL could be replayed repeatedly within that window — and for
- * Twitter and Canva the PKCE `code_verifier` travels INSIDE the state, which
- * defeats the point of PKCE if the state is ever observed.
+ * Twitter and Canva the PKCE `code_verifier` used to travel INSIDE the state, which
+ * defeats the point of PKCE if the state is ever observed (it is derived from the nonce cookie now).
  *
  * The insert is the lock: the signature is the primary key, so the second use
  * collides and is refused.
@@ -654,13 +677,14 @@ router.get(['/twitter/initiate', '/twitter/initiate-url'], allowLaunchTicket, as
     const clientId = apiKeys.twitter_client_id || process.env.TWITTER_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'Twitter Client ID not configured' });
 
-    const codeVerifier = Buffer.from(crypto.randomUUID()).toString('base64url');
+    // The verifier is NOT put in the state (see pkceVerifierFor): it is derived from the nonce cookie set here.
+    const nonce = newOAuthNonce(res);
+    const codeVerifier = pkceVerifierFor(nonce);
     const state = encodeOAuthState({
       companyId: req.companyId,
-      codeVerifier,
       integrationType: type,
       origin: origin || FRONTEND_URL,
-    }, res);
+    }, res, nonce);
 
     const redirectUri = `${API_URL}/api/oauth/twitter/callback`;
     const params = new URLSearchParams({
@@ -687,7 +711,9 @@ router.get('/twitter/callback', async (req, res) => {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Twitter/X', oauthError));
 
-    const { companyId, codeVerifier, integrationType = 'twitter' } = await consumeOAuthState(state, req);
+    const stateData = await consumeOAuthState(state, req);
+    const { companyId, integrationType = 'twitter' } = stateData;
+    const codeVerifier = verifierFromCallback(stateData, req);
     const { apiKeys } = await getCompanyKeys(companyId);
 
     const clientId = apiKeys.twitter_client_id || process.env.TWITTER_CLIENT_ID;
@@ -943,11 +969,12 @@ router.get(['/canva/initiate', '/canva/initiate-url'], allowLaunchTicket, async 
     const clientId = process.env.CANVA_CLIENT_ID;
     if (!clientId) return res.status(400).json({ error: 'Canva Client ID not configured', code: 'NOT_CONFIGURED' });
 
-    const codeVerifier = crypto.randomBytes(48).toString('base64url');
-    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+    const nonce = newOAuthNonce(res);
+    const codeVerifier = pkceVerifierFor(nonce);
+    const codeChallenge = pkceChallenge(codeVerifier);
     const state = encodeOAuthState({
-      companyId: req.companyId, codeVerifier, integrationType: type, origin: origin || FRONTEND_URL,
-    }, res);
+      companyId: req.companyId, integrationType: type, origin: origin || FRONTEND_URL,
+    }, res, nonce);
 
     const params = new URLSearchParams({
       response_type: 'code',
@@ -970,7 +997,9 @@ router.get('/canva/callback', async (req, res) => {
   try {
     const { code, state, error: oauthError } = req.query;
     if (oauthError) return res.send(popupHtml('error', 'Canva', oauthError));
-    const { companyId, codeVerifier, integrationType = 'canva' } = await consumeOAuthState(state, req);
+    const stateData = await consumeOAuthState(state, req);
+    const { companyId, integrationType = 'canva' } = stateData;
+    const codeVerifier = verifierFromCallback(stateData, req);
     const { apiKeys } = await getCompanyKeys(companyId);
     const clientId = process.env.CANVA_CLIENT_ID;
     const clientSecret = process.env.CANVA_CLIENT_SECRET;
