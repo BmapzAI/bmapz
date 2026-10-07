@@ -181,8 +181,31 @@ router.get('/status', requireAuth, async (req, res) => {
     // integration is connected when its required token/account is missing.
     const merged = { ...status, ...detected };
 
+    // Provider-level state for the OAuth popup. The per-service flags above stay FALSE after a successful sign-in until a
+    // property or account is chosen (Analytics needs a property id, Meta Ads an ad account), so the connect dialog could
+    // not use them to tell "signed in" from "never finished". The stamp is each token's expiry time, which changes on every
+    // new sign-in, so a re-consent of an already-connected provider is told apart from a cancelled one.
+    const oauth_connected = {
+      google: !!k.google_access_token,
+      meta: !!k.meta_access_token,
+      linkedin: !!k.linkedin_access_token,
+      twitter: !!k.twitter_access_token,
+      tiktok: !!k.tiktok_access_token,
+      canva: !!k.canva_access_token,
+    };
+    const oauth_stamp = {
+      google: k.google_token_expires_at || null,
+      meta: k.meta_token_expires_at || null,
+      linkedin: k.linkedin_token_expires_at || null,
+      twitter: k.twitter_token_expires_at || null,
+      tiktok: k.tiktok_token_expires_at || null,
+      canva: k.canva_token_expires_at || null,
+    };
+
     res.json({
       status: merged,
+      oauth_connected,
+      oauth_stamp,
       google_connected_email: k.google_connected_email,
       facebook_page_id: k.facebook_page_id,
       instagram_business_account_id: k.instagram_business_account_id,

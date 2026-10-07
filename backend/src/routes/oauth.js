@@ -1123,7 +1123,7 @@ router.get('/popup.js', (_req, res) => {
     // (The regex below needs a DOUBLE backslash in the server source because this sits
     // inside a template literal: a single one collapses and the emitted regex becomes
     // two slashes, which is a comment and broke the whole script.)
-    location.replace(t.replace(/\\/+$/, '') + '/Integrations?oauth=' + (ok ? 'success' : 'error') + '&provider=' + encodeURIComponent(who));
+    location.replace(t.replace(/\\/+$/, '') + '/Integrations?oauth=' + (ok ? 'success' : 'error') + '&provider=' + encodeURIComponent(who) + '&prov=' + encodeURIComponent(b.dataset.provider || ''));
   } else {
     setTimeout(function () { window.close(); }, 300);
   }

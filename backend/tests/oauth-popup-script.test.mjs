@@ -32,9 +32,9 @@ function run({ status, opener, target }) {
 let c = run({ status: 'success', opener: true, target: 'https://ai.bmapz.com' });
 t('opener present -> posts to the EXACT origin, closes, no redirect', c.posted?.o === 'https://ai.bmapz.com' && c.posted.m.type === 'oauth_success' && c.closed === 1 && !c.replaced);
 c = run({ status: 'success', opener: false, target: 'https://ai.bmapz.com' });
-t('NO opener (severed popup / in-app browser) -> redirects into the app with the outcome', c.replaced === 'https://ai.bmapz.com/Integrations?oauth=success&provider=gmail' && !c.posted, c.replaced);
+t('NO opener (severed popup / in-app browser) -> redirects into the app with the outcome', c.replaced === 'https://ai.bmapz.com/Integrations?oauth=success&provider=gmail&prov=Google' && !c.posted, c.replaced);
 c = run({ status: 'error', opener: false, target: 'https://ai.bmapz.com/' });
-t('NO opener + error + trailing slash on the target', c.replaced === 'https://ai.bmapz.com/Integrations?oauth=error&provider=gmail', c.replaced);
+t('NO opener + error + trailing slash on the target', c.replaced === 'https://ai.bmapz.com/Integrations?oauth=error&provider=gmail&prov=Google', c.replaced);
 c = run({ status: 'success', opener: false, target: '' });
 t('NO opener and no target configured -> only tries to close', !c.replaced && c.closed === 1);
 

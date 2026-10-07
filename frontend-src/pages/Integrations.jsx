@@ -205,11 +205,12 @@ export default function Integrations() {
     const oauth = params.get('oauth');
     if (oauth) {
       const who = (params.get('provider') || 'Account').slice(0, 40);
+      const prov = (params.get('prov') || '').slice(0, 40);
       window.history.replaceState({}, '', window.location.pathname);
       if (oauth === 'success') {
         api.get('/api/integrations/status')
           .then((res) => {
-            if (res?.status?.[who] === true) toast.success(`${who} connected successfully!`);
+            if (res?.status?.[who] === true || (prov && res?.oauth_connected?.[prov] === true)) toast.success(`${who} connected successfully!`);
             else toast(`Returned from ${who}. If its card does not show Connected, press Test on it.`);
           })
           .catch(() => { /* the card state below is still refreshed */ })

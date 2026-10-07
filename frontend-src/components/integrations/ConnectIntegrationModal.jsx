@@ -361,10 +361,19 @@ export default function ConnectIntegrationModal({ integration, company, user, is
       // a popup cannot send an Authorization header) makes that cookie first-party,
       // and the callback then requires it to match the signed state.
       const provider = oauthPath.split('/')[3];   // /api/oauth/<provider>/initiate
-      const { authUrl } = await api.get('/api/oauth/launch-url', {
-        provider,
-        type: integration.type,
-      });
+      // What the server says BEFORE the popup opens, so that finishing a re-consent of an already-connected provider can be
+      // told apart from closing the window without finishing. Fetched together with the launch URL to add no delay
+      // before window.open.
+      const readOauthState = async () => {
+        try {
+          const r = await api.get('/api/integrations/status');
+          return { ok: true, connected: r?.oauth_connected?.[provider] === true, stamp: r?.oauth_stamp?.[provider] ?? null };
+        } catch { return { ok: false }; }
+      };
+      const [{ authUrl }, baseline] = await Promise.all([
+        api.get('/api/oauth/launch-url', { provider, type: integration.type }),
+        readOauthState(),
+      ]);
 
       const popup = window.open(
         authUrl,
@@ -398,13 +407,14 @@ export default function ConnectIntegrationModal({ integration, company, user, is
         onSuccess?.();
       };
       const verifyWithServer = async () => {
-        const key = integration.statusKey || integration.type;
         const deadline = Date.now() + 45000;
         while (Date.now() < deadline) {
           if (handledByMessage) return;                 // the message arrived after all
           try {
-            const res = await api.get('/api/integrations/status');
-            if (res?.status?.[key] === true) { finishSuccess(); return; }
+            // Provider-level, not the per-service flag: that one stays false until a property/account is picked, so a
+            // successful sign-in for Analytics, Search Console or Meta Ads was reported as "not completed".
+            const cur = await readOauthState();
+            if (cur.ok && cur.connected && (!baseline.ok || !baseline.connected || cur.stamp !== baseline.stamp)) { finishSuccess(); return; }
           } catch { /* transient — keep trying until the deadline */ }
           await new Promise((r) => setTimeout(r, 1500));
         }
