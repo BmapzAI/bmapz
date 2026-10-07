@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
 import { getActiveProvider, getPaymentSettings } from '../lib/paymentProviders.js';
+import { isAppOrigin } from '../lib/appOrigins.js';
 
 const router = Router();
 
@@ -51,8 +52,13 @@ function resolvePriceId(planId, billingCycle) {
   return process.env[key] || process.env[fallbackKey] || null;
 }
 
+// The Android / iOS apps are consumption-only: the stores require their own payment system for digital subscriptions, so no checkout or
+// portal session is ever created for a request from the apps' pages (the app build does not even contain the screens that call these).
+// 404, not 403: it must not read as "you may buy elsewhere".
+const refuseApps = (req, res, next) => (isAppOrigin(req) ? res.status(404).json({ error: 'Not found' }) : next());
+
 // POST /api/billing/checkout — create Stripe Checkout Session
-router.post('/checkout', requireAuth, requireCompanyAdmin, async (req, res) => {
+router.post('/checkout', refuseApps, requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
     const { plan, plan_id, price_id: directPriceId, billing_cycle, success_url, cancel_url } = req.body;
     const price_id = directPriceId || resolvePriceId(plan_id || plan, billing_cycle);
@@ -85,7 +91,7 @@ router.post('/checkout', requireAuth, requireCompanyAdmin, async (req, res) => {
 });
 
 // POST /api/billing/portal — Stripe Customer Portal
-router.post('/portal', requireAuth, requireCompanyAdmin, async (req, res) => {
+router.post('/portal', refuseApps, requireAuth, requireCompanyAdmin, async (req, res) => {
   try {
     const { data: sub } = await supabaseAdmin
       .from('subscriptions')

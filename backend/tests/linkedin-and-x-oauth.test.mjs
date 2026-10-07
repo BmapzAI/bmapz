@@ -49,12 +49,12 @@ for (let i = 0; i < 150; i++) {
   await new Promise((r) => setTimeout(r, 100));
 }
 
-const ticket = () => {
-  const body = Buffer.from(JSON.stringify({ userId: 'u1', companyId: 'c1', purpose: 'launch', issuedAt: Date.now() })).toString('base64url');
+const ticket = (client) => {
+  const body = Buffer.from(JSON.stringify({ userId: 'u1', companyId: 'c1', purpose: 'launch', issuedAt: Date.now(), ...(client ? { client } : {}) })).toString('base64url');
   return `${body}.${crypto.createHmac('sha256', process.env.OAUTH_STATE_SECRET).update(body).digest('base64url')}`;
 };
-const go = async (path) => {
-  const r = await fetch(`http://127.0.0.1:3983/api/oauth/${path}${path.includes('?') ? '&' : '?'}t=${ticket()}`, { redirect: 'manual' });
+const go = async (path, client) => {
+  const r = await fetch(`http://127.0.0.1:3983/api/oauth/${path}${path.includes('?') ? '&' : '?'}t=${ticket(client)}`, { redirect: 'manual' });
   const loc = r.headers.get('location');
   return { status: r.status, url: loc ? new URL(loc) : null, loc, cookies: r.headers.getSetCookie ? r.headers.getSetCookie() : [] };
 };
@@ -95,6 +95,18 @@ t('X: two flows get different verifiers (nonce per flow)', (() => { const a = no
 t('X: still asks for offline.access so a refresh token is issued', (x.url?.searchParams.get('scope') || '').includes('offline.access'));
 t('X: redirect_uri is the api.bmapz.com callback', x.url?.searchParams.get('redirect_uri') === 'https://api.bmapz.com/api/oauth/twitter/callback');
 
+// ── the Android / iOS app's system browser
+const web1 = await go('twitter/initiate?type=twitter');
+t('app flag: a website connect CLEARS the client cookie (an earlier app connect in this browser must not leak into it)', (web1.cookies || []).some((c) => /^bmapz_oauth_client=;/.test(c)), JSON.stringify(web1.cookies));
+const app1 = await go('twitter/initiate?type=twitter', 'app');
+const appCookie = (app1.cookies || []).map((c) => c.split(';')[0]).find((c) => c.startsWith('bmapz_oauth_client=')) || '';
+t('app flag: a connect started by the app (signed ticket says so) sets the httpOnly client cookie', appCookie === 'bmapz_oauth_client=app' && (app1.cookies || []).some((c) => /bmapz_oauth_client=app/.test(c) && /HttpOnly/i.test(c) && /SameSite=Lax/i.test(c)), JSON.stringify(app1.cookies));
+const appPage = await callback('twitter', app1, nonceCookie(app1) + '; ' + appCookie);
+t('app flag: the callback page hands control back to the app (data-client=app + a bmapz://oauth link, status only)', appPage.includes('data-client="app"') && appPage.includes('href="bmapz://oauth?status=success&amp;provider=') && appPage.includes('&amp;integration=twitter"'), appPage.slice(0, 600));
+t('app flag: that link carries NO code, token or state', !/(code|token|state|secret)=/i.test((appPage.match(/href="(bmapz:[^"]*)"/) || [])[1] || ''));
+const webPage = await callback('twitter', web1, nonceCookie(web1));
+t('app flag: without the cookie the page is the normal website popup page (no app link)', webPage.includes('data-client="web"') && !webPage.includes('bmapz://'), webPage.slice(0, 400));
+
 // ── Canva (same derived-verifier design)
 const cv = await go('canva/initiate?type=canva');
 const cvChallenge = cv.url?.searchParams.get('code_challenge');
@@ -132,4 +144,7 @@ li = await go('linkedin/initiate?type=linkedin_ads');
 t('LINKEDIN_ADS_WRITE=true opts in to rw_ads (and drops r_ads)', scopesOf(li).includes('rw_ads') && !scopesOf(li).includes('r_ads'), scopesOf(li).join(' '));
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
+// Flush stdout first: on Windows the process can exit before its piped output is written, and run.mjs then sees an empty file (a one-off
+// "0 passed" failure of a file that had passed).
+await new Promise((resolve) => process.stdout.write('', resolve));
 process.exit(fail ? 1 : 0);

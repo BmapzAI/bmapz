@@ -75,6 +75,23 @@ body = JSON.parse(r.text);
 t('meta, linkedin, twitter, tiktok and canva each report their own token', ['meta', 'linkedin', 'twitter', 'tiktok', 'canva'].every((p) => body.oauth_connected[p] === true) && body.oauth_connected.google === false, JSON.stringify(body.oauth_connected));
 t('still no secret in the response', !/SECRET/.test(r.text));
 
+// ── launch-url: the ticket records which client started the connect
+const launch = async (extra) => {
+  const r = await fetch('http://127.0.0.1:3992/api/oauth/launch-url?provider=twitter&type=twitter' + extra, { headers: { Authorization: 'Bearer tok' } });
+  const j = await r.json();
+  const ticketBody = JSON.parse(Buffer.from(new URL(j.authUrl).searchParams.get('t').split('.')[0], 'base64url').toString());
+  return { status: r.status, ticketBody };
+};
+let l = await launch('');
+t('launch-url without a client: the ticket does not say app', l.status === 200 && l.ticketBody.client === undefined, JSON.stringify(l));
+l = await launch('&client=app');
+t('launch-url with client=app: the signed ticket records client=app', l.ticketBody.client === 'app', JSON.stringify(l));
+l = await launch('&client=evil');
+t('launch-url: any other client value is ignored', l.ticketBody.client === undefined, JSON.stringify(l));
+
 fake.close();
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
+// Flush stdout first: on Windows the process can exit before its piped output is written, and run.mjs then sees an empty file (a one-off
+// "0 passed" failure of a file that had passed).
+await new Promise((resolve) => process.stdout.write('', resolve));
 process.exit(fail ? 1 : 0);

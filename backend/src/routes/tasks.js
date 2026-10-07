@@ -62,7 +62,8 @@ function validateTaskFields(f) {
   if ('priority' in f && !PRIORITIES.includes(f.priority)) return `priority must be one of: ${PRIORITIES.join(', ')}`;
   if ('visibility' in f && !VISIBILITIES.includes(f.visibility)) return `visibility must be one of: ${VISIBILITIES.join(', ')}`;
   if ('assignee_type' in f && !ASSIGNEE_TYPES.includes(f.assignee_type)) return `assignee_type must be one of: ${ASSIGNEE_TYPES.join(', ')}`;
-  if ('section' in f && f.section && !SECTIONS.includes(f.section)) return `section must be one of: ${SECTIONS.join(', ')}`;
+  // The error text never names the 'design' section: Design Studio is the App Owner's confidential feature and this message reaches every customer.
+  if ('section' in f && f.section && !SECTIONS.includes(f.section)) return `section must be one of: ${SECTIONS.filter((s) => s !== 'design').join(', ')}`;
   if ('title' in f && !String(f.title || '').trim()) return 'title is required';
   if ('due_at' in f && f.due_at && Number.isNaN(Date.parse(f.due_at))) return 'due_at is not a valid date';
   if ('position' in f && f.position !== null && !Number.isFinite(Number(f.position))) return 'position must be a number';

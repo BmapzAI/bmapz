@@ -42,6 +42,7 @@ import internalChatRoutes from './routes/internalChat.js';
 import metricsRoutes from './routes/metrics.js';
 import canvaRoutes from './routes/canva.js';
 import { runAIChat } from './routes/ai.js';
+import { APP_ORIGINS } from './lib/appOrigins.js';
 import { refreshGlobalLearnings } from './lib/companyBrain.js';
 import { startAutomationScheduler } from './lib/automationScheduler.js';
 import { startModelRegistryRefresh } from './lib/modelRegistry.js';
@@ -63,6 +64,11 @@ const allowedOrigins = [
   'https://www.bmapzai.com',
   'https://bmapzai.app',
   'https://www.bmapzai.app',
+  // The Android and iOS apps (Capacitor, see /mobile) serve their bundled pages from these two origins: iOS from capacitor://localhost,
+  // Android from https://localhost. Both only exist on the person's own device (nobody can host a page there for other people's
+  // browsers), so listing them does not let another website in, and the API is Bearer-token only (no cookie authenticates a request), so an allowed origin still needs a signed-in person's token.
+  // Exact strings, never a wildcard or a pattern.
+  ...APP_ORIGINS,
 ];
 app.use(cors({
   origin: (origin, callback) => {
@@ -73,6 +79,9 @@ app.use(cors({
     }
   },
   credentials: true,
+  // Every API call carries Authorization, so every call is preflighted; let the phone cache the answer instead of paying an extra
+  // round trip on mobile data (browsers cap this at 2 hours).
+  maxAge: 7200,
 }));
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────

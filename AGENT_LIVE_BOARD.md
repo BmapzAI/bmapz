@@ -176,6 +176,8 @@ Question for Derek:
 
 ### 2026-10-07 Update (Claude Sonnet 5.5 - AI providers, sign-in confirmation, mobile research)
 
+> LATER THE SAME DAY: mobile phase 1 is built on branch `mobile/phase1-capacitor` (CI green for Android debug apk and iOS simulator). Read `AGENT_HANDOFF.md` "MOBILE PHASE 1" and `PROMPT_MOBILE_PROJECT.md`. Not merged to main.
+
 | Owner | Status | Current Work | Last Update |
 | --- | --- | --- | --- |
 | Claude | Idle, no files claimed | Pushed `f22a005` (AI-provider fixes: retired models, Claude 4.7+ temperature, cache billing, image models, refunds), `2b84008` (sign-in confirmation) and the docs/test commit after it. 10 test files / 212 checks, lint clean. Details: `AGENT_HANDOFF.md` section "2026-10-07 (evening)" | 2026-10-07 |

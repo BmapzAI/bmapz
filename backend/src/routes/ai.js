@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
-import { requireAuth, requireCompanyAdmin } from '../middleware/auth.js';
+import { requireAuth, requireCompanyAdmin, requireAppOwner } from '../middleware/auth.js';
 import {
   extractActions, applyActions, describeActions, isKnownOp,
   proposeActions, looksActionable, buildSectionAction, ACTION_PROTOCOL, friendlyError,
@@ -26,6 +26,7 @@ import {
 } from '../lib/aiCredits.js';
 import { getCompanyBrain, recordOutcomeLearning } from '../lib/companyBrain.js';
 import { getLiveModels, getLiveImageModels } from '../lib/modelRegistry.js';
+import { audioUploadFor } from '../lib/audioUpload.js';
 
 const router = Router();
 
@@ -1428,7 +1429,8 @@ router.post('/transcribe', requireAuth, async (req, res) => {
     const client = await getOpenAIClient(req.companyId, null, req.dbUser?.role);
     const { toFile } = await import('openai');
     const buffer = Buffer.from(audio_base64, 'base64');
-    const file = await toFile(buffer, filename, { type: 'audio/webm' });
+    const upload = audioUploadFor(filename);
+    const file = await toFile(buffer, upload.name, { type: upload.type });
 
     // whisper-1 shuts down 2027-02-26: set OPENAI_TRANSCRIBE_MODEL to the replacement before then.
     const params = { file, model: process.env.OPENAI_TRANSCRIBE_MODEL || 'whisper-1' };
@@ -1588,7 +1590,9 @@ router.post('/generate-image', requireAuth, async (req, res) => {
 // (e.g. "make the sky purple"). Uses gpt-image-1 edits; returns a data URL the
 // frontend persists to storage. (remove-background and enhance operations were
 // removed — they altered the source too much.)
-router.post('/edit-image', requireAuth, async (req, res) => {
+// Design Studio's image editor. Design Studio is the owner's trade secret, and its screen was hidden from everyone else while this endpoint was
+// reachable by any signed-in customer who knew the path. requireAppOwner answers 404 (not 403) so it does not even confirm the feature exists.
+router.post('/edit-image', requireAuth, requireAppOwner, async (req, res) => {
   let editCharged = false;
   let editRefunded = false;
   const refundEdit = async (why) => {
