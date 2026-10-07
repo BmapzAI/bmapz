@@ -173,3 +173,11 @@ Question for Derek:
 | Claude | Active, no files claimed | Re-verified the integration plan against current vendor docs and fixed what it found (OAuth return path, Google/Meta/X/LinkedIn/TikTok/Canva token handling, retired model ids, Perplexity Agent API). Details and corrections: `AGENT_HANDOFF.md` section "2026-10-06". Tests: `node backend/tests/run.mjs` | 2026-10-06 |
 | Codex | Not started | Prompt waiting in `PROMPT_CODEX_AUDIT.md` (nothing had been pushed by Codex since 2026-09-23) | 2026-10-06 |
 | Derek | Needed for DNS | Add two DNS records for `api.bmapz.com` in the registrar panel (see handoff), then the platform consoles in `docs/INTEGRATIONS_RUNBOOK.md` | 2026-10-06 |
+
+### 2026-10-07 Update (Claude Sonnet 5.5 - AI providers, sign-in confirmation, mobile research)
+
+| Owner | Status | Current Work | Last Update |
+| --- | --- | --- | --- |
+| Claude | Idle, no files claimed | Pushed `f22a005` (AI-provider fixes: retired models, Claude 4.7+ temperature, cache billing, image models, refunds), `2b84008` (sign-in confirmation) and the docs/test commit after it. 10 test files / 212 checks, lint clean. Details: `AGENT_HANDOFF.md` section "2026-10-07 (evening)" | 2026-10-07 |
+| Codex | Not started | `PROMPT_CODEX_AUDIT.md` is current through the commits above (P6 rewritten, P8 mobile added) | 2026-10-07 |
+| Derek | Needed | Platform consoles in `docs/INTEGRATIONS_RUNBOOK.md` (start the Google, Meta, TikTok web reviews; Search Console TXT; Resend records), and six mobile decisions listed at the end of the runbook | 2026-10-07 |

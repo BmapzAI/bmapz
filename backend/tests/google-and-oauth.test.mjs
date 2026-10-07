@@ -37,7 +37,11 @@ process.env.SUPABASE_URL = 'http://127.0.0.1:3986'; process.env.SUPABASE_SERVICE
 process.env.OAUTH_STATE_SECRET = 'test-secret-for-ticket'; process.env.GOOGLE_CLIENT_ID = 'test-client.apps.googleusercontent.com';
 process.env.API_URL = 'https://api.bmapz.com'; process.env.APP_URL = 'https://ai.bmapz.com'; process.env.PORT = '3987';
 await import(ROOT + 'index.js');
-await new Promise((r) => setTimeout(r, 1500));
+// Wait until the server answers instead of sleeping a fixed time: a slow start (cold disk, OneDrive sync) made a fixed sleep flaky.
+for (let i = 0; i < 150; i++) {
+  try { if ((await fetch('http://127.0.0.1:' + process.env.PORT + '/health')).ok) break; } catch { /* not listening yet */ }
+  await new Promise((r) => setTimeout(r, 100));
+}
 
 const ticket = () => {
   const body = Buffer.from(JSON.stringify({ userId: 'u1', companyId: 'c1', purpose: 'launch', issuedAt: Date.now() })).toString('base64url');

@@ -33,7 +33,11 @@ Object.assign(process.env, {
 });
 for (const k of ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'STABILITY_API_KEY', 'PERPLEXITY_API_KEY', 'STRIPE_SECRET_KEY', 'RESEND_API_KEY', 'HUNTER_API_KEY']) delete process.env[k];
 await import('../src/index.js');
-await new Promise((r) => setTimeout(r, 1500));
+// Wait until the server answers instead of sleeping a fixed time: a slow start (cold disk, OneDrive sync) made a fixed sleep flaky.
+for (let i = 0; i < 150; i++) {
+  try { if ((await fetch('http://127.0.0.1:' + process.env.PORT + '/health')).ok) break; } catch { /* not listening yet */ }
+  await new Promise((r) => setTimeout(r, 100));
+}
 
 const status = async () => {
   const r = await fetch('http://127.0.0.1:3992/api/integrations/status', { headers: { Authorization: 'Bearer tok' } });

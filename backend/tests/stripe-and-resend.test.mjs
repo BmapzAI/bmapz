@@ -47,7 +47,11 @@ Object.assign(process.env, {
   STRIPE_SECRET_KEY: 'sk_test_unit', STRIPE_WEBHOOK_SECRET: 'whsec_unit_test_secret',
 });
 await import('../src/index.js');
-await new Promise((r) => setTimeout(r, 1500));
+// Wait until the server answers instead of sleeping a fixed time: a slow start (cold disk, OneDrive sync) made a fixed sleep flaky.
+for (let i = 0; i < 150; i++) {
+  try { if ((await fetch('http://127.0.0.1:' + process.env.PORT + '/health')).ok) break; } catch { /* not listening yet */ }
+  await new Promise((r) => setTimeout(r, 100));
+}
 
 const Stripe = (await import('stripe')).default;
 const stripe = new Stripe('sk_test_unit');

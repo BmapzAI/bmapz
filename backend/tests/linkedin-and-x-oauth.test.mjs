@@ -20,7 +20,11 @@ Object.assign(process.env, {
 });
 delete process.env.LINKEDIN_ADS_WRITE;
 await import(ROOT + 'index.js');
-await new Promise((r) => setTimeout(r, 1500));
+// Wait until the server answers instead of sleeping a fixed time: a slow start (cold disk, OneDrive sync) made a fixed sleep flaky.
+for (let i = 0; i < 150; i++) {
+  try { if ((await fetch('http://127.0.0.1:' + process.env.PORT + '/health')).ok) break; } catch { /* not listening yet */ }
+  await new Promise((r) => setTimeout(r, 100));
+}
 
 const ticket = () => {
   const body = Buffer.from(JSON.stringify({ userId: 'u1', companyId: 'c1', purpose: 'launch', issuedAt: Date.now() })).toString('base64url');

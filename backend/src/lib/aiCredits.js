@@ -44,10 +44,13 @@ export const MODEL_COST_MULTIPLIER = {
 
 // Human-friendly tier label for each model
 export const MODEL_TIER = {
+  // These keys also feed the static fallback model list (lib/modelRegistry.js), so nothing here may be shut down soon.
+  // Removed because OpenAI shuts them down on 2026-10-23: gpt-4.1-nano, o1 (and o3-mini, gpt-4-turbo, gpt-3.5-turbo earlier).
+  // Still listed but dated (check the vendor deprecation pages after each date): claude-sonnet-4-5 retires 2026-11-30,
+  // claude-opus-4-5 has a retirement floor of 2026-11-24. Their prices stay in MODEL_COST_MULTIPLIER for old settings.
   // Explicit rather than price-derived: Claude Fable (the most expensive model) landed in the "smarter" band that the
   // Growth plan may use, while it should be reachable only on the plans that get "smartest".
   'gpt-4o-mini': 'smart',
-  'gpt-4.1-nano': 'smart',
   'gpt-4.1-mini': 'smart',
   'gpt-5-nano': 'smart',
   'gpt-5-mini': 'smart',
@@ -62,7 +65,6 @@ export const MODEL_TIER = {
   'claude-sonnet-5': 'smarter',
   'claude-sonnet-5-5': 'smarter',
 
-  'o1': 'smartest',
   'o3': 'smartest',
   'claude-opus-4-5': 'smartest',
   'claude-opus-4-6': 'smartest',

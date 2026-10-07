@@ -37,7 +37,7 @@ result, a command output or a quoted official page, never from assumption.**
   Every OAuth redirect URI is built from it: `https://api.bmapz.com/api/oauth/<provider>/callback`. The old `bmapz-production.up.railway.app` host still works
   and may be registered as a SECOND redirect URI while testing, but must be removed from the production Google client before "Verify branding".
 - **Credentials.** There are NO provider credentials in Railway yet (only Supabase, OpenAI, Anthropic, JWT/OAuth-state secrets). Nothing in the integrations
-  is proven against a real account. The 102+ passing checks in `backend/tests` use fakes and documented response shapes; they prove the code does what it
+  is proven against a real account. The 212 passing checks in `backend/tests` (10 files) use fakes and documented response shapes; they prove the code does what it
   intends, not that the providers behave as documented.
 - **No human has completed a real OAuth connect** since the launch-ticket / nonce / popup rewrite. The first one is the most important event of this phase.
 - **Tests.** `POST /api/integrations/test/<type>` (the Test button on each card) makes a real API call per integration; its messages name the fix.
@@ -99,6 +99,7 @@ The principle: **submit everything with a human reviewer first**, then spend the
 2. Stripe sandbox + webhook (**create the endpoint as SNAPSHOT, and via the API with `api_version=2024-06-20`**; the dashboard wizard defaults to Thin events, which the handler cannot read).
 3. Resend: add the SUBDOMAIN `send.bmapz.com`; copy the records from Resend's own Records tab (they changed in August 2026).
 4. Meta development-mode connect (needs two business portfolios and an app role; 2-4 hours of prerequisite console work) and the WhatsApp test number.
+5. **OpenAI and Anthropic** (keys are in Railway, never exercised): press Test on both cards, then ONE chat on a current Claude model, ONE image generation and ONE image edit. The 2026-10-07 fixes (no `temperature` on Claude 4.7+, `max_completion_tokens` on reasoning models, the new image models, refunds) are proved only against fakes; this is the first real call. Watch for the image-model names (taken from OpenAI's deprecations page) being rejected: set `OPENAI_IMAGE_MODELS` to what the account lists.
 
 **Tier 3.** LinkedIn sign-in/posting, X (needs a funded card; see decision 10a), TikTok sandbox, Canva with Derek's own team, Perplexity (prepaid credit first), Hunter (free), Apollo, Stability (sign up with the Google button for the free credits).
 
@@ -110,6 +111,9 @@ The principle: **submit everything with a human reviewer first**, then spend the
 - The Integrations page shows STORED status, not `GET /api/integrations/status`; platform keys set in Railway do not light up the cards until a Test/connect writes status.
 - Google token refresh still exists in two older copies (`routes/messaging.js`, `routes/ads.js`); 192 route-level `catch` blocks still return `err.message` on a 500 (helper `lib/httpError.js`).
 - Perplexity is written to its documented spec and unit-tested but NOT live-verified; the first key settles which surface answers.
+- AI providers (2026-10-07, `f22a005`): the price table, tiers, image models and refund path are fixed but unverified against a live key (see the handoff for the list). Dated items: `claude-haiku-4-5` is the default and has a "not sooner than 2026-10-15" floor (`ANTHROPIC_CHEAP_MODEL` repoints it); gpt-4-turbo/3.5, o1, o3-mini, gpt-4.1-nano shut down 2026-10-23; `claude-sonnet-4-5` 2026-11-30. Stability image generation is still on legacy REST v1.
+- There is NO authenticated "Delete my account" (only `routes/dataDeletion.js`, which records an email for a human). Both stores require one for an app.
+- Sign-in confirmation now uses `GET /api/integrations/status` -> `oauth_connected` / `oauth_stamp` per provider (a human has not yet seen it work).
 
 ## 7. Things that used to be believed (all corrected; do not repeat them to Derek)
 
@@ -121,15 +125,14 @@ The principle: **submit everything with a human reviewer first**, then spend the
 
 ## 8. Mobile apps (Android + iOS) in parallel
 
-Whatever the chosen approach, check these against `docs/audit-2026-10-06/mobile-research.md` and the mobile chat:
-- A native shell has no `window.opener`; the OAuth return path was built for that (the callback redirects to `https://ai.bmapz.com/Integrations?oauth=...`, the page confirms with the server).
-  The connect must open the SYSTEM browser (Google blocks OAuth in embedded WebViews) and return through a universal link (iOS) / app link (Android) on `ai.bmapz.com`, which needs
-  `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json` served from Cloudflare Pages with the right content type and no redirect.
-- Redirect URIs stay https on the API host; Android/iOS OAuth clients are needed only if a native SDK (e.g. native Google Sign-In) is added.
-- Store rules affect **billing** (digital subscriptions sold inside the app), **login** (Sign in with Apple when a third-party login is offered) and **account deletion**.
-  Decide what the apps may sell or show before building billing screens into them.
-- Do NOT widen CORS for `capacitor://localhost` or `https://localhost` unless the shell bundles the site instead of loading `https://ai.bmapz.com`.
-- Apple and Google enrolment have their own lead times and run in parallel with the platform reviews above.
+Research is DONE (2026-10-07): `docs/audit-2026-10-06/mobile-research.md` (four topics, official URLs, single-source) and the summary at the end of `AGENT_HANDOFF.md`. **The approach (Capacitor / TWA / PWA / native) is NOT known to the tooling: read the project chat "Web app mobile development" FIRST** and record it in the handoff; most findings are tagged by approach.
+Hold whatever the approach, when the app is listed in a store:
+- **Consumption-only.** No Stripe Checkout/Portal/pricing/upgrade/top-up in the native build, no card at trial sign-up, no upgrade URLs in 402/403 bodies for app clients (add a client-type header). Plans are sold on the web.
+- **OAuth.** Redirect URIs stay https on `api.bmapz.com`. Open the authorise URL in the SYSTEM browser (Google forbids embedded WebViews), return through a Universal/App Link on `ai.bmapz.com` with a fallback `/oauth/return` page; this needs `public/.well-known/apple-app-site-association` and `assetlinks.json` (JSON content type, no redirect; curl them after every Cloudflare deploy), Supabase Additional Redirect URLs, LinkedIn `enable_extended_login=true` from the app, and a status refresh when the app regains focus (the server-confirmation work is the base). WhatsApp Embedded Signup in a WebView is undocumented: route to the system browser or hide it.
+- **Required new work:** authenticated in-app "Delete my account" (does not exist), an AI third-party data-sharing consent screen, a prominent disclosure before each Connect, a reviewer demo tenant (paid plan, password login, no 2FA), public Privacy/DataDeletion pages that name "Bmapz AI" exactly.
+- **iOS:** Sign in with Apple OR hide Google login on iOS (email+password stays); iOS 27 SDK from April 2027; Apple secret rotates every 6 months in Supabase. **Android:** target API 36; personal Play accounts need 12 testers x 14 days; Restore Credentials from April 2027.
+- Costs: Apple USD 99/yr, Google USD 25 once; D-U-N-S free (Apple 5+2 business days, Google up to 30 days). Start Google/Meta/TikTok WEB reviews now; they do not wait for the apps.
+- Do NOT widen CORS for `capacitor://localhost` / `https://localhost` unless the shell bundles the site instead of loading `https://ai.bmapz.com`. Build nothing mobile-specific until the approach is known.
 
 ## 9. Open decisions to put to Derek (one message, early, plain English, with pros/cons)
 
@@ -139,7 +142,8 @@ c. Whether and when to pay for Google's restricted-scope assessment (unlocks Gma
 d. Whether the platform WhatsApp number should be allowed as a fallback for tenants with no number of their own.
 e. Whether to build the separate TikTok Business (ads) connection or drop TikTok Ads.
 f. Whether to request LinkedIn Advertising API now.
-g. Whatever the mobile chat decided that touches integrations or billing.
+g. **Mobile** (one message, after reading the chat): the approach if the chat did not settle it; business country and legal entity (D-U-N-S, personal vs organisation store accounts); apps consumption-only with plans sold on the web (recommended: it is the only option that is simple on both stores); iOS login (hide Google, recommended, vs Sign in with Apple); what "Delete my account" does to a company, its team and an active subscription; the AI consent wording; who builds the reviewer demo tenant.
+h. Price effect of the corrected credit table (Claude Haiku 4.5 8x, Fable 78x, gpt-5-mini 3x): confirm the plan allowances still make sense now that the same work uses more credits on those models. Allowances were not changed.
 
 ## 10. Verification commands
 

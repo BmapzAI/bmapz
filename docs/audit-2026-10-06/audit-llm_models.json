@@ -1,0 +1,446 @@
+{
+ "group": "OpenAI and Anthropic model ids, API versions and credit pricing (backend/src: lib/aiCredits.js, lib/modelRegistry.js, routes/ai.js, lib/webSearch.js, routes/integrations.js) - audited 2026-10-06 against vendor docs fetched the same day. Method notes: repo is read-only; no real credentials exist, so completions were not probed, only unauthenticated/garbage-key calls. The repo already contains a mitigation layer (liveModelFor + live catalog + a live-model-picking integration test); the findings below are what remains broken or wrong despite it. routes/integrations.js was edited by another agent while I was auditing (the stability case changed between my two reads), so line numbers come from the final grep.",
+ "findings": [
+  {
+   "severity": "broken_now",
+   "area": "OpenAI image models",
+   "what": "gpt-image-1 shut down on Oct 1, 2026 (already past). It is the FIRST model tried in /generate-image and the ONLY model used by /edit-image. /edit-image's 'paramFallbacks' ladder only drops params (input_fidelity, quality, size) and never changes the model, so every edit fails. /generate-image falls through gpt-image-1, dall-e-3, dall-e-2, all of which are shut down (dall-e on 2026-05-12), so it can only succeed via the Stability last-resort. Not probed with a real key (none exist); verdict rests on the vendor shutdown table.",
+   "file": "backend/src/routes/ai.js",
+   "line": 1408,
+   "evidence_url": "https://developers.openai.com/api/docs/deprecations",
+   "evidence_quote": "Oct 1, 2026   | `gpt-image-1`  | `gpt-image-2.5-sunburst` or `gpt-image-2.5-flare`",
+   "recommended_fix": "ai.js:1408 -> `const OPENAI_IMAGE_MODELS = (process.env.OPENAI_IMAGE_MODELS || 'gpt-image-2.5-flare,gpt-image-2.5-sunburst').split(',').map(s=>s.trim()).filter(Boolean);` (flare = fast generation, sunburst = editing precision per the image guide). ai.js:1415 branch `model === 'gpt-image-1'` -> match /^gpt-image-/ (new models accept size/quality `auto`, custom WIDTHxHEIGHT, quality low|medium|high|xhigh|max|auto). ai.js:1568 -> `model: process.env.OPENAI_IMAGE_EDIT_MODEL || 'gpt-image-2.5-sunburst'`. Delete the dall-e-3 / dall-e-2 branches (1421-1427, 1486). Keep the paramFallbacks ladder because input_fidelity is not documented for the new models."
+  },
+  {
+   "severity": "broken_now",
+   "area": "OpenAI image models / billing",
+   "what": "dall-e-3 and dall-e-2 were shut down May 12, 2026 but remain in OPENAI_IMAGE_MODELS and in the per-model branches. Any company whose settings.ai_image_model is 'dall-e-3' makes that its first attempt (ai.js:1474-1475), so every generation wastes a failed call before falling through. The deprecation page's own replacement for dall-e still lists gpt-image-1, which is itself shut down Oct 1, 2026.",
+   "file": "backend/src/routes/ai.js",
+   "line": 1408,
+   "evidence_url": "https://developers.openai.com/api/docs/deprecations",
+   "evidence_quote": "DALL·E Models (May 12, 2026): `dall-e-2` → `gpt-image-2`, `gpt-image-1`, or `gpt-image-1-mini`",
+   "recommended_fix": "Remove 'dall-e-3' and 'dall-e-2' from OPENAI_IMAGE_MODELS (see previous finding). Add a one-off migration that rewrites companies.ai_image_model values dall-e-2, dall-e-3 and gpt-image-1 to 'gpt-image-2.5-flare'."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Image endpoints billing",
+   "what": "/generate-image and /edit-image call chargeFlat (40 credits per image, doubled for hd) BEFORE calling the provider, and ai.js has no refund path (grep for 'refund' returns nothing). With every OpenAI image model shut down, a paying customer is charged 40-320 credits per request for a 502, and a trial user's usage is logged for nothing.",
+   "file": "backend/src/routes/ai.js",
+   "line": 1454,
+   "evidence_url": "https://developers.openai.com/api/docs/deprecations",
+   "evidence_quote": "Oct 1, 2026   | `gpt-image-1`  | `gpt-image-2.5-sunburst` or `gpt-image-2.5-flare`",
+   "recommended_fix": "Move the deductCredits step to after a successful provider response (keep the pre-flight balance check), or add `refundCredits({companyId, credits, feature})` and call it in the 502 branch at ~1521 and the catch blocks of /edit-image (1536). Same pattern applies to /transcribe (1378) and /tts (1608)."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Anthropic model ids - retired",
+   "what": "claude-3-5-haiku-20241022 is RETIRED (Feb 19, 2026). It is DEFAULT_MODEL_PER_PROVIDER.anthropic and the 'cheapest model' target for the Starter/Trial downgrade, for every FORCE_CHEAP_MODEL_ACTIONS action (brand_scan, full_scan, marketing_plan...) and every FAST_MODEL_ACTIONS action (ads_copy, sdr_chat, help_assistant...). The only thing keeping it alive is liveModelFor(). That rescue is a no-op until modelRegistry's first catalog refresh finishes after boot, and permanently a no-op if the platform ANTHROPIC_API_KEY is unset (catalog is fetched with the platform key only, modelRegistry.js:47-49). In that case the retired id is sent, Anthropic returns 404, the retry at ai.js:665 uses anthropicFallback() which is ALSO a retired id, fails again, and the request silently moves to OpenAI.",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 167,
+   "evidence_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+   "evidence_quote": "claude-3-5-haiku-20241022 | Retired | December 19, 2025 | February 19, 2026  (replacement: `claude-haiku-4-5-20251001`)",
+   "recommended_fix": "aiCredits.js:167 -> `anthropic: 'claude-haiku-4-5-20251001'`; aiCredits.js:265, 277, 282 -> `liveModelFor('claude-haiku-4-5-20251001', 'anthropic')`; delete 'claude-3-5-haiku-20241022' and 'claude-haiku-3-5' from MODEL_COST_MULTIPLIER (18-19) and MODEL_TIER (31-32). Also read the ids from env (e.g. `process.env.ANTHROPIC_CHEAP_MODEL || 'claude-haiku-4-5-20251001'`) so the next retirement is a config change."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Anthropic model ids - retired",
+   "what": "claude-3-5-sonnet-20241022 is RETIRED (Oct 28, 2025). It is the Anthropic downgrade target for every plan that allows 'smarter' or 'smartest' (aiCredits.js:263-264) and the last-resort retry model anthropicFallback() (ai.js:551). Same dependency on liveModelFor() as above: with no platform key / catalog the 'known-good fallback' is a retired id, so the retry itself 404s.",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 263,
+   "evidence_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+   "evidence_quote": "| October 28, 2025 | `claude-3-5-sonnet-20241022` | `claude-sonnet-4-6` |",
+   "recommended_fix": "aiCredits.js:263-264 and ai.js:551 -> `'claude-sonnet-5-5'` (current Sonnet; the page names it as the replacement for the next Sonnet to retire). Remove 'claude-3-5-sonnet-20241022' and 'claude-sonnet-3-5' from MODEL_COST_MULTIPLIER (20-21) and MODEL_TIER (36-37). Do this together with the temperature fix below or the new fallback will 400."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Anthropic model ids - retired",
+   "what": "claude-3-opus-20240229 is RETIRED (Jan 5, 2026) but is still a priced, tiered ('smartest') entry at 117x. It feeds STATIC_MODELS in modelRegistry.js:20-23, so when both provider catalog fetches fail (or no platform keys) the model picker offers it.",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 23,
+   "evidence_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+   "evidence_quote": "| January 5, 2026 | `claude-3-opus-20240229` | `claude-opus-4-8` |",
+   "recommended_fix": "Delete 'claude-3-opus-20240229' from MODEL_COST_MULTIPLIER (23) and MODEL_TIER (40). Rebuild STATIC_MODELS (modelRegistry.js:20) from a hand-maintained list of CURRENT ids: ['claude-haiku-4-5-20251001','claude-sonnet-5-5','claude-opus-5-5','claude-fable-5-1','gpt-4o-mini','gpt-4.1','gpt-5-mini'] instead of Object.keys(MODEL_TIER)."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Anthropic request params",
+   "what": "callAnthropic always forwards `temperature` (default 0.7 from runAIChat, line 766/1173; the /diagnose ping sends temperature 0 at ~1111). Anthropic now rejects any non-default temperature/top_p/top_k with HTTP 400 on Claude 4.7 and later, which is every current flagship: claude-opus-5-5, claude-opus-5, claude-opus-4-8/4-7, claude-sonnet-5-5, claude-sonnet-5, claude-fable-5-1, claude-fable-5. Any company that picks one of these gets a 400. categorizeProviderError (ai.js:524) maps 'invalid_request_error' whose message contains 'model' to INVALID_MODEL, so the code then retries with anthropicFallback(). Worse: with the live catalog loaded, liveModelFor() rewrites a retired Sonnet to the closest-multiplier live Sonnet (25x tie, newest first = claude-sonnet-5-5), so the rescue lands on a model that rejects temperature 0.7. Inferred from the docs; not probed (no key).",
+   "file": "backend/src/routes/ai.js",
+   "line": 635,
+   "evidence_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+   "evidence_quote": "Returns a 400 error when set to a non-default value on Claude 4.7 and later models",
+   "recommended_fix": "ai.js:635: remove `temperature,` from the params literal and add after it: `const NO_SAMPLING = /^claude-(opus-(4-[7-9]|[5-9])|sonnet-[5-9]|fable|mythos)/; if (temperature != null && !NO_SAMPLING.test(anthropicModel)) params.temperature = temperature;`. Also stop sending temperature:0 in the /diagnose ping (ai.js:1102, 1111), which reports failure for a valid key whose configured model is 4.7+."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Credit pricing - unknown/new model ids",
+   "what": "BILLING CORRECTNESS. An id not in MODEL_COST_MULTIPLIER does NOT fall to a cheap default: the family heuristics (aiCredits.js:206-216) apply, and the final fallback is 17x (line 217, mid-tier). But the heuristics are stale and mis-price the current models. claude-fable-5-1 contains 'fable' and is billed 30x; real blended cost ($10 in / $50 out per MTok, 2:1 blend = $23.33/M vs the $0.30/M gpt-4o-mini baseline) is 77.8x, a 2.6x UNDERCHARGE. Concrete: 8,000 prompt + 4,000 completion tokens costs Anthropic $0.28; Bmapz charges ceil(12,000*30/60) = 6,000 credits, which at the code's own credit value (60 baseline tokens = $0.000018/credit) is $0.108, so 39% of cost is recovered. Correct charge is about 15,556 credits. claude-opus-5-5 hits 'opus' = 90x but real ($4/$20) is 31.1x, a 2.9x OVERCHARGE (same call: $0.112 cost, 18,000 credits charged = $0.324; correct is 6,222). claude-sonnet-5/5-5 bill 25x vs real 15.6x (1.6x over); claude-haiku-4-5 bills 6x vs real 7.8x (1.3x under); claude-opus-4-5 exact entry 80x vs real 38.9x (2.1x over).",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 206,
+   "evidence_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+   "evidence_quote": "Claude Fable 5.1 | $10 / MTok | ... | $50 / MTok ;  Claude Opus 5.5 | $4 / MTok | ... | $20 / MTok ;  Claude Sonnet 5.5 | $2 / MTok | ... | $10 / MTok ;  Claude Haiku 4.5 | $1 / MTok | ... | $5 / MTok",
+   "recommended_fix": "Replace the heuristics with exact entries computed as ((2*in + out)/3)/0.30: 'claude-fable-5-1': 78, 'claude-fable-5': 78, 'claude-opus-5-5': 31, 'claude-opus-5': 39, 'claude-opus-4-8': 39, 'claude-opus-4-7': 39, 'claude-opus-4-6': 39, 'claude-opus-4-5': 39, 'claude-opus-4-5-20251101': 39, 'claude-sonnet-5-5': 16, 'claude-sonnet-5': 16, 'claude-sonnet-4-6': 23, 'claude-sonnet-4-5': 23, 'claude-sonnet-4-5-20250929': 23, 'claude-haiku-4-5': 8, 'claude-haiku-4-5-20251001': 8. Change line 206 to 39, 207 to 78, 208 to 16 so unlisted siblings are close. Better: store USD in/out per MTok per model and derive the multiplier."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Credit pricing - OpenAI heuristics",
+   "what": "inferModelMultiplier checks 'nano'/'mini' BEFORE the gpt-5 / o-series prefixes, and the numbers are stale. gpt-5-mini ($0.25/$2, real 2.8x) is billed 1x; gpt-4.1-mini ($0.40/$1.60, real 2.7x) 1x; o3-mini ($1.10/$4.40, real 7.3x) 1x (undercharges 2.8-7.3x). gpt-5.6-luna ($0.20/$1.20, real 1.8x) falls to the gpt-5 prefix and is billed 20x (11x OVERCHARGE, and tier 'smarter' so Starter/Trial cannot use the cheap model). gpt-5.6-sol ($4/$20, real 31x) billed 20x; o1 ($15/$60, real 100x) billed 40x; o3 ($2/$8, real 13.3x) billed 40x; gpt-5 ($1.25/$10, real 13.9x) billed 20x.",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 209,
+   "evidence_url": "https://developers.openai.com/api/docs/pricing",
+   "evidence_quote": "gpt-5-mini: \"$0.25\" input / \"$0.025\" cached / \"$2.00\" output ... gpt-5.6-luna: \"$0.20\" input / \"$0.02\" cached / \"$1.20\" output ... gpt-5.6-sol: \"$4.00\" input / \"$0.40\" cached / \"$20.00\" output",
+   "recommended_fix": "Add exact entries: 'gpt-4.1': 13, 'gpt-4.1-mini': 3, 'gpt-4.1-nano': 0.7, 'gpt-5': 14, 'gpt-5-mini': 3, 'gpt-5-nano': 0.6, 'gpt-5.6-sol': 31, 'gpt-5.6-terra': 18, 'gpt-5.6-luna': 1.8, 'o3': 13, 'o3-mini': 7.3, 'o1': 100. Reorder the heuristics so o1/o3/o4 and gpt-5.x tests run before the generic 'mini'/'nano' tests, and make 'mini' return 3 (not 1)."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Plan gating",
+   "what": "Fable is classified by multiplier, and 30x lands in the 'smarter' band (>=10 and <40, aiCredits.js:224-226), so the most expensive Claude model ($10/$50) is available on the Growth plan, which is meant to be capped at 'smarter'; only 'smartest' (Scale/Enterprise) should reach it. MODEL_TIER also marks claude-sonnet-4-5 'smartest' (line 39) while the newer, cheaper claude-sonnet-5-5 resolves to 'smarter', which is inconsistent.",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 207,
+   "evidence_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+   "evidence_quote": "Claude Fable 5.1 | $10 / MTok | $12.50 / MTok | $20 / MTok | $0.25 / MTok | $50 / MTok",
+   "recommended_fix": "Add explicit MODEL_TIER entries: 'claude-fable-5-1': 'smartest', 'claude-fable-5': 'smartest', 'claude-opus-5-5': 'smartest', 'claude-sonnet-5-5': 'smarter', 'claude-sonnet-5': 'smarter', 'claude-haiku-4-5-20251001': 'smart'. With the corrected multiplier of 78 the inferred tier also becomes 'smartest' (>=40)."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Anthropic usage accounting",
+   "what": "callAnthropic sets cache_control on any system prompt >= 1024 chars (ai.js:643) but then bills prompt_tokens from response.usage.input_tokens only (ai.js:655, 671). Per the docs input_tokens EXCLUDES cache_read_input_tokens and cache_creation_input_tokens, so on every cache hit or write the credit charge counts only the uncached tail (often a few dozen tokens out of tens of thousands). Systematic under-billing on exactly the heavy, repeated-context calls (SDR agent, Company Brain).",
+   "file": "backend/src/routes/ai.js",
+   "line": 655,
+   "evidence_url": "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+   "evidence_quote": "total_input_tokens = cache_read_input_tokens + cache_creation_input_tokens + input_tokens",
+   "recommended_fix": "ai.js:655 and 671 -> `prompt_tokens: (response.usage?.input_tokens||0) + (response.usage?.cache_read_input_tokens||0) + (response.usage?.cache_creation_input_tokens||0),` and make total_tokens (657, 673) use that sum. Optionally weight cache reads at 0.1x and writes at 1.25x."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "Anthropic model ids - sunset in 55 days",
+   "what": "'claude-sonnet-4-5' (alias of claude-sonnet-4-5-20250929) was deprecated Sept 30, 2026 and retires Nov 30, 2026. It is the web-search model (webSearch.js:138) and has price/tier entries (aiCredits.js:22, 39). Its replacement is claude-sonnet-5-5, which is cheaper ($2/$10 vs $3/$15).",
+   "file": "backend/src/lib/webSearch.js",
+   "line": 138,
+   "evidence_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+   "evidence_quote": "claude-sonnet-4-5-20250929 | Deprecated | September 30, 2026 | November 30, 2026  (replacement: `claude-sonnet-5-5`)",
+   "recommended_fix": "webSearch.js:138 -> `model: liveModelFor(process.env.ANTHROPIC_WEBSEARCH_MODEL || 'claude-sonnet-5-5', 'anthropic'),`. Keep the aiCredits entries only until Nov 30, 2026."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "Anthropic model ids - watch list",
+   "what": "claude-opus-4-5 (alias of claude-opus-4-5-20251101) has a retirement floor of Nov 24, 2026, i.e. it may be retired inside the 6-month window. It has hard-coded price/tier entries (aiCredits.js:24, 41). The 80x price is also stale (real 38.9x at $5/$25).",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 24,
+   "evidence_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+   "evidence_quote": "claude-opus-4-5-20251101 | Active | N/A | Not sooner than November 24, 2026",
+   "recommended_fix": "Change `'claude-opus-4-5': 80` to `39` and add `'claude-opus-4-5-20251101': 39`; make claude-opus-5-5 the 'smartest' default target."
+  },
+  {
+   "severity": "ok",
+   "area": "Anthropic model ids - current",
+   "what": "Verified current: claude-fable-5-1 (Active, not sooner than Sep 1 2027), claude-opus-5-5 (Sep 22 2027), claude-sonnet-5 (Jun 30 2027), claude-haiku-4-5-20251001 (Active, not sooner than Oct 15 2026). NOTE the platform also lists claude-sonnet-5-5 (Sep 28 2027) and it is the Sonnet in the overview table, so prefer it over claude-sonnet-5. 'Not sooner than' is a floor, not a notice; Anthropic promises at least 60 days notice, and none is published for Haiku 4.5, so it cannot retire before roughly mid-December 2026. None of these ids is hard-coded in the audited files; they only reach the code through the heuristics.",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 202,
+   "evidence_url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+   "evidence_quote": "Claude API ID | `claude-fable-5-1` | `claude-opus-5-5` | `claude-sonnet-5-5` | `claude-haiku-4-5-20251001`",
+   "recommended_fix": "Hard-code claude-haiku-4-5-20251001 and claude-sonnet-5-5 (via env-overridable constants) as the replacements for the retired ids above; re-check Haiku 4.5 on 2026-10-15."
+  },
+  {
+   "severity": "unverified",
+   "area": "liveModelFor alias matching",
+   "what": "liveModelFor() compares `m.id === preferred` against ids returned by GET /v1/models. The docs do not say whether that list returns aliases such as 'claude-sonnet-4-5' / 'claude-haiku-4-5' or only dated snapshot ids (the docs state aliases are accepted in requests; the example list item is the dateless 'claude-opus-5'). If only dated ids come back, an alias is judged 'not served' and silently swapped to the nearest-multiplier model in its inferred tier. Because MODEL_TIER marks 'claude-sonnet-4-5' as 'smartest', webSearch.js:138 would be remapped to an OPUS model (about 4x the cost). Could not confirm without a real key.",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 153,
+   "evidence_url": "https://platform.claude.com/docs/en/api/models/list",
+   "evidence_quote": "More recently released models are listed first.  /  Defaults to `20`. Ranges from `1` to `1000`.",
+   "recommended_fix": "Normalise before comparing: `const base = (s) => String(s).replace(/-\\d{8}$/, ''); if (live.some((m) => m.id === preferred || base(m.id) === base(preferred))) return preferred;`. Also have modelRegistry fetch `?limit=1000` (modelRegistry.js:49) so a long catalog is not truncated at 50."
+  },
+  {
+   "severity": "ok",
+   "area": "anthropic-version header",
+   "what": "'2023-06-01' is still the current and only non-initial API version, so every pinned header is valid. It is hard-coded in 4 places with no env override (hunt item 5): modelRegistry.js:50, webSearch.js:134, integrations.js:245 and :261 (ai.js uses the SDK, which sets it).",
+   "file": "backend/src/lib/webSearch.js",
+   "line": 134,
+   "evidence_url": "https://platform.claude.com/docs/en/api/versioning",
+   "evidence_quote": "When making API requests, you must send an `anthropic-version` request header. For example, `anthropic-version: 2023-06-01`.",
+   "recommended_fix": "Create `export const ANTHROPIC_VERSION = process.env.ANTHROPIC_VERSION || '2023-06-01';` in a shared lib and import it in the four places."
+  },
+  {
+   "severity": "outdated",
+   "area": "Anthropic web search tool",
+   "what": "'web_search_20250305' is still valid and not deprecated. Two newer versions exist (web_search_20260209 adds dynamic filtering, web_search_20260318 adds response_inclusion). Endpoint, name/max_uses shape, text+citations parsing and 'url' field are correct. Gaps: (a) stop_reason 'pause_turn' is not handled, so a paused long search is returned as if it were the final answer; (b) the tool type and model are hard-coded with no env override; (c) the flat charge for web_search is 5 credits 'about $0.005' (ai.js:339) but Anthropic bills $10 per 1,000 searches ($0.01 each, up to 3 per call here) plus tokens.",
+   "file": "backend/src/lib/webSearch.js",
+   "line": 140,
+   "evidence_url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
+   "evidence_quote": "`web_search_20250305`: basic web search  /  The API can pause a long-running search turn and return `stop_reason: \"pause_turn\"`.",
+   "recommended_fix": "webSearch.js:140 -> `type: process.env.ANTHROPIC_WEBSEARCH_TOOL || 'web_search_20250305'`. After the fetch at line 135, if `body.stop_reason === 'pause_turn'` re-post with the assistant turn appended (max 2 loops) before reading the answer. Raise web_search flat cost in ai.js:339 to cover $0.03."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "OpenAI legacy chat models - sunset in 17 days",
+   "what": "gpt-3.5-turbo and gpt-4-turbo shut down Oct 23, 2026. They are priced/tiered in aiCredits.js (15-16, 29-35) and, via MODEL_TIER, form the static fallback model list shown to users (modelRegistry.js:20-23). o1 and o3-mini also shut down that day, and gpt-4.1-nano too (it is in the integration test candidate list at integrations.js:222, harmless because the list is intersected with the live catalog).",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 15,
+   "evidence_url": "https://developers.openai.com/api/docs/deprecations",
+   "evidence_quote": "GPT-4/GPT-3.5 Legacy Models (Oct 23, 2026): `gpt-3.5-turbo` and variants → `gpt-5.6-terra`; `gpt-4-turbo` variants → `gpt-5.6-sol`",
+   "recommended_fix": "Delete 'gpt-4-turbo' and 'gpt-3.5-turbo' from MODEL_COST_MULTIPLIER (14-16) and MODEL_TIER (30, 35-36). Remove 'gpt-4.1-nano' from the list at integrations.js:222."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "OpenAI audio models",
+   "what": "whisper-1 (hard-coded at ai.js:1389) shuts down Feb 26, 2027; tts-1 (default `model = 'tts-1'` at ai.js:1606, any model accepted from req.body) and tts-1-hd shut down Jan 6, 2027. The listed replacement for TTS is a 'realtime' model, so confirm it can be called through /v1/audio/speech before swapping.",
+   "file": "backend/src/routes/ai.js",
+   "line": 1389,
+   "evidence_url": "https://developers.openai.com/api/docs/deprecations",
+   "evidence_quote": "Transcription Models (Feb 26, 2027): `whisper-1` → migrate to `gpt-live-transcribe` or `gpt-transcribe`  /  Text-to-Speech Models (Jan 6, 2027): `tts-1` → migrate to `gpt-realtime-2.1-mini`",
+   "recommended_fix": "ai.js:1389 -> `model: process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-transcribe'`. ai.js:1606 -> `model = process.env.OPENAI_TTS_MODEL || 'tts-1'` now, then switch to the documented replacement once its endpoint is confirmed. Do both before 2027-01-06."
+  },
+  {
+   "severity": "breaks_soon",
+   "area": "OpenAI GPT-5 snapshots",
+   "what": "gpt-5-2025-08-07 and gpt-5-mini-2025-08-07 shut down Dec 11, 2026. The undated aliases gpt-5-mini / gpt-5-nano (first choices in the integration test) are NOT listed, and the page does not say whether aliases follow their snapshot. The test is safe because it intersects with the account's live list; settings.openai_model values pinned to a snapshot are not.",
+   "file": "backend/src/routes/integrations.js",
+   "line": 222,
+   "evidence_url": "https://developers.openai.com/api/docs/deprecations",
+   "evidence_quote": "GPT-5 Snapshots (Dec 11, 2026): `gpt-5-2025-08-07` → `gpt-5.6-sol`; `gpt-5-mini-2025-08-07` → `gpt-5.6-terra`",
+   "recommended_fix": "Add a startup check that logs a warning when any companies.openai_model matches /-\\d{4}-\\d{2}-\\d{2}$/ and is not in the live catalog; for the test, put 'gpt-5.6-luna' first in the candidate list."
+  },
+  {
+   "severity": "ok",
+   "area": "OpenAI default/fallback models",
+   "what": "gpt-4o-mini (DEFAULT_MODEL_PER_PROVIDER.openai, openaiFallback, FORCE_CHEAP/FAST targets) and gpt-4o do NOT appear in OpenAI's deprecations page (confirmed by two fetches), so they are currently served. Baseline pricing assumption holds: gpt-4o-mini is $0.15 in / $0.60 out, so the 2:1 blend is $0.30/M as the aiCredits.js comment says. Caveat: this is the absence of an entry; sibling gpt-4.1-nano is already scheduled, so recheck monthly.",
+   "file": "backend/src/lib/aiCredits.js",
+   "line": 166,
+   "evidence_url": "https://developers.openai.com/api/docs/pricing",
+   "evidence_quote": "gpt-4o-mini: \"$0.15\" input / \"$0.075\" cached / \"$0.60\" output",
+   "recommended_fix": "No change required now. Make the default env-overridable: `openai: process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini'`."
+  },
+  {
+   "severity": "ok",
+   "area": "OpenAI web search (Responses API)",
+   "what": "POST https://api.openai.com/v1/responses with `tools:[{type:'web_search'}]` and `input` is the current documented shape. gpt-4.1 is not on the deprecation list and is supported, but only with a 128k search context. The parser reads body.output_text (an SDK convenience field) and correctly falls back to output[].content[].text and annotations[].url, which matches the documented url_citation shape. Auth header and error handling in fetchJson are correct.",
+   "file": "backend/src/lib/webSearch.js",
+   "line": 102,
+   "evidence_url": "https://developers.openai.com/api/docs/guides/tools-web-search",
+   "evidence_quote": "For new Responses API integrations, use `{ \"type\": \"web_search\" }`.",
+   "recommended_fix": "None required. Optionally make the model env-driven: `model: liveModelFor(process.env.OPENAI_WEBSEARCH_MODEL || 'gpt-4.1', 'openai')`, since the sibling gpt-4.1-nano is already scheduled for shutdown."
+  },
+  {
+   "severity": "unverified",
+   "area": "OpenAI chat params for gpt-5.x / o-series",
+   "what": "callOpenAI sends `max_tokens` and `temperature` on /v1/chat/completions (ai.js:569-570). OpenAI's reference says max_tokens is deprecated in favour of max_completion_tokens and is not compatible with o-series models; reasoning-family models (o1/o3, gpt-5.x) are widely reported to reject max_tokens and non-default temperature. If so, a company that picks gpt-5.6-* or o3 gets a 400 that categorizeProviderError reads as INVALID_MODEL (message contains 'model'), then silently retries on gpt-4o-mini and is billed as such. I could not fetch the reference page (404) and the reasoning guide was silent, so this is not confirmed from docs.",
+   "file": "backend/src/routes/ai.js",
+   "line": 569,
+   "evidence_url": "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create",
+   "evidence_quote": "(search-result summary, not a verbatim page quote) max_tokens is deprecated in favor of max_completion_tokens, and is not compatible with o-series models",
+   "recommended_fix": "ai.js:569-570 -> `const reasoning = /^(o\\d|gpt-5)/.test(openaiModel); const params = { model: openaiModel, messages: msgs, ...(reasoning ? {} : { temperature }) }; if (max_tokens) params[reasoning ? 'max_completion_tokens' : 'max_tokens'] = max_tokens;` (integrations.js:227 already uses max_completion_tokens correctly). Verify once with a real key."
+  },
+  {
+   "severity": "ok",
+   "area": "Integration test - OpenAI",
+   "what": "routes/integrations.js case 'openai' (lines 207-236): GET https://api.openai.com/v1/models with Bearer auth, then POST /v1/chat/completions with max_completion_tokens. Probed today: no key returns HTTP 401; garbage key returns HTTP 401 {error.code: invalid_api_key}. Missing key short-circuits to success:false (line 209) and !modelsResp.ok returns success:false, so it cannot pass without valid credentials. The test model is picked from the account's own list, so a retired id cannot fail a valid key. Only soft path: if no candidate model exists it returns success:true after the key check only (line 223), which still needs a valid key. Design note: a company with no key of its own passes through the PLATFORM env key (line 208), so 'Test' can say 'fully working' for a tenant that configured nothing.",
+   "file": "backend/src/routes/integrations.js",
+   "line": 207,
+   "evidence_url": "https://developers.openai.com/api/docs/guides/tools-web-search",
+   "evidence_quote": "Probe: GET /v1/models, no key -> HTTP 401; Bearer sk-garbage-0000 -> HTTP 401 \"Incorrect API key provided\" (invalid_api_key)",
+   "recommended_fix": "Optional: report key source, e.g. `message: 'OpenAI fully working (platform key)'` when the company key is empty. Drop 'gpt-4.1-nano' from the candidate list."
+  },
+  {
+   "severity": "ok",
+   "area": "Integration test - Anthropic",
+   "what": "routes/integrations.js case 'anthropic' (lines 239-272): GET https://api.anthropic.com/v1/models then POST /v1/messages, with x-api-key and anthropic-version 2023-06-01. Probed today: no key -> HTTP 401; garbage key on /v1/models and on /v1/messages -> HTTP 401 {type:authentication_error, message:'API key is invalid.'}. Cannot pass without credentials. It no longer hard-codes the retired claude-3-5-sonnet-20241022: it takes the first haiku from the live list (list default limit is 20, newest first) else mids[0], and sends no temperature, so 4.7+ models will not 400. Residual: if no haiku is among the first 20 ids, mids[0] is the newest and priciest model (still negligible at max_tokens 16).",
+   "file": "backend/src/routes/integrations.js",
+   "line": 257,
+   "evidence_url": "https://platform.claude.com/docs/en/api/models/list",
+   "evidence_quote": "Probe: GET /v1/models no key -> 401; x-api-key: sk-ant-garbage-0000 -> 401 {\"type\":\"authentication_error\",\"message\":\"API key is invalid.\"}",
+   "recommended_fix": "The model the test should use is `claude-haiku-4-5-20251001` (alias `claude-haiku-4-5`): cheapest current model, no sampling-param restrictions. Change line 257 to `const testModel = mids.find((m) => /haiku/i.test(m)) || 'claude-haiku-4-5-20251001';` and add `?limit=100` to the list URL at line 244 so Haiku is always in the page."
+  },
+  {
+   "severity": "outdated",
+   "area": "Provider diagnose ping",
+   "what": "The /diagnose live ping calls callOpenAI/callAnthropic with temperature 0 and model null (ai.js:1102, 1111). For a company whose settings.anthropic_model is a 4.7+ model, that 400s and reports the key as broken although it is valid (false negative). It also uses a different path from the integrations test, so the two screens can disagree.",
+   "file": "backend/src/routes/ai.js",
+   "line": 1111,
+   "evidence_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+   "evidence_quote": "Returns a 400 error when set to a non-default value on Claude 4.7 and later models",
+   "recommended_fix": "Drop `temperature: 0` from both ping calls (or apply the NO_SAMPLING guard from the temperature finding)."
+  },
+  {
+   "severity": "unverified",
+   "area": "Stability AI (adjacent to ai.js; image fallback)",
+   "what": "Now that all OpenAI image models are gone, Stability is the only working image path. generateWithStability (ai.js:1434) still calls the legacy v1 endpoint /v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image. A web search (third-party aggregator pages only, no official Stability page fetched) says the v1 generation API is deprecated in favour of v2beta Stable Image. The integrations test (integrations.js:279, /v1/user/balance) is sound: no key -> 401 'missing authorization header', garbage key -> 401 'Incorrect API key provided'. Could not confirm Stability's official sunset date inside the call budget.",
+   "file": "backend/src/routes/ai.js",
+   "line": 1434,
+   "evidence_url": "https://platform.stability.ai/docs/release-notes",
+   "evidence_quote": "(not fetched; search-summary only) The legacy v1/v1beta generation API is deprecated ... new endpoint api.stability.ai/v2beta/stable-image/generate/core",
+   "recommended_fix": "Fetch Stability's official deprecation notice, then migrate to POST https://api.stability.ai/v2beta/stable-image/generate/core (multipart, `aspect_ratio`, header `Accept: image/*`) if confirmed."
+  }
+ ],
+ "pinned_versions": [
+  {
+   "name": "anthropic-version header",
+   "in_code": "2023-06-01 (modelRegistry.js:50, webSearch.js:134, integrations.js:245, 261)",
+   "status": "current",
+   "current": "2023-06-01"
+  },
+  {
+   "name": "Anthropic web search tool type",
+   "in_code": "web_search_20250305 (webSearch.js:140)",
+   "status": "current",
+   "current": "web_search_20250305 still valid; newer web_search_20260209 and web_search_20260318 exist"
+  },
+  {
+   "name": "claude-3-5-haiku-20241022",
+   "in_code": "aiCredits.js:18,31,167,265,277,282",
+   "status": "sunset",
+   "current": "claude-haiku-4-5-20251001",
+   "sunset_date": "2026-02-19"
+  },
+  {
+   "name": "claude-3-5-sonnet-20241022",
+   "in_code": "aiCredits.js:20,36,263,264; ai.js:551",
+   "status": "sunset",
+   "current": "claude-sonnet-5-5",
+   "sunset_date": "2025-10-28"
+  },
+  {
+   "name": "claude-3-opus-20240229",
+   "in_code": "aiCredits.js:23,40",
+   "status": "sunset",
+   "current": "claude-opus-5-5",
+   "sunset_date": "2026-01-05"
+  },
+  {
+   "name": "claude-sonnet-4-5 (alias of claude-sonnet-4-5-20250929)",
+   "in_code": "webSearch.js:138; aiCredits.js:22,39",
+   "status": "deprecated",
+   "current": "claude-sonnet-5-5",
+   "sunset_date": "2026-11-30"
+  },
+  {
+   "name": "claude-opus-4-5 (alias of claude-opus-4-5-20251101)",
+   "in_code": "aiCredits.js:24,41",
+   "status": "current",
+   "current": "claude-opus-5-5 (4-5 retirement floor: not sooner than 2026-11-24)"
+  },
+  {
+   "name": "claude-haiku-4-5-20251001",
+   "in_code": "not hard-coded; reached by heuristic",
+   "status": "current",
+   "current": "claude-haiku-4-5-20251001 (not sooner than 2026-10-15)"
+  },
+  {
+   "name": "gpt-image-1",
+   "in_code": "ai.js:1408,1415,1568",
+   "status": "sunset",
+   "current": "gpt-image-2.5-flare (generate) / gpt-image-2.5-sunburst (edit)",
+   "sunset_date": "2026-10-01"
+  },
+  {
+   "name": "dall-e-3 / dall-e-2",
+   "in_code": "ai.js:1408,1421,1427",
+   "status": "sunset",
+   "current": "gpt-image-2.5-flare",
+   "sunset_date": "2026-05-12"
+  },
+  {
+   "name": "gpt-3.5-turbo / gpt-4-turbo",
+   "in_code": "aiCredits.js:15-16,29-35",
+   "status": "deprecated",
+   "current": "gpt-5.6-terra / gpt-5.6-sol",
+   "sunset_date": "2026-10-23"
+  },
+  {
+   "name": "gpt-4.1-nano",
+   "in_code": "integrations.js:222",
+   "status": "deprecated",
+   "current": "gpt-5.6-luna",
+   "sunset_date": "2026-10-23"
+  },
+  {
+   "name": "gpt-5-2025-08-07 / gpt-5-mini-2025-08-07 snapshots",
+   "in_code": "not hard-coded (aliases gpt-5-nano, gpt-5-mini at integrations.js:222)",
+   "status": "deprecated",
+   "current": "gpt-5.6-sol / gpt-5.6-terra",
+   "sunset_date": "2026-12-11"
+  },
+  {
+   "name": "tts-1",
+   "in_code": "ai.js:1606",
+   "status": "deprecated",
+   "current": "gpt-realtime-2.1-mini (confirm endpoint)",
+   "sunset_date": "2027-01-06"
+  },
+  {
+   "name": "whisper-1",
+   "in_code": "ai.js:1389",
+   "status": "deprecated",
+   "current": "gpt-transcribe or gpt-live-transcribe",
+   "sunset_date": "2027-02-26"
+  },
+  {
+   "name": "gpt-4o-mini",
+   "in_code": "aiCredits.js:13,166; ai.js:557; integrations.js:222",
+   "status": "current",
+   "current": "gpt-4o-mini (no deprecation entry found)"
+  },
+  {
+   "name": "gpt-4o",
+   "in_code": "aiCredits.js:14",
+   "status": "current",
+   "current": "gpt-4o (no deprecation entry found)"
+  },
+  {
+   "name": "gpt-4.1",
+   "in_code": "webSearch.js:108",
+   "status": "current",
+   "current": "gpt-4.1 (no entry; sibling gpt-4.1-nano shuts down 2026-10-23)"
+  },
+  {
+   "name": "OpenAI Responses web_search tool",
+   "in_code": "{type:'web_search'} (webSearch.js:109)",
+   "status": "current",
+   "current": "web_search"
+  },
+  {
+   "name": "Stability v1 text-to-image endpoint",
+   "in_code": "ai.js:1434",
+   "status": "unknown",
+   "current": "v2beta/stable-image (unconfirmed from official docs)"
+  }
+ ],
+ "test_cases": [
+  {
+   "type": "integrations openai",
+   "calls": "GET https://api.openai.com/v1/models (Bearer) then POST /v1/chat/completions (max_completion_tokens:16, model chosen from the account's live list)",
+   "verdict": "sound",
+   "notes": "Probed: no key -> 401; garbage key -> 401 invalid_api_key. Missing key returns success:false before any call. Cannot report success without a valid key. Platform env key is used when the company has none, so a tenant with nothing configured can still see 'fully working'."
+  },
+  {
+   "type": "integrations anthropic",
+   "calls": "GET https://api.anthropic.com/v1/models then POST /v1/messages (x-api-key, anthropic-version 2023-06-01, max_tokens:16, no temperature)",
+   "verdict": "sound",
+   "notes": "Probed: no key -> 401; garbage key on /v1/models and /v1/messages -> 401 authentication_error 'API key is invalid.' The retired claude-3-5-sonnet-20241022 is gone from the test; it picks a haiku from the live list. Recommended model id: claude-haiku-4-5-20251001."
+  },
+  {
+   "type": "integrations stability",
+   "calls": "GET https://api.stability.ai/v1/user/balance (Bearer), requires credits > 0",
+   "verdict": "sound",
+   "notes": "Probed: no key -> 401 'missing authorization header'; garbage key -> 401 'Incorrect API key provided'. Endpoint family (v1) may be deprecated, unverified."
+  },
+  {
+   "type": "ai.js /diagnose live ping",
+   "calls": "callOpenAI / callAnthropic with temperature:0, max_tokens:5, model null (ai.js:1102, 1111)",
+   "verdict": "stale",
+   "notes": "Cannot pass without a key, but gives a FALSE NEGATIVE for a valid Anthropic key when settings.anthropic_model is Claude 4.7 or later, because non-default temperature returns 400."
+  },
+  {
+   "type": "integrations apollo (context only)",
+   "calls": "GET https://api.apollo.io/api/v1/auth/health",
+   "verdict": "sound",
+   "notes": "Already fixed in code: it now requires is_logged_in === true, not just r.ok. Not re-probed (outside the requested cases)."
+  },
+  {
+   "type": "image generation / edit paths (no automated test)",
+   "calls": "POST /v1/images/generations and /v1/images/edits with gpt-image-1 / dall-e-3 / dall-e-2",
+   "verdict": "wrong_endpoint",
+   "notes": "The endpoints are right but every model id is shut down, so these fail with valid credentials. There is no integration test for them, so nothing would have flagged it."
+  }
+ ]
+}

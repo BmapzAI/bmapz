@@ -7,8 +7,9 @@ exact fix; pinned versions; test cases).
 DONE (all medium confidence; NONE run by a human against a real console): verify + audit for google, meta, linkedin_x, tiktok_canva, stripe_resend,
 perplexity_prospecting (Perplexity / Apollo / Hunter / Stability).
 
-NOT FINISHED when this was written: the audit of OpenAI / Anthropic model ids and credit pricing (`audit-llm_models.json`), and the mobile-app research
-(`mobile-research.md`). If a file is absent here, that work is still open: re-run only that piece.
+ALSO DONE (added 2026-10-07): `audit-llm_models.json` (OpenAI / Anthropic model ids, API versions, credit pricing; its findings are fixed in commit f22a005, see AGENT_HANDOFF.md) and
+`mobile-research.md` / `.json` (store rules, OAuth in a native shell, enrolment costs; single-source, not adversarially verified, and written WITHOUT knowing which mobile approach was chosen).
+If a file is absent here, that work is still open: re-run only that piece.
 
 `docs/INTEGRATIONS_RUNBOOK.md` is generated from the `verify-*.corrected_setup_steps` here: `node docs/tools/gen-runbook.cjs`.
 File names were once mis-assigned by a case-sensitive matcher (the agent had written "stripe-resend" with a hyphen): trust the `group` field INSIDE a file, not only its name.

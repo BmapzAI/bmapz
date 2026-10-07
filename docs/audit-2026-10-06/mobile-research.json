@@ -567,5 +567,489 @@
     "source_url": "https://developer.apple.com/news/?id=k1mtkt1k"
    }
   ]
+ },
+ {
+  "topic": "OAUTH_NATIVE: OAuth and login inside a native shell (Google, Supabase, Universal/App Links, Meta, LinkedIn, X, TikTok, Canva, Stripe, Capacitor plugins), as of 2026-10-07",
+  "as_of": "2026-10-07",
+  "findings": [
+   {
+    "requirement": "Google's OAuth 2.0 policy forbids sending a Google authorization request to an embedded user-agent that the developer controls. It defines embedded user-agents as libraries that let the developer inject scripts, alter request routing or read session cookies. Any WebView that renders your own app falls under this. The rule covers every Google OAuth request, not only login.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "If the app is a Capacitor/WebView shell, never load accounts.google.com inside the WebView or in a window.open popup from it. This covers 'Continue with Google' (Supabase) and all Google integrations (Gmail, Calendar, Drive, YouTube, Analytics, Search Console, Ads). Open them in the system browser (SFSafariViewController or Chrome Custom Tabs).",
+    "source_url": "https://developers.google.com/identity/protocols/oauth2/policies",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Google blocks sign-in in embedded WebViews. The enforcement date was 2021-09-30. Requests from Android WebView, WKWebView, UIWebView or similar get a disallowed_useragent error. Google lists as approved on Android the OS default link handling or Android Custom Tabs, and on iOS/macOS SFSafariViewController or Universal Links routing to the system browser. You can test with disallow_webview=true on the authorization URL.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Treat it as certain that Google login fails inside a Capacitor WebView (WKWebView on iOS, Android WebView on Android). In the shell, route every Google flow through the system browser. Test early on real devices.",
+    "source_url": "https://developers.googleblog.com/en/upcoming-security-changes-to-googles-oauth-20-authorization-endpoint-in-embedded-webviews/",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Google's native-app OAuth guide says installed apps must open the system browser. It repeats that an authorization page shown in an embedded user-agent produces disallowed_useragent. For iOS it points to Google Sign-In for iOS or AppAuth rather than WKWebView. Google iOS/Android OAuth client types exist for native SDK flows. The page also discusses redirect schemes, but I did not rely on its custom-scheme and loopback deprecation statements because my fetch was a summary.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Keep the existing confidential Web OAuth client and the backend code exchange with https redirect URIs on the API host. This works unchanged when the browser is the system browser, and nothing I found requires a separate Google iOS or Android client for it. You only need Google iOS/Android client IDs if you choose native Google Sign-In (signInWithIdToken) for the login button.",
+    "source_url": "https://developers.google.com/identity/protocols/oauth2/native-app",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "The outcome by mobile approach, for Google: (a) Capacitor/WebView wrapper: Google is blocked inside the WebView and must go via Browser.open (system browser). (b) TWA (Trusted Web Activity): it runs in Chrome rather than an embedded WebView, so web Google sign-in should work, but I did not verify this against official docs today. (c) PWA (home-screen web app): not verified. (d) Full native rewrite: use Google Sign-In/Credential Manager/AppAuth, or the system browser.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "If Derek wants the least OAuth work, TWA or PWA is likely easiest on Android, but confirm with a real-device test of Google login and a Gmail integration before committing. For Capacitor, budget for a system-browser OAuth helper (see integration_impacts).",
+    "source_url": "https://developers.googleblog.com/en/upcoming-security-changes-to-googles-oauth-20-authorization-endpoint-in-embedded-webviews/",
+    "confidence": "low"
+   },
+   {
+    "requirement": "Supabase deep-link configuration for native apps: add the app's redirect URL under 'Additional Redirect URLs' in the project's Auth URL Configuration. Use the format [YOUR_SCHEME]://[YOUR_HOSTNAME] (docs example io.supabase.user-management://login-callback), with a scheme unique on the device (reverse-domain style). The redirectTo value must match the Redirect URLs list. Wildcards *, ** and ? are supported. Supabase also says Universal Links are an alternative on Apple platforms and need an AASA file at /.well-known/apple-app-site-association.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Add the mobile return URLs (for example com.bmapz.app://auth-callback and/or https://ai.bmapz.com/auth/callback, placeholders until the bundle id is chosen) to Additional Redirect URLs. Do NOT change Site URL away from https://ai.bmapz.com, or the web app breaks.",
+    "source_url": "https://supabase.com/docs/guides/auth/native-mobile-deep-linking",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Supabase's official native Google guides cover native ID-token sign-in (signInWithIdToken) for Swift (GoogleSignIn-iOS), Android (Credential Manager), Flutter and Expo. They do not give a Capacitor recipe. For Google via the web redirect flow, the Supabase project callback URL must be listed under Authorized redirect URIs of the Google web client. signInWithOAuth supports PKCE and has redirectTo, skipBrowserRedirect and queryParams options.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Recommended for a Capacitor shell: call signInWithOAuth({provider:'google', options:{redirectTo:<deep link>, skipBrowserRedirect:true}}), then Browser.open(data.url) in the system browser. When the app receives the deep link (appUrlOpen), call exchangeCodeForSession in the app WebView. Alternative: a community Capacitor Google Sign-In plugin plus signInWithIdToken (needs Google iOS/Android client IDs and Supabase configuration). The Capacitor-specific sequence is my inference from the official pieces, not an official Supabase recipe.",
+    "source_url": "https://supabase.com/docs/guides/auth/social-login/auth-google",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Apple's rules for the apple-app-site-association (AASA) file: the file is named apple-app-site-association with no extension. It must sit in the site's .well-known directory at https://<domain>/.well-known/apple-app-site-association. It must be served over https with a valid certificate and no redirects. Since iOS 14 / macOS 11 devices fetch it from an Apple-managed CDN, not your server. Apple's CDN fetches your file within 24 hours and devices recheck about weekly. The entitlement is applinks:<domain>, and ?mode=developer can be appended for testing. Stripe's official guide adds that the file must be served with MIME type application/json (verify with curl -I).",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Host the AASA only on ai.bmapz.com (the link target host). Serve it as application/json, extensionless, no redirects, and check with curl -I after every deploy. Expect up to 24h before Apple's CDN sees a change. Use applinks:ai.bmapz.com?mode=developer on test builds.",
+    "quote": "with a valid certificate and with no redirects (Apple Developer, 'Supporting associated domains')",
+    "source_url": "https://developer.apple.com/documentation/xcode/supporting-associated-domains",
+    "confidence": "high"
+   },
+   {
+    "requirement": "AASA JSON shape. Stripe's official example uses the newer format: applinks.details[].appIDs (TeamID.bundleid, a list) and components[] entries such as {\"/\": \"/checkout_redirect*\"}. Capacitor's guide shows the older appID plus paths:[\"*\"] form. Using paths:[\"*\"] hands every ai.bmapz.com URL to the app on iOS.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Use the components form and list only the return paths you need (for example /auth/return*, /Integrations*, /billing/return*), not '*', so marketing, privacy and deletion pages and emailed links keep opening in the browser. Keep the PrivacyPolicy/TermsOfService/DataDeletion pages out of the app's link set. Confirm whether components matching is case-sensitive for /Integrations before relying on it.",
+    "source_url": "https://docs.stripe.com/mobile/digital-goods/checkout",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Android App Links: the Digital Asset Links file must be at https://hostname/.well-known/assetlinks.json, with content type application/json, over HTTPS and accessible without redirects. Android verifies each unique hostname in your intent filters (a filter with android:autoVerify=\"true\", action VIEW, categories DEFAULT and BROWSABLE, scheme https) against it. sha256_cert_fingerprints must match your signing certificate. If the app is on Google Play, use the fingerprint from Play App Signing, not your local key. Verification runs at install and the docs advise waiting at least 20 seconds. Capacitor's guide shows the same file shape with relation delegate_permission/common.handle_all_urls.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Publish assetlinks.json on ai.bmapz.com with the Play App Signing SHA-256 (available only after the app exists in Play Console) and add the Play fingerprint, not just the debug key. The same file is also what a TWA needs for full-screen mode (that last point is from general knowledge, not fetched today).",
+    "source_url": "https://developer.android.com/training/app-links/verify-android-applinks",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Serving these files from Cloudflare Pages: put _headers in the static asset directory (public/ for a Vite project). Limits: 100 rules, 2,000 characters per line. Custom headers from _headers apply only to static assets, not to Pages Functions responses. With no top-level 404.html, Pages treats the project as an SPA and maps unmatched paths to the root, so a missing or misnamed /.well-known/ file returns the app's index.html with status 200 instead of a 404. Pages' 'pretty URL' redirect applies to .html files (/contact.html to /contact), not to .json or extensionless files. Cloudflare's own page does not show a Content-Type override; a third-party guide shows the pattern below and says it works.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Create public/.well-known/apple-app-site-association and public/.well-known/assetlinks.json as real static files, plus public/_headers containing two rules: '/.well-known/apple-app-site-association' and '/.well-known/assetlinks.json', each followed by an indented line 'Content-Type: application/json'. After deploy, curl -I both URLs and confirm 200, application/json, and body is JSON (not your SPA HTML). Do not generate them via a Pages Function.",
+    "source_url": "https://developers.cloudflare.com/pages/configuration/headers/",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Returning from the system browser to the app through an https URL is not guaranteed. Apple's universal-links page I fetched says nothing about redirects, same-domain navigation or tap-versus-typed behavior. Stripe's official mobile guide warns that even with a correct AASA 'the redirect fails to open your app' can happen, and tells you to build a fallback page at success_url, for example one using a custom URL scheme.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Do not rely on https://ai.bmapz.com/Integrations?oauth=success alone to reopen the app after a server redirect chain from the API host. Make the final hop a small static return page (for example /oauth/return) that attempts the custom-scheme deep link and also shows a 'Return to Bmapz' button (a user tap is the most reliable universal-link trigger). Register both the https links (AASA/assetlinks) and a custom scheme in the app. Test on real iOS and Android devices.",
+    "source_url": "https://docs.stripe.com/mobile/digital-goods/checkout",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Capacitor App plugin: the appUrlOpen listener handles both custom URL scheme links and URLs your app handles (Universal Links on iOS, App Links on Android). getLaunchUrl returns the URL the app was launched with. Setup: iOS Info.plist CFBundleURLTypes for the custom scheme, Android intent filters in AndroidManifest.xml and a custom_url_scheme string in strings.xml. Capacitor's deep-link guide shows the router pattern: listen for appUrlOpen, take the part of event.url after the domain, then navigate.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "In the shell, register App.addListener('appUrlOpen', ...) once at startup. In the handler, parse the URL, call Browser.close() if still open, then route to the Integrations screen and re-fetch integration status from the API. Also call App.getLaunchUrl() on cold start.",
+    "source_url": "https://capacitorjs.com/docs/apis/app",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Capacitor Browser plugin: it opens an in-app browser and on iOS uses SFSafariViewController (an approved Google method). Methods are open() and close(). The browserFinished listener (Android and iOS) fires when the user closes the browser. open() has iOS-only presentationStyle. The docs I fetched did not state Android Custom Tabs behavior for close() or events, or whether core Capacitor offers ASWebAuthenticationSession.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Standard pattern: await Browser.open({url}) to start OAuth; the callback page redirects to the deep link; the appUrlOpen handler closes the browser and finishes the flow. Do not depend on Browser.close() working on Android and do not depend on browserFinished to mean success; confirm success by re-fetching status from your API.",
+    "source_url": "https://capacitorjs.com/docs/apis/browser",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Meta (Facebook Login): Meta's 2021 developer post says it deprecated support for FB Login authentication in Android embedded browsers (WebViews) due to phishing, and recommends the SDK (8.2+) using Chrome Custom Tabs, push-based verification or Android App Switch. It does not mention iOS. Meta's manual-login-flow doc states the redirect_uri must be in the app's Valid OAuth Redirect URIs, and says nothing about bundle id, package name or key hash for that flow.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Run the Meta/Facebook/Instagram connect flow in the system browser only. Keep the https redirect on the API host. No iOS bundle id, Android package or key hash registration should be required for the web flow; they matter only if you adopt Meta's native SDK (absence of a requirement in the docs, not an explicit statement).",
+    "source_url": "https://developers.facebook.com/blog/post/2021/06/28/deprecating-support-fb-login-authentication-android-embedded-browsers/",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "WhatsApp Embedded Signup (Meta): the implementation guide uses the Facebook JavaScript SDK FB.login with a configuration id and a window message listener that checks event.origin ends with facebook.com. Domains must be in Allowed domains and Valid OAuth redirect URIs over HTTPS. The guide never mentions mobile apps, WebViews or in-app browsers. A popup that posts a message back to its opener is exactly the pattern WebViews break (an Apple developer forum thread reports window.opener null in WKWebView popups, which I did not fetch).",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Until proven on real devices, hide or disable the WhatsApp Embedded Signup connect button inside the native shell, or open the ai.bmapz.com Integrations page in the system browser for that step and refresh status when the user returns. If the shell loads bundled files under capacitor://localhost or https://localhost, those origins are not in Meta's allowed domains.",
+    "source_url": "https://developers.facebook.com/docs/whatsapp/embedded-signup/implementation",
+    "confidence": "low"
+   },
+   {
+    "requirement": "LinkedIn 3-legged OAuth: redirect URLs must be HTTPS, absolute, with parameters ignored and no #. Social login (Google/Apple) and passkey login on LinkedIn's own login page currently work only on desktop and Android web browsers. For native apps you must add enable_extended_login=true to /oauth/v2/authorization and follow the standard OAuth spec RFC 8252 (external browser). Tokens last 60 days and programmatic refresh tokens are only for a limited set of partners; refresh means going through authorization again. The page lists no iOS/Android registration step.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "When the flow starts from the native shell (system browser), add enable_extended_login=true to the LinkedIn authorization URL. Do not put '?oauth=success' on the registered redirect URI (LinkedIn ignores query params); append it on your own post-callback redirect. Plan a 'reconnect LinkedIn' prompt about every 60 days.",
+    "source_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow",
+    "confidence": "high"
+   },
+   {
+    "requirement": "X (Twitter) OAuth 2.0: callback URL must be an exact match to one registered in the app settings. X defines Web App and Automated App/bots as confidential clients and Native App and Single-page Apps as public clients. The offline.access scope yields a refresh token and access tokens last two hours by default. The page I fetched does not mention custom URI schemes, mobile apps, WebViews or bundle ids.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Keep the X app registered as a confidential Web App with its https callback on the API host and request offline.access. Run it in the system browser. No extra X registration is documented for this. I found no official statement that X blocks or allows WebView OAuth, so avoid WebView.",
+    "source_url": "https://docs.x.com/resources/fundamentals/authentication/oauth-2-0/authorization-code",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "TikTok Login Kit for Web: redirect URIs must be absolute and start with https, must be static (parameters denied), cannot include a fragment, max 10 URIs of under 512 characters each, and must be registered in the app config. The page does not discuss mobile browsers, WebViews, bundle id/package name/key hash or PKCE. Native Login Kit (iOS/Android SDK) registration details were not retrievable today.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Keep the web flow with https static callback on the API host and run it in the system browser. A custom-scheme redirect_uri is not allowed for TikTok's web flow. Do not add TikTok's native SDK unless you accept registering the iOS bundle id / Android package with TikTok. Unverified whether TikTok blocks WebViews, so avoid them.",
+    "source_url": "https://developers.tiktok.com/doc/login-kit-web",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Canva Connect authentication: the redirect URL sent in the authorization request must be one already set in the app settings. PKCE with code_challenge_method S256 is required. The token endpoint must be authenticated, with Basic authentication (base64 of client_id:client_secret) recommended. The page I fetched does not discuss mobile apps, native registration, WebViews or whether https is mandatory.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "No change to the confidential backend flow. Make sure the code_verifier is stored server-side keyed by state, not in the browser, because in a native shell the flow starts in the app WebView and finishes in the system browser (different storage). Run in the system browser. No platform registration documented.",
+    "source_url": "https://www.canva.dev/docs/connect/authentication/",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Stripe Checkout in a native app, per Stripe's official digital-goods guide: the app calls your server to create a Checkout Session, then opens the session URL in the system browser (the Swift sample uses UIApplication.shared.open). Configure origin_context: 'mobile_app', and a success_url that is a universal link (https) back into the app. Add an AASA and Associated Domains entitlement and a fallback page (custom URL scheme) at success_url. Checkout Sessions expire 24 hours after creation, and Checkout redirects to success_url 10 seconds after payment if the webhook is not acknowledged. Stripe describes this redirect flow for iOS apps selling digital products in the US (the page names the US).",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "Open Checkout only in the system browser, never in the WebView. Set origin_context to mobile_app only for app-originated sessions. Make success_url an AASA-covered https path with the fallback page, and rely on the webhook, not the redirect, to activate plans. Whether Bmapz is allowed to show web checkout inside the iOS/Android apps at all depends on store policy and the user's storefront/country (a separate research topic); until that is resolved, gate the Upgrade/Billing buttons in the app by a feature flag.",
+    "source_url": "https://docs.stripe.com/mobile/digital-goods/checkout",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Stripe Customer Portal: creating a portal session returns a short-lived, temporary URL; you need the customer id and a return_url (required if no default is set in the Dashboard). Customers must be authenticated before you create sessions. The page does not address mobile apps, deep links, custom schemes or WebViews.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "In the shell, create the portal session at tap time on the server, open the returned URL in the system browser, and set return_url to an https page on ai.bmapz.com that is covered by the same return-page/fallback logic. Do not cache or pre-create the session URL.",
+    "source_url": "https://docs.stripe.com/customer-management/integrate-customer-portal",
+    "confidence": "medium"
+   }
+  ],
+  "integration_impacts": [
+   "Provider redirect URIs: no change. Keep the existing https callbacks on the API host (api.bmapz.com) for Google, Meta, LinkedIn, X, TikTok and Canva. The official pages for the web flows show no iOS bundle id, Android package or key hash requirement; those appear only with native SDKs. TikTok forbids non-https and query-parameterized redirect URIs and LinkedIn ignores query params, so '?oauth=success' must be added by your own server redirect after the code exchange.",
+   "Replace the web popup with a native-aware helper, e.g. startOAuth(provider). On web: keep window.open popup. In the Capacitor shell (Capacitor.isNativePlatform()): fetch the provider authorization URL from the backend and call Browser.open(url). Popup-to-opener postMessage/window.close handshakes cannot be relied on in a native shell (opener is null in WKWebView popups per an Apple forum thread; I did not verify that today), so completion must be detected via the deep link plus a re-fetch of integration status from the API.",
+   "Add a static return page (for example https://ai.bmapz.com/oauth/return?provider=...&status=success) as the last hop after the API-host callback. It should try the custom-scheme deep link, show a 'Return to Bmapz' button and still work as a normal web page. Do not depend on a server redirect to https://ai.bmapz.com/Integrations?oauth=success opening the app by itself.",
+   "Deep-link plumbing to build: (1) iOS Associated Domains entitlement applinks:ai.bmapz.com plus a registered custom URL scheme; (2) Android intent filter with autoVerify for https://ai.bmapz.com and a custom scheme; (3) public/.well-known/apple-app-site-association, public/.well-known/assetlinks.json (with Play App Signing SHA-256), public/_headers with Content-Type application/json for both; (4) App.addListener('appUrlOpen') plus App.getLaunchUrl() in the app. Only ai.bmapz.com needs AASA/assetlinks; keep the API host out of the deep-link chain so you do not need to host those files on Railway.",
+   "Supabase: add the mobile return URLs (custom scheme and/or https return page) to Additional Redirect URLs; leave Site URL = https://ai.bmapz.com. Native shell login for 'Continue with Google': signInWithOAuth with skipBrowserRedirect:true, Browser.open(data.url), then exchangeCodeForSession in the app after appUrlOpen. The Google Cloud web client and the Supabase callback URL stay as they are. Alternative (more work): native Google Sign-In plus signInWithIdToken with Google iOS/Android client IDs. Email+password works unchanged in a WebView.",
+   "Must be hidden or deferred in the native shell until tested on devices: Google flows inside any WebView (never allowed); WhatsApp Embedded Signup (FB.login popup + postMessage) unless it is routed to the system browser; Stripe Checkout and Customer Portal buttons (pending the store-policy answer for each storefront; also Derek's country is unknown).",
+   "LinkedIn: append enable_extended_login=true when the flow originates in the native shell. Add reconnect UX for LinkedIn (60-day tokens, no programmatic refresh for most apps) and keep X on offline.access refresh (2-hour access tokens). Canva: keep PKCE verifier on the server.",
+   "Mobile approach changes the effort: Capacitor = all the items above; TWA = Google sign-in likely works in Chrome-based TWA but needs assetlinks.json and a real-device test (unverified); PWA = likely no deep-link work but unverified on iOS; native rewrite = native SDKs or system browser, and then iOS/Android registration with Meta, TikTok, etc. may apply.",
+   "Capacitor origin side effect to plan for: bundled Capacitor apps typically run from capacitor://localhost (iOS) and https://localhost (Android), which changes CORS on the Railway API, Supabase local storage separation from the web app and Meta's allowed domains. I did not verify this against Capacitor docs today. If the shell loads https://ai.bmapz.com remotely instead, origins stay the same but store reviewers may object (store-policy topic)."
+  ],
+  "timeline_and_costs": [
+   {
+    "item": "Apple AASA propagation",
+    "cost": "No hosting cost (file served from Cloudflare Pages)",
+    "wait": "Apple's CDN requests the file within 24 hours; devices recheck about weekly; ?mode=developer on test builds avoids waiting",
+    "source_url": "https://developer.apple.com/documentation/xcode/supporting-associated-domains"
+   },
+   {
+    "item": "Android App Links verification",
+    "cost": "No hosting cost; the Play App Signing SHA-256 is needed, so the app must exist in Play Console first",
+    "wait": "Verification runs at install; docs say wait at least 20 seconds before testing",
+    "source_url": "https://developer.android.com/training/app-links/verify-android-applinks"
+   },
+   {
+    "item": "LinkedIn token lifetime",
+    "cost": "None",
+    "wait": "Access tokens last 60 days; plan a reconnect prompt",
+    "source_url": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow"
+   },
+   {
+    "item": "Stripe Checkout Session validity",
+    "cost": "None for this item",
+    "wait": "Sessions expire 24 hours after creation, so create them at tap time",
+    "source_url": "https://docs.stripe.com/mobile/digital-goods/checkout"
+   }
+  ],
+  "open_questions": [
+   "Which mobile approach (Capacitor/WebView, TWA, PWA, native)? Most findings depend on it. Specifically unverified today: whether Google sign-in works in an installed iOS PWA and in a TWA (Chrome-based). Needs official docs or a real-device test.",
+   "Does a server redirect chain (provider to API host to ai.bmapz.com) opened from SFSafariViewController or a Chrome Custom Tab reopen the app via a Universal Link/App Link? Apple's page I fetched is silent on redirects, so only a fallback page plus real-device testing can settle it.",
+   "Capacitor details not confirmed: behavior of Browser.close() and events on Android Custom Tabs, whether core Capacitor provides ASWebAuthenticationSession (I believe not; a community plugin would be needed), and the WebView origin (capacitor://localhost vs https://localhost) and its CORS/Supabase-storage consequences.",
+   "No official statement found that X, TikTok or Canva forbid or allow WebView OAuth, and the TikTok native Login Kit registration requirements (bundle id/package/key hash) were not retrievable. Treat WebView OAuth as unsupported for them and avoid it.",
+   "WhatsApp Embedded Signup (FB.login popup + postMessage) behavior inside a mobile WebView is undocumented; needs a device test or a Meta support answer.",
+   "AASA specifics to confirm in Apple's rendered docs (the page is JavaScript-rendered; I only got excerpts through its JSON endpoint): case sensitivity for the /Integrations path, exact components syntax, and whether a redirect from another host counts as a user-initiated navigation.",
+   "Cloudflare risks not verified: whether Bot Fight Mode/WAF/Page Rules could block Apple's CDN or Google's verifier when they fetch /.well-known files, and whether direct-upload deployments include dot-folders like .well-known (check with curl after each deploy). Content-Type override via _headers is confirmed only by a third-party guide, not Cloudflare's page.",
+   "Supabase behavior when redirectTo is not on the allow-list: my fetch excerpt was ambiguous (it quoted a Web3 case). Test it, since the symptom would be users landing on the web site instead of in the app.",
+   "Sign in with Apple / equivalent login option may be required by App Store rules because the app offers Google login; that belongs to the store-policy topic and should be confirmed there.",
+   "Derek's business country and the user's storefront decide whether Stripe web checkout and the portal can be shown inside the iOS/Android apps (Stripe's own iOS guide names the US). Store-policy research must answer that before building the buttons.",
+   "Method note: tool/copyright limits mean only one verbatim quote is included (Apple AASA finding); everything else is a paraphrase of the cited official page. Each source_url can be opened to read the exact sentence."
+  ]
+ },
+ {
+  "topic": "Store enrollment, costs and lead times for a first-time publisher (Apple Developer Program, Google Play Console, push credentials, how Meta/TikTok/Google reviews treat a mobile app, critical-path calendar)",
+  "as_of": "2026-10-07",
+  "findings": [
+   {
+    "requirement": "Apple lets you enrol as an individual (sole proprietor / single-person business) or as an organisation. With an individual enrolment the seller shown on the App Store is your personal legal name; with an organisation it is the legal entity name.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "If Bmapz has a registered company, enrol as an ORGANISATION so customers see the company as the seller. Enrol as an individual only if Derek is a sole proprietor, and accept that his personal legal name will be the public seller name. The choice cannot be fixed later by a branding change, so decide before paying.",
+    "quote": "If you're an individual or sole proprietor/single-person business, your personal legal name will be listed as the seller on the App Store. / If you're an employee at a company, non-profit organization, joint venture, partnership, or government organization, the legal entity name will be listed as the seller on the App Store.",
+    "source_url": "https://developer.apple.com/support/enrollment/",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Apple organisation enrolment needs: a legal entity (no DBAs/trade names/branches), a D-U-N-S Number, legal binding authority (owner/founder, executive, or someone with a reference who can confirm authority), a work email on the organisation's domain, and a real public website. Using an alias or company name as your first/last name on the Apple Account delays approval.",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "Before starting: (1) confirm the legal entity name/address exactly as registered in the business country; (2) create a work email on the bmapz.com domain (not the personal gmail); (3) make sure a real public website exists (a login-only app page or a thin page is likely to be rejected); (4) enrol from an Apple Account that uses Derek's real legal first/last name with two-factor on. Whether Derek's country has D-U-N-S coverage and which entity types qualify (e.g. a sole-proprietor registration vs a company) depends on the business country, which is unknown.",
+    "quote": "Your organization must be a legal entity that can enter into contracts with Apple. We do not accept DBAs, fictitious business names, trade names, or branches. / Your organization's website must be publicly available and functional, and its domain name must be associated with your organization. Links to social media webpages or websites that contain minimal content or display a message from a domain registrar won't be accepted. / Using an alias, nickname, or company name as your first or last name will cause a delay in the approval of your enrollment.",
+    "source_url": "https://developer.apple.com/programs/enroll/",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Apple Developer Program annual fee is 99 USD per membership year (local currency where available); fee waivers exist only for nonprofits, accredited educational institutions and government entities that meet requirements.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Budget USD 99 per year (local-currency price shown at checkout, which may differ in the business country). Bmapz is a commercial company and will not qualify for a waiver. Put the renewal date in a calendar and keep a payment method that will not expire.",
+    "quote": "The Apple Developer Program is 99 USD per membership year. Prices may vary by region and are listed in local currency during the enrollment process.",
+    "source_url": "https://developer.apple.com/programs/enroll/",
+    "confidence": "high"
+   },
+   {
+    "requirement": "D-U-N-S Number is free from Dun & Bradstreet. Apple's published wait: up to 5 business days for D&B to issue it, then up to 2 business days for Apple to receive it from D&B. Paying to expedite does not shorten the wait. Google Play states a D-U-N-S request can take up to 30 days.",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "On day 0, search for an existing D-U-N-S number for the legal entity via Apple's D-U-N-S lookup; if none, request one free. Do NOT pay any third-party 'expedite' or 'registration' service. Use the same D-U-N-S for Apple, Google Play, and (later) Meta Business Verification. If it has not arrived in 2 weeks, email D&B (Apple's instruction). Make sure the legal name/address in D&B equals what you will type into Apple and into the Google payments profile, or both stores will stall.",
+    "quote": "After requesting a D-U-N-S Number, please allow up to 5 business days to receive your number from D&B. Expediting your D-U-N-S Number creation process will not shorten this waiting period. If your application has taken longer than two weeks to process, please email D&B. / Once you receive your D-U-N-S Number, please allow up to 2 business days for Apple to receive your information from D&B.",
+    "source_url": "https://developer.apple.com/support/D-U-N-S/",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Apple publishes NO figure for how long organisation verification takes. For organisations, Apple Developer Support verifies the information first and only then emails next steps to buy the membership; after purchase, confirmation is expected within 24 hours.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Treat Apple organisation approval as an unknown-duration step on the critical path and start it first. Keep the Enrollment ID, answer Apple Support calls/emails quickly, and have a reference ready who can confirm Derek's authority if he is not the legal owner/founder. Do not promise customers an iOS date until the membership is confirmed.",
+    "quote": "Organizations can review the license agreement and purchase a membership once Apple Developer Support verifies the enrollment information and sends an email with next steps. / If you haven't received a membership confirmation within 24 hours of your purchase, contact us.",
+    "source_url": "https://developer.apple.com/help/account/membership/program-enrollment",
+    "confidence": "high"
+   },
+   {
+    "requirement": "App Store Connect review speed (Apple's own statistics): at least 50% of submissions reviewed in under 24 hours and 90% in under 48 hours. Incomplete submissions (e.g. no demo login / special configuration instructions) are delayed or fail.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Plan 1-3 days per review round, but budget 1-2 rejection/resubmission rounds for a first app that is a web wrapper (see guideline 4.2 finding). In App Review Information supply a working demo account that already has an active plan and the integrations pre-connected (reviewers cannot complete third-party OAuth with your customers' accounts), plus a short demo video for anything hard to replicate.",
+    "quote": "App Review works around the clock, typically reviewing at least 50% of submissions in less than 24 hours and 90% in less than 48 hours. / If you don't include this information, the app review process may be delayed and your app may not pass review.",
+    "source_url": "https://developer.apple.com/distribute/app-review/",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Apple guideline 4.2 (minimum functionality): an app that is merely a repackaged website can be rejected. This is the main risk for a Capacitor/WebView or PWA-in-a-wrapper approach.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "If wrapping the web app for iOS, add genuinely native-feeling value that you can point to in the review notes (push notifications, native share/camera/file pick, biometric unlock, offline-aware shell, deep links) so it is not 'just the website'. A pure PWA on iOS avoids App Store review altogether but cannot be listed in the App Store. TWA is Android-only and does not help on iOS.",
+    "quote": "Your app should include features, content, and UI that elevate it beyond a repackaged website. If your app is not particularly useful, unique, or \"app-like,\" it doesn't belong on the App Store.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/",
+    "confidence": "high"
+   },
+   {
+    "requirement": "TestFlight: internal testers (up to 100 App Store Connect users) and external testers (up to 10,000). The first build sent to an external group goes through Beta App Review (Apple publishes no duration in the page fetched); builds expire after 90 days.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Use internal testing (people added as App Store Connect users) for first device tests, which needs no Apple review. Send the first external TestFlight build early: it is a cheap early check against the App Review Guidelines before the real submission. Re-upload builds before the 90-day expiry.",
+    "quote": "When you add the first build of your app to a group, the build gets sent to App Review to make sure it follows the App Review Guidelines. A review is required only for the first build. Subsequent builds may not require a full review. / You can test a build for up to 90 days.",
+    "source_url": "https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Apple guideline 4.8 (Login Services): an iOS app that offers Google Sign-In (or other social login) to set up the user's primary account must also offer an equivalent privacy-preserving login option, unless an exemption applies. Exemptions include: the app exclusively uses the company's own account setup and sign-in systems; the app is a business app that requires sign-in with an existing enterprise account.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Choose one before submitting the iOS build: (a) HIDE 'Continue with Google' in the iOS app and keep only email+password (this fits the 'exclusively uses your company's own account setup and sign-in systems' exemption), or (b) add Sign in with Apple (requires the paid membership, an Apple Services ID/key, and Supabase Apple provider setup). Option (a) is faster and keeps Google OAuth review scope on the web only. Integration connects (Gmail, Calendar etc.) are not primary-account login, but say so explicitly in the review notes.",
+    "quote": "Apps that use a third-party or social login service (such as Facebook Login, Google Sign-In, Log in with X, Sign In with LinkedIn, Login with Amazon, or WeChat Login) to set up or authenticate the user's primary account with the app must also offer as an equivalent option another login service. / Your app exclusively uses your company's own account setup and sign-in systems.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Apple payment rules for a subscription sold on the web: purchase methods other than in-app purchase are allowed only for listed categories; enterprise services sold directly to organisations are allowed to let users access previously purchased subscriptions, but consumer/single-user sales must use in-app purchase. In the US storefront external purchase links are allowed without an entitlement.",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "Decide the iOS billing posture BEFORE building: either (1) an iOS app with no pricing, upgrade or Stripe checkout UI (users sign in with an account bought on the web), arguing 3.1.3(c)/(f) in the review notes, accepting rejection risk because Bmapz also sells to single-owner small businesses; or (2) implement StoreKit in-app purchase (adds weeks and Apple's commission, not quantified here). Storefront country matters: the US exemption quoted is US-only; whether an equivalent applies in Brazil or the EU was not verified today.",
+    "quote": "3.1.3(c) Enterprise Services: If your app is only sold directly by you to organizations or groups for their employees or students (for example professional databases and classroom management tools), you may allow enterprise users to access previously-purchased content or subscriptions. Consumer, single user, or family sales must use in-app purchase.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Google Play: one-time USD 25 registration fee; two account types (Personal, Organization). Google tells commercial/business developers to choose Organization. Registration may require a valid government ID and a credit card under your legal name; the fee is not refunded if the information is judged invalid.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Register as an ORGANISATION account (Bmapz is a commercial business). Pay USD 25 with a card in the legal name used for the account and have a government ID ready. Create the account under a Google identity that the company controls long-term (not a throwaway), because the account owner is hard to change.",
+    "quote": "There is a US$25 one-time registration fee that you can pay with the following credit or debit cards: / Choose an organization account if you're creating an account for an organization or business. For example, if you're engaged in commercial, industrial, professional, or governmental activities. / you may be asked for a valid government ID and a credit card, both under your legal name. If this information is determined to be invalid, your registration fee will not be refunded.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/6112435",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Google Play organisation accounts require a D-U-N-S number (no exceptions except governments, and an alternative route only where D&B does not operate), an official government identity document, an official organisation document, a verified developer phone number and email (one-time passwords), and website verification. The legal name and address in the Google payments profile must match the D&B profile or the account can be restricted. Google says a D-U-N-S request can take up to 30 days and bank/payment verification up to 5 days.",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "Reuse the exact D-U-N-S/legal name/address used for Apple. Prepare: company registration document in the format listed for your country (Google's 'documents by region' list), government ID of the account owner, a company phone number that can receive an OTP, and a verifiable company website. If the business country is not supported by D&B, contact Google Play support BEFORE creating the developer account (Google's own advice). Google publishes no total duration for document review; plan days, not hours.",
+    "quote": "If you do not have a D-U-N-S number then you can apply for one from Dun & Bradstreet. This process can take up to 30 days so you should plan ahead. You will not be able to create a developer account for an organization without one. / Verification can take up to 5 days, so we recommend starting the process early to avoid delays. / If you're in one of the regions that Dun & Bradstreet does not support, then you can apply to our support team for an alternative way to verify your organization.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/13628312",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Closed-testing requirement for NEW PERSONAL accounts: at least 12 testers opted in continuously for 14 days before you can apply for production access, then Google reviews the production application ('usually seven days or less'). Google's help page scopes the rule to personal accounts created after 13 Nov 2023; it does not contain a sentence saying organisation accounts are exempt, but only third-party sources state the exemption explicitly.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Avoid the rule by registering an Organization account (the exemption is implied by Google's wording and stated by third parties, not by an explicit Google sentence, so treat as medium confidence and confirm in Play Console after registering: if Production is not blocked on the dashboard, you are exempt). If Bmapz is forced onto a personal account, recruit 12+ real testers (friends, early customers), keep them opted in for 14 unbroken days, and add roughly 7 days for the production-access review, i.e. at least 3 extra weeks before launch. Personal accounts also must verify an Android device through the Play Console mobile app.",
+    "quote": "Developers with personal accounts created after November 13, 2023, must run a closed test for their app with a minimum of 12 testers who have been opted in continuously for at least 14 days. / Review usually takes seven days or less, but can occasionally take longer.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/14151465",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Google Play app review for new developer accounts can be extended: up to seven days or longer in exceptional cases. Managed publishing lets you approve first, then choose when the release goes live.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Budget up to 7 days (possibly more) for the first production release and also for early updates of a new account. Submit to production at least 7-10 days before any customer-facing date and turn on managed publishing so the release time is yours to choose.",
+    "quote": "For certain developer accounts, we'll take more time to thoroughly review your app to help better protect users. This may result in review times of up to seven days or longer in exceptional cases.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/9859751",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Android developer verification took effect 30 September 2026 in Brazil, Indonesia, Singapore and Thailand (apps from participating stores on certified Android 7+ devices) and will expand globally in 2027. Google Play auto-registers 99% of Play-distributed apps; apps distributed outside Play must be registered manually.",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "Publish through a verified Play Console account only and, after the first upload, confirm in Play Console that the package name shows as registered. Do NOT hand customers a direct APK download (sideload) in Brazil/Indonesia/Singapore/Thailand without registering it via the Android Developer Console; the exact fee for that path was not stated on the page. Choose the final Android applicationId carefully; it is the identity that gets registered.",
+    "quote": "Protections begin for all users who install apps from participating stores in Brazil, Indonesia, Singapore, and Thailand on certified devices running Android 7+. / Google Play automatically registers 99% of apps. Use Play Console to manually register remaining apps or those distributed outside Google Play. / Verification capability will be expanded globally for all apps on certified Android devices in 2027.",
+    "source_url": "https://developer.android.com/developer-verification",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Push on Android (Capacitor path): the only credential file the app needs is the Firebase project's google-services.json; Android 13+ requires a runtime notification permission request in the app.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Create one Firebase project for Bmapz (can be attached to the existing Google Cloud project), register the Android app with the FINAL package name (cannot be changed after release), download google-services.json into the Android app module, and create the server-side FCM credential (service account for the FCM HTTP v1 API; not re-verified today) to store as a Railway secret. In the app, call checkPermissions()/requestPermissions() for Android 13+. For a TWA/PWA there is no FCM native token: push is browser Web Push instead.",
+    "quote": "All that is required is your Firebase project's `google-services.json` file added to the module (app-level) directory of your app. / Android 13 requires a permission check in order to receive push notifications. You are required to call `checkPermissions()` and `requestPermissions()`",
+    "source_url": "https://capacitorjs.com/docs/apis/push-notifications",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Push on iOS (Capacitor path): create an APNs authentication (token) key in the Apple developer account, which gives a 10-character Key ID and a signing key file; upload it with the Key ID and Team ID to Firebase Console > Settings > Cloud Messaging; enable the Push Notifications capability on the app. Team-scoped keys are limited to two per environment; if you ever send to APNs directly, the signed token must be regenerated at least hourly.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Only possible AFTER Apple enrolment is approved, so iOS push testing sits behind the Apple critical path (Android push can be tested earlier). Steps: Apple Developer > Certificates, Identifiers & Profiles > Keys > create a key with APNs enabled; save the .p8 file, Key ID and your Team ID in a password manager and as backend secrets (never in the repo or in chat); upload the key for Development and Production to Firebase (Project settings > Cloud Messaging); enable Push Notifications on the App ID/Xcode target. Test on a real iPhone (the Firebase guide's test step is 'install and run on the target device').",
+    "quote": "You need an APNs authentication token signing key to generate the tokens that your server uses. / A 10-character string with the Key ID. / Each environment can have a maximum of two keys. / In the Firebase console, go to settings Settings > General. Then, click the Cloud Messaging tab.",
+    "source_url": "https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns",
+    "confidence": "high"
+   },
+   {
+    "requirement": "PWA-only approach: Web Push on iPhone works only for web apps added to the Home Screen (iOS/iPadOS 16.4+) and the permission request must come from a direct user tap.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "If Derek ships only a PWA, no APNs key or Firebase is needed for iOS (Web Push uses VAPID keys, not re-verified today), but push will only reach customers who installed the PWA to their Home Screen and tapped 'enable notifications'. Build an explicit in-app 'Install and enable alerts' screen. A PWA cannot be listed in the App Store.",
+    "quote": "A web app that has been added to the Home Screen can request permission to receive push notifications / as long as that request is in response to direct user interaction — such as tapping on a 'subscribe' button",
+    "source_url": "https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Google OAuth policy prohibits sending Google authorization requests to an embedded user-agent the developer controls. This blocks 'Continue with Google' and every Google integration connect (Gmail, Calendar, Drive, YouTube, Analytics, Search Console, Ads) if they are opened inside a Capacitor/WebView.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Capacitor/WebView: open ALL Google OAuth in the system browser (Android Custom Tab / iOS ASWebAuthenticationSession or SFSafariViewController), never in the app's own WebView, and return to the app by deep link or by polling the backend. The current popup (window.open + postMessage) design will not work in a WebView. TWA runs in Chrome so the web flow should work (medium confidence, untested). Standalone PWA on iOS runs in Safari's engine (untested for Google OAuth; medium-low).",
+    "quote": "A developer must not direct a Google OAuth 2.0 authorization request to an embedded user-agent under the developer's control.",
+    "source_url": "https://developers.google.com/identity/protocols/oauth2/policies",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Google sensitive-scope verification typically takes 3-5 business days (Google's figure). The demo video must show the OAuth grant flow users actually experience, including sign-in if Google Sign-In is used, and must show the OAuth client ID in the consent screen's address bar. Brand verification results are only valid for 7 days before you must publish. The page does not require a separate video per platform and does not say mobile apps need extra entries.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Do not wait for mobile: submit brand and sensitive-scope verification now on the existing web client and the https API-host redirect URIs, and film the video in a desktop browser showing the address bar. Publish within 7 days of a compliant brand-verification result. Keep the mobile app using the SAME verified web client (backend code exchange) so the verified consent screen covers it. If you later add native Google Sign-In SDKs (Android/iOS client IDs in the same project), check whether that triggers re-verification (unconfirmed).",
+    "quote": "The sensitive scope verification process typically takes 3-5 business days to complete. / Show the OAuth grant process that users will experience, in English. This includes the consent flow and, if you use Google Sign-In, the sign-in flow. / Show that the browser address bar of the OAuth consent screen correctly includes your app's OAuth client ID. / Compliant verification results are valid for 7 days. If you don't publish within that timeframe, the status will change to Need to re-verify.",
+    "source_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Meta App Review: reviewers must be able to access and test your app or the whole submission is rejected; reviewer instructions are requested per platform the app is available on; apps asking for advanced access must be connected to a Business that has completed Business Verification (done on the business, not per platform). Meta's tutorial says to expect a decision within a week. Meta's docs fetched today do not explicitly say a mobile app needs an on-device screencast.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Submit App Review for the current Website/web-popup flow now; keep the Meta app's platform list limited to Website until a mobile build actually exposes the Meta/WhatsApp connect UI. If the mobile app does expose it, add that platform, give per-platform reviewer instructions, and provide a screencast of the flow on a phone (a safe reading; Meta does not spell it out in the pages fetched). Run Business Verification in parallel from day 0 using the same legal entity data. Provide test credentials that work for reviewers on mobile too (not your personal Meta account).",
+    "quote": "If we are unable to access your app to test it, your entire submission will be rejected. / Apps that request advanced access for permissions and apps that allow other Businesses to access their own data must be connected to a Business that has completed Business Verification. / you should receive a decision within a week",
+    "source_url": "https://developers.facebook.com/docs/resp-plat-initiatives/app-review/submission-guide",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "TikTok app review: a mobile integration needs the Android signature/package name and iOS Bundle ID configured in the app, and the demo video must begin by showing the mobile app opened. The website URL cannot be a landing or login page and must be a fully developed public site with visible, active Privacy Policy and Terms links. Review reportedly takes several days to two weeks. Content Posting API clients remain private-only until they pass a separate audit.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Submit TikTok as a WEB-only app now (no Android/iOS entries) so mobile does not delay it. Make sure the website URL is a public marketing page, not the ai.bmapz.com login screen, with Privacy and Terms links visible without opening a menu. If you later add the mobile platform, register package name + signature and bundle ID and record a video that starts by opening the mobile app. Expect the Content Posting audit as an extra gate before TikTok posts can be public.",
+    "quote": "If you intend to integrate with a mobile app, the demo video should start by showing the app being opened. / Your website URL cannot be a landing page or login page. You must have an externally facing fully developed website. / All content posted by unaudited clients will be restricted to private viewing mode.",
+    "source_url": "https://developers.tiktok.com/doc/app-review-guidelines",
+    "confidence": "medium"
+   }
+  ],
+  "integration_impacts": [
+   "DECISION GATE: the approach drives the work. Capacitor/WebView = enrol in both stores, rebuild OAuth hand-off (system browser + deep link), Firebase + APNs. TWA = Google Play only, Chrome handles OAuth and Web Push, no Apple. PWA only = no store enrolment, iOS push only after Home Screen install, nothing to submit to Meta/TikTok/Google for mobile. Native rewrite is the only option that needs Meta/TikTok/Google native SDK entries.",
+   "Keep ONE set of OAuth clients and redirect URIs. All planned Google/Meta/LinkedIn/X/TikTok/Canva redirect URIs stay https on the API host (finalise api.bmapz.com before submitting any review so reviewed URIs never change). The mobile app should reuse these confidential web clients with backend code exchange; do not create Android/iOS OAuth client IDs or Meta/TikTok mobile platform entries unless a native SDK is actually used, because each entry adds review surface.",
+   "Replace the popup OAuth pattern for mobile (Capacitor): open the authorize URL in the system browser (Custom Tab / ASWebAuthenticationSession), let the API host finish the code exchange, then return to the app through a universal link/app link on ai.bmapz.com or by polling a 'connection status' endpoint. Google explicitly forbids embedded WebViews for OAuth, and other providers' reviewers also expect a visible address bar. This requires hosting assetlinks.json / apple-app-site-association on the web domain (recalled, not verified today) and a deep-link route in the app.",
+   "iOS build: decide Google login (hide it and keep email+password under the 'company's own account' exemption, or add Sign in with Apple), and billing UI (no pricing/Stripe checkout in the iOS app vs StoreKit). Both are shipping-blocking App Review items and are cheaper to decide before the first TestFlight build. Hide anything the stores will not accept on mobile (upgrade/pricing, Stripe Customer Portal link on iOS) using a platform flag, not a separate codebase.",
+   "Push needs two server credentials: an FCM service-account credential (Android and, via APNs forwarding, iOS) and the APNs .p8 key + Key ID + Team ID uploaded to Firebase. iOS push cannot be tested until the Apple membership is approved, so Apple enrolment is the critical path for the iOS notification feature; Android push can be built and tested first. Store credentials only in Railway/Supabase secrets, per company device tokens in Postgres.",
+   "Review sequencing: submit Google brand/sensitive-scope verification, Meta Business Verification + App Review, and TikTok review for the WEB flows immediately; they do not depend on the mobile apps and each takes days to a couple of weeks. Add mobile platforms to Meta/TikTok only after the store builds exist, and only if the mobile UI exposes those connects. Meta/TikTok reviewers need working demo access, so prepare a demo company with a plan and pre-seeded data, usable from desktop and phone.",
+   "Identity consistency is the hidden bottleneck: Apple, Google Play, Google OAuth brand verification, Meta Business Verification and TikTok all compare legal name, address, domain and website. Use one exact legal entity string, one D-U-N-S, one company domain email, and one public marketing site (not the login screen) with Privacy, Terms and Data Deletion links across all submissions.",
+   "Account deletion: Apple requires deletion to be possible from within the app (guideline recalled, not fetched today) and Play data-safety/deletion rules are similar; the current public /DataDeletion page is probably not enough on its own, so plan an in-app 'Delete account' action that calls the existing backend deletion path."
+  ],
+  "open_questions": [
+   "Business country and legal entity: not known. It decides D-U-N-S availability and speed, accepted organisation documents on Google Play, local-currency prices, App Store storefront rules for external purchase links (US exemption quoted is US-only; Brazil/EU equivalents not verified today) and whether Apple/Google treat Derek as sole proprietor or organisation.",
+   "How long does Apple's organisation identity verification actually take? Apple publishes no number; only third-party anecdotes exist and none were fetched. Plan with a buffer and treat as unknown.",
+   "How long does Google's organisation document + website verification take? Google publishes 'up to 5 days' only for payment-method verification and 'up to 30 days' for D-U-N-S; no official figure for document review.",
+   "Does Google explicitly exempt organisation accounts from the 12-testers/14-days closed test? Google's page only scopes the rule to personal accounts; only third parties state the exemption. Verify in Play Console immediately after registering.",
+   "Beta App Review (first external TestFlight build): Apple's page does not state a duration.",
+   "Meta Business Verification duration and document list: Meta's page only points to Business Manager Help; duration unpublished in what was fetched. Does Meta require a mobile screencast when the app also ships on Android/iOS? Not stated in the Meta pages fetched; confirm in the App Review submission UI.",
+   "TikTok review time ('several days to two weeks') comes from a search summary of TikTok's docs, not a fetched sentence; confirm in the TikTok developer portal FAQ. Does TikTok accept ai.bmapz.com as the website URL, or is a separate public marketing page needed?",
+   "Does adding native Google Sign-In SDK client IDs (Android/iOS) to the already-verified Google Cloud project trigger re-verification? Not stated on Google's verification page.",
+   "Apple guideline 5.1.1(v) in-app account deletion and Google Play's account-deletion/data-safety requirements were not re-fetched today; confirm exact current wording before building.",
+   "Fee and process for registering Android apps distributed outside Play (Android Developer Console) was not stated on the page; relevant only if APKs are sold/shared directly in Brazil.",
+   "Play policy treatment of web-wrapper apps (minimum functionality / webview-only apps) and TWA Digital Asset Links requirements were not verified in this research.",
+   "Apple distribution 'seller name' and Google developer name: confirm in the final enrolment screens that the company legal name (not Derek's personal name) will be shown if organisation enrolment is chosen."
+  ],
+  "timeline_and_costs": [
+   {
+    "item": "Apple Developer Program (organisation or individual)",
+    "cost": "USD 99 per year (local currency at checkout; fee waiver only for nonprofits, accredited education, government)",
+    "wait": "No official verification duration. Official parts: D-U-N-S up to 5 business days + 2 business days for Apple to receive it; membership confirmation within 24 hours of purchase. Planning assumption (unsourced): 1-3 weeks with a D-U-N-S in hand.",
+    "source_url": "https://developer.apple.com/programs/enroll/"
+   },
+   {
+    "item": "D-U-N-S Number (needed by both stores for an organisation)",
+    "cost": "Free (avoid paid third-party services)",
+    "wait": "Apple: up to 5 business days from D&B, then up to 2 business days to reach Apple. Google: 'up to 30 days'. Zero if the entity already has one.",
+    "source_url": "https://developer.apple.com/support/D-U-N-S/"
+   },
+   {
+    "item": "Google Play Console registration (organisation)",
+    "cost": "USD 25 one-time (non-refundable if information is invalid)",
+    "wait": "Payment verification up to 5 days; D-U-N-S up to 30 days if new; document/website verification time unpublished. Planning assumption (unsourced): 3-10 days after D-U-N-S.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/13628312"
+   },
+   {
+    "item": "Google Play closed test (personal accounts only)",
+    "cost": "No fee; needs 12 real testers",
+    "wait": "14 consecutive days with 12+ opted-in testers, then production-access review usually 7 days or less. Not required for organisation accounts per third parties (medium confidence).",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/14151465"
+   },
+   {
+    "item": "Google Play first-release review",
+    "cost": "Free",
+    "wait": "Up to 7 days or longer for newer developer accounts",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/9859751"
+   },
+   {
+    "item": "App Store first-submission review",
+    "cost": "Free",
+    "wait": "50% under 24h, 90% under 48h per round (Apple stats); plan 1-2 rejection rounds for a web wrapper, so 3-10 days realistic (assumption)",
+    "source_url": "https://developer.apple.com/distribute/app-review/"
+   },
+   {
+    "item": "TestFlight external testing",
+    "cost": "Free",
+    "wait": "First build to an external group goes through Beta App Review (duration not published); internal testers (up to 100) need no review; builds last 90 days",
+    "source_url": "https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview"
+   },
+   {
+    "item": "Push credentials: Firebase project + google-services.json (Android) and APNs .p8 key (iOS)",
+    "cost": "No fee found in the pages fetched for the APNs key (requires the paid Apple membership); Firebase pricing not verified today",
+    "wait": "About half a day of setup once accounts exist; iOS key only after Apple approval",
+    "source_url": "https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns"
+   },
+   {
+    "item": "Google OAuth brand + sensitive-scope verification (parallel, web flow)",
+    "cost": "Free (restricted scopes can add a paid third-party security assessment, not covered here)",
+    "wait": "Typically 3-5 business days per Google; brand-verification result valid for 7 days",
+    "source_url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification"
+   },
+   {
+    "item": "Meta Business Verification + App Review (parallel, web flow)",
+    "cost": "Free",
+    "wait": "App Review: decision within a week per Meta's tutorial; Business Verification duration not published in fetched pages",
+    "source_url": "https://developers.facebook.com/docs/resp-plat-initiatives/app-review/submission-guide"
+   },
+   {
+    "item": "TikTok app review (parallel, web flow) and Content Posting audit",
+    "cost": "Free",
+    "wait": "Several days to two weeks (TikTok docs per search summary); audit is a separate later gate",
+    "source_url": "https://developers.tiktok.com/doc/app-review-guidelines"
+   },
+   {
+    "item": "CRITICAL-PATH CALENDAR (my synthesis, assumptions marked): Week 0 decision + D-U-N-S lookup/request + start Apple and Google organisation enrolment + submit Google/Meta/TikTok web reviews; build wrapper, OAuth system-browser hand-off, push in parallel.",
+    "cost": "USD 124 in store fees in year 1 (99 + 25) plus any StoreKit/commission or paid security assessment",
+    "wait": "Weeks 0-2: D-U-N-S and identity checks (longest unknown). Weeks 1-4: app build, Play internal testing, TestFlight internal. Weeks 2-5: accounts approved, Apple key + Firebase wired. Week 4-6: Android production submit (up to 7 days review). Week 4-7: iOS submit (1-3 days per round, 1-2 rounds likely). Best case about 4-5 weeks to both stores; realistic 6-10 weeks if D-U-N-S is new or reviews bounce; add at least 3 weeks if stuck on a personal Play account.",
+    "source_url": "https://developer.apple.com/support/D-U-N-S/"
+   }
+  ]
  }
 ]

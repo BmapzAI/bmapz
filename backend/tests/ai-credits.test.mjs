@@ -30,6 +30,10 @@ t('every priced model is above zero', Object.values(ac.MODEL_COST_MULTIPLIER).ev
 t('no retired model is still in the price table',
   Object.keys(ac.MODEL_COST_MULTIPLIER).filter((k) => /^(claude-3-|gpt-4-turbo|gpt-3\.5|dall-e|gpt-image-1$)/.test(k)), []);
 
+// ── the static fallback list (MODEL_TIER keys) offers nothing that shuts down within weeks
+t('o1 and gpt-4.1-nano (shut down 2026-10-23) are not offered statically', Object.keys(ac.MODEL_TIER).filter((k) => /^(o1|gpt-4.1-nano)$/.test(k)), []);
+t('they are still priced if an old setting names them', [ac.inferModelMultiplier('o1'), ac.inferModelMultiplier('gpt-4.1-nano')], [100, 0.7]);
+
 // ── tiers and plan gates
 t('fable is smartest', ac.inferModelTier('claude-fable-5-1'), 'smartest');
 t('Growth cannot use the most expensive Claude model', ac.isModelAllowedForPlan('claude-fable-5-1', 'growth'), false);

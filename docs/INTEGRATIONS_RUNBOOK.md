@@ -630,5 +630,21 @@ WHAT TO COPY BACK TO ME: the HTTP status and body (with the key removed) of each
 
 ## Mobile apps (Android + iOS)
 
-See `docs/audit-2026-10-06/mobile-research.md`.
+> Researched 2026-10-07 from official store and provider pages (single-source, not run by a human). Full detail: `docs/audit-2026-10-06/mobile-research.md`. **Nothing mobile has been built**, and the approach (Capacitor, Android TWA, installable web app, or native) was NOT visible to the tooling: the project chat "Web app mobile development" decides it.
+
+### What you (Derek) need to decide or do
+1. **Which approach** the mobile chat settled on (or tell me where it is written down).
+2. **Business country and legal entity.** It decides whether the store accounts are personal or organisation, whether a D-U-N-S number is needed (free; Apple about 5 + 2 business days, Google up to 30 days), and which purchase-link rules apply.
+3. **Should the apps only USE Bmapz, with plans bought on the website?** Recommended: yes. Both stores take a commission on digital subscriptions sold inside an app, and the rules for linking out to the website differ by country.
+4. **iOS login.** Hide "Continue with Google" on iPhone (email + password stays) or add Sign in with Apple. Recommended: hide it for the first release.
+5. **What "Delete my account" should do** to a company, its team members and an active subscription. Both stores require an in-app delete, and it does not exist yet.
+6. **Who prepares a reviewer demo account** (paid plan, password login, sample data), because store reviewers cannot connect their own Google/Meta accounts.
+
+### Accounts you create yourself (I never create accounts for you)
+- Apple Developer Program: USD 99 per year. Google Play Console: USD 25 once. Firebase project (push notifications), free tier.
+- Start the Google, Meta and TikTok **web** reviews now; they do not wait for the apps.
+
+### Dates that bind
+- Android apps must target API 36 (in force since 2026-08-31). Sign-in restoration for Android apps from April 2027. iOS apps must be built with the iOS 27 SDK from April 2027.
+- A personal Google Play account needs a closed test (12 testers for 14 days) before production; an organisation account is reported not to.
 

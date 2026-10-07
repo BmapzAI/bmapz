@@ -8,7 +8,11 @@ import vm from 'node:vm';
 
 Object.assign(process.env, { SUPABASE_URL: 'http://127.0.0.1:1', SUPABASE_SERVICE_ROLE_KEY: 't', SUPABASE_ANON_KEY: 't', JWT_SECRET: 't', PORT: '3981' });
 await import('../src/index.js');
-await new Promise((r) => setTimeout(r, 1200));
+// Wait until the server answers instead of sleeping a fixed time: a slow start (cold disk, OneDrive sync) made a fixed sleep flaky.
+for (let i = 0; i < 150; i++) {
+  try { if ((await fetch('http://127.0.0.1:' + process.env.PORT + '/health')).ok) break; } catch { /* not listening yet */ }
+  await new Promise((r) => setTimeout(r, 100));
+}
 const body = await (await fetch('http://127.0.0.1:3981/api/oauth/popup.js')).text();
 
 let fail = 0;
