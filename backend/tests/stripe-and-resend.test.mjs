@@ -9,7 +9,7 @@ const t = (name, ok, extra = '') => { if (!ok) fail++; console.log(ok ? 'PASS' :
 
 // ── fake PostgREST that records everything and can be told to fail
 const log = [];
-const mode = { dup: false, failPatch: false };
+const mode = { dup: false, failPatch: false, claimed: false, purchased: false, failSub: false, failLedger: false, ledgerDup: false };
 const fake = http.createServer((req, res) => {
   let body = '';
   req.on('data', (c) => { body += c; });
@@ -24,6 +24,19 @@ const fake = http.createServer((req, res) => {
       return mode.failPatch ? json(500, { message: 'boom' }) : json(200, []);
     }
     if (req.method === 'DELETE') return json(204);
+    const table = req.url.split('?')[0].replace('/rest/v1/', '');
+    // supabase-js maybeSingle() on a GET asks for a plain JSON ARRAY and reads [] as "no row" (it only used to
+    // use the object media type + HTTP 406). The fake must answer the way the client actually asks.
+    const found = (row) => json(200, row ? [row] : []);
+    if (req.method === 'GET' && table === 'credit_transactions') return found(mode.claimed ? { id: 'tx1' } : null);
+    if (req.method === 'GET' && table === 'billing_purchases') return found(mode.purchased ? { id: 'bp1' } : null);
+    if (req.method === 'GET' && table === 'subscriptions') return found(null);   // no existing subscription: the insert path
+    if (req.method === 'POST' && table === 'subscriptions') return mode.failSub ? json(500, { message: 'subscriptions down' }) : json(201);
+    if (req.method === 'POST' && table === 'credit_transactions') {
+      if (mode.failLedger) return json(500, { message: 'ledger down' });
+      return mode.ledgerDup ? json(409, { code: '23505', message: 'duplicate key value violates unique constraint "uq_credit_tx_payment_ref"' }) : json(201);
+    }
+    if (req.method === 'POST' && table === 'billing_purchases') return json(201);
     const wantsObject = String(req.headers.accept || '').includes('vnd.pgrst.object');
     return json(200, wantsObject ? {} : []);
   });
@@ -76,6 +89,45 @@ mode.failPatch = false;
 o = await send('checkout.session.completed', { id: 'cs_1', payment_status: 'unpaid', metadata: { company_id: 'co_1', plan: 'growth' }, customer: 'cus_9' });
 t('checkout.session.completed with payment_status=unpaid grants NOTHING', o.status === 200 && o.writes.filter((w) => !w.url.includes('webhook_events')).length === 0,
   JSON.stringify(o.writes.map((w) => `${w.method} ${w.url}`)));
+
+// ── the plan grant: retry-safe at every failure point
+const paid = (id) => ({ id, payment_status: 'paid', metadata: { company_id: 'co_1', plan: 'growth' }, customer: 'cus_1', subscription: 'sub_1', amount_total: 9900, payment_intent: 'pi_1' });
+const posts = (o, table) => o.writes.filter((w) => w.method === 'POST' && w.url.includes('/' + table));
+const sessionWrites = (o) => o.writes.filter((w) => !w.url.includes('webhook_events'));
+
+o = await send('checkout.session.completed', paid('cs_ok'));
+t('paid checkout: 200, writes the subscription, one ledger claim and one purchase row',
+  o.status === 200 && posts(o, 'subscriptions').length === 1 && posts(o, 'credit_transactions').length === 1 && posts(o, 'billing_purchases').length === 1,
+  JSON.stringify(o.writes.map((w) => w.method + ' ' + w.url)));
+t('the subscription is written active on the purchased plan', posts(o, 'subscriptions')[0]?.body?.plan === 'growth' && posts(o, 'subscriptions')[0]?.body?.status === 'active');
+t('the ledger row carries the deterministic payment_ref that the unique index turns into a claim', posts(o, 'credit_transactions')[0]?.body?.metadata?.payment_ref === 'plan:cs_ok', JSON.stringify(posts(o, 'credit_transactions')[0]?.body));
+t('a successful grant does NOT hand the event back', deletes(o).length === 0);
+
+mode.failSub = true;
+o = await send('checkout.session.completed', paid('cs_subfail'));
+t('subscription write fails -> 500 and the event is handed back for retry', o.status === 500 && deletes(o).length === 1, `status ${o.status}`);
+t('...and NO ledger claim was written, so the retry will perform the grant', posts(o, 'credit_transactions').length === 0);
+mode.failSub = false;
+
+mode.failLedger = true;
+o = await send('checkout.session.completed', paid('cs_ledgerfail'));
+t('ledger write fails -> 500 + handed back (the subscription state already written is a repeatable SET)', o.status === 500 && deletes(o).length === 1);
+t('...and no purchase row is logged for a grant that has not completed', posts(o, 'billing_purchases').length === 0);
+mode.failLedger = false;
+
+mode.claimed = true; mode.purchased = true;
+o = await send('checkout.session.completed', paid('cs_again'));
+t('a re-delivery of an ALREADY-granted payment writes nothing (no double grant)', o.status === 200 && sessionWrites(o).filter((w) => w.method !== 'GET').length === 0, JSON.stringify(sessionWrites(o).map((w) => w.method + ' ' + w.url)));
+mode.purchased = false;
+o = await send('checkout.session.completed', paid('cs_halfdone'));
+t('granted but purchase row missing (failed after the claim): the retry only logs the purchase',
+  o.status === 200 && posts(o, 'billing_purchases').length === 1 && posts(o, 'subscriptions').length === 0 && posts(o, 'credit_transactions').length === 0);
+mode.claimed = false;
+
+mode.ledgerDup = true;
+o = await send('checkout.session.completed', paid('cs_race'));
+t('a duplicate-key answer from the ledger IS the claim, not a failure', o.status === 200 && deletes(o).length === 0, `status ${o.status}`);
+mode.ledgerDup = false;
 
 // ── pre-existing behaviour must survive
 mode.dup = true;

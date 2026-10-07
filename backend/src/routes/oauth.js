@@ -885,6 +885,28 @@ router.post('/disconnect', requireAuth, requireCompanyAdmin, async (req, res) =>
       keysToRemove = TOKEN_KEYS_BY_PROVIDER.gmail;
     }
 
+    // Deleting our copy of a token does not end the grant: until it is revoked at Google the app
+    // still shows under the person's connected apps and the credential still works if anything held
+    // a copy. Revoke first, best-effort: a revoke failure (already revoked, Google unreachable) must
+    // never stop the disconnect, because the local credentials are cleared either way. Google is
+    // ONE shared grant, so revoking it is consistent with clearing the shared token.
+    if (keysToRemove.includes('google_access_token')) {
+      try {
+        const { apiKeys } = await getCompanyKeys(req.companyId);
+        const toRevoke = apiKeys.google_refresh_token || apiKeys.google_access_token;
+        if (toRevoke) {
+          const rv = await fetch('https://oauth2.googleapis.com/revoke', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ token: toRevoke }),
+          });
+          if (!rv.ok) console.warn(`[oauth disconnect] Google revoke answered HTTP ${rv.status} (local credentials are still cleared)`);
+        }
+      } catch (e) {
+        console.error('[oauth disconnect] Google revoke failed (local credentials are still cleared):', e.message);
+      }
+    }
+
     await clearOAuthTokens(req.companyId, keysToRemove, [provider]);
     res.json({ success: true });
   } catch (err) {

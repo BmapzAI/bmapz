@@ -101,7 +101,7 @@ export default [
 
   // Maintenance scripts run in Node/CommonJS, not in the browser.
   {
-    files: ['scripts/**/*.cjs'],
+    files: ['scripts/**/*.cjs', 'docs/tools/**/*.cjs'],
     languageOptions: {
       globals: {
         ...globals.node,

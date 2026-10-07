@@ -102,7 +102,9 @@ router.post('/api/stripe/webhook', async (req, res) => {
               provider_reference: session.id,
             });
           } catch (e) {
-            console.error('[stripe webhook] add-on grant failed:', e.message);
+            // Swallowed deliberately: grantAddon claims its ledger row FIRST, so a Stripe retry would be told
+            // "already granted" and the credits would still be missing. Make it loud and greppable instead.
+            console.error(`[stripe webhook] NEEDS MANUAL RECONCILIATION: paid add-on not granted for ${event.id} (${e.message})`);
           }
           break;
         }
@@ -143,55 +145,80 @@ router.post('/api/stripe/webhook', async (req, res) => {
           last_reset_at: cycleStart.toISOString(),
         };
 
-        if (existing) {
-          await supabaseAdmin.from('subscriptions').update({
-            plan,
-            status: 'active',
-            stripe_customer_id: session.customer,
-            stripe_subscription_id: session.subscription,
-            ai_credits_total: credits,
-            ai_credits_used: 0,
-            contacts_limit: contactsLimit,
-            scan_tokens_total: scanTokens,
-            scan_tokens_used: 0,
-            ...cycleFields,
-          }).eq('id', existing.id);
-        } else {
-          await supabaseAdmin.from('subscriptions').insert({
-            company_id: companyId,
-            plan,
-            status: 'active',
-            stripe_customer_id: session.customer,
-            stripe_subscription_id: session.subscription,
-            ai_credits_total: credits,
-            ai_credits_used: 0,
-            contacts_limit: contactsLimit,
-            scan_tokens_total: scanTokens,
-            scan_tokens_used: 0,
-            ...cycleFields,
-          });
+        // RETRY-SAFE BY CONSTRUCTION, so a failure here can hand the event back to Stripe (see unlock):
+        //  - the subscription write SETS a final state, so repeating it is harmless;
+        //  - the credit-ledger row carries a deterministic payment_ref and the unique index
+        //    uq_credit_tx_payment_ref turns it into a durable claim: "this payment was granted";
+        //  - the purchase row is only inserted when none exists for this session.
+        // Every write is CHECKED. supabase-js resolves with { error } instead of throwing, and these
+        // errors used to be discarded, so a failed grant answered 200 and Stripe never retried.
+        const planRef = `plan:${session.id}`;
+        const { data: claimed, error: claimErr } = await supabaseAdmin
+          .from('credit_transactions')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('metadata->>payment_ref', planRef)
+          .limit(1)
+          .maybeSingle();
+        if (claimErr) {
+          console.error('[stripe webhook] ledger read failed, asking Stripe to retry:', claimErr.message);
+          await unlock();
+          return res.status(503).json({ error: 'ledger read failed' });
         }
 
-        // Log purchase
-        await supabaseAdmin.from('billing_purchases').insert({
-          company_id: companyId,
-          type: 'plan_upgrade',
-          amount_brl: (session.amount_total || 0) / 100,
-          status: 'paid',
-          stripe_payment_intent_id: session.payment_intent,
-          credits_granted: credits,
-          payment_provider: 'stripe',
-          provider_reference: session.id,
-        });
+        if (!claimed) {
+          const subFields = {
+            plan,
+            status: 'active',
+            stripe_customer_id: session.customer,
+            stripe_subscription_id: session.subscription,
+            ai_credits_total: credits,
+            ai_credits_used: 0,
+            contacts_limit: contactsLimit,
+            scan_tokens_total: scanTokens,
+            scan_tokens_used: 0,
+            ...cycleFields,
+          };
+          const { error: subWriteErr } = existing
+            ? await supabaseAdmin.from('subscriptions').update(subFields).eq('id', existing.id)
+            : await supabaseAdmin.from('subscriptions').insert({ company_id: companyId, ...subFields });
+          if (subWriteErr) throw subWriteErr;
 
-        // Credit transaction
-        await supabaseAdmin.from('credit_transactions').insert({
-          company_id: companyId,
-          type: 'monthly_grant',
-          feature: 'subscription',
-          credits_delta: credits,
-          credits_after: credits,
-        });
+          const { error: ledgerErr } = await supabaseAdmin.from('credit_transactions').insert({
+            company_id: companyId,
+            type: 'monthly_grant',
+            feature: 'subscription',
+            credits_delta: credits,
+            credits_after: credits,
+            metadata: { payment_ref: planRef, stripe_session_id: session.id },
+          });
+          // 23505 = another delivery already recorded this grant. That IS the claim, not a failure.
+          if (ledgerErr && ledgerErr.code !== '23505') throw ledgerErr;
+        }
+
+        // Log the purchase once per session.
+        const { data: boughtAlready, error: boughtErr } = await supabaseAdmin
+          .from('billing_purchases')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('provider_reference', session.id)
+          .eq('type', 'plan_upgrade')
+          .limit(1)
+          .maybeSingle();
+        if (boughtErr) throw boughtErr;
+        if (!boughtAlready) {
+          const { error: purchaseErr } = await supabaseAdmin.from('billing_purchases').insert({
+            company_id: companyId,
+            type: 'plan_upgrade',
+            amount_brl: (session.amount_total || 0) / 100,
+            status: 'paid',
+            stripe_payment_intent_id: session.payment_intent,
+            credits_granted: credits,
+            payment_provider: 'stripe',
+            provider_reference: session.id,
+          });
+          if (purchaseErr) throw purchaseErr;
+        }
         break;
       }
 
@@ -237,17 +264,11 @@ router.post('/api/stripe/webhook', async (req, res) => {
     }
   } catch (err) {
     console.error('[stripe webhook] handler error:', err.message);
-    // This used to fall through to 200, so a failed handler was acknowledged and never retried.
-    // The status updates above are idempotent, so for those the event is given back and Stripe is told to
-    // retry. checkout.session.* performs several NON-atomic writes: unlocking after a partial failure could
-    // grant twice, so for those the row is kept (never double-grant) but the failure is made loud and
-    // greppable instead of vanishing. Making that path transactional is the open fix (AGENT_HANDOFF.md).
-    if (/^checkout\.session\./.test(event.type)) {
-      console.error(`[stripe webhook] NEEDS MANUAL RECONCILIATION: ${event.type} ${event.id} failed partway (${err.message})`);
-    } else {
-      await unlock();
-      return res.status(500).json({ error: 'handler failed, retry' });
-    }
+    // This used to fall through to 200, so a failed handler was acknowledged and never retried. Every branch
+    // above is now safe to run again (status updates set a final state; the plan grant is claim-keyed), so
+    // the event is given back and Stripe is told to retry.
+    await unlock();
+    return res.status(500).json({ error: 'handler failed, retry' });
   }
 
   res.json({ received: true });
