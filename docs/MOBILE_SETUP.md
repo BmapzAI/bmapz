@@ -11,7 +11,8 @@ Status of this document: written 2026-10-07 with phase 1. Nothing here has been 
 | Native shell (own `package.json`, so the website build never installs it) | `mobile/` (`android/`, `ios/`, `capacitor.config.json`) |
 | "Am I in the app?" and every native call | `frontend-src/lib/platform.js` (no `@capacitor/*` package is imported by the website; the shell injects `window.Capacitor.Plugins`) |
 | Sign in with the phone's Google / Apple account | `frontend-src/lib/nativeAuth.js`, `components/auth/GoogleSignInButton.jsx` |
-| Return from the browser after connecting an integration (`bmapz://oauth`) | `backend/src/routes/oauth.js` (`client=app`), `components/integrations/ConnectIntegrationModal.jsx` |
+| Connecting an integration from the app: system browser, `bmapz://oauth` hand-back, the server decides | `lib/oauthConnect.js` (dialog, Canva picker, Meta connect), `components/layout/AppLinkHandler.jsx`, `backend/src/routes/oauth.js` (`client=app`) |
+| No purchase code in the app (Billing, Pricing, Design replaced; proof on every build) | `vite.config.js` plugin, `mobile/scripts/check-bundle.mjs` |
 | CORS for the apps (`capacitor://localhost`, `https://localhost`) | `backend/src/index.js` |
 | Builds without any store account (debug apk, iOS simulator) | `.github/workflows/mobile-build.yml` |
 | Tests | `backend/tests/` (`cors`, `frontend-platform`, `audio-upload`, and the OAuth files) |
@@ -50,5 +51,5 @@ An Android build needs the Android SDK and an iOS build needs a Mac with Xcode. 
 
 - Unverified on real devices: the connect flow through the system browser, Google/Apple native sign-in, the `bmapz://oauth` hand-back, session storage. The code and tests prove the logic against fakes only.
 - Push notifications, Universal Links / App Links (so e-mail links open the app), store listing assets and release signing are phase 2.
-- `<a download>` file downloads and `window.open` inside the WebView are unverified; native share/save is phase 2.
-- Heavy desktop tools (Design Studio, workflow canvas, ads manager) are not adapted for phones.
+- File exports (CSV, PDF, HTML) go through the system share sheet (`saveFile` in `lib/platform.js`); `window.open` and `target=_blank` links inside the WebView are unverified.
+- Design Studio (the owner's confidential feature) is NOT in the app: the app build replaces it, like Billing and Pricing, and the owner uses it on the website. Heavy tools such as the workflow canvas and the ads manager are not adapted for phones.

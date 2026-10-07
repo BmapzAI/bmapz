@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { LifeBuoy, X, Send, Loader2, Minus, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '@/api/apiClient';
+import { isNativeApp } from '@/lib/platform';
 
 /**
  * The always-available support assistant.
@@ -106,6 +107,8 @@ export default function SupportAssistant() {
       if (!m) return <span key={i}>{part}</span>;
       const [, label, href] = m;
       const internal = href.startsWith('/');
+      // The assistant may link to Billing or Pricing; the app has neither, and a button that lands on "not available" invites buying elsewhere.
+      if (isNativeApp() && /^\/(billing|pricing)(\/|$|\?)/i.test(href)) return <span key={i}>{label}</span>;
       return internal ? (
         // Navigate but keep the panel open — the user usually wants to read the
         // steps while looking at the screen the assistant sent them to.

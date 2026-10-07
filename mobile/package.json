@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "description": "Capacitor shell (Android + iOS) around the Bmapz web app. Kept in its own package so the production web build (plain npm install + vite build) never installs or compiles any of this.",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build:web": "node scripts/build-web.mjs",
     "sync": "npm run build:web && cap sync",
@@ -17,6 +19,7 @@
     "@capacitor/app": "^8.1.2",
     "@capacitor/browser": "^8.0.5",
     "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.4",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.5.3",
     "@capacitor/keyboard": "^8.0.6",

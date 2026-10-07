@@ -21,6 +21,7 @@ import AIContextField from '@/components/ui/AIContextField';
 import { Company, BlogPost } from '@/api/entities';
 import CreateTaskButton from '@/components/tasks/CreateTaskButton';
 import { InvokeLLM } from '@/api/integrations';
+import { saveFile } from '@/lib/platform';
 
 const SEO_CHECKLIST = [
   { id: 'title_keyword', label: 'Focus keyword in H1 title', check: (p) => p.title && p.keywords?.[0] && p.title.toLowerCase().includes(p.keywords?.[0]?.toLowerCase()) },
@@ -430,12 +431,11 @@ Return JSON with: content (full article in markdown), meta_description (155 char
                     <span>Custom API not connected — <a href="/Settings" className="text-[#38b6ff] underline">Settings → API Keys</a></span>
                   </div>
                 )}
-                <Button variant="outline" onClick={() => {
+                <Button variant="outline" onClick={async () => {
                   if (!post.content) { toast.error('No content to export'); return; }
                   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="description" content="${post.meta_description || ''}"><title>${post.title}</title><style>body{font-family:Georgia,serif;max-width:800px;margin:0 auto;padding:2rem;line-height:1.7;color:#333;}h1,h2,h3{color:#111;}a{color:#3572b9;}</style></head><body><h1>${post.title}</h1>${post.content.replace(/^# .+\n?/m, '').replace(/## (.+)/g, '<h2>$1</h2>').replace(/### (.+)/g, '<h3>$1</h3>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n\n/g, '</p><p>').replace(/^/,'<p>').replace(/$/, '</p>')}</body></html>`;
                   const blob = new Blob([html], {type:'text/html'});
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a'); a.href=url; a.download=`${post.slug || 'post'}.html`; a.click(); URL.revokeObjectURL(url);
+                  if (!(await saveFile(blob, `${post.slug || 'post'}.html`))) { toast.error('Could not save the file'); return; }
                   toast.success('Exported as HTML');
                 }} className="w-full border-white/10 text-white hover:bg-white/5 gap-2 justify-start">
                   <FileText size={16} /> Export as HTML

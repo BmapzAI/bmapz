@@ -47,4 +47,7 @@ c = run({ status: 'success', opener: false, target: '' });
 t('NO opener and no target configured -> only tries to close', !c.replaced && c.closed === 1);
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
+// Flush stdout first: on Windows the process can exit before its piped output is written, and run.mjs then sees an empty file (a one-off
+// "0 passed" failure of a file that had passed).
+await new Promise((resolve) => process.stdout.write('', resolve));
 process.exit(fail ? 1 : 0);

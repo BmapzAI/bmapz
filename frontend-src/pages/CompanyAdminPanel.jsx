@@ -18,6 +18,7 @@ import {
 import { Company, User, Subscription } from '@/api/entities';
 import { useAuth } from '@/lib/AuthContext';
 import WebOnly from '@/components/ui/WebOnly';
+import { isNativeApp } from '@/lib/platform';
 
 function Badge({ color, children }) {
   const colors = {
@@ -138,7 +139,7 @@ function AddCompanyModal({ subscription, currentCount, onClose, onCreate }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Building2 size={18} className="text-[#38b6ff]" />
-            {canAdd ? t('addCompanyProfile') : t('upgradeToAddMore')}
+            {canAdd || isNativeApp() ? t('addCompanyProfile') : t('upgradeToAddMore')}
           </DialogTitle>
         </DialogHeader>
 
@@ -521,10 +522,12 @@ export default function CompanyAdminPanel() {
                     <p className="text-gray-500 text-xs mb-1">{t('billingCycle')}</p>
                     <p className="text-white capitalize">{subscription.billing_cycle || 'monthly'}</p>
                   </div>
+                  <WebOnly>
                   <div>
                     <p className="text-gray-500 text-xs mb-1">{t('priceLabel')}</p>
                     <p className="text-white">R$ {subscription.price_brl || 0}/mo</p>
                   </div>
+                  </WebOnly>
                   <div>
                     <p className="text-gray-500 text-xs mb-1">{t('usersLimitLabel')}</p>
                     <p className="text-white">{subscription.users_limit || 1} {t('seatsLabel')}</p>

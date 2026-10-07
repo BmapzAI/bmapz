@@ -91,4 +91,7 @@ await t('a finished search turn is returned with its citation', async () => {
 });
 globalThis.fetch = realFetch;
 
-console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
+console.log(`\n${pass} passed, ${fail} failed`); // Flush stdout first: on Windows the process can exit before its piped output is written, and run.mjs then sees an empty file (a one-off
+// "0 passed" failure of a file that had passed).
+await new Promise((resolve) => process.stdout.write('', resolve));
+process.exit(fail ? 1 : 0);

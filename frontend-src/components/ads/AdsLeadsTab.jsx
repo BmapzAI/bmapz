@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
 import { Lead, AdsManager } from '@/api/entities';
+import { saveFile } from '@/lib/platform';
 
 /**
  * Where a handed-over lead should land. Mirrors the funnel stages used by the
@@ -94,7 +95,7 @@ export default function AdsLeadsTab() {
     }
   };
 
-  const exportLeads = () => {
+  const exportLeads = async () => {
     if (leads.length === 0) {
       toast.error('No leads to export');
       return;
@@ -118,12 +119,7 @@ export default function AdsLeadsTab() {
     ].join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ad-leads-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+    if (!(await saveFile(blob, `ad-leads-${new Date().toISOString().slice(0, 10)}.csv`))) { toast.error('Could not save the file'); return; }
     toast.success('Leads exported');
   };
 

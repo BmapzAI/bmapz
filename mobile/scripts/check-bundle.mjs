@@ -25,6 +25,8 @@ const NEEDLES = [
   ['/api/addons/purchase', 'the add-on purchase call'],
   ['loadStripe', 'Stripe.js initialisation'],
   ['@stripe/react-stripe-js', 'Stripe card components'],
+  // Not a purchase marker: proof that Design Studio, the App Owner's confidential feature, is not shipped inside the app (it is only used by that page).
+  ['/api/ai/edit-image', "Design Studio's image editor"],
 ];
 
 function walk(d) {

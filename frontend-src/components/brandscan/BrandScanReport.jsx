@@ -9,6 +9,7 @@ import {
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { saveFile } from '@/lib/platform';
 
 // Tooltips by section title — both PT and EN keys
 const SECTION_TOOLTIPS = {
@@ -147,21 +148,16 @@ export default function BrandScanReport({ scan, onReset, language = 'en' }) {
       pdf.addImage(imgData, 'JPEG', 0, position, pageW, imgH);
       heightLeft -= pageH;
     }
-    pdf.save(`brand-scan-${cd.name || 'report'}.pdf`);
+    await saveFile(pdf.output('blob'), `brand-scan-${cd.name || 'report'}.pdf`);
   };
 
-  const handleExportText = () => {
+  const handleExportText = async () => {
     const text = `BRAND SCAN - ${cd.name || 'Empresa'}\n${'='.repeat(50)}\n\n${r.overview || ''}\n\n` +
       (r.buyer_personas || []).map(p => `BUYER PERSONA: ${p.name}\n${p.description || ''}`).join('\n\n') +
       `\n\nGO-TO-MARKET\n${r.go_to_market?.overview || ''}\n\n` +
       `SEO KEYWORDS\n${(r.seo_keywords || []).map(k => `- ${k.keyword} (Volume: ${k.volume})`).join('\n')}`;
     const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `brand-scan-${cd.name || 'report'}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await saveFile(blob, `brand-scan-${cd.name || 'report'}.txt`);
   };
 
   return (

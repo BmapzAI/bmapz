@@ -123,6 +123,35 @@ t('auth: a DIFFERENT person signing in gets the full treatment', JSON.stringify(
 t('auth: signing out clears everything with the spinner', JSON.stringify(plan('SIGNED_OUT', undefined, 'u1')) === JSON.stringify({ reload: true, spinner: true, silent: false }));
 t('auth: a user update for the same person is quiet too', plan('USER_UPDATED', 'u1', 'u1').spinner === false);
 
+// 11. saving a generated file: the ordinary download on the website, the share sheet in the app (a download link does nothing in a WebView)
+{
+  const clicks = [];
+  const fakeDoc = { createElement: () => { const a = { click() { clicks.push({ href: a.href, download: a.download }); } }; return a; } };
+  globalThis.document = fakeDoc;
+  globalThis.window = { location: { search: '' } };
+  let p2 = await load('save-web');
+  const blob = new Blob(['a,b\n1,2'], { type: 'text/csv' });
+  t('saveFile on the website: a temporary download link named after the file', (await p2.saveFile(blob, 'leads.csv')) === true && clicks.length === 1 && clicks[0].download === 'leads.csv' && /^blob:/.test(clicks[0].href), JSON.stringify(clicks));
+  t('saveFile: nothing to save -> false, nothing happens', (await p2.saveFile(null, 'x.csv')) === false && (await p2.saveFile(blob, '')) === false && clicks.length === 1);
+
+  const calls = [];
+  const Filesystem = { writeFile: async (o) => { calls.push(['write', o]); return { uri: 'file:///cache/leads.csv' }; } };
+  const Share = { share: async (o) => { calls.push(['share', o]); } };
+  globalThis.window = { location: { search: '' }, Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios', Plugins: { Filesystem, Share } } };
+  p2 = await load('save-native');
+  t('saveFile in the app: written to the cache as base64, then handed to the share sheet', (await p2.saveFile(blob, 'leads.csv')) === true
+    && calls[0][0] === 'write' && calls[0][1].path === 'leads.csv' && calls[0][1].directory === 'CACHE' && calls[0][1].data === Buffer.from('a,b\n1,2').toString('base64')
+    && calls[1][0] === 'share' && calls[1][1].url === 'file:///cache/leads.csv', JSON.stringify(calls));
+  t('saveFile in the app: no browser download link is used', clicks.length === 1);
+  const quiet2 = console.error; console.error = () => {};
+  globalThis.window.Capacitor.Plugins.Share = { share: async () => { throw new Error('Share canceled'); } };
+  t('saveFile in the app: closing the share sheet is not an error', (await load('save-cancel').then((m) => m.saveFile(blob, 'x.csv'))) === true);
+  globalThis.window.Capacitor.Plugins.Filesystem = { writeFile: async () => { throw new Error('disk full'); } };
+  t('saveFile in the app: a real failure returns false so the caller can say so', (await load('save-fail').then((m) => m.saveFile(blob, 'x.csv'))) === false);
+  console.error = quiet2;
+  delete globalThis.document;
+}
+
 // 10. "did the connection happen?" decisions (lib/oauthState.js): the server decides, never the popup or the link
 const { isNewConnection, waitForConnection, statusOfAppLink } = await import('../../frontend-src/lib/oauthState.js');
 const none = { ok: true, connected: false, stamp: null };
@@ -158,4 +187,7 @@ t('app wording: a message about something else is left exactly as written', neut
 t('app wording: no message at all stays empty', neutralizeForApp('', undefined) === '' && neutralizeForApp(undefined, undefined) === undefined);
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
+// Flush stdout first: on Windows the process can exit before its piped output is written, and run.mjs then sees an empty file (a one-off
+// "0 passed" failure of a file that had passed).
+await new Promise((resolve) => process.stdout.write('', resolve));
 process.exit(fail ? 1 : 0);

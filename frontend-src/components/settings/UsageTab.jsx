@@ -1,6 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
+import { isNativeApp } from '@/lib/platform';
 import { Zap, TrendingUp, User as UserIcon, Cpu, Activity } from 'lucide-react';
 
 function formatNumber(n) {
@@ -102,7 +103,7 @@ export default function UsageTab() {
           <div className="h-full transition-all" style={{ width: `${Math.min(100, pct)}%`, backgroundColor: barColor }} />
         </div>
         {pct > 80 && (
-          <p className="text-amber-400 text-xs mt-2">⚠ Approaching credit limit — consider upgrading your plan or buying a credit pack.</p>
+          <p className="text-amber-400 text-xs mt-2">⚠ Approaching credit limit{isNativeApp() ? '.' : ' — consider upgrading your plan or buying a credit pack.'}</p>
         )}
       </div>
 

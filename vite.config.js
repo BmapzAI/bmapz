@@ -8,6 +8,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The stores require their own payment system for digital subscriptions and reject apps that route around it, so instead of hiding the
 // Billing and Pricing screens at run time this REPLACES them with a neutral stand-in, which also drops their Stripe calls from the bundle.
 // mobile/scripts/check-bundle.mjs fails the app build if any purchase call is still in it. The website build is not touched.
+// Design Studio is replaced the same way: it is the App Owner's confidential feature, shown only to the owner, and its code would otherwise
+// ship inside every installed app where anyone could extract it. The owner uses Design Studio on the website.
 function nativeBillingRemoved() {
   const stand_in = path.resolve(__dirname, './frontend-src/native/NotInApp.jsx');
   return {
@@ -16,7 +18,7 @@ function nativeBillingRemoved() {
     async resolveId(source, importer, options) {
       if (process.env.VITE_NATIVE_BUILD !== '1') return null;
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-      if (resolved && /[\\/]frontend-src[\\/]pages[\\/](Billing|Pricing)\.jsx$/.test(resolved.id)) return stand_in;
+      if (resolved && /[\\/]frontend-src[\\/]pages[\\/](Billing|Pricing|Design)\.jsx$/.test(resolved.id)) return stand_in;
       return null;
     },
   };

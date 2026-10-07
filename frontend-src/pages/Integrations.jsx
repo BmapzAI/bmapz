@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { api } from '@/api/apiClient';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { providerFamily } from '@/lib/oauthState';
+import { saveFile } from '@/lib/platform';
 import ConnectIntegrationModal from '@/components/integrations/ConnectIntegrationModal';
 import { useAuth } from '@/lib/AuthContext';
 import { Company, Lead, Message, Activity } from '@/api/entities';
@@ -269,9 +270,13 @@ export default function Integrations() {
 
   const connectedCount = Object.values(integrationStatus).filter(v => v === true).length;
 
+  // BYOK (a company's own AI provider key) is for the Bmapz platform team only: it bypasses the credit billing. The server ignores those keys for
+  // everyone else, so showing the cards to customers only invited a key that would never be used.
+  const canBYOK = ['owner', 'system_admin'].includes(dbUser?.role);
+  const BYOK_CARDS = new Set(['openai', 'anthropic', 'midjourney', 'dalle_images']);
   const filteredCategories = INTEGRATIONS.map(cat => ({
     ...cat,
-    items: cat.items.filter(i => !searchQuery || i.name.toLowerCase().includes(searchQuery.toLowerCase()) || i.description.toLowerCase().includes(searchQuery.toLowerCase()))
+    items: cat.items.filter(i => (canBYOK || !BYOK_CARDS.has(i.type)) && (!searchQuery || i.name.toLowerCase().includes(searchQuery.toLowerCase()) || i.description.toLowerCase().includes(searchQuery.toLowerCase())))
   })).filter(cat => cat.items.length > 0);
 
   return (
@@ -435,12 +440,12 @@ export default function Integrations() {
           </div>
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setShowExportDialog(false)} className="border-white/10 text-white hover:bg-white/5">Cancel</Button>
-            <Button onClick={() => {
+            <Button onClick={async () => {
               const data = exportType === 'leads' ? leads : exportType === 'messages' ? messages : activities;
               if (!data.length) { toast.error('No data to export'); return; }
               const csv = [Object.keys(data[0]).join(','), ...data.map(row => Object.values(row).map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(','))].join('\n');
               const blob = new Blob([csv], { type: 'text/csv' });
-              const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `bmapz_${exportType}_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+              if (!(await saveFile(blob, `bmapz_${exportType}_${new Date().toISOString().slice(0, 10)}.csv`))) { toast.error('Could not save the file'); return; }
               toast.success(`Exported ${data.length} ${exportType}`);
               setShowExportDialog(false);
             }} className="bg-gradient-to-r from-[#3572b9] to-[#38b6ff] gap-2">

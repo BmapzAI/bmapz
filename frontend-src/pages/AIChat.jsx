@@ -696,11 +696,11 @@ Be concise, actionable, and data-driven. Always personalize advice to the user's
           <div className="flex items-center gap-3">
             <span className="text-xl">&#128273;</span>
             <div>
-              <p className="text-amber-400 font-semibold text-sm">AI API Key Required</p>
-              <p className="text-amber-300/70 text-xs">Add your OpenAI or Anthropic key in Settings &rarr; API Keys to enable AI features.</p>
+              <p className="text-amber-400 font-semibold text-sm">{['owner', 'system_admin'].includes(user?.role) ? 'AI API Key Required' : 'AI is not available right now'}</p>
+              <p className="text-amber-300/70 text-xs">{['owner', 'system_admin'].includes(user?.role) ? 'Add your OpenAI or Anthropic key in Settings \u2192 API Keys to enable AI features.' : 'Please contact your administrator.'}</p>
             </div>
           </div>
-          <a href="/Settings" className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 text-xs font-medium hover:bg-amber-500/30 transition-colors whitespace-nowrap">Add Key &rarr;</a>
+          {['owner', 'system_admin'].includes(user?.role) && <a href="/Settings" className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 text-xs font-medium hover:bg-amber-500/30 transition-colors whitespace-nowrap">Add Key &rarr;</a>}
         </div>
       )}
       <div className="flex flex-1 min-h-0 relative overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0b]">

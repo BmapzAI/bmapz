@@ -125,14 +125,14 @@ The principle: **submit everything with a human reviewer first**, then spend the
 
 ## 8. Mobile apps (Android + iOS) in parallel
 
-Research is DONE (2026-10-07): `docs/audit-2026-10-06/mobile-research.md` (four topics, official URLs, single-source) and the summary at the end of `AGENT_HANDOFF.md`. **The approach (Capacitor / TWA / PWA / native) is NOT known to the tooling: read the project chat "Web app mobile development" FIRST** and record it in the handoff; most findings are tagged by approach.
-Hold whatever the approach, when the app is listed in a store:
+Research is done (`docs/audit-2026-10-06/mobile-research.md`) and the approach is DECIDED: **Capacitor**, consumption-only apps (chat "Web app mobile deployment", found 2026-10-07; see `AGENT_HANDOFF.md` "MOBILE PHASE 1" and `PROMPT_MOBILE_PROJECT.md`). Phase 1 is built on branch `mobile/phase1-capacitor` (not merged); the mobile work has its own chat and prompt: do not rebuild it here. What it means for integrations:
+Holds when the app is listed in a store (already built on the branch unless marked):
 - **Consumption-only.** No Stripe Checkout/Portal/pricing/upgrade/top-up in the native build, no card at trial sign-up, no upgrade URLs in 402/403 bodies for app clients (add a client-type header). Plans are sold on the web.
 - **OAuth.** Redirect URIs stay https on `api.bmapz.com`. Open the authorise URL in the SYSTEM browser (Google forbids embedded WebViews), return through a Universal/App Link on `ai.bmapz.com` with a fallback `/oauth/return` page; this needs `public/.well-known/apple-app-site-association` and `assetlinks.json` (JSON content type, no redirect; curl them after every Cloudflare deploy), Supabase Additional Redirect URLs, LinkedIn `enable_extended_login=true` from the app, and a status refresh when the app regains focus (the server-confirmation work is the base). WhatsApp Embedded Signup in a WebView is undocumented: route to the system browser or hide it.
 - **Required new work:** authenticated in-app "Delete my account" (does not exist), an AI third-party data-sharing consent screen, a prominent disclosure before each Connect, a reviewer demo tenant (paid plan, password login, no 2FA), public Privacy/DataDeletion pages that name "Bmapz AI" exactly.
 - **iOS:** Sign in with Apple OR hide Google login on iOS (email+password stays); iOS 27 SDK from April 2027; Apple secret rotates every 6 months in Supabase. **Android:** target API 36; personal Play accounts need 12 testers x 14 days; Restore Credentials from April 2027.
 - Costs: Apple USD 99/yr, Google USD 25 once; D-U-N-S free (Apple 5+2 business days, Google up to 30 days). Start Google/Meta/TikTok WEB reviews now; they do not wait for the apps.
-- Do NOT widen CORS for `capacitor://localhost` / `https://localhost` unless the shell bundles the site instead of loading `https://ai.bmapz.com`. Build nothing mobile-specific until the approach is known.
+- The shell BUNDLES the site, so CORS for `capacitor://localhost` and `https://localhost` is required (done on the branch, with tests). Connecting an integration from the app already uses the system browser and a `bmapz://oauth` hand-back; the https App/Universal Link leg (and the `.well-known` files) is phase 2.
 
 ## 9. Open decisions to put to Derek (one message, early, plain English, with pros/cons)
 

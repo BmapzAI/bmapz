@@ -28,6 +28,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { LanguageProvider } from '@/components/ui/LanguageContext';
 import SupportAssistant from '@/components/layout/SupportAssistant';
 import AppLinkHandler from '@/components/layout/AppLinkHandler';
+import { isNativeApp } from '@/lib/platform';
 import { canSeeDesign } from '@/lib/featureFlags';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -149,7 +150,7 @@ const AuthenticatedRoutes = ({ currentUser }) => (
 );
 
 const AppRoutes = () => {
-  const { isLoadingAuth, isAuthenticated, authError, dbUser } = useAuth();
+  const { isLoadingAuth, isAuthenticated, authError, dbUser, logout } = useAuth();
   if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-[#111]">
@@ -168,6 +169,8 @@ const AppRoutes = () => {
           {authError.message && <p className="text-gray-600 text-xs mt-2 font-mono">{authError.message}</p>}
         </div>
         <button onClick={() => window.location.reload()} className="px-6 py-2.5 rounded-xl bg-[#38b6ff] hover:bg-[#38b6ff]/90 text-white font-medium transition-colors">Retry</button>
+        {/* In the app there is no browser tab to close or address bar to fix: a person stuck here (a different account, a bad session) needs a way out. */}
+        {isNativeApp() && <button onClick={() => logout()} className="text-sm text-gray-400 hover:text-white underline underline-offset-2">Sign out</button>}
       </div>
     );
   }

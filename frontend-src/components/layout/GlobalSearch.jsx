@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLanguage } from '@/components/ui/LanguageContext';
 import { Search, Loader2, CornerDownLeft, X } from 'lucide-react';
 import { api } from '@/api/apiClient';
+import { isNativeApp } from '@/lib/platform';
 
 /**
  * One search box for the whole app.
@@ -38,7 +39,10 @@ export default function GlobalSearch({ className = '' }) {
   });
 
   // Flatten for keyboard navigation while keeping the group headings.
-  const groups = data?.groups || [];
+  // The apps have no Billing, Pricing or Design Studio screens (see vite.config.js), so search must not offer them there.
+  const groups = (data?.groups || []).map((g) => (isNativeApp()
+    ? { ...g, items: g.items.filter((i) => !/^\/(billing|pricing|design)(\/|$)/i.test(String(i.path || ''))) }
+    : g));
   const flat = groups.flatMap(g => g.items.map(i => ({ ...i, group: g.label })));
 
   useEffect(() => { setActive(0); }, [debounced]);

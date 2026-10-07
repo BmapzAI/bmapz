@@ -84,6 +84,45 @@ export async function closeExternalBrowser() {
   try { await nativePlugin('Browser').close(); } catch { /* nothing open, or not supported on this platform */ }
 }
 
+/** Base64 of a Blob, in chunks so a large file cannot overflow the call stack. Works in browsers and in Node. */
+async function blobToBase64(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+/**
+ * Save a file the app generated (a CSV export, a PDF report, an HTML post).
+ *
+ * Website: the ordinary download through a temporary link, exactly as before. App: a download link does nothing inside a WebView, so the
+ * file is written to the app's cache and handed to the system share sheet (save to Files, send by e-mail, open in another app).
+ * Returns true when the file was handed over.
+ */
+export async function saveFile(blob, filename) {
+  if (!blob || !filename) return false;
+  if (!isNativeApp()) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  }
+  try {
+    const data = await blobToBase64(blob);
+    const { uri } = await nativePlugin('Filesystem').writeFile({ path: filename, data, directory: 'CACHE' });
+    await nativePlugin('Share').share({ title: filename, url: uri, dialogTitle: filename });
+    return true;
+  } catch (err) {
+    // A person closing the share sheet is not an error worth reporting.
+    if (/cancel|dismiss/i.test(String(err?.message || ''))) return true;
+    console.error('[platform] could not save the file:', err?.message || err);
+    return false;
+  }
+}
+
 /** Subscribe to a native plugin event. Works whether the bridge hands back the handle directly or as a promise. Returns an unsubscribe. */
 function listen(pluginName, eventName, callback) {
   let handle = null;

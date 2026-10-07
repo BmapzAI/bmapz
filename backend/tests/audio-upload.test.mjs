@@ -23,4 +23,7 @@ t('a path or odd characters in the name never reach the upload (the name is rebu
 t('"constructor" and other prototype names are not treated as extensions', eq(audioUploadFor('x.constructor'), { name: 'audio.webm', type: 'audio/webm' }));
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
+// Flush stdout first: on Windows the process can exit before its piped output is written, and run.mjs then sees an empty file (a one-off
+// "0 passed" failure of a file that had passed).
+await new Promise((resolve) => process.stdout.write('', resolve));
 process.exit(fail ? 1 : 0);

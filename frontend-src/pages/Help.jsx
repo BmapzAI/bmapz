@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import ReactMarkdown from 'react-markdown';
+import WebOnly from '@/components/ui/WebOnly';
 
 const faqCategories = [
   {
@@ -378,6 +379,7 @@ export default function Help() {
               </Button>
             </a>
           ) : (
+            <WebOnly>
             <div className="relative">
               <Button disabled className="bg-[#25d366]/40 text-white/60 border-0 gap-2 cursor-not-allowed">
                 <MessageCircle size={18} />
@@ -388,6 +390,7 @@ export default function Help() {
                 Enterprise
               </Badge>
             </div>
+            </WebOnly>
           )}
 
           {/* Email Support */}
@@ -410,10 +413,12 @@ export default function Help() {
         </div>
 
         {!isEnterprise && (
+          <WebOnly>
           <p className="text-gray-500 text-xs mt-4">
             <Crown className="inline w-3 h-3 text-yellow-400 mr-1" />
             {t('enterpriseOnly')}. <a href="mailto:contato@bmapz.com?subject=Upgrade to Enterprise" className="text-[#38b6ff] hover:underline">contato@bmapz.com</a>.
           </p>
+          </WebOnly>
         )}
       </div>
 
