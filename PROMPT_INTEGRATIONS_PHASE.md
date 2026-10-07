@@ -68,6 +68,7 @@ result, a command output or a quoted official page, never from assumption.**
 | **Google restricted scopes OFF** (Gmail read, Drive) | They need a paid yearly security assessment (about $540 to $3,000/yr, third-party figures) and 5-10 weeks; an unverified production app is capped at 100 new users for the life of the project | `GOOGLE_ENABLE_RESTRICTED_SCOPES=true` once the assessment is budgeted. Costs: Gmail inbox sync and Drive browsing are unavailable until then |
 | Google Ads developer token not used | Sunset 2026-09-09; the header is ignored | `GOOGLE_ADS_SEND_DEV_TOKEN=true` |
 | LinkedIn Ads scopes read-only | write needs a higher tier | `LINKEDIN_ADS_WRITE=true` |
+| **Apollo is per-company only** (no platform `APOLLO_API_KEY`) | Apollo's developer FAQ: exposing Apollo data to people who are not Apollo customers needs a custom data-licensing contract; one platform key serving every tenant is that. Personal-email reveal is opt-in | restore the env fallback in `routes/integrations.js` once Apollo Partnerships has signed a contract |
 
 ## 4. How to work with Derek (his time is the scarce resource)
 

@@ -4173,3 +4173,16 @@ Draft with an evidence table and the claims only a human can make: `docs/PRIVACY
 Plan changes in the Stripe Customer Portal do not update plan/credits; `invoice.paid` unhandled; `getStripe()` never null; `success_url` without session id; dead `resend` dependency; Stripe SDK 16 -> 23;
 LinkedIn ads bodies + `x-restli-id`; LinkedIn feed/legacy posting; WhatsApp BSUID/templates/tenant fallback; TikTok publishing and Business-API ads; X PKCE verifier in `state`;
 two older Google token-refresh copies; Integrations page vs `/status`; 192 `err.message` catch blocks. Derek: Search Console TXT, Resend records, X cost policy, Stripe country, restricted-scope budget.
+
+### 2026-10-07 (later) — vendor audit results and a fourth delegated decision
+Perplexity/Apollo/Hunter/Stability verification + audit finished (see docs/audit-2026-10-06). Fixed in 725296d:
+Perplexity `incomplete` runs with text are accepted (an over-cap run would otherwise be a false FAIL and push searches to the fallback), 401 wording, output caps;
+Anthropic `pause_turn` no longer cached as an answer; Hunter/Stability tests and routes (key in header, validation, timeouts, balance check); Apollo enrich no longer
+reveals personal emails unless the caller opts in.
+**Decision 4 (Claude, reversible): Apollo is PER-COMPANY ONLY.** Apollo's developer FAQ says exposing Apollo data to people who are not Apollo customers requires a custom
+data-licensing contract; the platform `APOLLO_API_KEY` fallback served every tenant from one key. It is removed (status, test, enrich). Reverse by restoring the fallback in
+`routes/integrations.js` once Apollo Partnerships has signed a contract. Apollo's own pages disagree on whether the Free plan includes API access: test the exact endpoints on a Free key.
+Perplexity facts worth knowing: Agent API is 1 request/second per ORGANIZATION at the first tier (parallel searches can 429 and fall through); project creation asks for company
+name, address and tax details; $10 is the only published minimum credit purchase. Raw JSON has no `output_text` (SDK convenience): the parser already reads `output[].content[].text`.
+Hunter reports an exhausted quota as 429 and a rate limit as 403. STILL OPEN here: Stability image generation uses legacy REST v1 (maintenance mode, no published sunset) -> v2beta;
+Apollo `people/match` parameters were moved to the documented query form but could not be proved against a real key.

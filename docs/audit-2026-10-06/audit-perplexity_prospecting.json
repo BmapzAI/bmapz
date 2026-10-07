@@ -1,0 +1,262 @@
+{
+ "group": "Perplexity web search + Apollo + Hunter + Stability AI (audit date 2026-10-06; no real credentials used, probes used no key and the garbage key \"garbage123\")",
+ "findings": [
+  {
+   "severity": "breaks_soon",
+   "area": "Apollo error payload",
+   "file": "backend/src/routes/integrations.js",
+   "line": 959,
+   "what": "POST /apollo/enrich returns Apollo's raw JSON (res.json(d), lines 959-960). Apollo will remove the legacy root-level error fields (error, error_code, message) on 2027-02-16, about 4.3 months from today, and error_details becomes the only error payload. Today an Apollo 401 or 422 body carries both. I confirmed this by probe: a garbage key gives HTTP 401 with error plus error_details.code AUTH.AUTHENTICATION.API_KEY_INVALID, and no key gives HTTP 422 with AUTH.AUTHENTICATION.API_KEY_REQUIRED. Apollo tells integrators to branch on error_details.code. No in-repo caller of this route was found (grep of frontend-src and backend/src), so any external or agent caller that reads d.error would break. Quote is verbatim; other vendor text below is paraphrased because of the quote-length limit.",
+   "evidence_url": "https://docs.apollo.io/reference/status-codes",
+   "evidence_quote": "On 16 February 2027 the legacy fields are removed everywhere",
+   "recommended_fix": "Normalise errors server-side so the response no longer depends on Apollo's legacy shape. Replace lines 959-960 with: const d = await r.json().catch(() => ({})); if (!r.ok) return res.status(r.status === 401 || r.status === 422 ? 502 : r.status).json({ error: d.error_details?.message || d.error || 'Apollo request failed', code: d.error_details?.code || null }); return res.json(d);"
+  },
+  {
+   "severity": "unverified",
+   "area": "Apollo people/match request shape",
+   "file": "backend/src/routes/integrations.js",
+   "line": 957,
+   "what": "The current Apollo People Enrichment page documents POST /api/v1/people/match with email, domain, reveal_personal_emails, reveal_phone_number and webhook_url as QUERY parameters. The code sends them in a JSON body. I could not confirm whether the server still honours body parameters, because that needs a valid key. With a garbage key, both body and query variants return the same 401, so the probe cannot tell them apart. If the body is ignored, the call matches nothing and may spend credits (docs: 1-9 credits per person). reveal_personal_emails is still a supported parameter, but it is hard-coded to true and always spends credits. Host, path, method and x-api-key header all match current docs.",
+   "evidence_url": "https://docs.apollo.io/reference/people-enrichment",
+   "recommended_fix": "Follow the documented shape and drop undefined values: const qs = new URLSearchParams(Object.entries({ email, domain, reveal_personal_emails: 'true' }).filter(([, v]) => v)); const r = await fetch(`https://api.apollo.io/api/v1/people/match?${qs}`, { method: 'POST', headers: { 'x-api-key': clean(apiKey), 'Content-Type': 'application/json' } }); Make reveal_personal_emails opt-in from req.body rather than always true."
+  },
+  {
+   "severity": "outdated",
+   "area": "Apollo key handling and timeouts",
+   "file": "backend/src/routes/integrations.js",
+   "line": 951,
+   "what": "The test case at line 289 trims the key with clean(), but /apollo/enrich (line 951) uses the raw stored key. A key saved with trailing whitespace or a newline passes the connection test and then fails at runtime, because an invalid header value makes fetch throw. None of the Apollo, Hunter or Stability fetches has a timeout (integrations.js 276, 291, 309, 954, 980; ai.js 1434), so a hung upstream hangs the request.",
+   "evidence_url": "https://docs.apollo.io/reference/authentication",
+   "recommended_fix": "Line 951: const apiKey = clean(companyRow?.api_keys?.apollo_api_key || process.env.APOLLO_API_KEY); Add signal: AbortSignal.timeout(20000) to each of these fetch calls (use 90000 for Stability image generation)."
+  },
+  {
+   "severity": "ok",
+   "area": "Apollo connection test (auth/health)",
+   "file": "backend/src/routes/integrations.js",
+   "line": 288,
+   "what": "Verified by live probe today: GET https://api.apollo.io/api/v1/auth/health returns HTTP 200 {\"healthy\":true,\"is_logged_in\":false} with NO key and with a garbage key. The existing is_logged_in === true check (line 295) is therefore the correct guard. Header name x-api-key matches the docs. Residual risk: is_logged_in is observed behaviour, not a documented field (the health-check reference URL returned 404), and a scoped key may report false even when it works on other endpoints.",
+   "evidence_url": "https://docs.apollo.io/reference/authentication",
+   "recommended_fix": "Keep the check. For a stronger test, also call GET https://api.apollo.io/api/v1/users/api_profile with the same x-api-key header. Probed today: no key gives 422 (API_KEY_REQUIRED), garbage gives 401 (API_KEY_INVALID). The auth docs say this endpoint confirms which user a key acts as. Require HTTP 200 from it as well."
+  },
+  {
+   "severity": "broken_now",
+   "area": "Hunter email-finder input handling",
+   "file": "backend/src/routes/integrations.js",
+   "line": 979,
+   "what": "new URLSearchParams({ domain, first_name, last_name, api_key }) turns missing body fields into the literal string \"undefined\", and there is no validation. Hunter's Email Finder needs one of domain, company or linkedin_handle, plus first_name and last_name (or full_name). A request missing first_name queries Hunter for a person called \"undefined\" and may spend a request.",
+   "evidence_url": "https://hunter.io/api-documentation/v2",
+   "recommended_fix": "Before building params: if (!domain || !first_name || !last_name) return res.status(400).json({ error: 'domain, first_name and last_name are required' }); Pass the key in a header instead of the query: fetch(`https://api.hunter.io/v2/email-finder?${new URLSearchParams({ domain, first_name, last_name })}`, { headers: { 'X-API-KEY': clean(apiKey) } })"
+  },
+  {
+   "severity": "outdated",
+   "area": "Hunter auth in query string and error propagation",
+   "file": "backend/src/routes/integrations.js",
+   "line": 309,
+   "what": "The API key is put in the URL as ?api_key=<raw key>, untrimmed and unencoded (lines 309 and 979). That leaks it into proxy and access logs and breaks if the stored key has whitespace. The Hunter docs list three auth methods: the api_key query param, an X-API-KEY header, and Authorization: Bearer. I probed the account endpoint with no key, a garbage query key, a garbage X-API-KEY header and a garbage Bearer token, and all returned 401 authentication_failed. Separately, /hunter/find-email (lines 981-982) does res.json(d) without checking r.ok, so Hunter 401, 429 and 451 errors reach the client as HTTP 200. Line 310 uses r.json() with no catch, so a non-JSON 5xx body throws into the generic handler.",
+   "evidence_url": "https://hunter.io/api-documentation/v2",
+   "recommended_fix": "Line 309: const r = await fetch('https://api.hunter.io/v2/account', { headers: { 'X-API-KEY': clean(apiKey) } }); const d = await r.json().catch(() => ({})); Line 981-982: const d = await r.json().catch(() => ({})); if (!r.ok) return res.status(r.status).json({ error: d.errors?.[0]?.details || 'Hunter request failed', code: d.errors?.[0]?.id }); return res.json(d);"
+  },
+  {
+   "severity": "ok",
+   "area": "Hunter endpoints, host and error format",
+   "file": "backend/src/routes/integrations.js",
+   "line": 309,
+   "what": "https://api.hunter.io/v2/account and /v2/email-finder are current. The documented error format is errors[].id/code/details, which the test case reads as errors[0].details, and I observed that exact shape in live 401 probes. The only deprecation the docs note is the Email Verifier 'result' field (use 'status'). This code never calls the verifier, so it is unaffected. No sunset is published for v2.",
+   "evidence_url": "https://hunter.io/api-documentation/v2",
+   "recommended_fix": "None required. Optionally make the base URL overridable: const HUNTER_BASE = process.env.HUNTER_BASE_URL || 'https://api.hunter.io/v2'."
+  },
+  {
+   "severity": "outdated",
+   "area": "Stability REST v1 image generation (legacy surface)",
+   "file": "backend/src/routes/ai.js",
+   "line": 1434,
+   "what": "generateWithStability calls the REST v1 engine endpoint /v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image. Stability's docs place the gRPC and REST v1 services in 'Legacy' maintenance: still maintained, no new features, and v2beta is the primary API. I found NO published sunset date. I could only retrieve this wording through search snippets, because the platform.stability.ai docs are a JavaScript app that WebFetch and curl cannot render, so treat the exact wording as unconfirmed. Probe: the v1 endpoint with a correctly shaped body and a garbage key returns 401 'Incorrect API key', so it is still routed. I cannot confirm that generation still succeeds with a real key. The current replacement is POST https://api.stability.ai/v2beta/stable-image/generate/core, multipart/form-data, Authorization: Bearer, Accept: application/json, which returns a base64 image plus finish_reason. I probed it with a garbage key and got 401 'authorization: invalid or missing header value'.",
+   "evidence_url": "https://platform.stability.ai/docs/getting-started/stable-image",
+   "recommended_fix": "Migrate generateWithStability (ai.js:1431-1442) to v2beta Core. Use const url = process.env.STABILITY_IMAGE_URL || 'https://api.stability.ai/v2beta/stable-image/generate/core'; for each of n images, build a FormData with prompt, aspect_ratio '1:1' and output_format 'png', then fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, body: form }). Parse j.image and return `data:image/png;base64,${j.image}`. Throw if j.finish_reason === 'CONTENT_FILTERED'. Run the n calls with Promise.all. Test with a real key before removing v1, and keep v1 as a fallback until then."
+  },
+  {
+   "severity": "outdated",
+   "area": "Stability error handling and parsing",
+   "file": "backend/src/routes/ai.js",
+   "line": 1439,
+   "what": "On a non-2xx the code throws `Stability AI error ${status}` and drops the response body. Stability's error body has the shape {id, message, name}, and I saw it in probes. For example a missing key gives 'missing authorization header' and a bad key gives 'Incorrect API key provided'. Credit exhaustion, content filtering and bad keys therefore all look alike in the aggregated error at line 1507. Line 1441 maps every artifact to a data URL with no check on per-artifact status. The v1 artifacts field finishReason is from prior knowledge and not re-verified today. Filtered or errored artifacts would produce broken images.",
+   "evidence_url": "https://platform.stability.ai/docs/getting-started/stable-image",
+   "recommended_fix": "Line 1439: if (!response.ok) { const e = await response.json().catch(() => ({})); throw new Error(`Stability AI error ${response.status}: ${e.message || e.name || ''}`); } Line 1441: (result.artifacts || []).filter(a => a.base64 && (!a.finishReason || a.finishReason === 'SUCCESS')).map(a => `data:image/png;base64,${a.base64}`)"
+  },
+  {
+   "severity": "outdated",
+   "area": "Stability connection test",
+   "file": "backend/src/routes/integrations.js",
+   "line": 274,
+   "what": "The test reads only k.stability_api_key. It does not use clean() and has no process.env.STABILITY_API_KEY fallback. Yet the status listing (line 100) and generateWithStability (ai.js:1432) both treat an env key as configured, so an env-only deployment shows connected and then fails the test with 'key not set'. It also calls /v1/user/account (the legacy v1 surface). That succeeds for a valid key with zero credits, so the test reports 'connected' while generation fails with a payment error. /v1/user/balance exists: I probed it with a garbage key and got 401 'Incorrect API key provided', and with no key got 401 'missing authorization header'.",
+   "evidence_url": "https://platform.stability.ai/docs/api-reference",
+   "recommended_fix": "Line 274: const apiKey = clean(k.stability_api_key || process.env.STABILITY_API_KEY); Line 276: fetch('https://api.stability.ai/v1/user/balance', { headers: { Authorization: `Bearer ${apiKey}` } }); then const d = await r.json().catch(() => ({})); if (r.ok && Number(d.credits) > 0) success; if (r.ok) return { success: false, message: 'Stability key is valid but the account has no credits' }. The credits field name is from prior knowledge, so confirm it on a first real key."
+  },
+  {
+   "severity": "ok",
+   "area": "Perplexity Agent API call (endpoint, method, auth, body, status handling)",
+   "file": "backend/src/lib/perplexity.js",
+   "line": 114,
+   "what": "POST https://api.perplexity.ai/v1/agent with Authorization: Bearer matches today's API reference. The reference lists status values completed, failed, incomplete, in_progress, queued and cancelled, and the code treats everything except completed as a failure (line 46), which is correct. Body {preset:'fast', input, max_output_tokens} is valid: the presets page lists fast, low, medium, high and xhigh, and 'fast' is a 1-step web_search preset with inline citations. Probe: with no key and with a garbage key, /v1/agent returns 401 {error:{type:'invalid_api_key', code:401}}. Not live-verified with a real key: the output item types message and search_results are documented, but the exact search_results.results[].url field and the annotations[].url field are assumed.",
+   "evidence_url": "https://docs.perplexity.ai/api-reference/agent-post",
+   "recommended_fix": "None required. Optionally make the surface configurable: export const AGENT_URL = process.env.PERPLEXITY_AGENT_URL || 'https://api.perplexity.ai/v1/agent'; and read the preset from process.env.PERPLEXITY_PRESET || 'fast'."
+  },
+  {
+   "severity": "outdated",
+   "area": "Perplexity legacy Sonar fallback",
+   "file": "backend/src/lib/perplexity.js",
+   "line": 124,
+   "what": "The fallback POSTs /chat/completions with model 'sonar'. Today's migration page says Sonar Chat Completions support ended on 2026-09-27, that synchronous and streaming requests are being reformulated as Agent API requests, and that async requests are no longer supported. The comment in perplexity.js lines 27-30 says the docs contradict each other, but this page reconciles them: legacy sync calls are proxied, not supported. Probe: /chat/completions and /v1/sonar with a garbage key both still return 401, so they are routed. The fallback only runs when the Agent API returns 400, 404, 405, 410 or 422. In that case it silently double-sends the query, and any billing difference is invisible. It adds dead weight on a retired contract and could mask a real Agent API request-shape bug.",
+   "evidence_url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview",
+   "recommended_fix": "Once a first real key shows the Agent API answering, delete perplexity.js lines 124-135 and LEGACY_URL (line 34) so shape errors surface instead of being retried on a retired contract. Until then keep it, and change the comment at lines 27-30 and the message at integrations.js:538 to say legacy requests are reformulated, not that they remain supported."
+  },
+  {
+   "severity": "unverified",
+   "area": "Perplexity max_output_tokens too small",
+   "file": "backend/src/routes/integrations.js",
+   "line": 537,
+   "what": "The connection test sends max_output_tokens 32 and webSearch sends 700 (webSearch.js:96). The 'fast' preset's own default is 8,192 and the docs state no minimum or what happens when the cap is hit. If a run stops at the cap it will come back status 'incomplete' (HTTP 200), which parseAgentResponse (line 46) treats as a failure. That would give a false FAIL on the test and push real searches down to the OpenAI or Anthropic fallback. This is not a false-positive risk, and I could not verify it without a key.",
+   "evidence_url": "https://docs.perplexity.ai/docs/agent-api/presets",
+   "recommended_fix": "Line 537: maxTokens: 256 (or omit it to use the preset default). webSearch.js line 96: maxTokens: 1500. Accept status 'incomplete' with a non-empty output_text as a partial answer in parseAgentResponse rather than throwing."
+  },
+  {
+   "severity": "outdated",
+   "area": "Perplexity error classification",
+   "file": "backend/src/routes/integrations.js",
+   "line": 543,
+   "what": "The test treats 402 and 429 as 'key valid but no usable credit'. Per Perplexity's own error documentation as surfaced by search, a 401 can mean the key is invalid, deleted OR the account ran out of credits, and 429 means a rate limit, not an empty balance. I found no 402 documented. No-credit accounts therefore land in the 401 branch (line 542), labelled only 'key rejected', and 429 is mislabelled. Both still correctly report FAILURE, so there is no false-positive risk.",
+   "evidence_url": "https://docs.perplexity.ai/docs/resources/faq",
+   "recommended_fix": "Line 542: message `Perplexity rejected the key (invalid, deleted, or the account has no credits): ${msg}`. Line 543: only match e.status === 402 || /credit|balance/i.test(msg). Add: if (e.status === 429) return res.json({ success: false, message: `Perplexity rate limit hit (the key is valid, retry shortly): ${msg}` });"
+  },
+  {
+   "severity": "outdated",
+   "area": "Anthropic web-search fallback: pause_turn not handled",
+   "file": "backend/src/lib/webSearch.js",
+   "line": 143,
+   "what": "Docs say the API can pause a long-running search turn and return stop_reason 'pause_turn', and the client then resends the paused message. viaAnthropic joins whatever text blocks exist (lines 143-148). On a paused turn that text is only the pre-search narration (for example 'I'll search for ...'), and it gets cached for 10 minutes and returned as if it were the answer. Tool errors are also returned inside an HTTP 200 as web_search_tool_result_error, which is harmless here because the answer would be empty. Verified current: anthropic-version 2023-06-01 and tool type web_search_20250305 are both still listed and are not deprecated. Newer versions web_search_20260209 and web_search_20260318 exist but are optional and add code-execution dynamic filtering.",
+   "evidence_url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
+   "recommended_fix": "Before line 143 add: if (body?.stop_reason === 'pause_turn') throw new Error('search turn paused before an answer'); Optionally read process.env.ANTHROPIC_WEB_SEARCH_TOOL || 'web_search_20250305' for the type at line 138, and process.env.ANTHROPIC_VERSION || '2023-06-01' at line 132."
+  },
+  {
+   "severity": "unverified",
+   "area": "OpenAI web-search fallback",
+   "file": "backend/src/lib/webSearch.js",
+   "line": 102,
+   "what": "I did not fetch OpenAI documentation in this audit. It is outside the named vendors and I ran out of budget. The code uses POST /v1/responses with tools [{type:'web_search'}], model liveModelFor('gpt-4.1','openai'), and url_citation annotations. Not verified against current OpenAI docs or by probe.",
+   "evidence_url": "https://platform.openai.com/docs/guides/tools-web-search",
+   "recommended_fix": "Verify against the OpenAI Responses API docs: the tool type string and the model id. Add the model id and endpoint as env overrides if they are not already behind liveModelFor."
+  },
+  {
+   "severity": "outdated",
+   "area": "Hard-coded versions and URLs with no environment override",
+   "file": "backend/src/lib/perplexity.js",
+   "line": 33,
+   "what": "None of these can be changed without a code deploy: Perplexity AGENT_URL, LEGACY_URL and preset 'fast' (perplexity.js:33-34, 114); anthropic-version and web_search_20250305 (webSearch.js:132, 138; integrations.js:245, 261); the Stability v1 URL, engine id and generation settings (ai.js:1434, 1437); Apollo /api/v1 base (integrations.js:291, 954); Hunter /v2 base (integrations.js:309, 980). Only the model ids are indirected, through liveModelFor. This matters most for the vendors that are mid-migration: Perplexity Sonar to Agent, and Stability v1 to v2beta.",
+   "evidence_url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview",
+   "recommended_fix": "Add: PERPLEXITY_AGENT_URL, PERPLEXITY_PRESET, STABILITY_IMAGE_URL, STABILITY_ENGINE, APOLLO_BASE_URL (default https://api.apollo.io/api/v1), HUNTER_BASE_URL (default https://api.hunter.io/v2), ANTHROPIC_VERSION. Each is read as process.env.X || '<current default>'."
+  }
+ ],
+ "pinned_versions": [
+  {
+   "name": "Perplexity Agent API path",
+   "in_code": "https://api.perplexity.ai/v1/agent (perplexity.js:33)",
+   "status": "current"
+  },
+  {
+   "name": "Perplexity Agent API preset",
+   "in_code": "preset: 'fast' (perplexity.js:114)",
+   "status": "current"
+  },
+  {
+   "name": "Perplexity Sonar Chat Completions (legacy fallback)",
+   "in_code": "https://api.perplexity.ai/chat/completions, model 'sonar' (perplexity.js:34, 125)",
+   "status": "sunset",
+   "current": "Agent API /v1/agent",
+   "sunset_date": "2026-09-27 (support ended; sync/streaming calls reformulated as Agent API requests; async unsupported)"
+  },
+  {
+   "name": "Apollo REST base and endpoints",
+   "in_code": "https://api.apollo.io/api/v1 (auth/health, people/match)",
+   "status": "current"
+  },
+  {
+   "name": "Apollo legacy root-level error fields (error, error_code, message)",
+   "in_code": "raw passthrough of Apollo JSON (integrations.js:960)",
+   "status": "deprecated",
+   "current": "error_details.code / error_details.message",
+   "sunset_date": "2027-02-16"
+  },
+  {
+   "name": "Hunter REST v2",
+   "in_code": "https://api.hunter.io/v2 (account, email-finder)",
+   "status": "current"
+  },
+  {
+   "name": "Stability REST v1 text-to-image engine",
+   "in_code": "/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image (ai.js:1434)",
+   "status": "deprecated",
+   "current": "/v2beta/stable-image/generate/core",
+   "sunset_date": "none published that I could find (Legacy maintenance only, unconfirmed from rendered docs)"
+  },
+  {
+   "name": "Stability REST v1 account endpoint",
+   "in_code": "/v1/user/account (integrations.js:276)",
+   "status": "deprecated",
+   "current": "/v1/user/balance (probed, routed)"
+  },
+  {
+   "name": "Anthropic API version header",
+   "in_code": "anthropic-version: 2023-06-01 (webSearch.js:132)",
+   "status": "current"
+  },
+  {
+   "name": "Anthropic web search tool type",
+   "in_code": "web_search_20250305 (webSearch.js:138)",
+   "status": "current",
+   "current": "web_search_20260209 and web_search_20260318 also exist (optional)"
+  },
+  {
+   "name": "OpenAI Responses web_search",
+   "in_code": "POST /v1/responses with tool type web_search (webSearch.js:102, 109)",
+   "status": "unknown"
+  }
+ ],
+ "test_cases": [
+  {
+   "type": "apollo (integrations.js:288-304)",
+   "calls": "GET https://api.apollo.io/api/v1/auth/health, x-api-key header",
+   "verdict": "sound",
+   "notes": "Live probe: HTTP 200 {healthy:true,is_logged_in:false} for BOTH no key and a garbage key, so a bare r.ok check would pass. The is_logged_in === true guard fixes that, and an unset key short-circuits at line 290. Residual risk: is_logged_in is observed rather than documented, a scoped key may read false, and the runtime route uses an untrimmed key where the test uses clean(). Add users/api_profile as a second check (no key 422, garbage 401)."
+  },
+  {
+   "type": "hunter (integrations.js:306-313)",
+   "calls": "GET https://api.hunter.io/v2/account?api_key=<key>",
+   "verdict": "sound",
+   "notes": "Live probes: no key (empty api_key) gives 401 authentication_failed, a garbage key gives 401, and garbage via X-API-KEY header or Bearer gives 401. Success needs d.data.email, so it cannot pass without a valid key. Should pass the key in the X-API-KEY header, trim it, and guard the JSON parse."
+  },
+  {
+   "type": "stability (integrations.js:273-281)",
+   "calls": "GET https://api.stability.ai/v1/user/account, Authorization: Bearer",
+   "verdict": "sound",
+   "notes": "Live probes: no key gives 401 'missing authorization header', a garbage key gives 401 'Incorrect API key provided'. It passes only on r.ok, so it cannot succeed without a valid key. Weaknesses: no env-key fallback (false 'not set' for env-only deployments), no clean(), and it does not prove credits exist, so a funded-less key still reads 'connected'. Use /v1/user/balance and require credits > 0."
+  },
+  {
+   "type": "perplexity (integrations.js:529-549)",
+   "calls": "POST https://api.perplexity.ai/v1/agent via askPerplexity() with a one-word prompt and max_output_tokens 32",
+   "verdict": "sound",
+   "notes": "Live probes: no key and a garbage key both give 401 invalid_api_key on /v1/agent, /chat/completions and /v1/sonar. An unset key short-circuits at line 531. Success requires a non-empty answer from a status:'completed' run, so it cannot pass without a valid key. The 32-token cap risks a false FAIL (an 'incomplete' run), not a false pass. 402/429 are mislabelled as 'no credit'."
+  },
+  {
+   "type": "apollo (runtime route vs test)",
+   "calls": "POST https://api.apollo.io/api/v1/people/match via /apollo/enrich, JSON body",
+   "verdict": "false_positive_risk",
+   "notes": "The test proves only that the key authenticates on auth/health. It does not prove the key can call people/match (scoped keys are limited to selected endpoints), and the runtime path reads the untrimmed key. The docs describe people/match parameters as query parameters, but the code sends a JSON body. I could not tell whether the body form still works without a real key."
+  },
+  {
+   "type": "webSearch anthropic fallback",
+   "calls": "POST https://api.anthropic.com/v1/messages with web_search_20250305",
+   "verdict": "unverified",
+   "notes": "Header and tool type are current per the web search tool page. pause_turn is not handled and would return partial narration as an answer. Not probed."
+  }
+ ]
+}

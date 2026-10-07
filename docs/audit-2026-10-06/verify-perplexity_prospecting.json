@@ -1,0 +1,424 @@
+{
+ "group": "Perplexity (web search) + Apollo, Hunter, Stability AI (API-key platforms) - verified 2026-10-06/07",
+ "claims": [
+  {
+   "claim": "[Perplexity] Sonar chat-completions is a time bomb: supported only until 2026-09-27, then silently/hard fails",
+   "verdict": "corrected",
+   "correction": "The date passed, but Perplexity's own note says synchronous and streaming Sonar requests keep working because they are being rewritten server-side into Agent API requests, rolling out gradually by model. Async Sonar requests are dead. So it is not a hard cutoff, but it is also not a supported contract: behaviour and response shape per model are not published.",
+   "source_quote": "\"Sonar Chat Completions support ended on September 27, 2026.\" (Perplexity migration overview; the rest of that note is paraphrased above)",
+   "source_url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview.md"
+  },
+  {
+   "claim": "[Perplexity] POST /v1/sonar and models sonar/sonar-pro/sonar-reasoning-pro/sonar-deep-research are valid and a test passes today",
+   "verdict": "unverifiable",
+   "correction": "No authenticated call was possible (no key; I may not create accounts or enter credentials). Unauthenticated, /v1/sonar answers HTTP 401 invalid_api_key, so it is routed; that proves nothing about model validity. The legacy Sonar quickstart page now carries a banner that the page is kept for customers with continued Sonar access, which implies a NEW account may not get Sonar at all. Treat Sonar as unreliable for a brand-new account.",
+   "source_quote": "paraphrase: legacy Sonar quickstart banner says Sonar Chat Completions 'has been replaced by the Agent API' and the page is 'kept for customers with continued Sonar access'",
+   "source_url": "https://docs.perplexity.ai/docs/legacy/sonar/quickstart.md"
+  },
+  {
+   "claim": "[Perplexity] The older POST https://api.perplexity.ai/chat/completions path still answers",
+   "verdict": "confirmed",
+   "correction": "Probed live 2026-10-06 with no key: /chat/completions, /v1/sonar, /v1/agent, /v1/responses and /router/v1/chat/completions all return HTTP 401 {error:{type:invalid_api_key,code:401}}. /v1/chat/completions (with v1) returns an empty 404. /chat/completions is NOT documented anywhere I could find, so it is an undocumented alias; the documented Sonar path is /v1/sonar.",
+   "source_quote": "live probe, no doc",
+   "source_url": "https://api.perplexity.ai/chat/completions"
+  },
+  {
+   "claim": "[Perplexity] Agent API request is POST /v1/agent with 'input' and 'preset'; answer text comes back at output_text",
+   "verdict": "corrected",
+   "correction": "Request shape is right (preset + input, Authorization: Bearer). But output_text is an SDK convenience property computed client-side, NOT a field in the raw JSON. For a backend using raw fetch/HTTP the answer is at output[] -> item where type==\"message\" -> content[] -> item where type==\"output_text\" -> text. The raw response has no top-level output_text. The raw JSON also carries usage.cost.total_cost in USD.",
+   "source_quote": "paraphrase: quickstart calls output_text a convenience property of the Python and TypeScript SDKs that aggregates text from response outputs; raw sample responses show only the output array",
+   "source_url": "https://docs.perplexity.ai/docs/agent-api/quickstart.md"
+  },
+  {
+   "claim": "[Perplexity] Citations location in Agent API",
+   "verdict": "corrected",
+   "correction": "Not researched before. Inline markers [1] (fast preset) or [web:1] (low/medium/high) are embedded in the answer text. The sources are a separate output[] item with type==\"search_results\"; read results[] (each has id, title, url, snippet, date, last_updated, source); marker [n] maps to the result whose id is n. The content[].annotations array is empty in every documented example, so do not read citations from it. Legacy Sonar had top-level citations[] and search_results[]; neither exists in the Agent shape.",
+   "source_quote": "paraphrase from migration how-to, section 'Inline citations'",
+   "source_url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/how-to.md"
+  },
+  {
+   "claim": "[Perplexity] Preset mapping: sonar->fast, sonar-pro->low, sonar-reasoning-pro->medium, sonar-deep-research->high",
+   "verdict": "refuted",
+   "correction": "Current mapping is sonar->fast, sonar-pro->fast, sonar-reasoning-pro->low, sonar-deep-research->high, with xhigh recommended for state-of-the-art deep research. The researcher's table is one tier too high for pro and reasoning-pro.",
+   "source_quote": "paraphrase: overview table 'How Sonar Chat Completions maps to Agent API presets'",
+   "source_url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview.md"
+  },
+  {
+   "claim": "[Perplexity] Valid model ids today",
+   "verdict": "corrected",
+   "correction": "On the Agent API you may send either preset (fast, low, medium, high, xhigh) OR model. Model ids use creator/name slugs; the catalog today includes perplexity/sonar, perplexity/kimi-k3, perplexity/glm-5.3, perplexity/nemotron-3-ultra-550b-a55b, openai/gpt-5.5, gpt-5.6-luna/sol/terra, gpt-6-luna, gpt-6-sol, gpt-6.1-sol, anthropic/claude-sonnet-5, claude-sonnet-5-5, claude-opus-5, claude-opus-5-5, claude-haiku-4-5, claude-fable-5 and 5-1, google/gemini-3.x-flash variants, xai/grok-4.x. perplexity/sonar costs 0.25 in / 2.50 out per 1M tokens. If you pass model (not preset) you must add tools:[{\"type\":\"web_search\"}] yourself or you get no search/citations; presets include web_search. Docs are internally inconsistent about the fast preset model (presets page says openai/gpt-6-luna, migration page example shows gpt-5.6-luna), so ids are in flux: use preset names, not model ids, in production.",
+   "source_quote": "paraphrase: Agent API Models page and Presets page",
+   "source_url": "https://docs.perplexity.ai/docs/agent-api/models.md"
+  },
+  {
+   "claim": "[Perplexity] model string perplexity/sonar survives on the Agent API; POST /v1/responses is an accepted alias",
+   "verdict": "confirmed",
+   "correction": "Both confirmed on the Agent API quickstart and models page.",
+   "source_quote": "paraphrase: quickstart note says POST /v1/responses is also accepted as an alias of /v1/agent",
+   "source_url": "https://docs.perplexity.ai/docs/agent-api/quickstart.md"
+  },
+  {
+   "claim": "[Perplexity] Router API (OpenAI chat-completions shape) is the low-change migration target but is private preview",
+   "verdict": "corrected",
+   "correction": "Private preview confirmed (email api@perplexity.ai for access). But the Router is NOT a Sonar replacement: it is direct open-weight model access (perplexity/kimi-k3, glm-5.3, glm-5.3-flash, nemotron-3-ultra) with NO web search and NO citations; Perplexity says to use the Agent API for web-grounded answers. Base URL https://api.perplexity.ai/router/v1, POST /chat/completions, same Perplexity key, answer at choices[0].message.content. Do not use it for search.",
+   "source_quote": "paraphrase: Router quickstart overview paragraph",
+   "source_url": "https://docs.perplexity.ai/docs/router/quickstart.md"
+  },
+  {
+   "claim": "[Perplexity] Setup order is payment method -> buy credits -> key; keys belong to a project created first",
+   "verdict": "corrected",
+   "correction": "Docs add a prerequisite the researcher left out: creating the project asks for organization name, address and TAX details (Settings in the left sidebar) before billing. Then Billing > Add payment method (Stripe; does not charge) > Buy more credits > API keys. Console URLs from docs: https://console.perplexity.ai/project/billing and https://console.perplexity.ai/project/keys (settings is the Settings item in the sidebar). The setup page says admin permissions are required.",
+   "source_quote": "paraphrase: Projects & Billing page, 'Creating and Managing a Project' and 'Setting Up Payment'",
+   "source_url": "https://docs.perplexity.ai/docs/getting-started/projects.md"
+  },
+  {
+   "claim": "[Perplexity] A zero balance blocks calls; a key made at zero balance is not a working key",
+   "verdict": "confirmed",
+   "correction": "Docs say keys are blocked when credits run out. The HTTP status for a blocked key is not documented, so the researcher's claim that zero balance returns 401 invalid_api_key is unverifiable.",
+   "source_quote": "paraphrase: Warning box under Configure Auto Reload",
+   "source_url": "https://docs.perplexity.ai/docs/getting-started/projects.md"
+  },
+  {
+   "claim": "[Perplexity] Minimum credit purchase unknown, assume $5-10",
+   "verdict": "corrected",
+   "correction": "Only published minimum is $10 and it applies to the Stripe Projects CLI path (initial credit and each top-up min $10). The direct console 'Buy more credits' minimum is not published; community posts show users buying $25 and $26. Budget $10. Also reported in the community: purchased credits showing $0 balance (one thread, date unknown) so keep the receipt.",
+   "source_quote": "paraphrase: Stripe Projects doc, 'Billing and credits'",
+   "source_url": "https://docs.perplexity.ai/docs/getting-started/integrations/stripe-projects.md"
+  },
+  {
+   "claim": "[Perplexity] Tier 0 limits: Agent API 1 QPS; Sonar 50 RPM / 5 RPM deep research; $50 = Tier 1; never downgraded",
+   "verdict": "corrected",
+   "correction": "Agent API 1 QPS at Tier 0, 3/8/17/33 QPS at Tiers 1-4, tiers by cumulative purchases ($50, $250, $500, $1,000, $5,000), no downgrade: all confirmed. The Sonar RPM figures no longer appear on the rate-limits page (Router, Agent, Search, Embeddings only), so they are stale. The Agent limit is per ORGANIZATION across all keys, i.e. shared by every Bmapz tenant.",
+   "source_quote": "paraphrase: Rate Limits & Usage Tiers page",
+   "source_url": "https://docs.perplexity.ai/docs/admin/rate-limits-usage-tiers.md"
+  },
+  {
+   "claim": "[Perplexity] Pro subscription not required; pay-as-you-go",
+   "verdict": "confirmed",
+   "correction": "Quickstart card: pay-as-you-go pricing for all APIs, no subscription required.",
+   "source_quote": "paraphrase: Agent API quickstart pricing card",
+   "source_url": "https://docs.perplexity.ai/docs/agent-api/quickstart.md"
+  },
+  {
+   "claim": "[Perplexity] Auto top-up refills below $2; unused credits refundable within 14 days",
+   "verdict": "unverifiable",
+   "correction": "Console label is 'Auto reload' (Billing > Change preferences next to Auto reload); the docs give no $2 threshold. The Help Center article returns HTTP 403 to every fetch, so the 14-day refund rule could not be checked.",
+   "source_quote": "paraphrase: Projects & Billing page; help-center URL returned 403",
+   "source_url": "https://www.perplexity.ai/help-center/en/articles/10354847-api-payment-and-billing"
+  },
+  {
+   "claim": "[Perplexity] 401 means key/billing, 400 means bad model; never debug 401 by changing the model",
+   "verdict": "corrected",
+   "correction": "401 invalid_api_key is returned identically for no key and a bogus key on every route (confirmed live). 400-for-bad-model is documented only for the Router (catalog is the allowlist). Agent API error codes are not in the docs I could fetch (error-handling page is 404). Treat the 400 rule as likely, not confirmed.",
+   "source_quote": "live probe + Router models page paraphrase",
+   "source_url": "https://docs.perplexity.ai/docs/router/models.md"
+  },
+  {
+   "claim": "[Perplexity] approval_required=false, can_test_today=true",
+   "verdict": "confirmed",
+   "correction": "No review, allowlist or waitlist in any Perplexity doc for Agent API. Real gates are money and company details, not approval.",
+   "source_quote": "paraphrase: Projects & Billing prerequisites list (account, admin permission, credit card)",
+   "source_url": "https://docs.perplexity.ai/docs/getting-started/projects.md"
+  },
+  {
+   "claim": "[Apollo] API access is available on ALL Apollo plans including Free (the researcher's headline contradiction resolution)",
+   "verdict": "corrected",
+   "correction": "Apollo's own pages disagree with each other. Create-an-API-key page (updated about a month ago) says API access depends on your plan and tells you to upgrade or talk to sales if you need access. Developer FAQ (updatedAt 2026-09-29) says all plans include at least BASIC access but more advanced functionality is only on certain plans; its integration answer says all plans include API access. Net: a free key can be created, but which endpoints work on Free is not published as a table. Residual risk is real: test the exact endpoints Bmapz calls on the free account before paying.",
+   "source_quote": "paraphrase: docs.apollo.io create-api-key 'API Pricing' callout; Developer FAQ 'What API functionality is included in my Apollo plan?'",
+   "source_url": "https://docs.apollo.io/docs/developer-faqs.md"
+  },
+  {
+   "claim": "[Apollo] GET /api/v1/auth/health returns 200 {\"healthy\":true,\"is_logged_in\":false} with no key",
+   "verdict": "confirmed",
+   "correction": "Reconfirmed live today, and it ALSO returns 200 with is_logged_in:false for a bogus x-api-key. Apollo's own test page says a working key returns is_logged_in:true and that you are ready only when both values are true. So it is a valid probe ONLY if you assert the body, never the status.",
+   "source_quote": "paraphrase: Test an API Key page; live probe",
+   "source_url": "https://docs.apollo.io/docs/test-api-key"
+  },
+  {
+   "claim": "[Apollo] Correct cheap authenticated probe",
+   "verdict": "corrected",
+   "correction": "Best probe: POST https://api.apollo.io/api/v1/usage_stats/api_usage_stats with header x-api-key (0 credits per Apollo; needs a master key or a key scoped to that endpoint). Observed live today with no key: HTTP 422 code AUTH.AUTHENTICATION.API_KEY_REQUIRED; bogus key: HTTP 401 AUTH.AUTHENTICATION.API_KEY_INVALID; valid key lacking scope: documented HTTP 403 API_INACCESSIBLE (this still proves the key is real); valid master key: HTTP 200 with per-endpoint minute/hour/day limits, which also tells you the plan's rate limits. Pair it with the auth/health body check (is_logged_in must be true). GET /api/v1/users/search also returns 401 for a bad key but is master-key-only.",
+   "source_quote": "paraphrase: View API Usage Stats endpoint essentials table (credit usage 0 credits)",
+   "source_url": "https://docs.apollo.io/reference/view-api-usage-stats.md"
+  },
+  {
+   "claim": "[Apollo] auth/health credit cost never confirmed in writing",
+   "verdict": "corrected",
+   "correction": "API Pricing page lists the endpoints that consume credits (enrichment, org search, news search, job postings, conversations, complete person/org info) and states every other endpoint consumes none; auth/health and usage_stats are not in the table, so both are 0 credits.",
+   "source_quote": "paraphrase: API Pricing and Credits page, 'Endpoint Credit Usage' (updatedAt 2026-09-28)",
+   "source_url": "https://docs.apollo.io/docs/api-pricing.md"
+  },
+  {
+   "claim": "[Apollo] Key goes in x-api-key; Bearer silently behaves as unauthenticated",
+   "verdict": "corrected",
+   "correction": "x-api-key is confirmed (docs call it recommended; error body suggests X-Api-Key). Bearer behaviour is not documented; I did not test it with a real key. Trailing spaces/newlines in the key are called out by Apollo as a cause of a false response.",
+   "source_quote": "paraphrase: Test an API Key page, 'False Response' callout",
+   "source_url": "https://docs.apollo.io/docs/test-api-key"
+  },
+  {
+   "claim": "[Apollo] Scoped keys 403 on unselected endpoints; master key avoids it",
+   "verdict": "confirmed",
+   "correction": "Confirmed, with an extra rule: some endpoints (get a list of users, usage stats) only work with a master key. Treat a master key like a password. Creating keys requires Apollo admin or a permission profile that allows it.",
+   "source_quote": "paraphrase: Create an API Key page, 'Master Keys vs. Scoped Keys'; Developer FAQ",
+   "source_url": "https://docs.apollo.io/docs/create-api-key"
+  },
+  {
+   "claim": "[Apollo] Free accounts need a work email for search/enrichment/record-retrieval endpoints",
+   "verdict": "confirmed",
+   "correction": "Confirmed in Developer FAQ; also covers contact matching and adding people to prospects, and says additional eligibility requirements may apply. Paid accounts are not affected. Note bmapz.com MX is Hostinger, so a real @bmapz.com mailbox must exist to receive Apollo's verification email.",
+   "source_quote": "paraphrase: Developer FAQ 'Do I need a work email address'",
+   "source_url": "https://docs.apollo.io/docs/developer-faqs.md"
+  },
+  {
+   "claim": "[Apollo] No published per-plan rate-limit table",
+   "verdict": "refuted",
+   "correction": "Apollo now publishes one: for the listed endpoint groups Free = 50/min, 200/hour, 600/day; Basic/Professional 200/min with 400/hour 2,000/day (one group) or higher; Organization 200/min, 600/hour, 6,000/day. Some groups are 1,000/min for paid plans with no hourly/daily cap; bulk endpoints are lower on Free (20/min, 100/hour). These Free limits are shared by all Bmapz tenants.",
+   "source_quote": "paraphrase: Rate Limits page tables",
+   "source_url": "https://docs.apollo.io/docs/rate-limits"
+  },
+  {
+   "claim": "[Apollo] No approval or review needed; instant",
+   "verdict": "corrected",
+   "correction": "True for creating a key and testing. NOT true for customer launch: Apollo states that integrations whose purpose is sharing, exposing or reselling Apollo data to non-Apollo users require a custom data-licensing contract with Apollo Partnerships. A multi-tenant SaaS returning Apollo results to its own customers from one platform key plausibly falls under that. The alternative is OAuth 2.0 per Apollo user (Partners), which needs an app registered with Apollo; review time is not published.",
+   "source_quote": "paraphrase: Developer FAQ 'Data Licensing' note",
+   "source_url": "https://docs.apollo.io/docs/developer-faqs.md"
+  },
+  {
+   "claim": "[Apollo] Exact app.apollo.io deep link for API keys unknown",
+   "verdict": "corrected",
+   "correction": "Docs give the click path Settings > Integrations > API Keys > Create new key > name + description > select endpoints or toggle Set as master key > Create API key > Copy. Docs link https://developer.apollo.io/#/usage for the Usage tab (rate limits per endpoint) and https://app.apollo.io/#/settings/credits/current for credit usage. Use the click path for the keys screen.",
+   "source_quote": "paraphrase: Create an API Key page",
+   "source_url": "https://docs.apollo.io/docs/create-api-key"
+  },
+  {
+   "claim": "[Hunter] Free plan includes API access with 50 credits/month, no card",
+   "verdict": "confirmed",
+   "correction": "Pricing page: Free $0, 50 credits per month, resetting monthly with no rollover; the API row of the plan comparison lists Free; the API docs have a 'Get a free API key' button; credits are counted the same whether used via web app or API. The tick marks are icons, so this rests on structure plus the docs button, not a prose sentence (medium-high confidence). No card is asked at signup per the free tier framing; not independently verified.",
+   "source_quote": "paraphrase: hunter.io/pricing Free plan card and FAQ on credit counting",
+   "source_url": "https://hunter.io/pricing"
+  },
+  {
+   "claim": "[Hunter] Zero-credit key check: GET /v2/account",
+   "verdict": "confirmed",
+   "correction": "Docs: Account Information 'is free'. Key may be sent as api_key query param, X-API-KEY header, or Authorization: Bearer. Live today: no key and bogus key both return HTTP 401 {errors:[{id:authentication_failed,code:401,details:'No user found for the API key supplied'}]}. Prefer header over query string so the key never lands in logs.",
+   "source_quote": "paraphrase: API docs, Account Information and Authentication sections",
+   "source_url": "https://hunter.io/api-documentation/v2"
+  },
+  {
+   "claim": "[Hunter] Per-endpoint credit cost not verified",
+   "verdict": "corrected",
+   "correction": "Pricing page: Email found = 1 credit, Email verified = 0.5 credit; credits are used for Email Finder, Email Verifier and Domain Search. Docs mark a Discover/domain-count style call and Email Insight as free and not counted against quota. Hunter also exposes a special key test-api-key on the three main endpoints (Domain Search, Email Finder, Email Verifier) that validates parameters and returns a fixed dummy response: a free way to test request shape, but it does NOT prove your real key works.",
+   "source_quote": "paraphrase: pricing credit-cost line and API docs test-api-key paragraph",
+   "source_url": "https://hunter.io/api-documentation/v2"
+  },
+  {
+   "claim": "[Hunter] Rate limits",
+   "verdict": "corrected",
+   "correction": "Not in the original file. Domain Search 15/s and 500/min; Email Finder 15/s and 500/min; Email Verifier 10/s and 300/min; Discover 5/s and 50/min. HTTP 403 means rate limit reached; HTTP 429 means usage (credit) limit reached. Quota exhaustion therefore looks like 429, not 401.",
+   "source_quote": "paraphrase: per-endpoint rate limit sentences in API docs",
+   "source_url": "https://hunter.io/api-documentation/v2"
+  },
+  {
+   "claim": "[Hunter] https://hunter.io/api-keys shows the key directly",
+   "verdict": "corrected",
+   "correction": "That URL requires being signed in (unauthenticated fetch lands on the Hunter sign-in page). Sign up/in first, then open it.",
+   "source_quote": "live fetch: page title 'Sign in - Hunter'",
+   "source_url": "https://hunter.io/api-keys"
+  },
+  {
+   "claim": "[Stability] 25 free credits only if you sign up via Google; username/password gets none",
+   "verdict": "unverifiable",
+   "correction": "platform.stability.ai is a JavaScript single-page app; every docs URL (getting-started, pricing, api-reference, llms.txt) returns an empty 1.6 KB shell to fetch tools, so I could NOT read the official page. A June 22, 2026 third-party guide repeats the same Google-login rule and calls it a one-time grant. Researcher's claim is plausible and consistent with third parties but not verified from Stability today. No recurring free quota exists.",
+   "source_quote": "paraphrase: developer.puter.com Stability pricing guide, updated 2026-06-22",
+   "source_url": "https://developer.puter.com/tutorials/stability-ai-api-pricing/"
+  },
+  {
+   "claim": "[Stability] $1 per 100 credits (1 credit = $0.01)",
+   "verdict": "unverifiable",
+   "correction": "Third-party June 2026 guide: 1 credit = $0.01 and a 1,000-credit top-up costs $10. Minimum purchase and credit expiry are not stated anywhere I could read (the researcher's '30-day expiry' remains unconfirmed).",
+   "source_quote": "paraphrase: puter guide",
+   "source_url": "https://developer.puter.com/tutorials/stability-ai-api-pricing/"
+  },
+  {
+   "claim": "[Stability] Free probe GET https://api.stability.ai/v1/user/balance costs no credits",
+   "verdict": "unverifiable",
+   "correction": "The route is live: no key returns 401 'missing authorization header'; bogus Bearer returns 401 'Incorrect API key provided'. The same is true of /v1/user/account and /v1/engines/list. Whether it costs credits is not in any readable official text; it is a read-only balance call and almost certainly free, but I cannot confirm from today's docs. Real key should return JSON with a credits number.",
+   "source_quote": "live probes",
+   "source_url": "https://api.stability.ai/v1/user/balance"
+  },
+  {
+   "claim": "[Stability] Auth is Authorization: Bearer sk-...; v2beta image routes need Accept header and multipart/form-data",
+   "verdict": "corrected",
+   "correction": "Bearer auth confirmed by live behaviour (POST /v2beta/stable-image/generate/core with bogus Bearer returns 401 'authorization: invalid or missing header value'). Note GET on that path is a 404; it is POST-only. The Accept and multipart requirements were not verifiable because the docs are unreadable.",
+   "source_quote": "live probe",
+   "source_url": "https://api.stability.ai/v2beta/stable-image/generate/core"
+  },
+  {
+   "claim": "[Stability] Per-image credit costs (SDXL from 0.9, Fast Upscaler 2, SD3.5 Flash 2.5, Core 3, Ultra 8, Creative Upscaler 60)",
+   "verdict": "unverifiable",
+   "correction": "Third-party June 2026 guide confirms Core 3, Ultra 8, SD3.5 Medium 3.5, SD3.5 Large 6.5 credits. The other figures could not be checked. Not important: 25 free credits is about 8 Core images.",
+   "source_quote": "paraphrase: puter guide",
+   "source_url": "https://developer.puter.com/tutorials/stability-ai-api-pricing/"
+  },
+  {
+   "claim": "[All four] No approval, review, allowlist or waitlist anywhere (approval_required=false)",
+   "verdict": "confirmed",
+   "correction": "For creating keys and calling APIs this holds for all four. The review-like gates are commercial: Apollo's data-licensing contract for exposing data to non-Apollo users, Perplexity Router private preview (irrelevant if you use the Agent API), and paid-plan quotas.",
+   "source_quote": "paraphrase across docs read",
+   "source_url": "https://docs.apollo.io/docs/developer-faqs.md"
+  },
+  {
+   "claim": "[All four] No IP allowlisting, so Railway's egress IPs do not matter",
+   "verdict": "unverifiable",
+   "correction": "Nothing in the Perplexity, Apollo or Hunter docs I read mentions IP restrictions, but absence of mention is not confirmation; Stability docs unreadable. If a key works from a laptop but not from Railway, check this first.",
+   "source_quote": "absence of evidence",
+   "source_url": "https://docs.apollo.io/docs/create-api-key"
+  }
+ ],
+ "testable_today_without_review": {
+  "value": true,
+  "reasoning": "Yes for all four: keys are self-service and no document describes a review, allowlist or waitlist. What each costs you today: Hunter and Apollo are free (Apollo needs an @bmapz.com work-email account and a mailbox that can receive its verification mail; some endpoints may be plan-gated, so test the exact ones the app calls). Stability is free only for 25 credits via Google login (third-party sourced), otherwise paid. Perplexity needs a card plus a prepaid purchase (budget $10) and company name/address/tax details to create the project; a single Agent API test call costs roughly $0.001 to $0.006. I could not make any authenticated call myself (no keys; I may not create accounts or enter credentials), so every 'works' statement is from official docs plus unauthenticated live probes, not an end-to-end run. For Perplexity test the Agent API (/v1/agent, preset fast) and ALSO whatever path the backend actually uses; do not assume the legacy Sonar call works for a new account."
+ },
+ "customer_launch": {
+  "requires": [
+   "Perplexity: move to Agent API shape (input/preset; read output[] message text and the search_results item for citations), keep a funded balance with Auto reload on, and accept that the org-wide Agent limit is 1 QPS at Tier 0 (3 QPS after $50 cumulative, 8 after $250); all tenants share it, so add queueing/429 handling and cost metering per tenant.",
+   "Apollo: a paid Apollo plan sized to your rate limits (Free is 50/min, 200/hour, 600/day across ALL tenants) AND resolve the data-licensing question: if Bmapz shows Apollo-sourced data to its customers from your single key, Apollo says a custom contract is required (apply via Apollo's partner/API-reseller form; no published SLA). Alternative: each customer connects their own Apollo account through OAuth 2.0 (Partners) after Bmapz registers an app, or customers paste their own keys.",
+   "Hunter: Free (50 credits/month, shared by every tenant) will be exhausted immediately; a paid plan (Starter $49/month or $34/month billed yearly for 2,000 credits; Growth $149 or $104 for 10,000; Scale $299 or $209 for 25,000) or credit packs. Hunter terms on passing data to your end users were not found/verifiable.",
+   "Stability: buy credits (pay as you go at $0.01 per credit; free 25 only once); decide whether customers are charged per image; check licence terms for commercial resale (not verifiable, docs unreadable).",
+   "For all four: read each vendor's API/terms of service for resale or multi-tenant pass-through (Perplexity's terms page returns 403; Hunter's ToS fetched but I did not find a resale clause; Stability not readable), and put per-tenant usage limits in Bmapz so one customer cannot burn the shared quota."
+  ],
+  "realistic_calendar_time": "First connect (all four keys set and probed): about 1.5 to 2.5 hours hands-on today, most of it Perplexity company details/card and Apollo email verification. Customer launch: 1 to 3 days for Perplexity, Hunter and Stability (self-serve upgrades, top-ups, terms reading, metering). Apollo is the long pole: if a data-licensing contract or OAuth partner registration is needed there is no published SLA; plan for 2 to 6 weeks as an estimate (not sourced) or ship Apollo as bring-your-own-key at launch to avoid the dependency.",
+  "source_or_basis": "Apollo Developer FAQ (Data Licensing note) and per-vendor pricing/rate-limit pages; calendar ranges for Apollo are my estimate because Apollo publishes no review SLA."
+ },
+ "corrected_setup_steps": [
+  "PREP (5 min): have ready a credit card, your Google account, business name + address + tax details, and a working @bmapz.com mailbox (bmapz.com mail is hosted at Hostinger, so create e.g. derek@bmapz.com there first; Apollo Free needs a work email). Do the free ones first so you get two green checks before spending money.",
+  "HUNTER (10 min, free): (a) open https://hunter.io/users/sign_up?from=api and create the account; (b) open https://hunter.io/api-keys (must be signed in) and copy the key; (c) verify, zero credits: curl -s https://api.hunter.io/v2/account -H \"X-API-KEY: PASTE_KEY\" -> expect HTTP 200 with your plan and request counts; 401 authentication_failed = wrong key; (d) copy the key back to me / set Railway variable HUNTER_API_KEY. Do NOT test with domain-search or email-finder: Free is only 50 credits/month.",
+  "APOLLO (15 min, free): (a) go to https://www.apollo.io/sign-up and register with the @bmapz.com address (NOT gmail), confirm the email; (b) in the app click Settings > Integrations > API Keys > Create new key; (c) Name: bmapz-production; Description: Bmapz AI backend; toggle 'Set as master key' ON (avoids 403s and is required for the usage probe); click Create API key; Copy the key immediately; (d) verify with two checks: curl -s https://api.apollo.io/api/v1/auth/health -H \"x-api-key: PASTE_KEY\" and require BOTH healthy:true and is_logged_in:true (status 200 alone proves nothing), then curl -s -X POST https://api.apollo.io/api/v1/usage_stats/api_usage_stats -H \"Content-Type: application/json\" -H \"x-api-key: PASTE_KEY\" -> expect 200 with limits (401 = bad key, 403 = key valid but not master/scoped); (e) set Railway variable APOLLO_API_KEY. Then run ONE real call the app uses (e.g. people search) on the free plan to find out if it is plan-gated.",
+  "STABILITY (10 min): (a) open https://platform.stability.ai, click Login and choose 'Continue with Google' (that is the only way the 25 free credits are reported to be granted); (b) open https://platform.stability.ai/account/keys and copy the sk- key (an API key is auto-created on signup per third-party guides); (c) verify without spending credits: curl -s https://api.stability.ai/v1/user/balance -H \"Authorization: Bearer PASTE_KEY\" -> expect JSON with a credits number greater than 0 (401 Incorrect API key = wrong key); (d) set Railway variable STABILITY_API_KEY. If credits are 0, buy $10 (1,000 credits) from the account page.",
+  "PERPLEXITY (25 min, costs about $10): (a) sign in at https://console.perplexity.ai with the Perplexity account; (b) Settings (left sidebar, Project section): enter organization name, address and tax details; (c) open https://console.perplexity.ai/project/billing: Add payment method (does not charge), then Buy more credits (budget $10; console minimum is not published), then Auto reload > Change preferences so production never hits zero; (d) open https://console.perplexity.ai/project/keys, Generate API Key, COPY IT NOW (shown once); (e) verify on the supported surface: curl -s https://api.perplexity.ai/v1/agent -H \"Authorization: Bearer PASTE_KEY\" -H \"Content-Type: application/json\" -d '{\"preset\":\"fast\",\"input\":\"Who is the CEO of Apple? Cite sources.\"}'. Expect HTTP 200. Answer text: output[].content[].text where the output item type is \"message\" (there is NO top-level output_text in raw JSON; output_text exists only in the official SDKs). Sources: the output[] item with type \"search_results\", field results[].url (marker [n] in the text = result id n). Cost per call is in usage.cost.total_cost. (f) Only if the backend still calls Sonar, also try: curl -s https://api.perplexity.ai/v1/sonar -H \"Authorization: Bearer PASTE_KEY\" -H \"Content-Type: application/json\" -d '{\"model\":\"sonar\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply OK\"}]}' and treat success as temporary (and possibly absent on a new account); (g) set Railway variable PERPLEXITY_API_KEY.",
+  "RAILWAY (5 min): in the Railway project open the service behind https://bmapz-production.up.railway.app, Variables tab, add PERPLEXITY_API_KEY, APOLLO_API_KEY, HUNTER_API_KEY, STABILITY_API_KEY with the keys pasted with no trailing space or newline; deploy; confirm the new deployment is Active before testing through the app.",
+  "DECISION FOR DEREK: use the Agent API with preset 'fast' for Perplexity (do not stay on Sonar; do not use the Router, it has no web search). Ship Apollo as owner-only or customer-own-key until Apollo answers the data-licensing question.",
+  "WHAT TO COPY BACK TO ME: the HTTP status and body (with the key removed) of each of the five verify commands, whether Apollo's people search worked on the free plan, the Stability credits number, and the Perplexity balance after purchase."
+ ],
+ "first_connect_blockers": [
+  "PERPLEXITY: new-account access to legacy Sonar is not guaranteed (legacy page is kept 'for customers with continued Sonar access'). If the backend calls Sonar and gets an error, switch to /v1/agent with preset fast rather than debugging keys.",
+  "PERPLEXITY: the backend must read the raw JSON correctly. If it expects choices[0].message.content or top-level citations[] it breaks on the Agent API; if it expects a top-level output_text it also breaks (that is SDK-only). Needs output[] parsing. (Code check belongs to the separate auditor.)",
+  "PERPLEXITY: needs an organization name, address and tax details, a card and a prepaid purchase (budget $10; console minimum unpublished) before any call succeeds; keys are blocked at zero balance (status code undocumented).",
+  "PERPLEXITY: Agent API Tier 0 limit is 1 request per second for the whole organization; a burst or parallel test returns 429 and looks like a broken key.",
+  "APOLLO: auth/health returns 200 with is_logged_in:false for a missing OR bogus key; assert is_logged_in===true, or better call usage_stats (401 bad key, 403 wrong scope, 200 good).",
+  "APOLLO: Free account on a gmail/outlook address is blocked from search, enrichment and record retrieval; register with a real @bmapz.com mailbox (needs a Hostinger mailbox to receive the verification email).",
+  "APOLLO: key must be created by an admin or a permission profile that allows it; scoped keys 403 on unselected endpoints and some endpoints are master-key only; Free plan may still gate specific endpoints (plan matrix not published).",
+  "APOLLO: Free limits 50/min, 200/hour, 600/day; key is sent in x-api-key (not Authorization).",
+  "HUNTER: quota exhaustion shows as HTTP 429 and rate limits as 403, not 401; only 50 credits/month so never use finder/verifier/domain-search as a key test; use GET /v2/account.",
+  "STABILITY: no free credits unless the account was created via Google; zero balance causes a payment/credits error that is easy to mistake for a bad key; official docs unreadable so exact zero-balance status code is unknown.",
+  "STABILITY: image endpoints are POST-only multipart (GET returns 404); do not test with a browser or GET.",
+  "ALL FOUR: Railway variable pasted with a trailing space/newline gives a 401 that looks like a revoked key; confirm the redeploy finished before testing. Key values are shown once (Perplexity, Stability, Apollo)."
+ ],
+ "confidence": "medium",
+ "uncertainties": [
+  "No authenticated call was made to any of the four vendors (no keys; creating accounts or entering credentials is not permitted for me), so 'works with a real key' is inferred from docs and unauthenticated probes only.",
+  "Perplexity: whether POST /chat/completions or /v1/sonar with model sonar actually returns 200 today, in what response shape (legacy choices/citations vs Agent shape), and whether a brand-new account is eligible for Sonar at all. Docs say reformulation is 'rolling out gradually by model'.",
+  "Perplexity: exact HTTP status and body for zero balance, for a bad preset/model on the Agent API, and for 429 (error-handling doc URL is 404).",
+  "Perplexity: minimum credit purchase in the direct console (only the Stripe Projects path states $10); Auto reload threshold; refund policy (Help Center returns 403 to fetchers); free signup credits (none documented); Perplexity API terms of service (403) regarding multi-tenant resale.",
+  "Perplexity: Router private preview access process and lead time (email api@perplexity.ai; no SLA); docs inconsistency on the fast preset model (gpt-6-luna vs gpt-5.6-luna) suggests ids change often.",
+  "Apollo: which endpoints work on a Free plan (the docs contradict each other on 'depends on plan' vs 'all plans include basic access'); paid plan prices (blog figures such as about $119/user/month for Organization are not confirmed from Apollo); Apollo data-licensing contract and OAuth partner-app review timelines (no published SLA); whether Bearer auth is ignored; whether the business entity country affects availability.",
+  "Hunter: free-plan API access rests on the pricing comparison table structure plus the 'Get a free API key' docs button, not a prose sentence; Hunter reselling/pass-through terms not checked; business entity country not known to matter.",
+  "Stability: official docs are a JavaScript app that no fetch tool could read; free-credit rule, price per credit, minimum purchase, credit expiry, balance endpoint cost, per-model credit costs and whether v1 endpoints are deprecated all rest on third-party sources or live 401 probes; business entity country may affect payment/availability.",
+  "Whether Railway egress IPs could be blocked by any vendor (no docs mention it).",
+  "Which Perplexity endpoint, model string, and response parsing the Bmapz backend uses was not checked (code is out of scope); that determines whether the Sonar change is a non-event or an outage."
+ ],
+ "changed_since_2026_09_23": [
+  {
+   "what": "Perplexity's Sonar sunset date (2026-09-27) has passed. Docs now say Sonar Chat Completions support ended, sync and streaming requests keep working by being reformulated as Agent API requests (gradual rollout by model), and async Sonar requests are unsupported.",
+   "impact": "The researcher's 'time bomb on Sunday' framing is out of date: it did not become a clean hard failure, but behaviour is now unspecified and new accounts may not have Sonar access. Use the Agent API.",
+   "evidence_url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview.md"
+  },
+  {
+   "what": "Perplexity's preset mapping changed to sonar->fast, sonar-pro->fast, sonar-reasoning-pro->low, sonar-deep-research->high, with xhigh pushed for deep research.",
+   "impact": "Migration table in the old file is wrong by one tier for pro and reasoning-pro.",
+   "evidence_url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview.md"
+  },
+  {
+   "what": "Perplexity's rate-limit page no longer lists Sonar RPM limits (only Router, Agent, Search, Embeddings); Agent Tier 0 is 1 QPS per organization.",
+   "impact": "The '50 RPM / 5 RPM deep research' figures are stale.",
+   "evidence_url": "https://docs.perplexity.ai/docs/admin/rate-limits-usage-tiers.md"
+  },
+  {
+   "what": "Perplexity legacy Sonar quickstart now carries a 'replaced by the Agent API, kept for customers with continued Sonar access' banner; model catalog has been refreshed (gpt-6 family, claude-sonnet-5-5, claude-opus-5-5, kimi-k3, etc.).",
+   "impact": "Do not hard-code model ids; prefer presets.",
+   "evidence_url": "https://docs.perplexity.ai/docs/legacy/sonar/quickstart.md"
+  },
+  {
+   "what": "Apollo docs were updated on 2026-09-28 (API pricing and credits) and 2026-09-29 (Developer FAQ); FAQ now says all plans include at least basic API access but advanced functionality is only on certain plans, and the create-key page says access depends on plan. A published per-plan rate-limit table exists.",
+   "impact": "The researcher's flat 'all plans include API access' headline is not safe; test endpoints on Free before relying on it. Exact pre-09-23 wording of the FAQ is unknown, so I cannot say which sentence is new.",
+   "evidence_url": "https://docs.apollo.io/docs/developer-faqs.md"
+  },
+  {
+   "what": "Apollo's API gateway returns structured errors today: no key gives HTTP 422 AUTH.AUTHENTICATION.API_KEY_REQUIRED, a bad key gives HTTP 401 AUTH.AUTHENTICATION.API_KEY_INVALID; auth/health still returns 200 healthy:true is_logged_in:false for both.",
+   "impact": "Gives a reliable way to distinguish missing, invalid and unscoped keys; I cannot tell whether this format is new since 09-23.",
+   "evidence_url": "https://api.apollo.io/api/v1/usage_stats/api_usage_stats"
+  },
+  {
+   "what": "Perplexity Router API is still private preview but now documents Anthropic Messages, OpenAI Chat and Responses formats on https://api.perplexity.ai/router/v1 for open-weight models only.",
+   "impact": "No change to recommendation: it is not a web-search replacement.",
+   "evidence_url": "https://docs.perplexity.ai/docs/router/quickstart.md"
+  }
+ ],
+ "costs": [
+  {
+   "item": "Perplexity prepaid credits",
+   "cost": "$10 recommended starting purchase; $10 is the only published minimum (Stripe Projects path); console minimum unpublished",
+   "note": "Add payment method itself does not charge. Unused-credit refund policy unverifiable (Help Center 403). Source: https://docs.perplexity.ai/docs/getting-started/integrations/stripe-projects.md"
+  },
+  {
+   "item": "Perplexity Agent API per call",
+   "cost": "fast Search web_search $0.001 per invocation plus model tokens; Perplexity's low-preset example run $0.0055; standard web_search $0.0025; perplexity/sonar model $0.25 in / $2.50 out per 1M tokens",
+   "note": "Source: https://docs.perplexity.ai/docs/getting-started/pricing.md and /docs/agent-api/models.md. No per-request fee beyond tools and tokens."
+  },
+  {
+   "item": "Perplexity usage tiers (rate limit upgrades)",
+   "cost": "Tier 1 at $50 cumulative purchases (3 QPS), Tier 2 $250 (8 QPS), Tier 3 $500 (17 QPS), Tier 4 $1,000 (33 QPS)",
+   "note": "No published SLA for tier changes; cumulative purchases, never downgraded. Source: rate-limits page."
+  },
+  {
+   "item": "Perplexity AWS Marketplace contract (optional)",
+   "cost": "credits starting at $1,000 on a 1-month contract",
+   "note": "Only reported by search result summary, not read on the page; optional."
+  },
+  {
+   "item": "Apollo Free plan",
+   "cost": "$0",
+   "note": "Rate limits 50/min, 200/hour, 600/day on listed endpoints; some endpoints need a work email and may be plan-gated. Source: https://docs.apollo.io/docs/rate-limits"
+  },
+  {
+   "item": "Apollo paid plans and credits",
+   "cost": "price not verified from Apollo; enrichment costs 1 credit (email/demographics) up to 9 credits per person (+8 if mobile), org enrichment/search 1 credit, news search 1 credit per page",
+   "note": "Third-party blogs claim about $119/user/month for Organization; unconfirmed. Source for credits: https://docs.apollo.io/docs/api-pricing.md"
+  },
+  {
+   "item": "Apollo data-licensing contract (if exposing Apollo data to non-Apollo users)",
+   "cost": "custom, not published",
+   "note": "No published SLA or price. Source: https://docs.apollo.io/docs/developer-faqs.md"
+  },
+  {
+   "item": "Hunter Free",
+   "cost": "$0, 50 credits/month, no rollover",
+   "note": "Email found 1 credit, email verified 0.5 credit; GET /v2/account is free. Source: https://hunter.io/pricing"
+  },
+  {
+   "item": "Hunter paid plans (monthly price / billed yearly per month)",
+   "cost": "Starter $49 / $34 for 2,000 credits per month; Growth $149 / $104 for 10,000; Scale $299 / $209 for 25,000; Enterprise custom",
+   "note": "Credit packs and a 'Data Platform' API-only option also exist (prices not read). Source: https://hunter.io/pricing"
+  },
+  {
+   "item": "Stability AI credits",
+   "cost": "$0.01 per credit; $10 buys 1,000 credits; 25 free credits one time via Google login",
+   "note": "Third-party source (June 2026); official docs unreadable; minimum purchase and expiry unknown. Typical image: Core 3 credits ($0.03), Ultra 8 ($0.08), SD3.5 Medium 3.5, SD3.5 Large 6.5."
+  },
+  {
+   "item": "Waits",
+   "cost": "No review wait for any of the four keys (minutes). Perplexity Router access, Apollo data-licensing contract, Apollo OAuth partner registration: no published SLA.",
+   "note": "Vendor review/response times not published."
+  }
+ ]
+}

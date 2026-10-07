@@ -78,12 +78,16 @@ const GROUPS = [
   },
   {
     key: 'perplexity_prospecting', title: 'Perplexity, Apollo, Hunter, Stability',
-    vars: ['PERPLEXITY_API_KEY', 'APOLLO_API_KEY', 'HUNTER_API_KEY', 'STABILITY_API_KEY'],
+    vars: ['PERPLEXITY_API_KEY', 'HUNTER_API_KEY', 'STABILITY_API_KEY', '(Apollo has NO Railway variable: each company connects its own key in Integrations)'],
     redirect: ['(API keys only, no redirect URIs)'],
     tests: ['perplexity', 'apollo', 'hunter', 'stability'],
     code: [
       'Perplexity moved to the Agent API on 2026-09-27 (Sonar chat completions retired). lib/perplexity.js implements it with the old path as a fallback; the connection test reports which surface answered. NOT live-verified: the first real key settles it.',
       'Apollo\'s health endpoint answers 200 with NO key, so the old test passed for a company with no key; it now checks is_logged_in.',
+      'Apollo is PER-COMPANY ONLY (no platform key). Apollo\'s developer FAQ says exposing Apollo data to people who are not Apollo customers needs a custom data-licensing contract, which one platform key serving every tenant would be. Enrichment no longer reveals personal emails unless the caller opts in (it cost extra credits and exposed personal addresses on every call).',
+      'Perplexity: the Agent API is rate-limited to 1 request per second per ORGANIZATION at the first tier (not per key), so parallel searches can 429 and fall through to the next provider. $10 is a sensible first purchase; the project setup also asks for company name, address and tax details.',
+      'Hunter reports an exhausted monthly quota as HTTP 429 and a rate limit as 403 (the opposite of the usual meaning).',
+      'Stability: image generation still uses the legacy v1 endpoint (maintenance mode, no published sunset); migrating to v2beta is a recorded follow-up.',
     ],
   },
 ];

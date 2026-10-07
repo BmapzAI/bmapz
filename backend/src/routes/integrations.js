@@ -130,7 +130,8 @@ router.get('/status', requireAuth, async (req, res) => {
       email_smtp: !!(k.smtp_host && k.smtp_user),
       email_resend: !!(k.resend_api_key) || envHas('RESEND_API_KEY'),
       // Prospecting
-      apollo: !!(k.apollo_api_key) || envHas('APOLLO_API_KEY'),
+      // Apollo is PER-COMPANY ONLY (no platform key): see the note at the apollo test case.
+      apollo: !!(k.apollo_api_key),
       hunter: !!(k.hunter_api_key) || envHas('HUNTER_API_KEY'),
       lusha: !!(k.lusha_api_key),
       clay: !!(k.clay_api_key),
@@ -294,8 +295,13 @@ router.post('/test/:type', requireAuth, async (req, res) => {
       // `if (r.ok)`, so this test reported "connected" for an account with no key
       // configured at all. `is_logged_in` is the field that actually reflects the key.
       case 'apollo': {
-        const apiKey = clean(k.apollo_api_key || process.env.APOLLO_API_KEY);
-        if (!apiKey) return res.json({ success: false, message: 'Apollo API key not set' });
+        // PER-COMPANY KEY ONLY, deliberately - there is no APOLLO_API_KEY platform fallback. Apollo's developer
+        // FAQ says an integration whose purpose is sharing, exposing or reselling Apollo data to people who are
+        // not Apollo customers needs a custom data-licensing contract with Apollo Partnerships. One platform key
+        // serving every Bmapz tenant is exactly that. Each company brings its own Apollo account, so its own
+        // licence covers its own lookups. Restore the fallback only once such a contract exists.
+        const apiKey = clean(k.apollo_api_key);
+        if (!apiKey) return res.json({ success: false, message: 'Apollo is not connected. Each company connects its own Apollo API key (Apollo > Settings > Integrations > API Keys).' });
         const r = await fetch('https://api.apollo.io/api/v1/auth/health', {
           headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(20000),
@@ -961,8 +967,9 @@ router.post('/apollo/enrich', requireAuth, async (req, res) => {
       .eq('id', req.companyId)
       .single();
 
-    const apiKey = clean(companyRow?.api_keys?.apollo_api_key || process.env.APOLLO_API_KEY);
-    if (!apiKey) return res.status(400).json({ error: 'Apollo API key not configured' });
+    // Per-company key only (no platform fallback): see the apollo case in the test switch above.
+    const apiKey = clean(companyRow?.api_keys?.apollo_api_key);
+    if (!apiKey) return res.status(400).json({ error: 'Apollo is not connected for this company. Add your own Apollo API key in Integrations.' });
     if (!email && !domain) return res.status(400).json({ error: 'email or domain is required' });
 
     // Apollo's People Enrichment page documents these as QUERY parameters (they were sent in a JSON body,
