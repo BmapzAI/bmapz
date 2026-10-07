@@ -1,0 +1,571 @@
+[
+ {
+  "topic": "GOOGLE_PLAY: Google Play Developer Policy Center rules for a wrapped Bmapz AI web app (payments, account deletion, user data, webview/TWA, target API, new-account testing, developer verification, sign-in)",
+  "as_of": "2026-10-07 (all Play Console Help / Policy Center pages were fetched raw today; quotes are copied from the fetched page text. Pages show no 'last updated' date, so 'current' means 'as served today'.)",
+  "findings": [
+   {
+    "requirement": "PAYMENTS: Play Billing is mandatory for any Play-distributed app that requires or accepts payment for in-app features or services. 'Cloud software and services (such as ... business productivity software ...)' is listed explicitly as an example that needs Play Billing, so a B2B SaaS subscription is squarely inside the rule.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Do NOT sell or upgrade starter/growth/scale/enterprise plans (or any add-ons or credits) inside the Android app. Either stay consumption-only (see next findings) or integrate Play Billing (15%-ish fees; not researched here). The consumption-only route is the realistic one.",
+    "quote": "Play-distributed apps requiring or accepting payment for access to in-app features or services, including any app functionality, digital content or goods (collectively “in-app purchases”), must use Google Play’s billing system for those transactions unless Section 3, 8, or 9 applies. ... cloud software and services (such as data storage services, business productivity software, and financial management software).",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/9858738",
+    "confidence": "high"
+   },
+   {
+    "requirement": "PAYMENTS: I found NO B2B / organisation / enterprise exemption. The complete list of 'must not use Play Billing' cases is physical goods, physical services, credit-card/utility bill remittances, peer-to-peer payments, online auctions, tax-exempt donations, gambling, and Payments Center prohibited categories; the FAQ adds clinical services, insurance/stock/tax services, gift cards, loyalty points, 1:1 live services, and digital goods that can only be consumed outside any Play app. None covers SaaS bought by businesses. The FAQ also says category does not matter.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Do not argue 'we are B2B so we are exempt' to Google. Plan on the consumption-only route. (The only enterprise-flavoured exemptions on other Play policies are for 'permanently private' internal-distribution apps, which Bmapz is not.)",
+    "quote": "Does your billing policy change depending on my app category? No. All app categories are subject to Google Play's Payments policy.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/10281818",
+    "confidence": "high"
+   },
+   {
+    "requirement": "PAYMENTS: The exemption that actually fits Bmapz is 'consumption-only' (reader-style): users log in and use a service that was bought elsewhere (your web Stripe Checkout). The catch: nothing at all can be purchasable inside the app.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Ship the Android app as login-and-use only. Remove every purchase surface from the Android build: plan upgrades, seat add-ons, AI-credit top-ups, one-off purchases. Keep subscriptions sold only on ai.bmapz.com via Stripe.",
+    "quote": "Can I offer a consumption-only (reader) app on Google Play? Yes. Google Play allows any app to be consumption-only, even if it is part of a paid service. For example, a user could log in when the app opens and access content paid for somewhere else. Remember, consumption-only means that any product(s) or service(s), whether digital or physical, cannot be purchased from within the app.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/10281818",
+    "confidence": "high"
+   },
+   {
+    "requirement": "PAYMENTS (the exception to the exception): even a consumption-only app may not lead users to another payment method via links, buttons, webviews, messaging, CTAs, listing text, or sign-up flows. A wrapped web app that still shows your Stripe Checkout, pricing page, 'Upgrade' buttons or Stripe Customer Portal inside the WebView/TWA violates this. Allowed: links to administrative info (account management page, privacy policy, help centre) as long as that page does not eventually lead to an alternate payment method; and, for consumption-only apps, plain-text mentions of purchasing options WITHOUT direct links.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "In the Android build (detect Capacitor/TWA user agent or a ?app=android flag) hide or neutralise: Stripe Checkout, Customer Portal link, pricing/upgrade pages and CTAs, trial-expired paywall buttons, and any 'Add card' step in sign-up. Replace with neutral text (e.g. 'Your plan is managed by your account admin'). Be conservative: text that urges buying outside the app is only explicitly blessed for consumption-only apps and only without links. Do not deep-link from the app to /pricing or the Stripe Portal. Provide the web sign-up and billing only outside the app (email, website).",
+    "quote": "Other than the conditions described in Section 3, Section 8, and Section 9, apps may not lead users to a payment method other than Google Play's billing system. This prohibition includes, but is not limited to, leading users to other payment methods via: ... In-app webviews, buttons, links, messaging, advertisements, or other calls to action; and In-app user interface flows, including account creation or sign-up flows ... Also: 'For services and products that are consumption only ..., developers may choose to provide additional information about purchasing options without direct links, including using language like: \"Go to our website to upgrade your subscription to Premium\"'. Also: 'Developers can refer users to administrative information – like an account management page, privacy policy, or to a help center – as long as the webpage does not eventually lead to an alternate payment method prohibited by the Payments policy.'",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/10281818",
+    "confidence": "high"
+   },
+   {
+    "requirement": "PAYMENTS, US ONLY: because of the Epic v. Google injunction (effective 2025-10-29) Google currently does not require Play Billing for US users on phones/tablets and allows link-outs and alternative billing, but only via enrolled programs (launched 2025-12-09) with fees and reporting. A revised 'Modified Injunction' based on a 2026-03-04 settlement had been requested; the page does not say it was entered. Google reserves the right to end the programs. Fees (alternative billing table): auto-renewing subscriptions 10%; other digital items 20% (new installs) / 25% (existing installs); first USD 1M annual earnings 10%. Reporting/payment of fees started 2026-10-01 (ECL download reporting deadline moved to 2026-12-01). The External Content Links program needs enrolment/approval and integration of Google's external-content-links APIs (information screen) - that implies native Android code.",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "Treat this as optional and temporary. Do NOT build on it for launch. Only revisit if US in-app conversion becomes important; it would require Play Console enrolment, API integration (not feasible in a pure TWA/PWA; inference), a customer-support/refund process, and the fee/reporting obligations. Restrict any US link-outs to US users only. The rule that applies everywhere else is unchanged.",
+    "quote": "Google will not require the use of Google Play Billing in apps distributed on the Google Play Store, or prohibit the use of in-app payment methods other than Google Play Billing. ... On March 4, 2026, we entered a new settlement agreement with Epic and the parties have asked the US District Court to enter a revised Modified Injunction. ... Our current policies and programs remain in effect. Developers may continue to link users to external content or to offer alternative billing systems by complying with the following policies and programs (as launched on December 9, 2025)",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/15582165",
+    "confidence": "high"
+   },
+   {
+    "requirement": "PAYMENTS, OTHER REGIONS: alternative billing / link-out programs exist for India, South Korea (alternative billing alongside Play, 4 percentage points off the service fee) and the EEA (DMA programs). I found no program for Brazil or most other countries. Separately, Play Billing's requirement does not apply in a country where Play Billing has not launched.",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "Assume the standard rule (consumption-only, no purchase links) for all users outside the US/EEA/India/South Korea. If the business is in Brazil, nothing special applies; Brazilian users are under the normal rule.",
+    "quote": "Developers selling digital content or services can now offer their users in the EEA an alternative to Google Play's billing system within their apps, subject to program requirements. ... we will offer all developers the ability to offer an alternative billing system alongside Google Play's billing system for users in India and South Korea ... the service fee will be reduced by 4%.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/10281818",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "ACCOUNT DELETION: Any app that lets users create an account in the app must (a) give an in-app path to request deletion of the account and associated data, and (b) give a web link resource where users can request deletion, entered in the Data safety/App content form in Play Console. The in-app path can be satisfied by an in-app link that takes the user to your web deletion resource. Exempt only: permanently private apps and enterprise device-management apps.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Add a visible 'Delete account' item in Settings in the Android build (it may open the web deletion flow), and enter https://ai.bmapz.com/DataDeletion in Play Console's Data deletion field. Fill in the Data deletion questions in the Data safety form.",
+    "quote": "All developers must complete new Data deletion questions in the Data safety form on the App content page in Play Console. ... provide users with an in-app path to delete their app accounts and associated data; and provide a web link resource where users can request app account deletion and associated data deletion. ... As an alternative, you can choose to provide a link within your app that takes users to your app account deletion web resource. ... If your app offers account creation in any part of the app experience, then you still need to offer app account deletion even if some features can be accessed without an account.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/13327111",
+    "confidence": "high"
+   },
+   {
+    "requirement": "ACCOUNT DELETION - WEB PAGE QUALITY: the web link must load, make the deletion pathway prominent, name the app or developer exactly as in the Play listing, and let the user request deletion WITHOUT reinstalling or opening the app. A form or support email is acceptable. If steps are needed first (e.g. cancelling a subscription), say so clearly and offer a support flow. Deactivation/freezing does not count. Data may be retained for security, fraud prevention or regulatory reasons if disclosed in the privacy policy. All data you declare as collected is in scope; you should also ask service providers to delete.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Audit https://ai.bmapz.com/DataDeletion: it must be publicly reachable without login (it is a SPA route; test with JS-light fetch/Google reviewer), mention 'Bmapz AI' exactly as the Play listing and developer name, offer a form or email that works for users who cannot log in, explain the Stripe-subscription cancellation step, and state retention (e.g. invoices) and timing. Make the backend delete per-user rows AND the company-scoped OAuth tokens belonging to that user, and trigger deletion at Supabase/Stripe/other processors. Decide and document what happens to company (tenant) data when the last admin deletes their account.",
+    "quote": "The weblink must be functional (for example, loads without error), relevant in scope (for example, the pathway to request account deletion should be prominently featured and easily discoverable on the page) and reference the app or developer name (that is, as it appears on your store listing in Google Play). ... your web resource should give users a way to request that their data be deleted without sending the user back to the app and requiring them to re-download it to submit their request. ... Temporary account deactivation, disabling, or “freezing” the app account does not qualify as account deletion.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/13327111",
+    "confidence": "high"
+   },
+   {
+    "requirement": "DATA SAFETY FORM: mandatory for every app, must match the privacy policy, and must declare data collected via libraries/SDKs AND via a WebView that your app opens if you control the code delivered through it (exempt only when users browse the open web). Wrapping ai.bmapz.com therefore means declaring everything the web app collects. Data types to expect: email address, name/user IDs, emails, calendar events, files and docs (Drive), photos and videos, other in-app messages (WhatsApp/social), contacts, purchase history, app activity, diagnostics. Transfers to a 'service provider' acting on your instructions are treated separately from 'sharing'. Google does not verify the form; you are responsible for accuracy.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Prepare a data inventory (what Bmapz and its processors receive from Gmail, Calendar, Drive, YouTube, Analytics, Search Console, Ads, Meta/WhatsApp, LinkedIn, X, TikTok, Canva) and answer the form from it: collected = yes for many types; encrypted in transit = yes; users can request deletion = yes (with the web link). Keep it in sync with /PrivacyPolicy.",
+    "quote": "\"Collect\" means transmitting data from your app off a user’s device. ... Webview: It also includes user data collected from a webview which has been opened from your app, if your app is in control of the code/behavior delivered through that webview. You do not need to declare data collection from a webview in which users are navigating the open web. ... You alone are responsible for making complete and accurate declarations in your app’s store listing on Google Play.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/10787469",
+    "confidence": "high"
+   },
+   {
+    "requirement": "PRIVACY POLICY: required in the Play Console field AND inside the app; must disclose access, collection, use, sharing of all user and device data; must name the developer/company or the app; must be a public, non-geofenced, non-PDF, non-editable URL; every app needs one. Personal and sensitive data (explicitly including 'authentication information' and financial/payment information) must be limited to purposes the user reasonably expects, handled securely with modern cryptography, and never sold.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Link https://ai.bmapz.com/PrivacyPolicy in Play Console and inside the app (Settings/login screen). Verify it is reachable without login, not geofenced, labelled 'Privacy Policy', names 'Bmapz AI' / the legal entity as in the Play listing, covers third-party OAuth tokens, per-company token storage, AI/LLM subprocessors, retention and deletion. Encrypt tokens at rest (best practice; Play only requires secure handling and HTTPS) and never sell the data.",
+    "quote": "All apps must post a privacy policy link in the designated field within Play Console, and a privacy policy link or text within the app itself. ... The entity (for example, developer, company) named in the app's Google Play store listing must appear in the privacy policy or the app must be named in the privacy policy. ... Please make sure your privacy policy is available on an active, publicly accessible and non-geofenced URL (no PDFs) and is non-editable. ... Handle all personal and sensitive user data securely, including transmitting it using modern cryptography (for example, over HTTPS). ... Not sell personal and sensitive user data.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/10144311",
+    "confidence": "high"
+   },
+   {
+    "requirement": "PROMINENT DISCLOSURE & CONSENT: if data access is outside what a user would reasonably expect (the policy's own example is collection 'in the background when the user is not engaging with your app'), you need an in-app disclosure (not only in the privacy policy) shown in normal use, followed by affirmative consent. Bmapz's scheduled/automated reading of connected Gmail, Calendar, Drive and social accounts is arguably in this category (my interpretation). Also, July 15 2026 clarification: User Data requirements apply to third-party AI integrations, including limited use, disclosure and consent.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Before each 'Connect' OAuth step in the app, show a plain-language screen: what is read (e.g. Gmail messages), what the AI does with it, who processes it (named AI providers), and require an explicit tap to continue. Do not treat back/dismiss as consent. List AI subprocessors in the privacy policy.",
+    "quote": "Prominent disclosure: You must provide an in-app disclosure of your data access, collection, use, and sharing. The in-app disclosure: Must be within the app itself, not only in the app description or on a website; ... Cannot only be placed in a privacy policy or terms of service. ... We're clarifying that our User Data requirements also apply to third-party AI integrations and that developers remain responsible for ensuring compliance with this policy, including limited use, disclosure and consent.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/10144311",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "GOOGLE API SERVICES USER DATA POLICY (applies to Gmail/Drive/Calendar data regardless of Play): 'Limited Use' - use data only for user-facing features visible in the app, no transfers except narrow cases, no humans reading data without consent/security/legal reasons, no ads, no selling, no credit/lending use. Restricted/sensitive scopes may require an annual third-party security assessment and Letter of Assessment, depending on the API and the number of user grants. This is a Google (not Play) requirement, but Play reviewers and Google OAuth review both apply it.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Keep the Limited Use commitments in the privacy policy and in engineering (no ad use, no human review of Gmail content, no sale). Confirm separately which Gmail/Drive scopes are restricted and whether the annual security assessment is needed; this affects the calendar for public Gmail access more than Play does.",
+    "quote": "Limited Use: ... Limit your use of data to providing or improving user-facing features that are prominent in the requesting application's user interface; ... Applications accessing the product specified scopes (the \"Sensitive and Restricted Scopes\") must demonstrate that they adhere to certain security practices. Depending on the API being accessed and number of user grants or users, applications must pass an annual security assessment and obtain a Letter of Assessment from a Google-designated third party.",
+    "source_url": "https://developers.google.com/terms/api-services-user-data-policy",
+    "confidence": "high"
+   },
+   {
+    "requirement": "GOOGLE OAUTH IN EMBEDDED WEBVIEWS IS PROHIBITED: Google OAuth requests must not be sent to an embedded user-agent under the developer's control. This hits the Capacitor/WebView approach directly: both 'Continue with Google' and every Google integration OAuth popup must run in the system browser/Custom Tab (or native Google sign-in), not inside the app WebView. A TWA/PWA runs in the browser engine itself, so it is not an embedded user-agent (my inference from how TWA works; test it).",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "If Capacitor/WebView: open Google authorization URLs with an external browser (Custom Tab, e.g. Capacitor Browser plugin) and return to the app via a verified Android App Link or custom scheme; do not rely on window.open popups. If TWA/PWA: test popup/redirect flows end to end on a real Android phone. Also verify Supabase's Google sign-in flow behaves the same way.",
+    "quote": "A developer must not direct a Google OAuth 2.0 authorization request to an embedded user-agent under the developer's control. Embedded user-agents include, but are not limited to, software libraries that allow a developer to insert arbitrary scripts, alter the default routing of a request to the Google OAuth server, or access session cookies.",
+    "source_url": "https://developers.google.com/identity/protocols/oauth2/policies",
+    "confidence": "high"
+   },
+   {
+    "requirement": "WEBVIEW / MINIMUM FUNCTIONALITY: Play bans apps whose primary purpose is a webview of a website only WITHOUT the website owner's permission; Bmapz owns ai.bmapz.com, so the webview-spam rule is not a blocker. A separate quality rule rejects apps lacking 'the basic degree of adequate utility as mobile apps'. A thin wrapper is therefore allowed in principle, but a reviewer may judge it low-utility.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Wrapper is acceptable for Google. To lower rejection risk add a few genuinely mobile features (push notifications, deep links, share target, biometric lock, offline error screen) and make sure the first screen is functional, never a blank/loading page. Be ready to state that the website is yours.",
+    "quote": "We don’t allow apps whose primary purpose is to drive affiliate traffic to a website or provide a webview of a website without permission from the website owner or administrator. ... Apps that crash, do not have the basic degree of adequate utility as mobile apps, lack engaging content, or exhibit other behavior that is not consistent with a functional and engaging user experience are not allowed on Google Play.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/9899034",
+    "confidence": "high"
+   },
+   {
+    "requirement": "TRUSTED WEB ACTIVITY (TWA) EXPECTATIONS: TWA opens your PWA from an Android app, Chrome 72+, trust is proven with Digital Asset Links (app and site from the same developer), content should meet the Add-to-Home-Screen (PWA installability) criteria, and the host app cannot read web cookies/localStorage. The Android docs page I fetched says nothing about Play Billing, OAuth or sign-in inside TWA, so those points are unconfirmed.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "If TWA: publish /.well-known/assetlinks.json on ai.bmapz.com (Cloudflare Pages) with the Play app-signing SHA-256 fingerprint, add a valid web manifest + service worker, and run the Lighthouse installability audit. Remember the Payments, Data safety and account deletion rules still apply to a TWA listing because it is a Play-distributed app.",
+    "quote": "Content in a Trusted Web activity is trusted -- the app and the site it opens are expected to come from the same developer. (This is verified using Digital Asset Links.) ... Trusted Web activities need to meet the same Add to Home Screen requirements. ... The host app doesn't have direct access to web content in a Trusted Web Activity or any other kind of web state, like cookies and localStorage.",
+    "source_url": "https://developer.android.com/develop/ui/views/layout/webapps/trusted-web-activities",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "TARGET API LEVEL: since 2026-08-31 new apps and app updates must target Android 16 (API 36) or higher (Wear/Auto 35; TV/XR 34). Extension to 2026-11-01 is available (for updates; new apps are effectively required to meet it now). Existing apps below API 35 become unavailable to new users on newer Android versions. No 2027 deadline is published on that page. Permanently private internal-distribution apps are excepted.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Build the Android shell with targetSdk/compileSdk 36. Check that the chosen tool supports it before starting: current Capacitor version for Capacitor, Bubblewrap/PWABuilder output for TWA (not verified here). If the app includes native libraries, they must support 16 KB memory pages.",
+    "quote": "Starting August 31, 2026: New apps and app updates must target Android 16 (API level 36) or higher to be submitted to Google Play; except for Wear OS, and Android Automotive OS apps, which must target Android 15 (API level 35) or higher, and Android TV and Android XR apps, which must target Android 14 (API level 34) or higher. ... You will be able to request an extension to November 1, 2026 if you need more time to update your app.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/11926878",
+    "confidence": "high"
+   },
+   {
+    "requirement": "NEW-ACCOUNT TESTING (calendar-critical): PERSONAL developer accounts created after 2023-11-13 must run a closed test with at least 12 testers continuously opted in for at least 14 days before they can apply for production access; Production stays disabled until then. Closed testing can only start after app setup is complete. Review of the production application 'usually takes seven days or less, but can occasionally take longer'. The official page and account-creation page apply this to PERSONAL accounts only; ORGANIZATION accounts are not mentioned as subject (inference: not required). Personal accounts also must pass Android-device verification via the Play Console mobile app.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Decision for Derek: (A) Organization account (the page itself says choose organization 'if you’re engaged in commercial ... activities'): requires a free D-U-N-S number, government ID and organization document, plus website verification; avoids the 12-tester/14-day wait; D-U-N-S issuance time is unknown. (B) Personal account: budget at least about 3-4 weeks (recruit 12 testers, 14 days, up to 7+ days review) and keep testers opted in. Start whichever path today; account verification gates everything else.",
+    "quote": "Developers with personal accounts created after November 13, 2023, must run a closed test for their app with a minimum of 12 testers who have been opted in continuously for at least 14 days. When you meet these criteria, you can apply for production access on the Dashboard in Play Console to distribute your app on Google Play. ... Review usually takes seven days or less, but can occasionally take longer. (review sentence from the application workflow summary)",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/14151465",
+    "confidence": "high"
+   },
+   {
+    "requirement": "DEVELOPER ACCOUNT SETUP: US$25 one-time registration fee; two account types; organization accounts need D-U-N-S (free), official government ID, official organization document and (since Feb 2024) website verification; you must verify the account before submitting any app. Business should choose Organization; Play requires Organization for financial, health, VPN and government apps (Bmapz does not appear to fall in these, but the Google Ads/finance-adjacent features should be double-checked).",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "Register under the legal entity that will appear in the privacy policy and store listing. Your country decides which ID/organization documents, D-U-N-S process and tax forms apply; check the country-specific document list in Play Console. Do not pay third parties for a D-U-N-S number (Play warns it is free).",
+    "quote": "There is a US$25 one-time registration fee ... To create a developer account for an organization, you must have a D-U-N-S number. This is a mandatory requirement ... Applying for a D-U-N-S number through Dun & Bradstreet is a completely free process. ... You must verify your developer account before you can submit apps for consideration on Google Play.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/13634885",
+    "confidence": "high"
+   },
+   {
+    "requirement": "ANDROID DEVELOPER VERIFICATION (new, now in force): Play developers must (1) verify identity and (2) register each app package name. Play auto-registers most apps, but apps not registered by 2026-09-30 are removed from Play. Under Android's wider scheme, from 2026-09-30 certified Android 7+ devices in Brazil, Indonesia, Singapore and Thailand block installs of apps from unverified developers from participating stores (global in 2027). Limited-distribution accounts exist for hobbyists/students (up to 20 devices, no ID or fee).",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "After creating the account, complete identity verification and, after the first upload, open Play Console Home / Android developer verification page to confirm the new package name is registered (manual registration = sign and upload a small APK snippet, not the real APK). Pick the final package name early and keep the same signing key. Because testers in Brazil may sideload test builds, prefer Play internal/closed testing tracks over direct APK sharing (sideload exemption for developers is not confirmed - see open questions).",
+    "quote": "Developers with a Google Play Console account will need to complete two tasks to comply with Android developer verification requirements: Verify your identity; Register your app package names. Effective September 30, 2026, all Play packages must be registered to meet Android developer verification requirements. Apps not registered by Sep 30, 2026 will be removed from Play pursuant to the Play Console Requirements policy.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/16984799",
+    "confidence": "high"
+   },
+   {
+    "requirement": "SIGN-IN PARITY: I found NO Google Play rule that requires an equivalent of Sign in with Apple or any minimum set of login methods in the User Data, Payments, Functionality, Spam, Play Console Requirements policies I read. Email+password plus Google is fine for Play. (Absence is based on reading those policy pages in full, not on a search of every Play document.)",
+    "applies_to_bmapz": "no",
+    "bmapz_action": "No extra login provider needed for Google Play. (Apple's own rule is covered by another research topic.) Keep the Google sign-in working in the system browser, not the WebView.",
+    "quote": "No sentence exists to quote; absence confirmed across https://support.google.com/googleplay/android-developer/answer/10144311, /9858738, /9899034, /9898783 and /10788890.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/10144311",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "NEW 2027 SIGN-IN REQUIREMENT (ZERO-TAP RESTORE): from April 2027 apps that support sign-in (optional or mandatory) on phones/tablets must restore the signed-in state when a user moves to a new Android device via device-to-device transfer or cloud backup, using the Android Restore Credentials API (Credential Manager, Android 9+). Block Store integrations in production by 2026-09-30 are accepted; permanently private and enterprise device-management apps are out of scope; regulated apps (finance, healthcare) can request an exemption; games out of scope. The API handles authentication only, not OAuth grants or MFA. 'More details ... will be published in the coming months.'",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Put this on the roadmap now: the Android shell needs a native module (Capacitor plugin or custom Kotlin) that stores a restore key and a backend endpoint that exchanges it for a Supabase session. A pure TWA/PWA cannot call this API itself (inference), so this tilts the choice toward Capacitor or a thin native shell. Not needed for first publication (enforcement April 2027).",
+    "quote": "From April 2027, apps that support user sign-in (optional or mandatory) must support Zero-Tap Sign-In restoration when a user moves from their previous Android device to a new one and selects to restore their data either from a device-to-device transfer or cloud backup. ... The Restore Credentials API is designed exclusively for authentication ... It does not handle secondary authorization requests, like OAuth permission grants, or multi-factor challenges.",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/17492799",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "APP ACCESS FOR REVIEW: if the app is behind login or a paywall you must give Google reviewers working credentials in Play Console: reusable, valid in every location, bypassing 2FA/OTP, in English, test accounts only (never production users), and detailed instructions if sign-in involves other accounts (e.g. 'sign-in with Google'). Paywalled functionality needs access instructions too. An app that cannot be reviewed can be blocked from releases.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Create a permanent demo tenant on a paid plan (e.g. growth) with an email+password reviewer account that needs no 2FA, pre-populated with data, plus sandbox connections (or a recorded walkthrough) for the Google/Meta/LinkedIn/X/TikTok/Canva integrations that a reviewer cannot connect without their own accounts. Put the steps in the App access section of Play Console.",
+    "quote": "Your sign-in details must be accessible at all times, reusable, and valid regardless of user location. ... If your app typically requires a 2-Step verification code or One-time password, make sure to provide reusable login credentials that can bypass these requirements. ... If your app does not require sign-in details but you have functionalities or content behind a subscription paywall, please provide additional instructions or access details that will allow us to fully and freely access and review the app behind the paywall. (the page text was read via a search summary plus the Payments FAQ: 'If your entire app or parts of your app are restricted based on login credentials ... you must provide all required details')",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/15748846",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "OTHER CURRENT PLAY REQUIREMENTS TO NOT MISS: content rating is mandatory ('we don't allow unrated apps'); Android vitals thresholds already enforced (user-perceived crash rate 1.09% overall, ANR 0.47% overall); 16 KB memory-page support needed for any native code; upcoming (Feb 2027) memory and code-optimisation (R8) thresholds, which a WebView-based app can trip on memory.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Complete the IARC content-rating questionnaire, watch crash/ANR in Android vitals during closed testing, and verify any native plugin libraries are 16 KB-page compatible.",
+    "quote": "We're clarifying the Content Ratings policy to indicate that we don't allow unrated apps on Google Play. ... User-perceived crash rate: Threshold of 1.09% overall (average across devices) ... User-perceived ANR rate: Threshold of 0.47% overall",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/17134731",
+    "confidence": "medium"
+   }
+  ],
+  "integration_impacts": [
+   "Biggest design consequence: the Android app must be consumption-only. Hide or disable, in the Android build only, every route to Stripe Checkout, the Stripe Customer Portal, the pricing page, plan-upgrade/credit-top-up buttons and trial-expiry paywall links. Trial sign-up inside the app must not ask for a card. Sell and manage plans only on ai.bmapz.com. Gate this by a runtime flag (Capacitor.isNativePlatform() or a TWA/user-agent marker), not by a separate codebase.",
+   "OAuth redirect URIs can stay as they are: the backend confidential-client flow with https redirect URIs on api.bmapz.com (a domain you own) remains valid for Google. What changes is where the authorization URL is OPENED. Google forbids sending OAuth requests to an embedded WebView you control, so with Capacitor/WebView open every Google flow (Supabase 'Continue with Google' and each Gmail/Calendar/Drive/YouTube/Analytics/Search Console/Ads connect) in the system browser or a Custom Tab, then return to the app via a verified Android App Link on ai.bmapz.com (assetlinks.json) or a custom scheme. Popup + window.opener/postMessage patterns will not work reliably; replace with redirect + deep link, or poll the backend for 'connection completed'.",
+   "For a TWA/PWA the web app runs in Chrome, so the existing popup flows may work mostly unchanged, but the host app has no access to cookies/localStorage and popup behaviour inside a TWA is not documented in what I read: test every OAuth flow on a real Android phone before committing to this approach. Meta, LinkedIn, X, TikTok and Canva have their own embedded-browser rules (outside this topic); the system-browser pattern is the safe common denominator for all of them.",
+   "Add a prominent in-app disclosure/consent screen before each 'Connect' OAuth step (what is read, what AI does with it, who processes it) to satisfy the Prominent Disclosure rule, since scheduled/background processing of Gmail and other accounts is arguably unexpected data use.",
+   "Data deletion: add 'Delete account' in the Android settings (can deep-link to https://ai.bmapz.com/DataDeletion). Make DataDeletion and PrivacyPolicy fully public, un-gated SPA routes that name 'Bmapz AI' exactly as in the Play listing; ensure deletion removes the per-company OAuth tokens a user created, and that revoking/deleting also calls provider revoke endpoints where available. Declare the same behaviour in the Data safety form.",
+   "Data safety form must declare everything the wrapped web app collects (including data from connected Google, Meta/WhatsApp, LinkedIn, X, TikTok and Canva accounts and the tokens), because a webview you control counts as your collection. Keep the Google API Limited Use commitments (no ads, no sale, no human reading of Gmail content) in the privacy policy; check separately whether the Gmail scopes in use require the annual third-party security assessment.",
+   "Reviewer access: build a permanent demo tenant on a paid plan with a password login (no 2FA) and sandbox/recorded integrations, because reviewers cannot use your customers' Google/Meta accounts and the paywall must not block them.",
+   "Roadmap items with dates: target API 36 in the Android build now; closed-test (12 testers x 14 days) only if using a personal account; confirm Android developer verification/package registration right after the first upload; Zero-Tap Restore Credentials support by April 2027 (needs a native module + backend endpoint, which favours Capacitor or a thin native shell over pure TWA/PWA); memory/optimisation vitals thresholds from February 2027.",
+   "A pure PWA (installed from the browser, not from Google Play) would avoid every Play policy above, but also the Play Store listing; I did not find an official statement to cite for that, so treat it as an inference. Any approach that lists on Google Play is bound by Payments, User Data, Data safety and account-deletion rules regardless of whether it is TWA or Capacitor."
+  ],
+  "open_questions": [
+   "Which Android approach will be used (TWA vs Capacitor/WebView vs native shell)? It decides: how Google OAuth is opened, whether Restore Credentials (April 2027) is feasible, how popup flows behave, and whether the Data safety webview clause applies to a TWA (not addressed in the pages I read).",
+   "What is Derek's business country and legal entity? It decides personal vs organization account, D-U-N-S availability and lead time, required ID/organization documents, tax/payment profile setup, and whether the 'organization' choice is practical this month. No official source gave the D-U-N-S processing time.",
+   "Will Google reviewers accept the exact consumption-only wording you choose (neutral text vs 'visit our website')? The Payments page has an apparent tension between 'language that encourages a user to purchase ... outside of the app' being prohibited and the consumption-only examples being allowed; I recommend the most neutral wording, but this cannot be confirmed without a review.",
+   "Is the Epic v. Google settlement/Modified Injunction in force as of today, and for how long will the US link-out and alternative billing programs exist? The official US page (undated) says the parties asked the court to enter a revised injunction; it does not say it was granted. A third-party search summary mentioned a summer 2026 hearing, outcome not confirmed.",
+   "Is the 12-tester/14-day rule definitely not applied to organization accounts created now? The official page speaks only about personal accounts created after 2023-11-13; it does not explicitly state organization accounts are exempt.",
+   "Can developer-owned test builds be sideloaded (APK/adb) in Brazil, Indonesia, Singapore or Thailand after 2026-09-30 for an unverified/new developer, and how do the 'limited distribution' accounts (up to 20 devices) work? I only read the overview page.",
+   "Do current Capacitor and Bubblewrap/PWABuilder versions build with targetSdk 36 out of the box, and do the extension forms apply to brand-new apps (the page only mentions app updates)? Not verified.",
+   "Does the Zero-Tap Restore Credentials requirement apply to TWA/PWA listings, and will 'more details ... in the coming months' add exemptions for web wrappers? Unknown.",
+   "I did not read: Google Play's service-fee page (standard 15%/30% tiers, relevant only if Play Billing is ever used), the 'upcoming US state app store bills' / age-signals page (title seen in the Payments menu), the Play 'user choice billing' pilot, or the Brazil-specific Play requirements. Check these before any decision that depends on them.",
+   "Does sending Gmail/Drive-derived data to third-party LLM APIs fit Google's Limited Use rules? The transfer allowance is limited to providing user-facing features with user consent and no human reading; the policy text I fetched has no AI-training sentence, but the July 2026 Play announcement says User Data rules apply to third-party AI integrations. Needs a legal/OAuth-verification check (and the OAuth app verification topic should cover it).",
+   "Exact fee table for the External Content Links program: the page extraction dropped a column, so only the alternative-billing table (subscriptions 10%, other digital 20%/25%) is stated with confidence."
+  ],
+  "timeline_and_costs": [
+   {
+    "item": "Google Play developer account registration",
+    "cost": "US$25 one-time",
+    "wait": "Identity verification time not stated officially; D-U-N-S (organization) is free but its lead time is not published in the pages I read",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/6112435"
+   },
+   {
+    "item": "Personal account: closed test before production access",
+    "cost": "Free (tester recruitment effort only)",
+    "wait": "At least 14 consecutive days with 12 opted-in testers, then review 'usually seven days or less' (so roughly 3+ weeks end to end, plus setup)",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/14151465"
+   },
+   {
+    "item": "Organization account (avoids the 12-tester/14-day rule per the official wording)",
+    "cost": "US$25 + free D-U-N-S",
+    "wait": "Needs D-U-N-S, government ID, organization document, website verification; time varies and is not published",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/10841920"
+   },
+   {
+    "item": "Target API 36 requirement for new apps and updates",
+    "cost": "Engineering time",
+    "wait": "In force since 2026-08-31; extension (updates) to 2026-11-01",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/11926878"
+   },
+   {
+    "item": "Android developer verification: identity verification + package-name registration",
+    "cost": "Included with the Play account (separate Android Developer Console exists only for outside-Play distribution)",
+    "wait": "Package registration deadline 2026-09-30 already passed; new packages should auto-register, otherwise manual registration",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/16984799"
+   },
+   {
+    "item": "US alternative billing / external content links (optional)",
+    "cost": "Service fees on qualifying transactions: subscriptions 10%; other digital 20% (new installs) or 25% (existing installs); first US$1M annual earnings 10% (alternative-billing table)",
+    "wait": "Reporting and fee payment started 2026-10-01; ECL download reporting deadline 2026-12-01",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/16497028"
+   },
+   {
+    "item": "Zero-tap sign-in restoration (Restore Credentials) for apps with sign-in",
+    "cost": "Engineering time (native module + backend endpoint)",
+    "wait": "Enforced from April 2027",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/17492799"
+   },
+   {
+    "item": "Memory and code-optimisation quality thresholds",
+    "cost": "Engineering time",
+    "wait": "From February 2027",
+    "source_url": "https://support.google.com/googleplay/android-developer/answer/17492799"
+   },
+   {
+    "item": "Google OAuth restricted-scope security assessment (Gmail etc.), if required",
+    "cost": "Paid third-party assessment (amount not in the fetched pages)",
+    "wait": "Annual; lead time not stated here",
+    "source_url": "https://developers.google.com/terms/api-services-user-data-policy"
+   }
+  ]
+ },
+ {
+  "topic": "Apple App Store Review Guidelines applied to Bmapz AI (login, in-app purchase, account deletion, WebView wrapper, privacy, OAuth to third-party accounts)",
+  "as_of": "2026-10-07. Guidelines page fetched today shows no date; the latest announced revision is 2026-06-08 (developer.apple.com/news/?id=a233fmpw), which did not touch 3.1.x, 4.2, 4.8, 5.1.x. Quotes were pulled through a page-summarizing fetch tool, so re-read the exact lines on the official page before relying on a wording in a review appeal.",
+  "findings": [
+   {
+    "requirement": "4.8 Login Services: if the app uses a third-party login (Google Sign-In is named) to set up or authenticate the user's primary account, it must also offer an equivalent login service that limits data to name+email, lets the user hide their email, and does not collect app interactions for advertising without consent (this is what Sign in with Apple is).",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "If the iOS app shows 'Continue with Google' on the sign-in/sign-up screen, you must also ship Sign in with Apple (or another login meeting all three bullets). Cheapest compliant route: hide 'Continue with Google' in the iOS build only and keep email+password (then the app 'exclusively uses your company's own account setup and sign-in systems'). Android keeps Google login. Users who registered on the web only via Google need an in-app way to get in on iOS (forgot-password / set-password / email code), because Apple dislikes sending people to the browser to sign in.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#login-services",
+    "quote": "Apps that use a third-party or social login service (such as Facebook Login, Google Sign-In, Log in with X, Sign In with LinkedIn, Login with Amazon, or WeChat Login) to set up or authenticate the user's primary account with the app must also offer as an equivalent option another login service with the following features:",
+    "confidence": "high"
+   },
+   {
+    "requirement": "4.8 exemptions (exact list). Another login service is not required if: (1) app exclusively uses the company's own account systems; (2) alternative app marketplace; (3) education/enterprise/business app that requires sign-in with an EXISTING education or enterprise account; (4) government/industry citizen ID; (5) client for a specific third-party service where users must sign in to that third-party account directly.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Only exemption (1) realistically fits, and only if Google login is removed from the iOS build. Do NOT rely on the 'business app' exemption: Bmapz lets anyone self-register (trial, personal Gmail), so it does not 'require the user to sign in with an existing ... enterprise account'. Exemption (5) does not fit: Bmapz is its own service, not a client for Google/Meta. The OAuth integrations (Gmail, Meta, LinkedIn, etc.) are connections to channels after sign-in, not the 'primary account', so they do not trigger 4.8 (my reading; the guideline defines primary account as the one used for 'identifying themselves, signing in, and accessing your features').",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#login-services",
+    "quote": "Your app is an education, enterprise, or business app that requires the user to sign in with an existing education or enterprise account.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "3.1.1: features/functionality unlocked inside the app (subscriptions named explicitly) must use In-App Purchase unless an exception applies.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Default assumption: a plan bought on the web with Stripe can be USED in the iOS app only under an exception (best fit is 3.1.3(f), below). Without an exception, Apple expects IAP (15-30% commission). Plan the iOS build so that nothing in it sells, prices, or upgrades a plan.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#in-app-purchase",
+    "quote": "If you want to unlock features or functionality within your app, (by way of example: subscriptions, in-game currencies, game levels, access to premium content, or unlocking a full version), you must use in-app purchase.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "3.1.3 intro: apps in the 'other purchase methods' list may use non-IAP payment but may not, within the app, encourage users to use another method, except on the US storefront and as set out in 3.1.1(a)/3.1.3(a). Communications OUTSIDE the app are allowed.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Outside the US storefront the iOS app must contain no pricing, plan comparison, 'Upgrade', 'Subscribe', 'Buy credits', Stripe Checkout link, Stripe Customer Portal link, or text/QR/email-capture telling people where to pay. You MAY email customers (outside the app) about plans and checkout.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#other-purchase-methods",
+    "quote": "Apps in this section cannot, within the app, encourage users to use a purchasing method other than in-app purchase, except for apps on the United States storefront and as set forth in 3.1.1(a) and 3.1.3(a). Developers can send communications outside of the app to their user base about purchasing methods other than in-app purchase.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "3.1.3(f) Free Stand-alone Apps: a FREE app that is a stand-alone companion to a paid web-based tool does not need IAP, provided there is no purchasing inside the app and no calls to action for purchase outside the app. This is the closest official fit for a web-sold SaaS used from a mobile shell.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Make the iOS app free, sign-in/companion only. Strip every purchase surface (Pricing, Billing, plan-limit 'upgrade' modals, trial-expired 'subscribe' banners, credit top-ups, Stripe Portal) for iOS (e.g. Capacitor.getPlatform()==='ios'), and strip upgrade/checkout URLs from API error payloads sent to app clients. When a plan limit or expired trial is hit, show a neutral message with no instruction to buy or visit a website. In App Review notes state: 'Free companion to a paid web tool; all subscriptions are sold by us directly to businesses on our website; no purchasing or purchase links in this app.' Caveat: the wording says 'stand-alone companion', and a full wrapper that includes billing pages would NOT qualify; also reviewers can still push back, so expect a possible 3.1.1 rejection on first submit.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#other-purchase-methods",
+    "quote": "Free apps acting as a stand-alone companion to a paid web based tool (i.e. VoIP, Cloud Storage, Email Services, Web Hosting) do not need to use in-app purchase, provided there is no purchasing inside the app, or calls to action for purchase outside of the app.",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "3.1.3(c) Enterprise Services: if the app is ONLY sold directly by you to organizations/groups for their employees or students, enterprise users may access previously purchased content/subscriptions. Consumer, single-user, or family sales must use IAP.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Bmapz sells to small businesses and agencies, but anyone can self-serve with a card (including a one-person business), which sits close to 'single user' sales. Use 3.1.3(c) only as a SUPPORTING argument in review notes (organization accounts, company-level plans, seats), not as the main basis. The exemption to the exemption is the word 'only': if any plan is sold to individuals, Apple can say it fails.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#other-purchase-methods",
+    "quote": "If your app is only sold directly by you to organizations or groups for their employees or students (for example professional databases and classroom management tools), you may allow enterprise users to access previously-purchased content or subscriptions. Consumer, single user, or family sales must use in-app purchase.",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "3.1.3(b) Multiplatform Services allows access on iOS to content/subscriptions/features acquired on other platforms or the web, BUT only if those same items are also available as in-app purchases within the app.",
+    "applies_to_bmapz": "no",
+    "bmapz_action": "Do not plan around 3.1.3(b): it does not let you skip IAP, it requires IAP to be offered too. Citing it in review notes without offering IAP invites rejection.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#other-purchase-methods",
+    "quote": "Apps that operate across multiple platforms may allow users to access content, subscriptions, or features they have acquired in your app on other platforms or your web site, including consumable items in multi-platform games, provided those items are also available as in-app purchases within the app.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "3.1.3(a) Reader apps and 3.1.3(g) Advertising Management apps are separate exceptions. Reader = magazines, newspapers, books, audio, music, video. Ad management = apps whose sole purpose is letting advertisers buy/manage ad campaigns.",
+    "applies_to_bmapz": "no",
+    "bmapz_action": "Do not apply for the External Link Account Entitlement (reader apps only) and do not claim reader status. 3.1.3(g) covers buying ads, not paying a SaaS fee, and Bmapz is not 'sole purpose' ad buying, so it does not unlock subscription sales; it is only mildly supportive if ad spend is ever paid in-app.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#other-purchase-methods",
+    "quote": "Apps may allow a user to access previously purchased content or content subscriptions (specifically: magazines, newspapers, books, audio, music, and video).",
+    "confidence": "high"
+   },
+   {
+    "requirement": "US storefront: since the 2025 court decision, apps on the US storefront may include buttons, external links and other calls to action to a web purchase without any entitlement (3.1.1(a), 3.1.3, 3.1.3(a)). Outside the US this stays prohibited unless an entitlement is used.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Optional and not recommended as the foundation. If you want a US-only 'Manage plan on web' link: gate it by the App Store storefront country (StoreKit storefront), not by IP or language; document the gate in review notes (2.3.1(a) bans hidden/dormant features); keep it off every other storefront. Current money status: Apple charges 0% on US link-outs today, but on 2026-08-13 Apple proposed 15% (10% for partner programs, 5% for Small Business Program) to Judge Gonzalez Rogers, not yet approved, and the Supreme Court granted Apple's petition on 2026-06-30 (limited to the contempt question). So the US rule can change; do not build revenue plans on 0%.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#link-to-other-purchase-methods",
+    "quote": "These entitlements are not required for developers to include buttons, external links, or other calls to action in their United States storefront apps.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "StoreKit External Purchase / out-of-app offers outside the US exist only per region and always need an entitlement plus commission: EU storefronts (new single business terms effective 2026-10-01), Japan storefront (iOS 26.2+), Brazil storefront (iOS 26.5+, terms effective 2026-10-01), South Korea. In Japan and Brazil Apple IAP must be shown alongside any alternative payment; out-of-app offer commission is 15% (10% for Small Business Program members and for subscriptions after year one).",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "Do not pursue these for v1. They require signing updated agreements, adding the entitlement (key com.apple.developer.storekit.custom-purchase-link.allowed-regions with the country code), per-country code paths, a ~10-15% Apple commission, and showing IAP next to your own checkout, which means you would need IAP anyway. Rules apply by STOREFRONT of the user, not by where Derek's company is based, so Derek's country does not change them. Treat EU/Japan/Korea fee figures as medium confidence (the fetch tool summarized the pages; Brazil and Japan figures were read from Apple's own support pages).",
+    "source_url": "https://developer.apple.com/support/payment-options-on-the-app-store-in-brazil",
+    "quote": "Apple In-App Purchase must be provided as an option on every screen where your app merchandises a digital good or service for purchase and offers a payment option.",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Static text with no link can still count as an offer: Apple's own Brazil page defines out-of-app offers as directing users to a website to buy 'whether or not using an actionable link', and the guideline bans 'other calls to action'.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Outside the US storefront, even a sentence like 'Subscribe at ai.bmapz.com' or 'Plans start at $X on our website' is risky. Use text that says nothing about buying, prices or where to buy. (This is my inference from the two sources; there is no Apple sentence that says plainly 'plain text is a CTA' in the US-excluded guidelines.)",
+    "source_url": "https://developer.apple.com/support/app-distribution-in-brazil/",
+    "quote": "Developers can provide in-app payments using an alternative payment processor and out-of-app offers that direct users to purchase digital goods and services available on a website in a web browser, whether or not using an actionable link.",
+    "confidence": "low"
+   },
+   {
+    "requirement": "5.1.1(v) Account deletion: if the app supports account creation, it must offer account deletion within the app. Apple's FAQ: the user must be able to INITIATE deletion in the app; deactivation alone is insufficient; a link to a web page is allowed only if it is a direct link to the page where the user can COMPLETE deletion; non-regulated apps should not require email, phone or chat support; manual/slow deletion is acceptable if you tell the user how long and confirm when done; confirm intent/identity steps are allowed; linking out to a browser to register still requires in-app deletion.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "The existing public /DataDeletion page is NOT enough. From the code it is an unauthenticated form (email, optional Instagram username, reason) that creates a 'pending' request processed within 30 days, with a 'questions? email' footer; I also found no self-service account-deletion endpoint in the repo (only admin-initiated auth.admin.deleteUser in backend/src/routes/admin.js). Build: Settings > 'Delete my account' button in the app, shown to the logged-in user, with a confirm step (type DELETE or emailed code), that deletes the user record and personal data (or queues it and shows the promised timeframe and sends a confirmation), and handles the company-owner case (what happens to the company, teammates, connected integrations, active Stripe subscription - cancel it or tell the user). Keep /DataDeletion for Meta/Google/public use. Add token revocation if Sign in with Apple is added.",
+    "source_url": "https://developer.apple.com/support/offering-account-deletion-in-your-app/",
+    "quote": "Apps submitted to the App Store that support account creation must also let people initiate deletion of their account within the app.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "5.1.1(v) social-network clause: the app must let users revoke social network credentials and disable data access from within the app, and 'may not store credentials or tokens to social networks off of the device' and may only use them while the app is in use. Read literally this sits in the Account Sign-In paragraph (apps that use a social network for login).",
+    "applies_to_bmapz": "unclear",
+    "bmapz_action": "Bmapz stores OAuth tokens per company on the server and uses them for scheduled/automated posting, which a literal reading of the last sentence forbids. The sentence is written about social-network login, not about social-media management tools, and I could not find an Apple statement settling it (social schedulers exist on the App Store, but I could not verify how they were approved from an official source). Mitigate: a visible per-integration Disconnect button in the iOS app that revokes at the provider where an API exists and deletes the stored tokens; never use the social account as Bmapz login; explain server-side token use plainly in the privacy policy and in review notes. If a reviewer cites it, the answer is that connection is core functionality ('your core app functionality is [related to] social networks') and access is not required to use the app.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#data-collection-and-storage",
+    "quote": "The app must also include a mechanism to revoke social network credentials and disable data access between the app and social network from within the app. An app may not store credentials or tokens to social networks off of the device and may only use such credentials or tokens to directly connect to the social network from the app itself while the app is in use.",
+    "confidence": "low"
+   },
+   {
+    "requirement": "4.2 Minimum Functionality: the app must go beyond a repackaged website. 4.2.2 adds: other than catalogs, apps shouldn't primarily be marketing materials, advertisements, web clippings, content aggregators, or a collection of links.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "A bare Capacitor/WebView shell of ai.bmapz.com is the classic 4.2 rejection. Build in real native value and show it to the reviewer in review notes: push notifications for approvals/results/automation alerts (opt-in only, see 4.5.4), biometric/Face ID unlock, native navigation/tab bar, native share sheet and camera/photo picker for uploads, deep links, offline shell/graceful offline state, home-screen/lock-screen items if feasible. PWA-only and TWA do not go through Apple review at all; a PWA added from Safari is outside these rules (my inference). Evidence for the 'add native features' advice is third-party (blogs/forums), not Apple, so confidence is medium; Apple publishes no pass checklist. Even push alone is reportedly not enough.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#minimum-functionality",
+    "quote": "Your app should include features, content, and UI that elevate it beyond a repackaged website. If your app is not particularly useful, unique, or \"app-like,\" it doesn't belong on the App Store.",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "2.5.2: apps should be self-contained in their bundles and may not download, install or execute code that introduces or changes features or functionality.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "Prefer bundling the built Vite assets inside the iOS binary (Capacitor default) and calling https://api.bmapz.com from them, instead of pointing the shell at the live ai.bmapz.com via a remote server URL. Remote-loaded web UI is common but is the area where reviewers can cite 2.5.2 and 4.2 together, and it also makes later web changes (e.g. re-adding pricing) a review-evasion risk. Apple has no sentence blessing or banning WebView-loaded first-party sites, so this is my risk judgement, not a quoted rule. Also note CORS: the API must accept the app's origin (to verify; Capacitor's default iOS origin is capacitor://localhost, Android https://localhost, not fetched today).",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#software-requirements",
+    "quote": "Apps should be self-contained in their bundles, and may not read or write data outside the designated container area, nor may they download, install, or execute code which introduces or changes features or functionality of the app, including other apps.",
+    "confidence": "low"
+   },
+   {
+    "requirement": "2.1 App Completeness: provide demo account info for a login-gated app, keep the back end running, and if you legally cannot, a built-in demo mode requires prior Apple approval and must show full features. Apple also says: 'If some features require signing in, provide a valid demo account username and password.'",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Create a permanent reviewer account on a company with an active plan (not a trial that can expire; no 2FA/email-code that the reviewer cannot receive), pre-seeded with sample content, and ideally pre-connected 'sample' integrations, because reviewers will not connect real Meta/Google/TikTok accounts. Put credentials plus a click-path in App Store Connect 'App Review Information'. Make sure every Connect button works or fails gracefully (broken links/dead ends are cited as 2.1). 2.1 is the most common rejection reason (over 40% of unresolved issues).",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#app-completeness",
+    "quote": "include demo account info (and turn on your back-end service!) if your app includes a login. If you are unable to provide a demo account due to legal or security obligations, you may include a built-in demo mode in lieu of a demo account with prior approval by Apple.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "5.1.1(i) Privacy policy: link required in the App Store Connect metadata field AND inside the app, easily accessible; it must identify data collected and uses, confirm third parties give equal protection, and explain retention/deletion and how to revoke consent or request deletion. Apple's app-privacy page also lists the privacy policy URL as required.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Reuse https://ai.bmapz.com/PrivacyPolicy but add: a visible link in the app (Settings/login screen), the retention/deletion and consent-revocation sections, third-party processors including AI providers, and the iOS-specific data. Also keep a Support URL with contact info (1.5).",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#data-collection-and-storage",
+    "quote": "All apps must include a link to their privacy policy in the App Store Connect metadata field and within the app in an easily accessible manner.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "5.1.2(i) (added Nov 2025): you must clearly disclose where personal data is shared with third parties, including third-party AI, and obtain explicit permission before doing so.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Bmapz is an AI marketing product, so this is the most product-specific rule. Add an in-app consent screen on first use (and when new data flows are added) naming the AI providers that receive user/company/lead data, what is sent and why, with a way to withdraw; mirror it in the privacy policy and App Privacy labels. Paid features must not depend on agreeing to unrelated data collection (5.1.1(ii)).",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#data-use-and-sharing",
+    "quote": "You must clearly disclose where personal data will be shared with third parties, including with third-party AI, and obtain explicit permission before doing so.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "App Privacy 'nutrition labels': required for new apps and every update, must include data collected by you AND third-party SDKs, and data collected via web traffic must be declared unless the user is navigating the open web. Email, name and user ID count as Contact Info / User ID.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Because the shell loads Bmapz's own site, everything the web app collects (account email/name/ID, content and prompts, usage analytics, diagnostics, any web SDKs) goes on the label. Content pulled from connected accounts (e.g. Gmail, Drive, social posts, ad accounts) must be mapped to Apple's data types and declared if collected (my mapping inference: Gmail likely 'Emails or Text Messages'). Declare third-party processors (Supabase, Stripe if it sees data, analytics, AI providers). Inventory every data type before filling the form; mismatches with the privacy policy are a rejection cause.",
+    "source_url": "https://developer.apple.com/app-store/app-privacy-details/",
+    "quote": "Data collected via web traffic must be declared, unless you are enabling the user to navigate the open web.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "App Tracking Transparency: permission is needed to 'track', defined as linking your app's user/device data with other companies' data for targeted advertising or ad measurement, or sharing data with data brokers. Examples include sharing email lists with an ad network for retargeting and third-party SDKs that combine data across apps for ads.",
+    "applies_to_bmapz": "depends_on_approach",
+    "bmapz_action": "If the iOS build collects nothing for cross-company advertising, no ATT prompt and no NSUserTrackingUsageDescription are needed. Check: (1) remove Meta Pixel, Google Ads remarketing/Analytics advertising features and similar ad tags from the app build (disable when running natively); (2) review any product feature that uploads email/contact lists to ad networks (custom audiences, conversion APIs). Whether customer-list uploads done on behalf of Bmapz's customers count as 'tracking' is not answered by Apple's text; ask counsel or Apple if the feature exists. Apple's September 16, 2026 EU ATT-prompt change does not alter whether you need ATT.",
+    "source_url": "https://developer.apple.com/app-store/user-privacy-and-data-use/",
+    "quote": "Sharing a list of emails, advertising IDs, or other IDs with a third-party advertising network that uses that information to retarget those users in other developers' apps or to find similar users.",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Google OAuth policy: Google authorization requests must not be sent to an embedded user-agent under the developer's control, i.e. not through an in-app WebView.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "In a Capacitor/WebView build, the current popup (window.open) OAuth pattern cannot simply be reused: Google sign-in and every Google integration (Gmail, Calendar, Drive, YouTube, Analytics, Search Console, Ads) must open in the system browser session (SFSafariViewController or ASWebAuthenticationSession; on Android Chrome Custom Tabs), then return to the app via a universal link / app link or custom scheme. This is a Google rule, not Apple's, but it decides the architecture. Whether Meta, LinkedIn, X, TikTok, Canva block embedded WebViews must be checked per provider (other researchers' topics).",
+    "source_url": "https://developers.google.com/identity/protocols/oauth2/policies",
+    "quote": "A developer must not direct a Google OAuth 2.0 authorization request to an embedded user-agent under the developer's control.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "5.1.1(vii) SafariViewController: it must be used to visibly present information, not hidden or obscured, and not used to track users without consent. 2.5.6: apps that browse the web must use WebKit. 5.2.2: if the app uses/accesses/monetizes access to a third-party service you must be specifically permitted by that service's terms, with authorization provided on request.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "Use SFSafariViewController/ASWebAuthenticationSession visibly for OAuth consent screens (never hidden). Keep proof that each connected platform's terms/app review permits Bmapz's use (Meta app review, Google verification, TikTok, LinkedIn, X API terms), as Apple can request it. Do not build a general in-app browser with a non-WebKit engine.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#data-collection-and-storage",
+    "quote": "If your app uses, accesses, monetizes access to, or displays content from a third-party service, ensure that you are specifically permitted to do so under the service's terms of use. Authorization must be provided upon request.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "2.3.1(a) hidden/dormant/undocumented features: all features and product changes must be described with specificity in Notes for Review and be accessible for review.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "If you use platform- or storefront-based gating (hide billing on iOS, optionally show a link on the US storefront), describe it in the review notes. Never switch on pricing/upgrade UI remotely after approval for non-US storefronts; that is a removal/account-termination risk. List the OAuth integrations and AI features in the notes too.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#accurate-metadata",
+    "quote": "Don't include any hidden, dormant, or undocumented features in your app; your app's functionality should be clear to end users and App Review.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "4.5.4 push notifications: not required for the app to function; no promotions or direct marketing via push unless users opted in via consent language in the app with an in-app opt-out.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "If push is one of your native features to pass 4.2, make it opt-in, functional (alerts about the user's own automations/approvals), no Bmapz promotional pushes, and include an in-app toggle.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#push-notifications",
+    "quote": "Push Notifications must not be required for the app to function, and should not be used to send sensitive personal or confidential information.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "2.3.10: don't include names, icons or imagery of other mobile platforms in the app or metadata, unless approved interactive functionality.",
+    "applies_to_bmapz": "yes",
+    "bmapz_action": "If the wrapped web app or marketing screens show 'Get it on Google Play' / Android badges or mention Android in the iOS build or screenshots, remove them from the iOS build.",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#accurate-metadata",
+    "quote": "don't include names, icons, or imagery of other mobile platforms or alternative app marketplaces in your app or metadata, unless there is specific, approved interactive functionality.",
+    "confidence": "high"
+   },
+   {
+    "requirement": "Age rating and age assurance changes in 2026: the age rating questionnaire now asks about social media capabilities and answers are required for new apps/updates from September 2026; separately Apple announced Texas SB 2420 age-assurance requirements (Declared Age Range API, Significant Change API) effective 2026-06-04.",
+    "applies_to_bmapz": "unclear",
+    "bmapz_action": "Answer the new social-media-capability questions honestly when you submit (Bmapz publishes to social networks for the customer but, as far as I can tell, has no social feed of user content, so likely 'no'). Texas: Apple's notice does not say which app types must implement the APIs and gives no business-app exemption; check the notice and ask Apple/counsel before launch if you will distribute in Texas.",
+    "source_url": "https://developer.apple.com/news/?id=tlur8uvi",
+    "quote": "beginning in September 2026, responses will be required when submitting new apps or updates to the App Store, or when submitting apps for notarization for alternative distribution.",
+    "confidence": "medium"
+   },
+   {
+    "requirement": "Apple Developer Program enrollment: USD 99 per membership year (local currency by region); organization enrollment needs a legal entity (no DBAs/trade names), D-U-N-S number, work email on the company domain and a public website; individual enrollment shows your personal legal name as seller; two-factor authentication required.",
+    "applies_to_bmapz": "depends_on_country",
+    "bmapz_action": "Derek's country determines which legal entity/tax IDs he can enroll with (for example a company registry number to get a D-U-N-S in Brazil); decide individual vs organization before submitting because the seller name shown on the App Store is the personal name for individual accounts. Start the D-U-N-S request first since Apple's page gives no turnaround estimate.",
+    "source_url": "https://developer.apple.com/programs/enroll/",
+    "quote": "The Apple Developer Program is 99 USD per membership year. Prices may vary by region and are listed in local currency during the enrollment process.",
+    "confidence": "high"
+   }
+  ],
+  "integration_impacts": [
+   "Redirect URIs: for the confidential-client code exchange the provider redirect URIs stay as they are (https on the API host, soon https://api.bmapz.com). No provider needs a new custom-scheme redirect IF the API's final hop redirects the system browser to an app deep link after finishing the exchange. So: add a 'client=ios/android' marker in the OAuth state, and after the callback redirect to a Universal Link (https://ai.bmapz.com/... with apple-app-site-association served from that domain via Cloudflare Pages) or a custom scheme instead of closing a popup. This is engineering inference, not an Apple quote.",
+   "Popup flow must change for native: window.open + postMessage popups do not work reliably in a WKWebView wrapper, and Google forbids embedded user-agents. In the app open Google (and, to be safe, all providers) with the system browser session (@capacitor/browser uses SFSafariViewController on iOS) and refresh integration state when the app regains focus. Keep the popup flow for web and for a PWA.",
+   "Sign-in: choose between (A) hide Continue with Google on iOS only and keep email+password (zero Apple extra work; add in-app password-reset/set-password for Google-only users), or (B) add Sign in with Apple. Option B needs the Apple Developer account, a Services ID, a signing key and Supabase config; Supabase documents that the Apple secret must be regenerated every 6 months, the callback is https://<project>.supabase.co/auth/v1/callback, native iOS uses signInWithIdToken, and Apple's full name arrives only on first sign-in. Apple's 2026-08-24 notice says new relay addresses use private.icloud.com, so email allowlists/validation must accept both domains. If you keep Google on iOS you must do B. Android: no Apple rule; keep Google.",
+   "Billing surfaces must be removed or neutralized in the iOS build: Pricing, Billing, Stripe Checkout and Customer Portal links, plan-upgrade modals, trial-ending banners, credit top-ups. The same applies to API responses used by the app (402/403 plan-limit bodies must not carry checkout/upgrade URLs or 'upgrade' wording for app clients). Consider letting the backend know the client type (header) so server messages are neutral. Optional later: a US-storefront-only link, gated by StoreKit storefront and documented in review notes, with the pending-commission risk noted above.",
+   "New backend/UI work Apple makes mandatory: (1) authenticated self-service 'Delete my account' (initiate in-app; deletes record and personal data; handles company owner, teammates, integrations, active Stripe subscription); (2) a per-integration Disconnect that revokes at the provider where possible and deletes stored tokens; (3) an AI third-party data-sharing consent screen; (4) an in-app privacy policy link and support contact.",
+   "Token storage on the server (needed for scheduled posting by Meta/LinkedIn/X/TikTok) conflicts with a literal reading of the last sentence of 5.1.1(v). Keep tokens strictly company-scoped, delete on disconnect/account deletion, describe in the privacy policy and review notes; this is an unresolved reviewer-risk, not a settled rule.",
+   "Review readiness for OAuth-heavy app: App Review will try the app. Provide a demo account with pre-seeded data and, ideally, pre-connected sample integrations or a clearly working sandbox, because Meta/Google/TikTok production scopes and app reviews are separate from Apple's review and reviewers cannot connect real accounts. Make sure integration screens never show dead ends if a provider's app review is still pending.",
+   "Approach matters: Capacitor/WebView or full native app = full App Review Guidelines apply (4.8, 3.1, 5.1, 4.2). PWA (Safari Add to Home Screen) and Android TWA are outside Apple review (PWA) or Apple-irrelevant (TWA), so none of the above Apple restrictions apply to them, but a PWA gives no App Store listing, no reliable push parity and no native OAuth return handling beyond browser behavior. Full native rewrite: same rules, easier to pass 4.2, OAuth via ASWebAuthenticationSession.",
+   "Hosting/domain: serving apple-app-site-association (for Universal Links) and Android assetlinks.json on ai.bmapz.com or api.bmapz.com is required if you return from OAuth via https links; this interacts with the api host move to https://api.bmapz.com, so decide the deep-link host before registering redirect URIs and App IDs.",
+   "SDK requirement horizon: Apple announced (2026-09-09) that starting April 2027 apps must be built with the iOS 27 SDK or later; build the Capacitor project with a current Xcode so the first submission does not need an immediate rebuild."
+  ],
+  "open_questions": [
+   "Will App Review accept 3.1.3(f) (free companion to a paid web tool) for a self-serve trial plus paid SaaS with sign-up inside the app? Apple publishes no worked example; expect a possible first-round 3.1.1 rejection and prepare the review-notes wording.",
+   "Does static text without a link ('manage your plan on our website') count as a prohibited call to action outside the US? Apple's Brazil page treats unlinked text as an out-of-app offer; the global guidelines do not say it plainly.",
+   "Does a literal reading of 5.1.1(v)'s 'may not store credentials or tokens to social networks off of the device' apply to a multi-network marketing automation tool with server-side scheduled posting? No official clarification found; evidence that other schedulers were approved is not from an official source.",
+   "Do customer-list uploads to Meta/Google (custom audiences, conversion APIs), if Bmapz offers them, count as 'tracking' requiring ATT? Apple's text covers sharing email lists with ad networks, but is framed around the app's own users.",
+   "Can credits bought on the web be spent inside the iOS app under 3.1.3(f)? Treat credit top-up screens as purchasing; consumption of already-bought credits is unclear.",
+   "Texas SB 2420 age-assurance requirements: Apple's notice does not state which apps must implement the Declared Age Range / Significant Change APIs or any exemption for business tools.",
+   "Derek's country: affects individual vs organization enrollment (D-U-N-S/company registry), tax and payout forms, and Brazil-specific options only if users are on the Brazil storefront (rules are by storefront, not by developer location).",
+   "Exact US link-out commission after Judge Gonzalez Rogers rules on Apple's 2026-08-13 proposal (15% / 10% / 5% proposed) and after the Supreme Court decides the contempt question (cert granted 2026-06-30, Apple's brief filed 2026-09-14, respondent brief due 2026-11-13). Rates, EU/Japan/Korea figures and the proposed US numbers beyond what Apple's own pages state come from news summaries; verify before committing.",
+   "Apple's StoreKit External Purchase documentation pages are JavaScript-rendered and could not be read by the fetch tool today; the entitlement keys, Info.plist requirements and reporting obligations were not verified from them.",
+   "The guidelines page shows no 'last updated' date and the fetch tool paraphrases/summarizes; re-open the official guideline text for any sentence you will cite to Apple in an appeal.",
+   "Which Apple-approved wording to use for 3.1.3(c) (enterprise): ask whether any plan is sold to a single user; if yes, treat the exception as unavailable.",
+   "Whether bundling the web build locally versus loading the live site (remote URL) changes review outcomes under 2.5.2/4.2: no Apple statement found; the recommendation is a risk judgement.",
+   "Is Capacitor's iOS/Android default origin (capacitor://localhost, https://localhost) what the API CORS and Supabase redirect allow-list need? Not verified today."
+  ],
+  "timeline_and_costs": [
+   {
+    "item": "Apple Developer Program membership",
+    "cost": "USD 99 per membership year (local currency by region); waiver only for nonprofits, accredited educational institutions, government entities",
+    "wait": "Apple's page gives no enrollment time; organization enrollment needs a D-U-N-S number first (turnaround not stated by Apple)",
+    "source_url": "https://developer.apple.com/programs/enroll/"
+   },
+   {
+    "item": "App Review of each submission",
+    "cost": "none",
+    "wait": "Apple says App Review typically reviews at least 50% of submissions in less than 24 hours and 90% in less than 48 hours; first submissions with a WebView/OAuth app often take extra rounds (my expectation, not an Apple statement)",
+    "source_url": "https://developer.apple.com/distribute/app-review/"
+   },
+   {
+    "item": "IAP route (if you decide to sell subscriptions in the iOS app)",
+    "cost": "Apple commission (standard 30%, 15% for Small Business Program members; figures not re-fetched today)",
+    "wait": "Requires StoreKit 2 implementation, subscription groups in App Store Connect, price tiers per country; avoid for v1",
+    "source_url": "https://developer.apple.com/app-store/review/guidelines/#in-app-purchase"
+   },
+   {
+    "item": "US storefront link-out to the web checkout",
+    "cost": "0% commission today; Apple proposed 15% (10% for partner programs, 5% for Small Business Program) on 2026-08-13, not approved; Supreme Court granted review on 2026-06-30 (limited to the contempt question)",
+    "wait": "No entitlement needed; rates may change when the district court rules, no date announced",
+    "source_url": "https://www.supremecourt.gov/docket/docketfiles/html/public/25-1311.html"
+   },
+   {
+    "item": "Out-of-app offers on Brazil/Japan/EU storefronts via StoreKit External Purchase entitlements",
+    "cost": "Brazil and Japan: 15% on out-of-app offers (10% for Small Business Program members and for subscriptions after year one), IAP must be offered alongside; EU: single set of terms effective 2026-10-01 (Core Technology Commission 5%, plus store services commission on link-outs), details medium confidence",
+    "wait": "Requires signing updated Developer Program License Agreement terms and adding the entitlement; Brazil terms effective 2026-10-01, iOS 26.5+; Japan iOS 26.2+",
+    "source_url": "https://developer.apple.com/support/payment-options-on-the-app-store-in-brazil"
+   },
+   {
+    "item": "Sign in with Apple (if chosen instead of hiding Google login on iOS)",
+    "cost": "No separate Apple fee found on the pages read; uses the paid developer account",
+    "wait": "Secret key must be regenerated every 6 months (Supabase docs); private relay domain moving to private.icloud.com per Apple news dated 2026-08-24",
+    "source_url": "https://supabase.com/docs/guides/auth/social-login/auth-apple"
+   },
+   {
+    "item": "New age-rating questions in App Store Connect",
+    "cost": "none",
+    "wait": "Responses required for new apps and updates from September 2026 (already in effect for a first submission today)",
+    "source_url": "https://developer.apple.com/news/?id=tlur8uvi"
+   },
+   {
+    "item": "Build SDK deadline",
+    "cost": "none",
+    "wait": "Apple announced that starting April 2027 apps must be built with the iOS 27 SDK or later",
+    "source_url": "https://developer.apple.com/news/?id=k1mtkt1k"
+   }
+  ]
+ }
+]

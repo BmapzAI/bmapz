@@ -19,6 +19,9 @@ router.get('/payment-method', requireAuth, async (_req, res) => {
 });
 
 async function getStripe() {
+  // new Stripe(undefined) does NOT throw: the failure arrived later as a raw Stripe authentication error returned to
+  // the browser, and the adapter's "not configured" guard (which tests for a falsy client) could never fire.
+  if (!process.env.STRIPE_SECRET_KEY) return null;
   const Stripe = (await import('stripe')).default;
   return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: process.env.STRIPE_API_VERSION || '2024-06-20' });
 }
@@ -67,7 +70,9 @@ router.post('/checkout', requireAuth, requireCompanyAdmin, async (req, res) => {
       companyId: req.companyId,
       plan: plan || plan_id,
       customerEmail: req.dbUser.email,
-      successUrl: success_url || `${process.env.FRONTEND_URL}/billing?success=true`,
+      // {CHECKOUT_SESSION_ID} is replaced by Stripe, so the landing page can confirm the payment itself if the webhook is slow
+      // (Checkout waits for nothing: the redirect and the webhook race).
+      successUrl: success_url || `${process.env.FRONTEND_URL}/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: cancel_url || `${process.env.FRONTEND_URL}/billing?cancelled=true`,
       mode: 'subscription',
     });
@@ -93,6 +98,7 @@ router.post('/portal', requireAuth, requireCompanyAdmin, async (req, res) => {
     }
 
     const stripe = await getStripe();
+    if (!stripe) return res.status(503).json({ error: 'Stripe is not configured on the server (STRIPE_SECRET_KEY missing).' });
     const session = await stripe.billingPortal.sessions.create({
       customer: sub.stripe_customer_id,
       return_url: req.body.return_url || `${process.env.FRONTEND_URL}/billing`,

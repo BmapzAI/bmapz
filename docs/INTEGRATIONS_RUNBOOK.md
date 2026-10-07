@@ -630,5 +630,5 @@ WHAT TO COPY BACK TO ME: the HTTP status and body (with the key removed) of each
 
 ## Mobile apps (Android + iOS)
 
-> Not researched yet. Read the project chat "Web app mobile development" FIRST and record its approach in `AGENT_HANDOFF.md`.
+See `docs/audit-2026-10-06/mobile-research.md`.
 
