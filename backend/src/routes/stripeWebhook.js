@@ -3,6 +3,7 @@ import { toLocalSubscriptionStatus } from '../lib/stripeStatus.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { grantAddon } from './addons.js';
 import { PLAN_MONTHLY_CREDITS, PLAN_SCAN_TOKENS } from '../lib/aiCredits.js';
+import { planForPriceId } from '../lib/stripePlans.js';
 
 const router = Router();
 
@@ -11,6 +12,16 @@ const router = Router();
 // exist, while growth/scale were missing entirely and silently fell back to
 // 1000 — so every paying customer was granted a fraction of what they bought.
 // PLAN_MONTHLY_CREDITS in lib/aiCredits.js is the single source of truth.
+
+// billing_purchases.type is CHECK-constrained to credit_topup|full_scan|extra_user|extra_company_profile|plan_upgrade, while the add-on
+// ids are extra_credit_pack|extra_full_scan|extra_user|extra_company. Inserting the add-on id violated the CHECK for three of the four
+// and the error was discarded, so those purchases left no record.
+const ADDON_PURCHASE_TYPE = {
+  extra_credit_pack: 'credit_topup',
+  extra_full_scan: 'full_scan',
+  extra_user: 'extra_user',
+  extra_company: 'extra_company_profile',
+};
 
 const PLAN_CONTACTS_MAP = {
   trial: 1500,
@@ -83,8 +94,9 @@ router.post('/api/stripe/webhook', async (req, res) => {
         const addonType = session.metadata?.addon_type;
         if (addonType) {
           const quantity = Number(session.metadata?.quantity || 1);
+          let granted;
           try {
-            await grantAddon({
+            granted = await grantAddon({
               companyId,
               type: addonType,
               quantity,
@@ -92,19 +104,39 @@ router.post('/api/stripe/webhook', async (req, res) => {
               grantedBy: 'stripe_webhook',
               provider: 'stripe',
             });
-            await supabaseAdmin.from('billing_purchases').insert({
-              company_id: companyId,
-              type: addonType,
-              amount_brl: (session.amount_total || 0) / 100,
-              status: 'paid',
-              stripe_payment_intent_id: session.payment_intent,
-              payment_provider: 'stripe',
-              provider_reference: session.id,
-            });
           } catch (e) {
             // Swallowed deliberately: grantAddon claims its ledger row FIRST, so a Stripe retry would be told
             // "already granted" and the credits would still be missing. Make it loud and greppable instead.
             console.error(`[stripe webhook] NEEDS MANUAL RECONCILIATION: paid add-on not granted for ${event.id} (${e.message})`);
+            break;
+          }
+          // The purchase record is bookkeeping for a grant that already happened, so a failure here is logged, never retried
+          // (a retry would only be told "already granted"). One row per checkout session.
+          const purchaseType = ADDON_PURCHASE_TYPE[addonType] || addonType;
+          const { data: haveRow, error: haveErr } = await supabaseAdmin
+            .from('billing_purchases')
+            .select('id')
+            .eq('company_id', companyId)
+            .eq('provider_reference', session.id)
+            .eq('type', purchaseType)
+            .limit(1)
+            .maybeSingle();
+          if (!haveErr && !haveRow) {
+            const { error: purchaseErr } = await supabaseAdmin.from('billing_purchases').insert({
+              company_id: companyId,
+              type: purchaseType,
+              quantity,
+              amount_brl: (session.amount_total || 0) / 100,
+              status: 'paid',
+              credits_granted: granted?.credits_granted || 0,
+              scan_tokens_granted: addonType === 'extra_full_scan' ? quantity : 0,
+              stripe_payment_intent_id: session.payment_intent,
+              payment_provider: 'stripe',
+              provider_reference: session.id,
+            });
+            if (purchaseErr) console.error(`[stripe webhook] add-on ${addonType} was granted for ${event.id} but its billing_purchases row failed: ${purchaseErr.message}`);
+          } else if (haveErr) {
+            console.error(`[stripe webhook] add-on purchase lookup failed for ${event.id}: ${haveErr.message}`);
           }
           break;
         }
@@ -239,6 +271,55 @@ router.post('/api/stripe/webhook', async (req, res) => {
           })
           .eq('stripe_customer_id', sub.customer);
         if (subUpdErr) throw subUpdErr;
+
+        // A plan change made in the Stripe Customer Portal produces ONLY this event, carrying the new price id; nothing here used to
+        // look at it, so the customer paid for the new plan and kept the old plan's credits and limits. Map the price back to a plan
+        // (lib/stripePlans.js, from the same env vars checkout is built from) and apply it. Only for a live subscription, only for a
+        // configured price (an unknown price changes nothing), and only when the plan really differs, so replays are no-ops.
+        if (localStatus === 'active' || localStatus === 'trialing') {
+          const newPlan = (sub.items?.data || []).map((item) => planForPriceId(item?.price?.id)).find(Boolean);
+          if (newPlan) {
+            const { data: current, error: curErr } = await supabaseAdmin
+              .from('subscriptions')
+              .select('id, company_id, plan, ai_credits_total, ai_credits_used, topup_credits_purchased')
+              .eq('stripe_customer_id', sub.customer)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (curErr) throw curErr;
+            if (current && current.plan !== newPlan) {
+              const credits = PLAN_MONTHLY_CREDITS[newPlan];
+              const { error: planErr } = await supabaseAdmin
+                .from('subscriptions')
+                .update({
+                  plan: newPlan,
+                  // Used credits are kept: an upgrade is headroom right away, a downgrade takes effect now.
+                  ai_credits_total: credits,
+                  contacts_limit: PLAN_CONTACTS_MAP[newPlan] || 1500,
+                  scan_tokens_total: PLAN_SCAN_TOKENS[newPlan] || 0,
+                })
+                .eq('id', current.id);
+              if (planErr) throw planErr;
+              const delta = credits - (current.ai_credits_total || 0);
+              console.log(`[stripe webhook] plan change from the portal: company ${current.company_id} ${current.plan} -> ${newPlan} (${delta >= 0 ? '+' : ''}${delta} credits)`);
+              // Audit row only for an increase (the ledger has no type for a reduction). The plan write above already happened and is
+              // a repeatable SET, so a failure here is logged rather than retried.
+              if (delta > 0) {
+                const { error: ledgerErr } = await supabaseAdmin.from('credit_transactions').insert({
+                  company_id: current.company_id,
+                  subscription_id: current.id,
+                  type: 'monthly_grant',
+                  feature: 'plan_change',
+                  credits_delta: delta,
+                  credits_after: credits + (current.topup_credits_purchased || 0) - (current.ai_credits_used || 0),
+                  description: `Plan changed in the Stripe portal: ${current.plan} -> ${newPlan} (+${delta} credits)`,
+                  metadata: { from_plan: current.plan, to_plan: newPlan, stripe_event_id: event.id },
+                });
+                if (ledgerErr) console.error(`[stripe webhook] plan-change ledger row failed for ${event.id}: ${ledgerErr.message}`);
+              }
+            }
+          }
+        }
         break;
       }
 

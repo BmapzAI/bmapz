@@ -37,7 +37,7 @@ result, a command output or a quoted official page, never from assumption.**
   Every OAuth redirect URI is built from it: `https://api.bmapz.com/api/oauth/<provider>/callback`. The old `bmapz-production.up.railway.app` host still works
   and may be registered as a SECOND redirect URI while testing, but must be removed from the production Google client before "Verify branding".
 - **Credentials.** There are NO provider credentials in Railway yet (only Supabase, OpenAI, Anthropic, JWT/OAuth-state secrets). Nothing in the integrations
-  is proven against a real account. The 212 passing checks in `backend/tests` (10 files) use fakes and documented response shapes; they prove the code does what it
+  is proven against a real account. The 234 passing checks in `backend/tests` (11 files) use fakes and documented response shapes; they prove the code does what it
   intends, not that the providers behave as documented.
 - **No human has completed a real OAuth connect** since the launch-ticket / nonce / popup rewrite. The first one is the most important event of this phase.
 - **Tests.** `POST /api/integrations/test/<type>` (the Test button on each card) makes a real API call per integration; its messages name the fix.
@@ -107,7 +107,7 @@ The principle: **submit everything with a human reviewer first**, then spend the
 
 - LinkedIn ads campaign bodies are incomplete and the create calls lose the new id (`x-restli-id` header); TikTok Ads needs a separate Business API app and flow that is not built; TikTok publishing is not implemented; X PKCE verifier still travels in the readable `state`.
 - WhatsApp: inbound webhooks may carry a BSUID instead of a phone number; proactive messages outside the 24-hour window must be templates; with no company number the platform number is used for every tenant.
-- Stripe: a plan change made in the Customer Portal does not update plan/credits; `getStripe()` never returns null; success URL lacks the session id; the Stripe SDK is two majors behind (pinned for launch).
+- Stripe: a Customer Portal plan change now updates the plan ONLY if the `STRIPE_PRICE_ID_<PLAN>_<MONTHLY|ANNUAL>` variables are set in Railway (set them with the webhook); `invoice.paid` is not handled (renewals use an app-side 30-day timer); `amount_brl` holds the session currency unconverted; `/api/addons/cancel-annual` is a quote-only stub; the Stripe SDK is two majors behind (pinned for launch). In the Stripe dashboard, either allow plan switching in the Customer Portal settings knowing the sync exists, or leave it off for launch.
 - The Integrations page shows STORED status, not `GET /api/integrations/status`; platform keys set in Railway do not light up the cards until a Test/connect writes status.
 - Google token refresh still exists in two older copies (`routes/messaging.js`, `routes/ads.js`); 192 route-level `catch` blocks still return `err.message` on a 500 (helper `lib/httpError.js`).
 - Perplexity is written to its documented spec and unit-tested but NOT live-verified; the first key settles which surface answers.

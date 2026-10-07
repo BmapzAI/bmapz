@@ -37,12 +37,13 @@ Where you disagree with Claude, say so and show why.
 | `05aac97` | Retry-safe plan grant; Google revoke on disconnect; runbook generator; privacy-policy draft |
 | `f22a005` | AI providers: price table/tiers rebuilt, no `temperature` on Claude 4.7+, reasoning-model OpenAI params, prompt-cache billing, current default/fallback models, image models (the old ones are shut down), `refundFlat` for failed image/edit calls |
 | `2b84008` | Sign-in confirmation uses `/status` -> `oauth_connected` / `oauth_stamp`; return URL carries `prov` |
-| next | test readiness polling, `o1`/`gpt-4.1-nano` out of the static model list, model audit + mobile research saved in `docs/audit-2026-10-06` |
+| `a086430` | model audit + mobile research saved, handoff/prompts/runbook, test readiness polling |
+| next | billing second pass: live-CHECK ledger/purchase types (a paid Full Scan add-on could not be granted), Customer Portal plan sync (`lib/stripePlans.js`), `cancel-annual` made quote-only; test readiness polling, `o1`/`gpt-4.1-nano` out of the static model list, model audit + mobile research saved in `docs/audit-2026-10-06` |
 
 ## How to verify (start here)
 
 ```bash
-node backend/tests/run.mjs            # 10 files, 212 checks; no credentials or database (fake PostgREST where needed)
+node backend/tests/run.mjs            # 11 files, 234 checks; no credentials or database (fake PostgREST where needed)
 npx eslint . --quiet                  # must print nothing; the backend IS linted (that is what catches a missing import after a multi-file edit)
 curl -s https://api.bmapz.com/health  # {"commit","oauth_host"}: the commit must match git HEAD; oauth_host must be api.bmapz.com
 ```
@@ -53,7 +54,8 @@ answers 200 with no key). A test is only evidence if it would fail without valid
 
 **P1. Independent review of the money path.** `routes/stripeWebhook.js`, `routes/billing.js`, `lib/paymentProviders.js`, `lib/stripeStatus.js`.
 - The plan grant is meant to be retry-safe by construction: subscription write SETS a final state; the ledger row carries `metadata.payment_ref = plan:<session id>` and the existing unique index `uq_credit_tx_payment_ref` is the claim; the purchase row is inserted only if absent; every write is checked; every event type now hands the event back (deletes its `webhook_events` row, answers 5xx) on failure. Try to break it: races between two deliveries, a failure between the subscription write and the ledger row (a retry resets `ai_credits_used` to 0 again: is that acceptable?), `grantAddon` (claims its ledger row FIRST, so a failed grant is acknowledged as "already granted" on retry and the paid credits are missing; the catch only logs `NEEDS MANUAL RECONCILIATION`).
-- Still open and not done: a plan change made in the Customer Portal does not update plan/credits/contacts_limit (`customer.subscription.updated` only syncs status; map the price id back to a plan); `invoice.paid` is not handled; `getStripe()` never returns null so the "provider not configured" guard is unreachable; `success_url` lacks `{CHECKOUT_SESSION_ID}`; `"resend"` in `backend/package.json` is an unused dependency; Stripe SDK is `^16` (latest 23) and `apiVersion` defaults to `2024-06-20` (env `STRIPE_API_VERSION` overrides): upgrade together and re-test.
+- DONE 2026-10-07 (verify, do not trust): a Customer Portal plan change now updates plan/credits/contacts/scan tokens (`lib/stripePlans.js`, needs the `STRIPE_PRICE_ID_*` env vars); `getStripe()` returns null without a key; `success_url` carries `{CHECKOUT_SESSION_ID}`; add-on purchases are recorded with legal `billing_purchases.type` values and a paid Full Scan add-on is granted (its ledger type was rejected by the live CHECK). Review `billing-ledger-and-portal.test.mjs` for what it cannot prove (a real Stripe portal event shape, `items.data[].price.id` on your API version, scheduled downgrades via subscription schedules).
+- Still open and not done: `invoice.paid` is not handled (renewals run off an app-side 30-day timer that also keeps granting to `past_due`); `amount_brl` holds the session currency unconverted; `billing_cycle`/`cancel_at_period_end` never synced; `POST /api/addons/cancel-annual` is a quote-only stub (policy needs Derek/counsel); `"resend"` in `backend/package.json` is an unused dependency; Stripe SDK is `^16` (latest 23) and `apiVersion` defaults to `2024-06-20` (env `STRIPE_API_VERSION` overrides): upgrade together and re-test.
 - The live `subscriptions` table allows `trialing|active|past_due|canceled|paused`; Stripe statuses are MAPPED, the constraint is deliberately not widened. Check every place that reads `status`.
 
 **P2. Finish the schema-leak sweep.** 192 route-level `catch` blocks still return `err.message` on a 500, bypassing the global handler in `index.js` that scrubs it (Postgres messages name tables and columns). Helper: `lib/httpError.js` (`sendServerError`). Do NOT use a blind sed (an earlier sed created infinite recursion in `consumeOAuthState`); read each block, because a few deliberately surface a message meant for the user (give those an explicit 4xx `status`).

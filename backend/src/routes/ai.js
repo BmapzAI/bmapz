@@ -214,8 +214,10 @@ async function getCompanyPlan(companyId) {
         {
           company_id: companyId,
           subscription_id: sub.id,
-          type: 'cycle_reset',
-          feature: 'monthly_grant',
+          // The live CHECK allows only usage|topup|monthly_grant|bonus|refund: 'cycle_reset' was rejected and the error discarded,
+          // so no monthly reset ever left a ledger row.
+          type: 'monthly_grant',
+          feature: 'cycle_reset',
           credits_delta: monthlyCredits,
           credits_after: monthlyCredits,
           description: `Monthly cycle reset — +${monthlyCredits} AI credits, +${monthlyScanTokens} scan tokens`,
@@ -952,7 +954,9 @@ async function runAIChat({ companyId, userId, userRole, userEmail, messages, mod
         await supabaseAdmin.from('credit_transactions').insert({
           company_id: companyId,
           subscription_id: subscriptionId,
-          type: 'scan_usage',
+          // 'scan_usage' is not a type the live CHECK accepts (usage|topup|monthly_grant|bonus|refund), so scan consumption was never
+          // logged. It is a zero-credit usage row; metadata.scan_token marks it.
+          type: 'usage',
           feature: action,
           credits_delta: 0, // scans don't burn AI credits
           credits_after: remainingCredits,

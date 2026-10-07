@@ -97,7 +97,10 @@ export async function grantAddon({ companyId, type, quantity = 1, paymentRef = n
   } else if (type === 'extra_full_scan') {
     const tokens = (addon.scan_tokens || 0) * quantity;
     updates.scan_tokens_addon = (sub.scan_tokens_addon || 0) + tokens;
-    txnType = 'scan_addon';
+    // The live credit_transactions CHECK allows only usage|topup|monthly_grant|bonus|refund. 'scan_addon' violated it, and this insert
+    // is the CLAIM made before the grant, so a paid Full Scan token threw here and was never delivered (the webhook only logged it).
+    // The `feature` column already says what it was.
+    txnType = 'bonus';
     txnDesc = `Full Scan token ×${quantity}`;
   } else if (type === 'extra_user' || type === 'extra_company') {
     txnDesc = `${type} ×${quantity} (handled by subscription billing)`;
@@ -243,25 +246,16 @@ router.post('/cancel-annual', requireAuth, requireAdmin, async (req, res) => {
       refund = Math.max(0, +(refundable - fee).toFixed(2));
     }
 
-    // Mark sub cancelled + log the fee transaction
-    await supabaseAdmin.from('subscriptions').update({
-      status: 'cancelled',
-      cancelled_at: now.toISOString(),
-    }).eq('id', sub.id);
-
-    await supabaseAdmin.from('credit_transactions').insert({
-      company_id: req.companyId,
-      subscription_id: sub.id,
-      type: 'cancellation_fee',
-      feature: 'annual_early_cancel',
-      credits_delta: 0,
-      credits_after: 0,
-      description: `Annual cancellation after ${monthsUsed} months — fee R$ ${fee.toFixed(2)}, refund R$ ${refund.toFixed(2)}`,
-      metadata: { fee, refund, months_used: monthsUsed, plan_id: planId, cancelled_by: req.dbUser?.email },
-    });
-
+    // QUOTE ONLY. This route used to "mark the subscription cancelled" and log a fee, but both writes could never succeed against
+    // the live schema (status 'cancelled' violates the CHECK, which spells it 'canceled'; there is no cancelled_at column; the ledger
+    // type 'cancellation_fee' is not allowed) and their errors were discarded, so it answered "cancelled: true" while changing
+    // nothing. It also never cancelled the Stripe subscription or refunded anything, so doing the local write would have locked the
+    // customer out while Stripe kept billing them. Nothing in the app calls it. It now says plainly what it does: compute the
+    // amounts under the policy below. Cancelling and refunding stay a human action in Stripe until the policy (30% of unused
+    // prepaid, minus the discount-recovery fee) is confirmed as lawful for the customer's country and built end to end.
     res.json({
-      cancelled: true,
+      cancelled: false,
+      quote_only: true,
       plan_id: planId,
       months_used: monthsUsed,
       cancellation_fee_brl: fee,
@@ -270,8 +264,8 @@ router.post('/cancel-annual', requireAuth, requireAdmin, async (req, res) => {
       refund_brl: refund,
       refund_percentage: REFUND_PERCENTAGE,
       message: monthsUsed >= 12
-        ? 'Annual subscription cancelled — no fee (completed 12+ months).'
-        : `Annual subscription cancelled after ${monthsUsed} months. Cancellation fee R$ ${fee.toFixed(2)} (recovers the 15% annual discount on months consumed). 30% of unused prepaid is refundable: R$ ${refundable.toFixed(2)}. Net refund R$ ${refund.toFixed(2)}.`,
+        ? 'QUOTE ONLY, nothing was cancelled: no early-cancellation fee applies (12+ months completed).'
+        : `QUOTE ONLY, nothing was cancelled or refunded. If this annual subscription were cancelled after ${monthsUsed} months: cancellation fee R$ ${fee.toFixed(2)} (recovers the 15% annual discount on months consumed). 30% of unused prepaid is refundable: R$ ${refundable.toFixed(2)}. Net refund R$ ${refund.toFixed(2)}.`,
     });
   } catch (err) {
     console.error('[addons/cancel-annual]', err.message);

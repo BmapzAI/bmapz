@@ -11,5 +11,7 @@ ALSO DONE (added 2026-10-07): `audit-llm_models.json` (OpenAI / Anthropic model 
 `mobile-research.md` / `.json` (store rules, OAuth in a native shell, enrolment costs; single-source, not adversarially verified, and written WITHOUT knowing which mobile approach was chosen).
 If a file is absent here, that work is still open: re-run only that piece.
 
+Not an agent audit but worth knowing: on 2026-10-07 every write to the billing tables was compared with the LIVE database constraints (see AGENT_HANDOFF.md, "Money paths, second pass"); `backend/tests/billing-ledger-and-portal.test.mjs` keeps that comparison from rotting.
+
 `docs/INTEGRATIONS_RUNBOOK.md` is generated from the `verify-*.corrected_setup_steps` here: `node docs/tools/gen-runbook.cjs`.
 File names were once mis-assigned by a case-sensitive matcher (the agent had written "stripe-resend" with a hyphen): trust the `group` field INSIDE a file, not only its name.
