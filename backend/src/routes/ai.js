@@ -18,11 +18,14 @@ import {
   DEFAULT_MODEL_PER_PROVIDER,
   defaultModelFor,
   liveModelFor,
+  ANTHROPIC_MID_MODEL,
+  anthropicRejectsSampling,
+  weightedPromptTokens,
   MODEL_TIER,
   PLAN_MODEL_ACCESS,
 } from '../lib/aiCredits.js';
 import { getCompanyBrain, recordOutcomeLearning } from '../lib/companyBrain.js';
-import { getLiveModels } from '../lib/modelRegistry.js';
+import { getLiveModels, getLiveImageModels } from '../lib/modelRegistry.js';
 
 const router = Router();
 
@@ -380,6 +383,35 @@ async function chargeFlat({ companyId, userId, userEmail, action, quantity = 1 }
 }
 
 /**
+ * Give credits back after a charged feature FAILED. chargeFlat deducts BEFORE the provider is called (so a free account
+ * cannot spam an expensive endpoint), which meant a customer was billed 40-320 credits for a 502. Atomic via
+ * refund_ai_credits (service-role only, never takes usage below zero); the ledger row records why.
+ */
+async function refundFlat({ companyId, action, quantity = 1, reason }) {
+  const credits = (FLAT_CREDIT_COST[action] || 1) * Math.max(1, Number(quantity) || 1);
+  const { data: sub } = await supabaseAdmin
+    .from('subscriptions')
+    .select('id, ai_credits_total, topup_credits_purchased')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!sub) return;
+  const { data: newUsed, error } = await supabaseAdmin.rpc('refund_ai_credits', { p_subscription_id: sub.id, p_credits: credits });
+  if (error) throw error;
+  await supabaseAdmin.from('credit_transactions').insert({
+    company_id: companyId,
+    subscription_id: sub.id,
+    type: 'refund',
+    feature: action,
+    credits_delta: credits,
+    credits_after: (sub.ai_credits_total || 0) + (sub.topup_credits_purchased || 0) - (Number(newUsed) || 0),
+    description: `${action} refunded: ${reason}`,
+    metadata: { refund: true, action, reason },
+  });
+}
+
+/**
  * Deduct credits from the active subscription and log the transaction.
  * Returns { remaining } or throws if insufficient credits.
  */
@@ -548,7 +580,7 @@ function categorizeProviderError(err, providerLabel) {
 // Last-resort retry targets. These were literal ids ("stable for a long time"), and the
 // Anthropic one has since been RETIRED, so the retry itself failed. They now resolve
 // against the live catalog (lib/aiCredits.js liveModelFor), so they follow the provider.
-const anthropicFallback = () => liveModelFor('claude-3-5-sonnet-20241022', 'anthropic');
+const anthropicFallback = () => liveModelFor(ANTHROPIC_MID_MODEL, 'anthropic');
 function resolveAnthropicModel(requested) {
   if (!requested) return anthropicFallback();
   return liveModelFor(requested, 'anthropic');
@@ -566,8 +598,15 @@ async function callOpenAI({ companyId, settings, messages, model, temperature, m
   if (system) msgs.push({ role: 'system', content: system });
   msgs.push(...(messages || []));
 
-  const params = { model: openaiModel, messages: msgs, temperature };
-  if (max_tokens) params.max_tokens = max_tokens;
+  // o-series and gpt-5.x reasoning models reject `max_tokens` (they take max_completion_tokens) and any non-default
+  // temperature, and the 400 mentions "model" so it was read as INVALID_MODEL and silently retried on gpt-4o-mini,
+  // billed as that. max_completion_tokens is accepted by every current chat model, so it is used for all of them.
+  const reasoning = /^(o\d|gpt-5)/i.test(openaiModel);
+  const params = { model: openaiModel, messages: msgs };
+  if (!reasoning && temperature != null) params.temperature = temperature;
+  // A reasoning model also spends this budget on hidden reasoning, so a tight cap (a 200-token JSON reply) comes back
+  // EMPTY and is still billed; give those models headroom.
+  if (max_tokens) params.max_completion_tokens = reasoning ? max_tokens + 2000 : max_tokens;
   if (response_format) params.response_format = response_format;
 
   try {
@@ -632,8 +671,9 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
     model: anthropicModel,
     messages: anthropicMessages,
     max_tokens: max_tokens || 4096,
-    temperature,
   };
+  // Claude 4.7+ answers HTTP 400 to any non-default temperature (lib/aiCredits.js anthropicRejectsSampling).
+  if (temperature != null && !anthropicRejectsSampling(anthropicModel)) params.temperature = temperature;
   // Prompt caching: if system prompt is substantial (>1KB), mark it as cacheable.
   // Anthropic charges 10% of normal input cost on cache hits — huge savings on
   // repeated calls with the same system prompt (e.g. AI Sales Agent context).
@@ -647,34 +687,34 @@ async function callAnthropic({ companyId, settings, messages, model, temperature
     }
   }
 
-  try {
-    const response = await client.messages.create(params);
+  const shape = (response, modelUsed) => {
+    const u = response.usage || {};
+    const prompt = weightedPromptTokens(u);
     return {
       content: response.content[0]?.text || '',
-      usage: {
-        prompt_tokens: response.usage?.input_tokens,
-        completion_tokens: response.usage?.output_tokens,
-        total_tokens: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
-      },
+      // input_tokens EXCLUDES prompt-cache reads and writes; billing on it alone charged only the uncached tail of every
+      // cached call (the SDR agent and Company Brain, which resend large system prompts). See weightedPromptTokens.
+      usage: { prompt_tokens: prompt, completion_tokens: u.output_tokens, total_tokens: prompt + (u.output_tokens || 0) },
       provider_used: 'anthropic',
-      model_used: anthropicModel,
+      model_used: modelUsed,
     };
+  };
+
+  try {
+    return shape(await client.messages.create(params), anthropicModel);
   } catch (err) {
+    // A model our pattern does not know about can still reject sampling parameters. Retry once without them.
+    if (err?.status === 400 && params.temperature !== undefined && /temperature|top_p|top_k/i.test(String(err.message || ''))) {
+      const { temperature: _t, ...withoutSampling } = params;
+      return shape(await client.messages.create(withoutSampling), anthropicModel);
+    }
     const cat = categorizeProviderError(err, 'Anthropic');
     // Retry with known-good fallback model if invalid model
     if (cat.kind === 'INVALID_MODEL' && anthropicModel !== anthropicFallback()) {
       console.warn(`[ai] Anthropic model ${anthropicModel} invalid; retrying with ${anthropicFallback()}`);
-      const response = await client.messages.create({ ...params, model: anthropicFallback() });
-      return {
-        content: response.content[0]?.text || '',
-        usage: {
-          prompt_tokens: response.usage?.input_tokens,
-          completion_tokens: response.usage?.output_tokens,
-          total_tokens: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
-        },
-        provider_used: 'anthropic',
-        model_used: anthropicFallback(),
-      };
+      // The fallback is a current model: never carry sampling parameters over to it.
+      const { temperature: _drop, ...noSampling } = params;
+      return shape(await client.messages.create({ ...noSampling, model: anthropicFallback() }), anthropicFallback());
     }
     err._category = cat;
     throw err;
@@ -1099,7 +1139,7 @@ router.get('/diagnose', requireAuth, requireCompanyAdmin, async (req, res) => {
   // Live test: send a minimal "ping" to each configured provider
   if (diag.openai.has_key) {
     try {
-      const result = await callOpenAI({ companyId: req.companyId, settings, messages: [{ role: 'user', content: 'ping' }], model: null, temperature: 0, max_tokens: 5, system: null });
+      const result = await callOpenAI({ companyId: req.companyId, settings, messages: [{ role: 'user', content: 'ping' }], model: null, max_tokens: 5, system: null });
       diag.openai.test_result = { ok: true, model_used: result.model_used };
     } catch (err) {
       const cat = err._category || categorizeProviderError(err, 'OpenAI');
@@ -1108,7 +1148,7 @@ router.get('/diagnose', requireAuth, requireCompanyAdmin, async (req, res) => {
   }
   if (diag.anthropic.has_key) {
     try {
-      const result = await callAnthropic({ companyId: req.companyId, settings, messages: [{ role: 'user', content: 'ping' }], model: null, temperature: 0, max_tokens: 5, system: null });
+      const result = await callAnthropic({ companyId: req.companyId, settings, messages: [{ role: 'user', content: 'ping' }], model: null, max_tokens: 5, system: null });
       diag.anthropic.test_result = { ok: true, model_used: result.model_used };
     } catch (err) {
       const cat = err._category || categorizeProviderError(err, 'Anthropic');
@@ -1386,7 +1426,8 @@ router.post('/transcribe', requireAuth, async (req, res) => {
     const buffer = Buffer.from(audio_base64, 'base64');
     const file = await toFile(buffer, filename, { type: 'audio/webm' });
 
-    const params = { file, model: 'whisper-1' };
+    // whisper-1 shuts down 2027-02-26: set OPENAI_TRANSCRIBE_MODEL to the replacement before then.
+    const params = { file, model: process.env.OPENAI_TRANSCRIBE_MODEL || 'whisper-1' };
     if (language) params.language = language;
 
     const transcription = await client.audio.transcriptions.create(params);
@@ -1405,27 +1446,29 @@ router.post('/transcribe', requireAuth, async (req, res) => {
 // ─── Image generation ─────────────────────────────────────────────────────────
 // Valid OpenAI IMAGE models only — company settings sometimes hold a CHAT model
 // in ai_image_model (which made images.generate 404 with "model not available").
-const OPENAI_IMAGE_MODELS = ['gpt-image-1', 'dall-e-3', 'dall-e-2'];
+//
+// gpt-image-1 was SHUT DOWN on 2026-10-01 and dall-e-2/dall-e-3 on 2026-05-12, so the old list made every OpenAI image
+// call fail (and every /edit-image call, which used gpt-image-1 only). Resolution order: OPENAI_IMAGE_MODELS (explicit,
+// comma-separated), else the gpt-image-* models the OpenAI account really lists (newest first), else the names OpenAI's
+// deprecations page gives as the replacements - UNVERIFIED against a live key, since none exists yet.
+// flare = fast generation, sunburst = editing precision (OpenAI image guide, per the audit).
+const IMAGE_MODEL_DEFAULTS = ['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'];
+function openaiImageModels(forEdit = false) {
+  const fromEnv = (process.env.OPENAI_IMAGE_MODELS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (fromEnv.length) return fromEnv;
+  const live = getLiveImageModels();
+  const list = live.length ? live : IMAGE_MODEL_DEFAULTS;
+  return forEdit ? [...list].sort((x, y) => Number(/sunburst/.test(y)) - Number(/sunburst/.test(x))) : list;
+}
 
-// Each image model accepts different size/quality values; map the request onto
-// whatever the attempted model supports instead of failing.
-function imageParamsFor(model, size, quality) {
+// Map the request onto whatever the model supports instead of failing.
+function imageParamsFor(size, quality) {
   const landscape = /^(1792|1536|1600|1920)x/.test(size);
   const portrait = /x(1792|1536|1600|1920)$/.test(size);
-  if (model === 'gpt-image-1') {
-    return {
-      size: landscape ? '1536x1024' : portrait ? '1024x1536' : '1024x1024',
-      quality: quality === 'hd' || quality === 'high' ? 'high' : 'medium',
-    };
-  }
-  if (model === 'dall-e-3') {
-    return {
-      size: landscape ? '1792x1024' : portrait ? '1024x1792' : '1024x1024',
-      quality: quality === 'hd' || quality === 'high' ? 'hd' : 'standard',
-    };
-  }
-  // dall-e-2: square only, no quality param
-  return { size: '1024x1024', quality: undefined };
+  return {
+    size: landscape ? '1536x1024' : portrait ? '1024x1536' : '1024x1024',
+    quality: quality === 'hd' || quality === 'high' ? 'high' : 'medium',
+  };
 }
 
 async function generateWithStability(settings, prompt, n) {
@@ -1446,6 +1489,15 @@ async function generateWithStability(settings, prompt, n) {
 // image model, then Stability — mirroring the resilience of the chat pipeline.
 router.post('/generate-image', requireAuth, async (req, res) => {
   const { prompt, size = '1024x1024', quality = 'standard', n = 1 } = req.body;
+  const imageUnits = Math.min(4, Math.max(1, Number(n) || 1)) * (quality === 'hd' ? 2 : 1);
+  let imageCharged = false;
+  let imageRefunded = false;
+  const refundImage = async (why) => {
+    if (!imageCharged || imageRefunded) return;
+    imageRefunded = true;
+    try { await refundFlat({ companyId: req.companyId, action: 'generate_image', quantity: imageUnits, reason: why }); }
+    catch (e) { console.error('[ai/generate-image] refund failed:', e.message); }
+  };
   try {
     if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
 
@@ -1454,9 +1506,10 @@ router.post('/generate-image', requireAuth, async (req, res) => {
     const refusal = await chargeFlat({
       companyId: req.companyId, userId: req.dbUser?.id, userEmail: req.dbUser?.email,
       action: 'generate_image',
-      quantity: Math.min(4, Math.max(1, Number(n) || 1)) * (quality === 'hd' ? 2 : 1),
+      quantity: imageUnits,
     });
     if (refusal) return res.status(refusal.status).json(refusal.body);
+    imageCharged = true;
 
     const settings = await getCompanyAISettings(req.companyId);
 
@@ -1466,24 +1519,26 @@ router.post('/generate-image', requireAuth, async (req, res) => {
     if (provider === 'stability' || provider === 'stable_diffusion') {
       const urls = await generateWithStability(settings, prompt, n);
       if (urls) return res.json({ urls });
+      await refundImage('Stability key not configured');
       return res.status(402).json({ error: 'Stability AI API key not configured', code: 'MISSING_API_KEY' });
     }
 
     // OpenAI path with model fallback. Ignore any non-image model that ended
     // up in settings (e.g. a chat model) — that was the "model not available" bug.
-    const preferred = OPENAI_IMAGE_MODELS.includes(settings.ai_image_model) ? settings.ai_image_model : null;
-    const attempts = [...new Set([preferred, ...OPENAI_IMAGE_MODELS].filter(Boolean))];
+    const imageModels = openaiImageModels();
+    const preferred = imageModels.includes(settings.ai_image_model) ? settings.ai_image_model : null;
+    const attempts = [...new Set([preferred, ...imageModels].filter(Boolean))];
 
     const client = await getOpenAIClient(req.companyId, null, req.dbUser?.role);
     const errors = [];
     for (const model of attempts) {
       try {
-        const params = imageParamsFor(model, size, quality);
+        const params = imageParamsFor(size, quality);
         const result = await client.images.generate({
           model, prompt,
           size: params.size,
           ...(params.quality ? { quality: params.quality } : {}),
-          n: model === 'dall-e-3' ? 1 : Math.min(4, Math.max(1, n)),
+          n: Math.min(4, Math.max(1, Number(n) || 1)),
         });
         // gpt-image-1 returns b64_json; dall-e returns url
         const urls = (result.data || [])
@@ -1507,6 +1562,7 @@ router.post('/generate-image', requireAuth, async (req, res) => {
     } catch (e) { errors.push(`stability: ${e.message}`); }
 
     console.error('[ai/generate-image] all providers failed:', errors.join(' | '));
+    await refundImage('every image provider failed');
     return res.status(502).json({
       error: 'Image generation is unavailable right now. The image provider rejected all attempts — check the OpenAI account has image access/credits, or add a Stability AI key.',
       code: 'IMAGE_GEN_FAILED',
@@ -1514,6 +1570,7 @@ router.post('/generate-image', requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('[ai/generate-image]', err.message);
+    await refundImage(err.message);
     if (err.code === 'MISSING_API_KEY') {
       return res.status(402).json({ error: err.message, code: 'MISSING_API_KEY' });
     }
@@ -1528,6 +1585,14 @@ router.post('/generate-image', requireAuth, async (req, res) => {
 // frontend persists to storage. (remove-background and enhance operations were
 // removed — they altered the source too much.)
 router.post('/edit-image', requireAuth, async (req, res) => {
+  let editCharged = false;
+  let editRefunded = false;
+  const refundEdit = async (why) => {
+    if (!editCharged || editRefunded) return;
+    editRefunded = true;
+    try { await refundFlat({ companyId: req.companyId, action: 'edit_image', reason: why }); }
+    catch (e) { console.error('[ai/edit-image] refund failed:', e.message); }
+  };
   try {
     const { image_url, prompt: userPrompt } = req.body;
     if (!image_url) return res.status(400).json({ error: 'image_url is required' });
@@ -1538,6 +1603,7 @@ router.post('/edit-image', requireAuth, async (req, res) => {
       action: 'edit_image',
     });
     if (refusal) return res.status(refusal.status).json(refusal.body);
+    editCharged = true;
 
     // Load the source image (storage URL or data URL)
     let buffer;
@@ -1555,7 +1621,10 @@ router.post('/edit-image', requireAuth, async (req, res) => {
       if (!r.ok) throw new Error(`Could not load source image (${r.status})`);
       buffer = Buffer.from(await r.arrayBuffer());
     }
-    if (buffer.length > 20 * 1024 * 1024) return res.status(413).json({ error: 'Image too large (max 20MB)' });
+    if (buffer.length > 20 * 1024 * 1024) {
+      await refundEdit('image too large');
+      return res.status(413).json({ error: 'Image too large (max 20MB)' });
+    }
 
     const prompt = userPrompt;
 
@@ -1565,25 +1634,29 @@ router.post('/edit-image', requireAuth, async (req, res) => {
 
     // Highest quality + high input fidelity so the source is preserved as closely
     // as the model allows.
-    const params = { model: 'gpt-image-1', image: file, prompt, size: 'auto', quality: 'high', input_fidelity: 'high' };
-
-    // Progressive fallback: drop the least-supported params first, so newer
-    // accounts get max quality and older ones still succeed.
-    const paramFallbacks = [
-      params,
-      { ...params, input_fidelity: undefined },
-      { ...params, input_fidelity: undefined, quality: undefined },
-      { ...params, input_fidelity: undefined, quality: undefined, size: undefined },
-    ].map(p => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)));
-
+    // gpt-image-1 (the only model this used) was shut down on 2026-10-01. Try the models the account actually has.
+    const editModels = process.env.OPENAI_IMAGE_EDIT_MODEL ? [process.env.OPENAI_IMAGE_EDIT_MODEL] : openaiImageModels(true);
     let result, lastErr;
-    for (const p of paramFallbacks) {
-      try { result = await client.images.edit(p); break; }
-      catch (err) {
-        lastErr = err;
-        // Only keep retrying on param-shape rejections; bail on auth/quota/etc.
-        const cat = categorizeProviderError(err, 'OpenAI');
-        if (cat.kind === 'AUTH' || cat.kind === 'QUOTA' || cat.kind === 'RATE_LIMIT') throw err;
+    outer: for (const editModel of editModels) {
+      const params = { model: editModel, image: file, prompt, size: 'auto', quality: 'high', input_fidelity: 'high' };
+      // Progressive fallback: drop the least-supported params first, so newer accounts get max quality and older
+      // ones still succeed.
+      const paramFallbacks = [
+        params,
+        { ...params, input_fidelity: undefined },
+        { ...params, input_fidelity: undefined, quality: undefined },
+        { ...params, input_fidelity: undefined, quality: undefined, size: undefined },
+      ].map(p => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)));
+
+      for (const p of paramFallbacks) {
+        try { result = await client.images.edit(p); break outer; }
+        catch (err) {
+          lastErr = err;
+          const cat = categorizeProviderError(err, 'OpenAI');
+          // Auth/quota/rate limits affect every model; stop. An unknown model: go to the next model.
+          if (cat.kind === 'AUTH' || cat.kind === 'QUOTA' || cat.kind === 'RATE_LIMIT') throw err;
+          if (cat.kind === 'INVALID_MODEL') break;
+        }
       }
     }
     if (!result) throw lastErr || new Error('Image edit failed');
@@ -1593,6 +1666,7 @@ router.post('/edit-image', requireAuth, async (req, res) => {
     res.json({ url: `data:image/png;base64,${b64}` });
   } catch (err) {
     console.error('[ai/edit-image]', err.message);
+    await refundEdit(err.message);
     if (err.code === 'MISSING_API_KEY') return res.status(402).json({ error: err.message, code: 'MISSING_API_KEY' });
     const cat = categorizeProviderError(err, 'OpenAI');
     const status = cat.kind === 'AUTH' || cat.kind === 'QUOTA' ? 402 : cat.kind === 'RATE_LIMIT' ? 429 : 500;
@@ -1603,7 +1677,8 @@ router.post('/edit-image', requireAuth, async (req, res) => {
 // POST /api/ai/tts
 router.post('/tts', requireAuth, async (req, res) => {
   try {
-    const { text, voice = 'alloy', model = 'tts-1' } = req.body;
+    // tts-1 shuts down 2027-01-06: set OPENAI_TTS_MODEL to the replacement (confirm it works on /audio/speech) before then.
+    const { text, voice = 'alloy', model = process.env.OPENAI_TTS_MODEL || 'tts-1' } = req.body;
 
     const refusal = await chargeFlat({
       companyId: req.companyId, userId: req.dbUser?.id, userEmail: req.dbUser?.email,
@@ -1874,5 +1949,5 @@ router.delete('/outputs/:id', requireAuth, async (req, res) => {
 
 // Export runAIChat so other routes (leads scoring, workflows, etc.) can use the
 // unified bidirectional-fallback AI helper instead of calling OpenAI directly.
-export { runAIChat };
+export { runAIChat, refundFlat };
 export default router;

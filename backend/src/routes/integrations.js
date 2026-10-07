@@ -220,7 +220,7 @@ router.post('/test/:type', requireAuth, async (req, res) => {
         // hard-coded: a retired id would make this report failure for a valid key.
         const listed = await modelsResp.json().catch(() => ({}));
         const ids = new Set((listed.data || []).map((m) => m.id));
-        const testModel = ['gpt-5-nano', 'gpt-5-mini', 'gpt-4.1-nano', 'gpt-4.1-mini', 'gpt-4o-mini'].find((m) => ids.has(m));
+        const testModel = ['gpt-5-nano', 'gpt-5-mini', 'gpt-4.1-mini', 'gpt-4o-mini'].find((m) => ids.has(m));
         if (!testModel) return res.json({ success: true, message: 'OpenAI key is valid (could not pick a cheap chat model from the account list, so billing was not exercised)' });
         const completionResp = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',

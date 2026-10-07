@@ -22,7 +22,7 @@
  */
 import { supabaseAdmin } from './supabase.js';
 import { askPerplexity } from './perplexity.js';
-import { liveModelFor } from './aiCredits.js';
+import { liveModelFor, ANTHROPIC_MID_MODEL } from './aiCredits.js';
 
 const clean = (k) => (typeof k === 'string' && k.trim() ? k.trim() : null);
 
@@ -135,7 +135,8 @@ async function viaAnthropic(query, key) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: liveModelFor('claude-sonnet-4-5', 'anthropic'),
+      // claude-sonnet-4-5 was deprecated 2026-09-30 and retires 2026-11-30; the mid-tier model is configurable.
+      model: liveModelFor(process.env.ANTHROPIC_WEBSEARCH_MODEL || ANTHROPIC_MID_MODEL, 'anthropic'),
       max_tokens: 900,
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
       messages: [{ role: 'user', content: query }],

@@ -15,6 +15,14 @@ import { inferModelTier, inferModelMultiplier, MODEL_TIER, setLiveCatalog } from
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 let cacheAt = 0;
 let cached = null;
+// OpenAI image models (gpt-image-*) seen in the last successful catalog fetch, newest id first. The chat catalog
+// filters image models out, but the image routes hard-coded a list that has since been shut down.
+let liveOpenAIImageModels = [];
+
+/** Image models the OpenAI account can actually use (empty until the first successful refresh). */
+export function getLiveImageModels() {
+  return liveOpenAIImageModels;
+}
 
 // Static fallback (mirrors the pre-auto-update hardcoded list)
 const STATIC_MODELS = Object.keys(MODEL_TIER).map(id => ({
@@ -37,8 +45,9 @@ async function fetchOpenAIModels() {
   });
   if (!res.ok) throw new Error(`OpenAI models list ${res.status}`);
   const body = await res.json();
-  return (body.data || [])
-    .map(m => m.id)
+  const ids = (body.data || []).map(m => m.id);
+  liveOpenAIImageModels = ids.filter(id => /^gpt-image-/.test(id)).sort().reverse();
+  return ids
     .filter(isOpenAIChatModel)
     .map(id => ({ id, provider: 'openai' }));
 }
@@ -46,7 +55,7 @@ async function fetchOpenAIModels() {
 async function fetchAnthropicModels() {
   const key = (process.env.ANTHROPIC_API_KEY || '').trim();
   if (!key) return [];
-  const res = await fetch('https://api.anthropic.com/v1/models?limit=50', {
+  const res = await fetch('https://api.anthropic.com/v1/models?limit=1000', {
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
   });
   if (!res.ok) throw new Error(`Anthropic models list ${res.status}`);

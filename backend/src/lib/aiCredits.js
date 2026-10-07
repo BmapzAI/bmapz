@@ -9,36 +9,69 @@
 // Cost multiplier vs the baseline (gpt-4o-mini). Used to compute credit cost.
 // Derived from blended (2:1 input:output) provider pricing as of mid-2026.
 export const MODEL_COST_MULTIPLIER = {
+  // multiplier = ((2 x input $/M + output $/M) / 3) / 0.30, i.e. the blended price (2:1 input:output) relative to the
+  // gpt-4o-mini baseline of $0.30/M. Recomputed 2026-10-07 from the vendors' own price pages; the old table priced
+  // models that have since been RETIRED and mis-priced the current ones in both directions (Claude Fable was billed
+  // 30x against a real 78x, an ~2.6x undercharge; gpt-5-mini 1x against 2.8x).
   // OpenAI
   'gpt-4o-mini': 1,            // baseline
-  'gpt-4o': 17,                 // $5/M blended vs $0.30/M
-  'gpt-4-turbo': 30,
-  'gpt-3.5-turbo': 1.7,
-  // Anthropic
-  'claude-3-5-haiku-20241022': 6,
-  'claude-haiku-3-5': 6,
-  'claude-3-5-sonnet-20241022': 23,
-  'claude-sonnet-3-5': 23,
-  'claude-sonnet-4-5': 25,      // assume similar to Sonnet 3.5
-  'claude-3-opus-20240229': 117,
-  'claude-opus-4-5': 80,
+  'gpt-4o': 17,
+  'gpt-4.1': 13,
+  'gpt-4.1-mini': 3,
+  'gpt-4.1-nano': 0.7,
+  'gpt-5': 14,
+  'gpt-5-mini': 3,
+  'gpt-5-nano': 0.6,
+  'o3': 13,
+  'o3-mini': 7,
+  'o1': 100,
+  // Anthropic (platform.claude.com/docs/en/about-claude/pricing)
+  'claude-haiku-4-5-20251001': 8,   // $1 / $5
+  'claude-haiku-4-5': 8,
+  'claude-sonnet-4-5': 23,          // $3 / $15  (deprecated, retires 2026-11-30)
+  'claude-sonnet-4-6': 23,
+  'claude-sonnet-5': 16,            // $2 / $10
+  'claude-sonnet-5-5': 16,
+  'claude-opus-4-5': 39,            // $5 / $25
+  'claude-opus-4-6': 39,
+  'claude-opus-4-7': 39,
+  'claude-opus-4-8': 39,
+  'claude-opus-5': 39,
+  'claude-opus-5-5': 31,            // $4 / $20
+  'claude-fable-5': 78,             // $10 / $50
+  'claude-fable-5-1': 78,
 };
 
 // Human-friendly tier label for each model
 export const MODEL_TIER = {
+  // Explicit rather than price-derived: Claude Fable (the most expensive model) landed in the "smarter" band that the
+  // Growth plan may use, while it should be reachable only on the plans that get "smartest".
   'gpt-4o-mini': 'smart',
-  'gpt-3.5-turbo': 'smart',
-  'claude-3-5-haiku-20241022': 'smart',
-  'claude-haiku-3-5': 'smart',
+  'gpt-4.1-nano': 'smart',
+  'gpt-4.1-mini': 'smart',
+  'gpt-5-nano': 'smart',
+  'gpt-5-mini': 'smart',
+  'claude-haiku-4-5-20251001': 'smart',
+  'claude-haiku-4-5': 'smart',
 
   'gpt-4o': 'smarter',
-  'gpt-4-turbo': 'smarter',
-  'claude-3-5-sonnet-20241022': 'smarter',
-  'claude-sonnet-3-5': 'smarter',
+  'gpt-4.1': 'smarter',
+  'gpt-5': 'smarter',
+  'claude-sonnet-4-5': 'smarter',
+  'claude-sonnet-4-6': 'smarter',
+  'claude-sonnet-5': 'smarter',
+  'claude-sonnet-5-5': 'smarter',
 
-  'claude-sonnet-4-5': 'smartest',
-  'claude-3-opus-20240229': 'smartest',
+  'o1': 'smartest',
+  'o3': 'smartest',
   'claude-opus-4-5': 'smartest',
+  'claude-opus-4-6': 'smartest',
+  'claude-opus-4-7': 'smartest',
+  'claude-opus-4-8': 'smartest',
+  'claude-opus-5': 'smartest',
+  'claude-opus-5-5': 'smartest',
+  'claude-fable-5': 'smartest',
+  'claude-fable-5-1': 'smartest',
 };
 
 // Which tiers each plan can use. Higher plans inherit lower-tier access.
@@ -150,7 +183,11 @@ export function liveModelFor(preferred, providerHint) {
   const provider = providerHint || providerOfModel(preferred);
   const live = LIVE_CATALOG[provider] || [];
   if (!live.length) return preferred;                       // no catalog → unchanged
-  if (live.some((m) => m.id === preferred)) return preferred; // still served → unchanged
+  // Aliases (claude-haiku-4-5) and dated snapshots (claude-haiku-4-5-20251001) name the same model, and the docs do
+  // not say which form /v1/models returns, so compare without the date suffix: otherwise a live alias is judged
+  // "not served" and silently swapped for a model in a different tier.
+  const base = (s) => String(s).replace(/-\d{8}$/, '');
+  if (live.some((m) => m.id === preferred || base(m.id) === base(preferred))) return preferred;
 
   const tier = inferModelTier(preferred);
   const sameTier = live.filter((m) => (m.tier || inferModelTier(m.id)) === tier);
@@ -161,10 +198,18 @@ export function liveModelFor(preferred, providerHint) {
     .sort((a, b) => a.d - b.d)[0].id;                        // stable sort keeps newest-first on ties
 }
 
+// The cheap and mid-tier Claude models the downgrade, forced-cheap and retry paths use. These were
+// claude-3-5-haiku-20241022 (retired 2026-02-19) and claude-3-5-sonnet-20241022 (retired 2025-10-28); the only thing
+// keeping them alive was liveModelFor(), which does nothing until the first catalog refresh finishes after a boot and
+// never does anything when the platform ANTHROPIC_API_KEY is unset. Overridable by env so the next retirement is a
+// config change.
+export const ANTHROPIC_CHEAP_MODEL = process.env.ANTHROPIC_CHEAP_MODEL || 'claude-haiku-4-5-20251001';
+export const ANTHROPIC_MID_MODEL = process.env.ANTHROPIC_MID_MODEL || 'claude-sonnet-5-5';
+
 // Default model per provider when user hasn't chosen
 export const DEFAULT_MODEL_PER_PROVIDER = {
   openai: 'gpt-4o-mini',
-  anthropic: 'claude-3-5-haiku-20241022',
+  anthropic: ANTHROPIC_CHEAP_MODEL,
 };
 
 /** The default model for a provider, corrected against the live catalog. */
@@ -172,12 +217,36 @@ export function defaultModelFor(provider) {
   return liveModelFor(DEFAULT_MODEL_PER_PROVIDER[provider], provider);
 }
 
+/**
+ * Claude 4.7 and later (Opus 4.7/4.8/5/5.5, Sonnet 5/5.5, Fable, Mythos) REJECT any non-default temperature, top_p or
+ * top_k with HTTP 400 (confirmed by several independent integrations hitting it; Anthropic's guidance is to omit all
+ * three). The chat path always sent temperature (default 0.7), so on every current flagship the request failed, was
+ * mis-read as an invalid MODEL, retried on a retired fallback, and then silently moved to the other provider.
+ * callAnthropic also retries once without sampling parameters if a 400 names them, for ids this pattern does not cover.
+ */
+export function anthropicRejectsSampling(model) {
+  return /^claude-(opus-(4-([7-9]|\d{2}(?!\d))|[5-9])|sonnet-[5-9]|fable|mythos)/i.test(String(model || ''));
+}
+
+/**
+ * Prompt tokens for BILLING from an Anthropic usage block. usage.input_tokens EXCLUDES cache reads and cache writes,
+ * so charging on it alone billed only the uncached tail of every prompt-cached call (often a few dozen tokens out of
+ * tens of thousands) - the heavy, repeated-context calls (SDR agent, Company Brain) were the ones under-billed.
+ * Weighted by what Anthropic charges for each kind: a 5-minute cache write is 1.25x input and a read is 0.1x.
+ */
+export function weightedPromptTokens(usage) {
+  const u = usage || {};
+  return (u.input_tokens || 0)
+    + Math.round((u.cache_creation_input_tokens || 0) * 1.25)
+    + Math.round((u.cache_read_input_tokens || 0) * 0.1);
+}
+
 // 1 credit ≈ this many tokens of baseline gpt-4o-mini
 /**
  * How many baseline (gpt-4o-mini-equivalent) tokens one AI credit buys.
  *
  * Raised 12 → 60 deliberately. At 12 the allowances were unusable in practice:
- * on the Anthropic default (claude-3-5-haiku, multiplier 6) a Starter customer's
+ * on the Anthropic default (then claude-3-5-haiku, multiplier 6; now claude-haiku-4-5, 8) a Starter customer's
  * 15,000 credits bought about TWO ads strategies or THREE blog posts a month, and
  * on claude-sonnet-4-5 a single strategy cost 25,000 credits — more than the whole
  * monthly allowance, so the feature could not be used at all.
@@ -203,25 +272,37 @@ export function inferModelMultiplier(model) {
   if (!model) return 1;
   const m = model.toLowerCase();
   if (MODEL_COST_MULTIPLIER[model] != null) return MODEL_COST_MULTIPLIER[model];
-  if (m.includes('opus')) return 90;
-  if (m.includes('fable')) return 30;      // Claude Fable family
-  if (m.includes('sonnet')) return 25;
-  if (m.includes('haiku')) return 6;
-  if (m.includes('nano')) return 0.5;
+  // An id we have never seen: guess its family, deliberately on the HIGH side of what the family has cost, so an
+  // unknown model is never billed far below its price.
+  if (m.includes('fable') || m.includes('mythos')) return 78;
+  if (m.includes('opus')) return 39;
+  if (m.includes('sonnet')) return 23;
+  if (m.includes('haiku')) return 8;
+  // Reasoning families BEFORE the generic "mini"/"nano" tests: o3-mini and o4-mini contain "mini" and are not cheap
+  // (o3-mini is ~7x the baseline); the old order billed them at 1x.
+  if (m.startsWith('o1')) return 100;
+  if (/^o[34]/.test(m)) return m.includes('mini') ? 7 : 13;
+  if (m.startsWith('gpt-5')) return m.includes('nano') ? 0.6 : m.includes('mini') ? 3 : 14;
+  if (m.startsWith('gpt-4.1')) return m.includes('nano') ? 0.7 : m.includes('mini') ? 3 : 13;
+  if (m.includes('nano')) return 0.6;
   if (m.includes('mini')) return 1;
-  if (m.startsWith('o1') || m.startsWith('o3') || m.startsWith('o4')) return 40; // reasoning models
-  if (m.startsWith('gpt-5')) return 20;
-  if (m.startsWith('gpt-4.1')) return 12;
   if (m.startsWith('gpt-4')) return 17;
   if (m.startsWith('gpt-3')) return 1.7;
-  return 17; // unknown → assume mid-tier so we never undercharge badly
+  return 17; // unknown -> assume mid-tier so we never undercharge badly
 }
 
 export function inferModelTier(model) {
   if (!model) return 'smart';
   if (MODEL_TIER[model]) return MODEL_TIER[model];
+  const m = model.toLowerCase();
+  // An id we have never seen keeps its FAMILY's tier. Deriving it from the price alone put an unknown Opus (priced 39)
+  // one point under the "smartest" cutoff, so a retired Opus was replaced by a Sonnet and the plan gate treated a new
+  // Opus as mid-tier.
+  if (/fable|mythos|opus/.test(m)) return 'smartest';
+  if (m.includes('sonnet')) return 'smarter';
+  if (m.includes('haiku')) return 'smart';
   const mult = inferModelMultiplier(model);
-  if (mult >= 40) return 'smartest';
+  if (mult >= 39) return 'smartest';
   if (mult >= 10) return 'smarter';
   return 'smart';
 }
@@ -260,9 +341,9 @@ export function resolveModelForPlan(requestedModel, planId, provider) {
   // Downgrade: pick the cheapest allowed model for the given provider
   const allowedTiers = PLAN_MODEL_ACCESS[planId] || PLAN_MODEL_ACCESS.starter;
   if (provider === 'anthropic') {
-    if (allowedTiers.includes('smartest')) return liveModelFor('claude-3-5-sonnet-20241022', 'anthropic');
-    if (allowedTiers.includes('smarter')) return liveModelFor('claude-3-5-sonnet-20241022', 'anthropic');
-    return liveModelFor('claude-3-5-haiku-20241022', 'anthropic');
+    if (allowedTiers.includes('smartest')) return liveModelFor(ANTHROPIC_MID_MODEL, 'anthropic');
+    if (allowedTiers.includes('smarter')) return liveModelFor(ANTHROPIC_MID_MODEL, 'anthropic');
+    return liveModelFor(ANTHROPIC_CHEAP_MODEL, 'anthropic');
   }
   // OpenAI
   return liveModelFor('gpt-4o-mini', 'openai');
@@ -274,12 +355,12 @@ export function resolveModelForPlan(requestedModel, planId, provider) {
  */
 export function resolveActionModel(action, requestedModel, planId, provider) {
   if (action && FORCE_CHEAP_MODEL_ACTIONS.has(action)) {
-    return provider === 'anthropic' ? liveModelFor('claude-3-5-haiku-20241022', 'anthropic') : liveModelFor('gpt-4o-mini', 'openai');
+    return provider === 'anthropic' ? liveModelFor(ANTHROPIC_CHEAP_MODEL, 'anthropic') : liveModelFor('gpt-4o-mini', 'openai');
   }
   // Latency-sensitive actions: route to the fast tier so interactive surfaces
   // (SDR replies, ad copy variants, help chat) respond in seconds.
   if (action && FAST_MODEL_ACTIONS.has(action)) {
-    return provider === 'anthropic' ? liveModelFor('claude-3-5-haiku-20241022', 'anthropic') : liveModelFor('gpt-4o-mini', 'openai');
+    return provider === 'anthropic' ? liveModelFor(ANTHROPIC_CHEAP_MODEL, 'anthropic') : liveModelFor('gpt-4o-mini', 'openai');
   }
   return resolveModelForPlan(requestedModel, planId, provider);
 }
